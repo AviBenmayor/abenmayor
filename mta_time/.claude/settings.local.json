@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:web.mta.info)",
+      "Bash(curl:*)",
+      "Bash(chmod:*)",
+      "Bash(npm install)",
+      "Bash(node web-server.js:*)",
+      "Bash(timeout 5 node:*)",
+      "Bash(python3:*)",
+      "Bash(timeout 3 node:*)",
+      "WebFetch(domain:datamine.mta.info)",
+      "WebFetch(domain:github.com)",
+      "Bash(npm install:*)",
+      "Bash(node test-mapper.js:*)",
+      "Bash(node check-f-train.js:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

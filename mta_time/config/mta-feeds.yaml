@@ -1,0 +1,179 @@
+# MTA GTFS Realtime Feed Configuration
+# Complete mapping of NYC Subway lines to their API feeds
+# Last updated: 2025-11-22
+# Source: https://api.mta.info/ and https://www.mta.info/developers
+
+metadata:
+  base_url: "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds"
+  api_version: "2.0.0"
+  update_frequency_seconds: 30
+  data_format: "GTFS-Realtime Protocol Buffers"
+  api_key_required: false
+  api_key_header: "x-api-key"
+
+# Feed group definitions
+# Each feed covers specific subway lines
+feeds:
+  ace:
+    name: "ACE"
+    endpoint: "nyct%2Fgtfs-ace"
+    full_url: "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-ace"
+    division: "B Division (IND)"
+    lines:
+      - A
+      - C
+      - E
+      - H      # Rockaway Park Shuttle
+      - FS     # Franklin Avenue Shuttle
+    description: "8th Avenue Express (A, C, E) and associated shuttles"
+
+  bdfm:
+    name: "BDFM"
+    endpoint: "nyct%2Fgtfs-bdfm"
+    full_url: "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-bdfm"
+    division: "B Division (IND/BMT)"
+    lines:
+      - B
+      - D
+      - F
+      - M
+    description: "6th Avenue Express (B, D, F, M)"
+
+  g:
+    name: "G"
+    endpoint: "nyct%2Fgtfs-g"
+    full_url: "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-g"
+    division: "B Division (IND)"
+    lines:
+      - G
+    description: "Brooklyn-Queens Crosstown Local (G)"
+
+  jz:
+    name: "JZ"
+    endpoint: "nyct%2Fgtfs-jz"
+    full_url: "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-jz"
+    division: "B Division (BMT)"
+    lines:
+      - J
+      - Z
+    description: "Nassau Street Express (J, Z)"
+
+  nqrw:
+    name: "NQRW"
+    endpoint: "nyct%2Fgtfs-nqrw"
+    full_url: "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-nqrw"
+    division: "B Division (BMT/IND)"
+    lines:
+      - N
+      - Q
+      - R
+      - W
+    description: "Broadway Express (N, Q, R, W)"
+
+  l:
+    name: "L"
+    endpoint: "nyct%2Fgtfs-l"
+    full_url: "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-l"
+    division: "B Division (BMT)"
+    lines:
+      - L
+    description: "14th Street-Canarsie Local (L)"
+
+  numbered:
+    name: "1234567"
+    endpoint: "nyct%2Fgtfs"
+    full_url: "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs"
+    division: "A Division (IRT)"
+    lines:
+      - "1"
+      - "2"
+      - "3"
+      - "4"
+      - "5"
+      - "6"
+      - "7"
+      - S      # 42nd Street Shuttle
+      - GS     # Grand Central Shuttle (internal)
+    description: "All numbered lines and associated shuttles (IRT)"
+
+  si:
+    name: "SI"
+    endpoint: "nyct%2Fgtfs-si"
+    full_url: "https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs-si"
+    division: "Staten Island Railway"
+    lines:
+      - SIR
+    description: "Staten Island Railway"
+
+# Direct line-to-feed mapping for quick lookups
+line_to_feed:
+  # Numbered lines (A Division - IRT)
+  "1": numbered
+  "2": numbered
+  "3": numbered
+  "4": numbered
+  "5": numbered
+  "6": numbered
+  "7": numbered
+
+  # Lettered lines (B Division - IND/BMT)
+  A: ace
+  B: bdfm
+  C: ace
+  D: bdfm
+  E: ace
+  F: bdfm
+  G: g
+  J: jz
+  L: l
+  M: bdfm
+  N: nqrw
+  Q: nqrw
+  R: nqrw
+  W: nqrw
+  Z: jz
+
+  # Shuttle services
+  S: numbered      # 42nd Street Shuttle
+  GS: numbered     # Grand Central Shuttle
+  H: ace           # Rockaway Park Shuttle
+  FS: ace          # Franklin Avenue Shuttle
+
+  # Staten Island
+  SIR: si
+
+# Line colors (official MTA colors)
+line_colors:
+  "1": "#EE352E"  # Red
+  "2": "#EE352E"
+  "3": "#EE352E"
+  "4": "#00933C"  # Green
+  "5": "#00933C"
+  "6": "#00933C"
+  "7": "#B933AD"  # Purple
+  A: "#0039A6"    # Blue
+  C: "#0039A6"
+  E: "#0039A6"
+  B: "#FF6319"    # Orange
+  D: "#FF6319"
+  F: "#FF6319"
+  M: "#FF6319"
+  G: "#6CBE45"    # Light Green
+  J: "#996633"    # Brown
+  Z: "#996633"
+  L: "#A7A9AC"    # Gray
+  N: "#FCCC0A"    # Yellow
+  Q: "#FCCC0A"
+  R: "#FCCC0A"
+  W: "#FCCC0A"
+  S: "#808183"    # Dark Gray
+  SIR: "#0039A6"  # Blue
+
+# Additional metadata
+notes:
+  - "Feed updates occur approximately every 30 seconds"
+  - "API keys are optional as of v2.0.0 but recommended for production use"
+  - "Data format is GTFS-Realtime (Protocol Buffers)"
+  - "Stop IDs can be found in the GTFS static data"
+  - "Some feeds may include multiple trip updates for the same train"
+  - "Direction suffixes: N (northbound), S (southbound)"

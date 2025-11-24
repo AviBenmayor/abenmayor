@@ -1,0 +1,29 @@
+{
+  "name": "mta-train-time",
+  "version": "1.0.0",
+  "description": "Display next train arrival time for the closest MTA station",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "simple": "node simple-display.js",
+    "web": "node web-server.js"
+  },
+  "keywords": [
+    "mta",
+    "subway",
+    "train",
+    "arrival"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "gtfs-realtime-bindings": "^1.1.0",
+    "js-yaml": "^4.1.1",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
