@@ -3,24 +3,91 @@ const fetch = require('node-fetch');
 const feedMapper = require('./lib/mta-feed-mapper');
 require('dotenv').config();
 
+// Location configuration
+const HOME_LOCATION = {
+  name: '107 Skillman Avenue, Brooklyn NY',
+  latitude: 40.7088,
+  longitude: -73.9504
+};
+
 // Station configuration for 107 Skillman Avenue, Brooklyn
 const STATIONS = {
   GRAHAM_L: {
     name: 'Graham Av',
     stopId: 'L11',
     line: 'L',
-    feedUrl: feedMapper.getEndpointForLine('L')
+    feedUrl: feedMapper.getEndpointForLine('L'),
+    latitude: 40.7140,
+    longitude: -73.9440
+  },
+  LORIMER_L: {
+    name: 'Lorimer St',
+    stopId: 'L10',
+    line: 'L',
+    feedUrl: feedMapper.getEndpointForLine('L'),
+    latitude: 40.7037,
+    longitude: -73.9501
   },
   NASSAU_G: {
     name: 'Nassau Av',
     stopId: 'G28',
     line: 'G',
-    feedUrl: feedMapper.getEndpointForLine('G')
+    feedUrl: feedMapper.getEndpointForLine('G'),
+    latitude: 40.7243,
+    longitude: -73.9514
   }
 };
 
-// Use Graham Av (L train) as the primary station - closest to 107 Skillman Ave
-const STATION = STATIONS.GRAHAM_L;
+// Calculate distance between two coordinates in miles using Haversine formula
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 3959; // Earth's radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
+// Select station based on current location
+function selectStation(currentLat, currentLon) {
+  // Calculate distance from current location to home
+  const distanceFromHome = calculateDistance(
+    currentLat,
+    currentLon,
+    HOME_LOCATION.latitude,
+    HOME_LOCATION.longitude
+  );
+
+  // If within 0.1 mile radius of home (107 Skillman Ave), use Lorimer St
+  if (distanceFromHome <= 0.1) {
+    return STATIONS.LORIMER_L;
+  }
+
+  // Otherwise, find the closest station
+  let closestStation = STATIONS.GRAHAM_L;
+  let minDistance = Infinity;
+
+  for (const [key, station] of Object.entries(STATIONS)) {
+    const distance = calculateDistance(
+      currentLat,
+      currentLon,
+      station.latitude,
+      station.longitude
+    );
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestStation = station;
+    }
+  }
+
+  return closestStation;
+}
+
+// Use Lorimer St when at home (107 Skillman Ave)
+const STATION = selectStation(HOME_LOCATION.latitude, HOME_LOCATION.longitude);
 
 async function getNextTrain() {
   try {
@@ -89,7 +156,20 @@ function displayTrainInfo(arrivals) {
   console.clear();
   console.log('='.repeat(50));
   console.log(`  MTA TRAIN TRACKER - ${STATION.name} Station (${STATION.line} train)`);
-  console.log('  Location: 107 Skillman Avenue, Brooklyn NY');
+  console.log(`  Location: ${HOME_LOCATION.name}`);
+
+  // Calculate and display distance from home
+  const distanceFromHome = calculateDistance(
+    HOME_LOCATION.latitude,
+    HOME_LOCATION.longitude,
+    HOME_LOCATION.latitude,
+    HOME_LOCATION.longitude
+  );
+
+  if (distanceFromHome <= 0.1) {
+    console.log('  Using Lorimer St (within 0.1 mile of home)');
+  }
+
   console.log('='.repeat(50));
   console.log();
 
@@ -122,7 +202,30 @@ function displayTrainInfo(arrivals) {
 
 async function main() {
   console.log('Starting MTA Train Tracker...');
-  console.log(`Monitoring: ${STATION.name} Station (${STATION.line} train)`);
+  console.log(`Location: ${HOME_LOCATION.name}`);
+
+  // Calculate distance from home to selected station
+  const distanceToStation = calculateDistance(
+    HOME_LOCATION.latitude,
+    HOME_LOCATION.longitude,
+    STATION.latitude,
+    STATION.longitude
+  );
+
+  console.log(`Selected Station: ${STATION.name} (${STATION.line} train)`);
+  console.log(`Distance: ${(distanceToStation * 5280).toFixed(0)} feet (${distanceToStation.toFixed(2)} miles)`);
+
+  const distanceFromHome = calculateDistance(
+    HOME_LOCATION.latitude,
+    HOME_LOCATION.longitude,
+    HOME_LOCATION.latitude,
+    HOME_LOCATION.longitude
+  );
+
+  if (distanceFromHome <= 0.1) {
+    console.log('Note: Using Lorimer St because you are within 0.1 mile of home');
+  }
+
   console.log();
 
   // Initial fetch
