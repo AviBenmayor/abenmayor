@@ -3,50 +3,38 @@ from typing import List, Dict, Any
 from base_client import MarketClient
 
 class KalshiClient(MarketClient):
-    def fetch_markets(self) -> List[Dict[str, Any]]:
+    def fetch_markets(self, max_hours_until_close: int = 24, min_volume: int = 1000, min_liquidity: int = 500) -> List[Dict[str, Any]]:
         # Using the public elections endpoint
         url = "https://api.elections.kalshi.com/trade-api/v2/markets"
         
-        # Calculate end of current month timestamp for filtering
         import datetime
-        import calendar
         import pytz
         
-        eastern_timezone = pytz.timezone('America/New_York')
-        now = datetime.datetime.now(eastern_timezone)
-        
-        year = now.year
-        month = now.month
-        last_day = calendar.monthrange(year, month)[1]
-        end_of_month = datetime.datetime(year, month, last_day, 23, 59, 59, tzinfo=eastern_timezone)
-        
-        # Convert to Unix timestamp for API
-        min_close_ts = int(end_of_month.timestamp())
+        # Calculate max close time (current time + max_hours)
+        now = datetime.datetime.now(pytz.utc)
+        max_close_time = now + datetime.timedelta(hours=max_hours_until_close)
+        max_close_ts = int(max_close_time.timestamp())
         
         params = {
             "limit": 100,
-            "status": "open",  # Per documentation: use 'open' for filtering (API returns 'active')
-            "min_close_ts": min_close_ts  # Only get markets that close after end of current month
+            "status": "open",
+            "max_close_ts": max_close_ts  # Filter for markets closing within window
         }
         try:
             response = requests.get(url, params=params)
             response.raise_for_status()
             data = response.json()
             if 'markets' in data:
-                # Client-side filtering for volume/liquidity
                 active_markets = []
                 
                 for m in data['markets']:
-                    # Filter out markets with no volume/liquidity
-                    # Kalshi provides: volume, open_interest, liquidity
+                    # Filter out markets with low volume/liquidity
                     volume = m.get('volume', 0)
-                    open_interest = m.get('open_interest', 0)
                     liquidity = m.get('liquidity', 0)
                     
-                    # Skip if all activity indicators are 0
-                    if volume == 0 and open_interest == 0 and liquidity == 0:
+                    if volume < min_volume and liquidity < min_liquidity:
                         continue
-                            
+                        
                     active_markets.append(m)
                     
                 return active_markets
@@ -92,6 +80,8 @@ class KalshiClient(MarketClient):
             'platform': 'Kalshi',
             'id': raw_data.get('ticker'),
             'url': f"https://kalshi.com/markets/{raw_data.get('ticker')}",
+            'category': raw_data.get('category', 'Unknown'),
+            'event_ticker': raw_data.get('event_ticker', ''),
             'raw': raw_data
         }
     

@@ -23,13 +23,21 @@ def scrape_all_markets() -> tuple[List[Dict], List[Dict]]:
     """
     print("Scraping all markets from Polymarket...")
     poly_client = PolymarketClient()
-    poly_raw = poly_client.fetch_markets()
+    poly_raw = poly_client.fetch_markets(
+        max_hours_until_close=config.MAX_HOURS_UNTIL_CLOSE,
+        min_volume=config.MIN_MARKET_VOLUME,
+        min_liquidity=config.MIN_MARKET_LIQUIDITY
+    )
     poly_markets = [poly_client.normalize_data(m) for m in poly_raw]
     print(f"Found {len(poly_markets)} markets from Polymarket")
     
     print("Scraping all markets from Kalshi...")
     kalshi_client = KalshiClient()
-    kalshi_raw = kalshi_client.fetch_markets()
+    kalshi_raw = kalshi_client.fetch_markets(
+        max_hours_until_close=config.MAX_HOURS_UNTIL_CLOSE,
+        min_volume=config.MIN_MARKET_VOLUME,
+        min_liquidity=config.MIN_MARKET_LIQUIDITY
+    )
     kalshi_markets = [kalshi_client.normalize_data(m) for m in kalshi_raw]
     print(f"Found {len(kalshi_markets)} markets from Kalshi")
     
@@ -52,7 +60,7 @@ def save_market_metadata(markets: List[Dict], filepath: str, platform: str):
     scraped_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['id', 'title', 'expiry_date', 'scraped_at']
+        fieldnames = ['id', 'title', 'category', 'expiry_date', 'scraped_at']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         
         writer.writeheader()
@@ -60,6 +68,7 @@ def save_market_metadata(markets: List[Dict], filepath: str, platform: str):
             writer.writerow({
                 'id': market.get('id', ''),
                 'title': market.get('title', ''),
+                'category': market.get('category', 'Unknown'),
                 'expiry_date': market.get('expiry_date', ''),
                 'scraped_at': scraped_at
             })

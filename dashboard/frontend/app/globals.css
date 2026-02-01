@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-muted-foreground: var(--muted);
+  --color-health: var(--accent-health);
+  --color-wealth: var(--accent-wealth);
+  --font-sans: var(--font-dm-sans);
+}
+
+:root {
+  color-scheme: light;
+  --background: #F9FAFB;
+  --foreground: #14181F;
+  --card: #FFFFFF;
+  --card-foreground: #14181F;
+  --border: #E0E6EB;
+  --muted: #627084;
+  --accent-health: #2EB877;
+  --accent-wealth: #F59F0A;
+  --accent-blue: #258CF4;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-dm-sans), system-ui, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Ambient Background Effect */
+.ambient-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(circle at 5% 5%, rgba(37, 140, 244, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 95% 95%, rgba(192, 132, 252, 0.08) 0%, transparent 40%);
+}
+
+.card-base {
+  background-color: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  transition: all 0.2s ease-in-out;
+}
+
+.card-base:hover {
+  border-color: #CBD5E1;
+}
+
+/* Custom Utilities */
+.text-health {
+  color: var(--accent-health);
+}
+
+.text-wealth {
+  color: var(--accent-wealth);
+}
+
+.bg-health {
+  background-color: var(--accent-health);
+}
+
+.bg-wealth {
+  background-color: var(--accent-wealth);
+}

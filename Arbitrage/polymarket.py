@@ -3,13 +3,22 @@ from typing import List, Dict, Any
 from base_client import MarketClient
 
 class PolymarketClient(MarketClient):
-    def fetch_markets(self) -> List[Dict[str, Any]]:
+    def fetch_markets(self, max_hours_until_close: int = 24, min_volume: int = 1000, min_liquidity: int = 500) -> List[Dict[str, Any]]:
         # Using the correct Gamma API endpoint
         url = "https://gamma-api.polymarket.com/markets"
+        
+        import datetime
+        import calendar
+        
+        # Calculate max end date
+        now = datetime.datetime.now(datetime.timezone.utc)
+        max_end_date = now + datetime.timedelta(hours=max_hours_until_close)
+        
         params = {
             "closed": "false",
             "active": "true",
-            "limit": 100
+            "limit": 500,  # Increase limit to ensuring we find live markets if server-side filtering is weak
+            "offset": 0
         }
         try:
             response = requests.get(url, params=params)
@@ -23,23 +32,13 @@ class PolymarketClient(MarketClient):
             
             # Client-side filtering for active markets
             active_markets = []
-            import datetime
-            import calendar
-            
-            now = datetime.datetime.now(datetime.timezone.utc)
-            
-            # Calculate end of current month
-            year = now.year
-            month = now.month
-            last_day = calendar.monthrange(year, month)[1]
-            end_of_month = datetime.datetime(year, month, last_day, 23, 59, 59, tzinfo=datetime.timezone.utc)
             
             for m in data:
                 # Check 'closed' and 'active' fields
                 if m.get('closed') is True or m.get('active') is not True:
                     continue
                     
-                # Check 'endDateIso' - only include markets that expire AFTER end of current month
+                # Check 'endDateIso'
                 end_date_str = m.get('endDateIso')
                 if end_date_str:
                     try:
@@ -49,19 +48,24 @@ class PolymarketClient(MarketClient):
                         if end_date.tzinfo is None:
                             end_date = end_date.replace(tzinfo=datetime.timezone.utc)
                         
-                        # Skip markets that expire before end of current month
-                        if end_date <= end_of_month:
+                        # Filter: Must close BEFORE max_end_date (and after now)
+                        if end_date > max_end_date:
                             continue
+                            
+                        # Optional: Don't show already expired markets? 
+                        # Arbitrage might still work if not settled, but usually we want future events
+                        if end_date < now:
+                            continue
+                            
                     except ValueError:
                         pass
                 
-                # Filter out markets with no volume/activity
+                # Filter out markets with low volume/activity
                 # Polymarket provides: volume, volumeNum, liquidity, liquidityNum
                 volume = m.get('volumeNum', 0)
                 liquidity = m.get('liquidityNum', 0)
                 
-                # Skip if all volume indicators are 0
-                if volume == 0 and liquidity == 0:
+                if volume < min_volume and liquidity < min_liquidity:
                     continue
                 
                 active_markets.append(m)
@@ -86,12 +90,41 @@ class PolymarketClient(MarketClient):
         yes_volume = volume
         no_volume = volume
         
-        # NOTE: Prices are NOT available from the gamma-api /markets endpoint
-        # According to the orderbook schema, prices require calling GET /book 
-        # with token_id for each market, which isn't practical for bulk scanning
-        # For now, prices remain as 0.0 placeholders
+        # Extract prices from outcomePrices
+        # outcomePrices is usually a list of strings like ["0.50", "0.50"]
+        # outcomes is a list of strings like ["Yes", "No"]
+        # Note: The API sometimes returns these as JSON strings, so we need to parse them.
+        import json
+        
+        outcome_prices = raw_data.get('outcomePrices', [])
+        if isinstance(outcome_prices, str):
+            try:
+                outcome_prices = json.loads(outcome_prices)
+            except json.JSONDecodeError:
+                outcome_prices = []
+                
+        outcomes = raw_data.get('outcomes', [])
+        if isinstance(outcomes, str):
+            try:
+                outcomes = json.loads(outcomes)
+            except json.JSONDecodeError:
+                outcomes = []
+        
         yes_price = 0.0
         no_price = 0.0
+        
+        if outcome_prices and outcomes and len(outcome_prices) == len(outcomes):
+            try:
+                # Map outcomes to prices
+                # We assume standard "Yes"/"No" binary markets for now
+                for i, outcome in enumerate(outcomes):
+                    price = float(outcome_prices[i])
+                    if outcome == "Yes":
+                        yes_price = price
+                    elif outcome == "No":
+                        no_price = price
+            except (ValueError, TypeError):
+                print(f"Error parsing prices for {title}")
         
         return {
             'title': title,
@@ -103,6 +136,8 @@ class PolymarketClient(MarketClient):
             'platform': 'Polymarket',
             'id': raw_data.get('conditionId') or raw_data.get('slug'),
             'url': f"https://polymarket.com/event/{raw_data.get('slug', '')}",
+            'category': raw_data.get('tags', [])[0] if raw_data.get('tags') else 'Unknown',
+            'tags': raw_data.get('tags', []),
             'raw': raw_data
         }
     

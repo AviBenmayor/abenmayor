@@ -1,0 +1,25 @@
+{
+  "categories": {
+    "Auto & Transport": 332.0,
+    "Bills & Utilities": 200.0,
+    "Charitable Donations": 100.0,
+    "Dining & Drinks": 1200.0,
+    "Entertainment & Rec.": 250.0,
+    "Fees": 50.0,
+    "Gifts": 75.0,
+    "Groceries": 350.0,
+    "Health & Wellness": 200.0,
+    "Home & Garden": 100.0,
+    "Investment": 1500.0,
+    "Medical": 100.0,
+    "Personal Care": 100.0,
+    "Pets": 25.0,
+    "Rent": 2700.0,
+    "Savings Transfer": 3000.0,
+    "Shopping": 300.0,
+    "Software & Tech": 100.0,
+    "Travel & Vacation": 400.0,
+    "Other": 150.0
+  },
+  "last_updated": "2025-12-27T10:29:40.939480"
+}

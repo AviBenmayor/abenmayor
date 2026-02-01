@@ -23,7 +23,9 @@ class ArbitrageEngine:
                     "strategy": f"Buy YES on {market_a['platform']} ({market_a['yes_price']}), Buy NO on {market_b['platform']} ({market_b['no_price']})",
                     "cost": cost_1,
                     "profit": profit_1,
-                    "roi": (profit_1 / cost_1) * 100 if cost_1 > 0 else 0
+                    "roi": (profit_1 / cost_1) * 100 if cost_1 > 0 else 0,
+                    "category": market_a.get('category', 'Unknown'),
+                    "event_ticker": market_a.get('event_ticker', '')
                 })
 
             # Check Direction 2: Buy No on A, Buy Yes on B
@@ -38,7 +40,16 @@ class ArbitrageEngine:
                     "strategy": f"Buy NO on {market_a['platform']} ({market_a['no_price']}), Buy YES on {market_b['platform']} ({market_b['yes_price']})",
                     "cost": cost_2,
                     "profit": profit_2,
-                    "roi": (profit_2 / cost_2) * 100 if cost_2 > 0 else 0
+                    "roi": (profit_2 / cost_2) * 100 if cost_2 > 0 else 0,
+                    "category": market_a.get('category', 'Unknown'),
+                    "event_ticker": market_a.get('event_ticker', '')
                 })
                 
         return opportunities
+
+    def _enhance_opportunity(self, opp: Dict[str, Any], market_a: Dict[str, Any], market_b: Dict[str, Any]) -> Dict[str, Any]:
+        """Add metadata to the opportunity."""
+        # derived from market_a for now, assuming they match
+        opp['category'] = market_a.get('category', 'Unknown')
+        opp['event_ticker'] = market_a.get('event_ticker', '')
+        return opp

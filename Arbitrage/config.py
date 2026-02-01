@@ -8,11 +8,17 @@ from pathlib import Path
 BASE_DIR = Path(__file__).parent
 
 # Market Discovery Settings
-DISCOVERY_SCHEDULE = "weekly"  # or "on_demand"
+DISCOVERY_SCHEDULE = "every_30_minutes"  # User requested 30 min interval
+DISCOVERY_INTERVAL_MINUTES = 30
 MIN_MATCH_CONFIDENCE = 0.6  # Minimum confidence score for LLM matches (0.0 to 1.0)
 
+# Live Market Filtering
+MAX_HOURS_UNTIL_CLOSE = 24  # Focus on events ending within 24 hours
+MIN_MARKET_VOLUME = 1000    # Minimum volume to consider
+MIN_MARKET_LIQUIDITY = 500  # Minimum liquidity to consider
+
 # Price Monitor Settings
-MONITOR_INTERVAL_SECONDS = 60  # How often to check prices
+MONITOR_INTERVAL_SECONDS = 5  # streaming-like polling for now, until websocket implemented
 PRICE_FETCH_BATCH_SIZE = 10  # Number of markets to fetch at once
 
 # File Paths
