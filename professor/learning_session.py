@@ -1,12 +1,12 @@
 """
-Learning Session Module - Interactive Socratic teaching with Claude.
+Learning Session Module - Interactive Socratic teaching with GPT.
 
-This module provides an interactive learning experience where Claude:
+This module provides an interactive learning experience where GPT:
 1. Teaches concepts using the Socratic method
 2. Tests understanding before providing answers
 3. Logs learned concepts to Notion with spaced repetition
 """
-from anthropic import Anthropic
+from openai import OpenAI
 from datetime import datetime
 from typing import Optional
 import config
@@ -15,18 +15,19 @@ from pipeline.spaced_repetition import SpacedRepetition
 
 
 class LearningSession:
-    """Manages an interactive learning session with Claude."""
+    """Manages an interactive learning session with GPT."""
 
     def __init__(self):
-        if not config.ANTHROPIC_API_KEY:
-            raise ValueError("ANTHROPIC_API_KEY required for learning sessions")
+        if not config.OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY required for learning sessions")
 
-        self.client = Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
         self.notion = NotionClient()
         self.spaced_rep = SpacedRepetition()
         self.conversation_history = []
         self.concepts_learned = []
         self.domain = config.CURRENT_TOPIC
+        self.system_prompt = ""
 
     def start_session(self, topic: Optional[str] = None, knowledge_level: str = "beginner"):
         """
@@ -38,7 +39,7 @@ class LearningSession:
         """
         self.domain = topic or config.CURRENT_TOPIC
 
-        system_prompt = f"""You are an expert teacher using the Socratic method to help someone become genuinely knowledgeable in {self.domain}.
+        self.system_prompt = f"""You are an expert teacher using the Socratic method to help someone become genuinely knowledgeable in {self.domain}.
 
 Your approach:
 1. ALWAYS ask a question to test understanding BEFORE giving new information
@@ -86,14 +87,14 @@ Start by giving me the conceptual foundation - the 3-5 mental models that expert
         })
 
         # Get initial response
-        response = self._get_claude_response(system_prompt)
-        print(f"\nClaude: {response}\n")
+        response = self._get_gpt_response()
+        print(f"\nGPT: {response}\n")
 
         # Extract any concepts from initial response
         self._extract_and_store_concepts(response)
 
         # Main conversation loop
-        self._run_conversation_loop(system_prompt)
+        self._run_conversation_loop()
 
     def _get_knowledge_description(self, level: str) -> str:
         """Get description of knowledge level for prompt."""
@@ -104,15 +105,15 @@ Start by giving me the conceptual foundation - the 3-5 mental models that expert
         }
         return levels.get(level, levels["beginner"])
 
-    def _get_claude_response(self, system_prompt: str) -> str:
-        """Get a response from Claude."""
-        response = self.client.messages.create(
-            model="claude-sonnet-4-20250514",
+    def _get_gpt_response(self) -> str:
+        """Get a response from GPT."""
+        messages = [{"role": "system", "content": self.system_prompt}] + self.conversation_history
+        response = self.client.chat.completions.create(
+            model="gpt-4o",
             max_tokens=2000,
-            system=system_prompt,
-            messages=self.conversation_history
+            messages=messages
         )
-        assistant_message = response.content[0].text
+        assistant_message = response.choices[0].message.content
         self.conversation_history.append({
             "role": "assistant",
             "content": assistant_message
@@ -158,7 +159,7 @@ Start by giving me the conceptual foundation - the 3-5 mental models that expert
 
         return concept if 'topic' in concept else None
 
-    def _run_conversation_loop(self, system_prompt: str):
+    def _run_conversation_loop(self):
         """Run the main conversation loop."""
         while True:
             try:
@@ -188,9 +189,9 @@ Start by giving me the conceptual foundation - the 3-5 mental models that expert
                 "content": user_input
             })
 
-            # Get Claude's response
-            response = self._get_claude_response(system_prompt)
-            print(f"\nClaude: {response}\n")
+            # Get GPT's response
+            response = self._get_gpt_response()
+            print(f"\nGPT: {response}\n")
 
             # Extract any new concepts
             self._extract_and_store_concepts(response)
@@ -250,11 +251,11 @@ Start by giving me the conceptual foundation - the 3-5 mental models that expert
 
 def deep_dive(topic: str):
     """Start a deep dive on a specific concept using Socratic method."""
-    if not config.ANTHROPIC_API_KEY:
-        print("Error: ANTHROPIC_API_KEY required for deep dives")
+    if not config.OPENAI_API_KEY:
+        print("Error: OPENAI_API_KEY required for deep dives")
         return
 
-    client = Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    client = OpenAI(api_key=config.OPENAI_API_KEY)
 
     system_prompt = f"""You are an expert teacher using the Socratic method for a deep dive on: {topic}
 
@@ -281,19 +282,21 @@ Start by asking what they currently understand about {topic}."""
     print(f"{'='*60}")
     print("\nType 'quit' to end\n")
 
-    messages = []
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": f"I want to go deep on {topic}. Start with testing what I know."}
+    ]
 
-    # Start with Claude asking about current understanding
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
+    # Start with GPT asking about current understanding
+    response = client.chat.completions.create(
+        model="gpt-4o",
         max_tokens=1500,
-        system=system_prompt,
-        messages=[{"role": "user", "content": f"I want to go deep on {topic}. Start with testing what I know."}]
+        messages=messages
     )
 
-    print(f"Claude: {response.content[0].text}\n")
-    messages.append({"role": "user", "content": f"I want to go deep on {topic}."})
-    messages.append({"role": "assistant", "content": response.content[0].text})
+    assistant_response = response.choices[0].message.content
+    print(f"GPT: {assistant_response}\n")
+    messages.append({"role": "assistant", "content": assistant_response})
 
     while True:
         try:
@@ -307,16 +310,15 @@ Start by asking what they currently understand about {topic}."""
 
         messages.append({"role": "user", "content": user_input})
 
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
+        response = client.chat.completions.create(
+            model="gpt-4o",
             max_tokens=1500,
-            system=system_prompt,
             messages=messages
         )
 
-        assistant_response = response.content[0].text
+        assistant_response = response.choices[0].message.content
         messages.append({"role": "assistant", "content": assistant_response})
-        print(f"\nClaude: {assistant_response}\n")
+        print(f"\nGPT: {assistant_response}\n")
 
 
 if __name__ == "__main__":

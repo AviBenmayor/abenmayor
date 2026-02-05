@@ -8,7 +8,7 @@ Generates a personalized daily newsletter that includes:
 - This Week's Focus (low confidence items needing attention)
 - Supplementary Reading (high-relevance articles, if any)
 """
-from anthropic import Anthropic
+from openai import OpenAI
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import config
@@ -22,9 +22,9 @@ class NewsletterGenerator:
     def __init__(self):
         self.notion = NotionClient()
         self.spaced_rep = SpacedRepetition()
-        self.claude = None
-        if config.ANTHROPIC_API_KEY:
-            self.claude = Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        self.openai = None
+        if config.OPENAI_API_KEY:
+            self.openai = OpenAI(api_key=config.OPENAI_API_KEY)
 
     def generate_newsletter(self, articles: Optional[List[Dict]] = None) -> Dict[str, Any]:
         """
@@ -56,7 +56,7 @@ class NewsletterGenerator:
             'domain': config.CURRENT_TOPIC,
             'review_items': self._format_review_section(due_items[:5]),
             'test_questions': self._generate_test_questions(due_items[:5]),
-            'connections': self._find_connections(knowledge_items) if self.claude else [],
+            'connections': self._find_connections(knowledge_items) if self.openai else [],
             'focus_items': self._format_focus_section(low_confidence[:3]),
             'supplementary_articles': articles or [],
             'stats': {
@@ -188,7 +188,7 @@ class NewsletterGenerator:
                     'topic': item.get('topic', 'Unknown'),
                     'question': stored_q
                 })
-            elif self.claude and item.get('explanation'):
+            elif self.openai and item.get('explanation'):
                 # Generate question with Claude
                 q = self._generate_question_for_concept(
                     item.get('topic', ''),
@@ -204,11 +204,11 @@ class NewsletterGenerator:
 
     def _generate_question_for_concept(self, topic: str, explanation: str) -> Optional[str]:
         """Use Claude to generate a test question for a concept."""
-        if not self.claude:
+        if not self.openai:
             return None
 
         try:
-            response = self.claude.messages.create(
+            response = self.openai.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=150,
                 messages=[{
@@ -232,7 +232,7 @@ Return ONLY the question, nothing else."""
 
     def _find_connections(self, items: List[Dict]) -> List[str]:
         """Use Claude to find connections between concepts."""
-        if not self.claude or len(items) < 2:
+        if not self.openai or len(items) < 2:
             return []
 
         # Get a sample of concepts to analyze
@@ -246,7 +246,7 @@ Return ONLY the question, nothing else."""
             return []
 
         try:
-            response = self.claude.messages.create(
+            response = self.openai.messages.create(
                 model="claude-sonnet-4-20250514",
                 max_tokens=400,
                 messages=[{
