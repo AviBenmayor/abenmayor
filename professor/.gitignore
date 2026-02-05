@@ -1,0 +1,26 @@
+# Environment variables (contains secrets)
+.env
+
+# Data files (generated locally)
+data/articles.csv
+data/sent_digests.csv
+data/professor.log
+data/professor_error.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
