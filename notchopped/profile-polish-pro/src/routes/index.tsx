@@ -48,11 +48,20 @@ function Index() {
       return;
     }
     setSubmitting(true);
-    // Stub: in a real backend, send to your CRM/email.
-    await new Promise((r) => setTimeout(r, 700));
-    setSubmitting(false);
-    (e.target as HTMLFormElement).reset();
-    toast.success("You're in. We'll reach out within 24 hours.");
+    try {
+      const res = await fetch("/api/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed.data),
+      });
+      if (!res.ok) throw new Error("Server error");
+      (e.target as HTMLFormElement).reset();
+      toast.success("You're in. We'll reach out within 24 hours.");
+    } catch {
+      toast.error("Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
