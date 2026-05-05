@@ -1,0 +1,26 @@
+{
+  "parent_page_id": "32b48af1-331b-81d8-9ecf-d7f66a189b6a",
+  "parent_page_url": "https://www.notion.so/32b48af1331b81d89ecfd7f66a189b6a",
+  "databases": {
+    "habits_config": {
+      "database_id": "d71756dd54354596a8b680ca43318264",
+      "data_source_id": "fcb278de-e8f4-4faa-9b69-60108b8652bb"
+    },
+    "habit_log": {
+      "database_id": "3ef7854435ba4ab8805b8ebbd6a27935",
+      "data_source_id": "49d83906-b1ba-487f-b54a-cdf422a1a328"
+    }
+  },
+  "habits": {
+    "Steps": "32b48af1-331b-8153-ab00-de7d0265adcf",
+    "Water": "32b48af1-331b-81ea-8dce-e9781291823e",
+    "Sleep": "32b48af1-331b-81ba-92e8-d8305accdb47",
+    "Stress Management": "32b48af1-331b-813c-a450-dd213ad265f6",
+    "Exercise": "32b48af1-331b-81ac-9d50-cce8778668be",
+    "Journaling": "32b48af1-331b-81bb-a860-d05ed27316c3",
+    "Budgeting": "32b48af1-331b-81a0-98ed-e31b60273b67",
+    "Reading": "32b48af1-331b-812f-9a97-e66d4c253e8a",
+    "Hobbies": "32b48af1-331b-8137-b251-ddb3ae3e88f5",
+    "Screen Time": "32b48af1-331b-812c-8a01-de07e32e0650"
+  }
+}
