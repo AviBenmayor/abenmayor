@@ -32,7 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             fields: {
               Name: name,
               Email: email,
-              ...(age && { Age: age }),
+              ...(age && { Age: Number(age) }),
               ...(apps && { "Dating Apps": apps }),
               ...(goals && { Goals: goals }),
               "Submitted At": new Date().toISOString(),
