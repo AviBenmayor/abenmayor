@@ -17,6 +17,7 @@ export const Route = createFileRoute("/")({
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(80),
   email: z.string().trim().email("Invalid email").max(160),
+  phone: z.string().trim().min(7, "Enter a valid phone number").max(20).optional().or(z.literal("")),
   age: z
     .string()
     .trim()
@@ -168,6 +169,7 @@ function Index() {
               placeholder="alex@example.com"
               required
             />
+            <Field label="Phone number" name="phone" type="tel" placeholder="+1 212 555 0123" />
             <Field label="Age" name="age" placeholder="32" />
             <div>
               <Label className="text-sm font-medium">Apps you use</Label>

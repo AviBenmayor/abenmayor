@@ -6,9 +6,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { name, email, age, apps, goals } = req.body as {
+  const { name, email, phone, age, apps, goals } = req.body as {
     name: string;
     email: string;
+    phone?: string;
     age?: string;
     apps?: string;
     goals: string;
@@ -40,6 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             fields: {
               Name: name,
               Email: email,
+              ...(phone && { Phone: phone }),
               ...(age && { Age: Number(age) }),
               ...(knownApps.length > 0 && { "Dating Apps": knownApps }),
               ...(otherApp && { "Other App": otherApp }),
