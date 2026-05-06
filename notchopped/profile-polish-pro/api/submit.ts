@@ -44,7 +44,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               ...(knownApps.length > 0 && { "Dating Apps": knownApps }),
               ...(otherApp && { "Other App": otherApp }),
               ...(goals && { Goals: goals }),
-              "Submitted At": new Date().toISOString(),
             },
           },
         ],
