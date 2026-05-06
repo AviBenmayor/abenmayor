@@ -1,5 +1,4 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import Airtable from "airtable";
 import twilio from "twilio";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -20,22 +19,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const base = new Airtable({ apiKey: process.env.AIRTABLE_API_KEY }).base(
-      process.env.AIRTABLE_BASE_ID!
-    );
-
-    await base(process.env.AIRTABLE_TABLE_NAME!).create([
-      {
-        fields: {
-          Name: name,
-          Email: email,
-          ...(age && { Age: age }),
-          ...(apps && { "Dating Apps": apps }),
-          ...(goals && { Goals: goals }),
-          "Submitted At": new Date().toISOString(),
-        },
+    const url = `https://api.airtable.com/v0/${process.env.AIRTABLE_BASE_ID}/${encodeURIComponent(process.env.AIRTABLE_TABLE_NAME!)}`;
+    const airtableRes = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.AIRTABLE_API_KEY}`,
+        "Content-Type": "application/json",
       },
-    ]);
+      body: JSON.stringify({
+        records: [
+          {
+            fields: {
+              Name: name,
+              Email: email,
+              ...(age && { Age: age }),
+              ...(apps && { "Dating Apps": apps }),
+              ...(goals && { Goals: goals }),
+              "Submitted At": new Date().toISOString(),
+            },
+          },
+        ],
+      }),
+    });
+
+    if (!airtableRes.ok) {
+      const detail = await airtableRes.json();
+      console.error("Airtable error:", JSON.stringify(detail));
+      return res.status(500).json({ error: "Failed to save submission" });
+    }
   } catch (err) {
     console.error("Airtable error:", err);
     return res.status(500).json({ error: "Failed to save submission" });
