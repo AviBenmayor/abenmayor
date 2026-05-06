@@ -12,21 +12,6 @@ import { Toaster } from "@/components/ui/sonner";
 
 export const Route = createFileRoute("/")({
   component: Index,
-  head: () => ({
-    meta: [
-      { title: "NotChopped — Dating Profile Revamp for Men" },
-      {
-        name: "description",
-        content:
-          "Get more matches. Premium dating profile revamp service for men — photos, bio, and strategy that convert.",
-      },
-      { property: "og:title", content: "NotChopped — Dating Profile Revamp for Men" },
-      {
-        property: "og:description",
-        content: "Premium dating profile revamp for men. More matches, better dates.",
-      },
-    ],
-  }),
 });
 
 const schema = z.object({
