@@ -11,8 +11,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     email: string;
     age?: string;
     apps?: string;
-    goals?: string;
+    goals: string;
   };
+
+  const KNOWN_APPS = ["Hinge", "Bumble", "Tinder", "Raya"];
+  const appList = apps ? apps.split(", ").filter(Boolean) : [];
+  const knownApps = appList.filter((a) => KNOWN_APPS.includes(a));
+  const otherApp = appList
+    .filter((a) => a.startsWith("Other: "))
+    .map((a) => a.replace("Other: ", ""))
+    .join(", ");
 
   if (!name || !email) {
     return res.status(400).json({ error: "Name and email are required" });
@@ -33,7 +41,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               Name: name,
               Email: email,
               ...(age && { Age: Number(age) }),
-              ...(apps && { "Dating Apps": apps.split(", ").filter(Boolean) }),
+              ...(knownApps.length > 0 && { "Dating Apps": knownApps }),
+              ...(otherApp && { "Other App": otherApp }),
               ...(goals && { Goals: goals }),
               "Submitted At": new Date().toISOString(),
             },
