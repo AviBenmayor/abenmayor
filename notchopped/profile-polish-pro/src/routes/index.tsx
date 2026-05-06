@@ -17,9 +17,14 @@ export const Route = createFileRoute("/")({
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(80),
   email: z.string().trim().email("Invalid email").max(160),
-  age: z.string().trim().regex(/^\d{2,3}$/, "Enter a valid age").optional().or(z.literal("")),
+  age: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || (Number(v) >= 0 && Number(v) <= 99 && /^\d+$/.test(v)), "Age must be between 0 and 99")
+    .optional()
+    .or(z.literal("")),
   apps: z.string().optional(),
-  goals: z.string().trim().max(800).optional().or(z.literal("")),
+  goals: z.string().trim().min(1, "Please tell us what you want to change").max(800),
 });
 
 function Index() {
