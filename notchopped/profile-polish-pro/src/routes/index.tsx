@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,17 +33,28 @@ const schema = z.object({
   name: z.string().trim().min(1, "Name is required").max(80),
   email: z.string().trim().email("Invalid email").max(160),
   age: z.string().trim().regex(/^\d{2,3}$/, "Enter a valid age").optional().or(z.literal("")),
-  apps: z.string().trim().max(120).optional().or(z.literal("")),
+  apps: z.string().optional(),
   goals: z.string().trim().max(800).optional().or(z.literal("")),
 });
 
 function Index() {
   const [submitting, setSubmitting] = useState(false);
+  const [selectedApps, setSelectedApps] = useState<string[]>([]);
+
+  const toggleApp = (app: string) =>
+    setSelectedApps((prev) =>
+      prev.includes(app) ? prev.filter((a) => a !== app) : [...prev, app]
+    );
+
+  const DATING_APPS = ["Hinge", "Bumble", "Tinder", "Match", "OkCupid", "Plenty of Fish", "Coffee Meets Bagel", "Raya"];
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    const parsed = schema.safeParse(Object.fromEntries(fd));
+    const parsed = schema.safeParse({
+      ...Object.fromEntries(fd),
+      apps: selectedApps.length > 0 ? selectedApps.join(", ") : undefined,
+    });
     if (!parsed.success) {
       toast.error(parsed.error.issues[0]?.message ?? "Please check the form");
       return;
@@ -56,6 +68,7 @@ function Index() {
       });
       if (!res.ok) throw new Error("Server error");
       (e.target as HTMLFormElement).reset();
+      setSelectedApps([]);
       toast.success("You're in. We'll reach out within 24 hours.");
     } catch {
       toast.error("Something went wrong. Please try again.");
@@ -163,9 +176,23 @@ function Index() {
               placeholder="alex@example.com"
               required
             />
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              <Field label="Age" name="age" placeholder="32" />
-              <Field label="Apps you use" name="apps" placeholder="Hinge, Bumble" />
+            <Field label="Age" name="age" placeholder="32" />
+            <div>
+              <Label className="text-sm font-medium">Apps you use</Label>
+              <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {DATING_APPS.map((app) => (
+                  <label
+                    key={app}
+                    className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm transition-colors hover:bg-accent has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/10"
+                  >
+                    <Checkbox
+                      checked={selectedApps.includes(app)}
+                      onCheckedChange={() => toggleApp(app)}
+                    />
+                    {app}
+                  </label>
+                ))}
+              </div>
             </div>
             <div>
               <Label htmlFor="goals" className="text-sm font-medium">
