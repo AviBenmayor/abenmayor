@@ -33,7 +33,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               Name: name,
               Email: email,
               ...(age && { Age: Number(age) }),
-              ...(apps && { "Dating Apps": apps }),
+              ...(apps && { "Dating Apps": apps.split(", ").filter(Boolean) }),
               ...(goals && { Goals: goals }),
               "Submitted At": new Date().toISOString(),
             },
