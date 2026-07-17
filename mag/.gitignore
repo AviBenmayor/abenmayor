@@ -1,0 +1,16 @@
+# OS / tooling noise
+.DS_Store
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Node
+node_modules/
+
+# Original case-study materials (the company's own files — the CSVs the code
+# reads are what's submitted, not the brief or the source workbook)
+MAG Analytics Lead Case Study vFinal.pdf
+MAG Analytics Lead Case Study - Data.xlsx
