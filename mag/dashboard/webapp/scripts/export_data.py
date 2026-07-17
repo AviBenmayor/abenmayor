@@ -3,8 +3,8 @@ webapp. Run once (or whenever the source CSVs change) from this directory:
 
     python3 export_data.py
 
-Reuses dashboard/model.py so the numbers are identical to what the Streamlit
-build validated — this only changes how the data is served, not how it's
+Reuses dashboard/model.py so the numbers come straight from the Part 1
+position model — this only changes how the data is served, not how it's
 computed.
 """
 

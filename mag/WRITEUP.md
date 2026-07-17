@@ -73,7 +73,6 @@ below).
 # Part 2 — Desk P&L View
 
 **Live dashboard:** https://mag-desk-pnl-production.up.railway.app
-**Login:** currently disabled for review — the gate (`avi_interview` / `you_should_hire!`) is still in the code (`dashboard/auth.py`) and can be switched back on with `DASH_AUTH_ENABLED=true`.
 
 ## What it answers
 
@@ -489,8 +488,8 @@ than once, and that `marks` only ever covers positions that are currently
 logic, which I reviewed and edited rather than taking as-is.
 
 **Part 2:** I asked Claude Code to port the Part 1 q logic to pandas (no q
-interpreter available to me locally) and build the Streamlit dashboard end to
-end — login gate, tiles, filters, charts — from a spec I gave it (which metrics,
+interpreter available to me locally) and build the dashboard end to
+end — tiles, filters, charts — from a spec I gave it (which metrics,
 what "revenue" and "volume" should mean, what stack, how to deploy). It computed
 the actual numbers above from the full dataset and I checked them against the
 Part 1 logic before accepting them. I didn't accept anything I couldn't explain —
@@ -513,9 +512,8 @@ silently corrected, because the data doesn't settle which one the model meant.
 
 **Part 4:** I flagged that the dataset has no revolver facility limit anywhere
 and asked Claude Code to add the second dashboard page against a spec I gave it
-(tiles, venue-first layout, the revolver-limit-as-input decision). It refactored
-the shared login gate into `auth.py` so the new page could reuse it rather than
-duplicating it, computed the numbers above from `venue_cash`, and ran the app
+(tiles, venue-first layout, the revolver-limit-as-input decision). It
+computed the numbers above from `venue_cash`, and ran the app
 locally to confirm both pages load before I accepted the page. The call to treat
 the revolver limit as a user-entered parameter instead of guessing a number, and
 the double-counting flag on `revolver_drawn`, were mine.
