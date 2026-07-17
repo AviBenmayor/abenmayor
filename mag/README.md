@@ -10,13 +10,14 @@ one unified position model.
 
 | What | Where |
 |---|---|
-| **Write-up** — Parts 1–4 and 6, all judgment calls and numbers, plus how AI was used | [`WRITEUP.md`](WRITEUP.md) |
+| **Write-up** — Part 6 plain-English summary, plus how AI was used | [`WRITEUP.md`](WRITEUP.md) |
+| **Detailed write-up** — Parts 1–4, all judgment calls and numbers | [`WRITEUP_DETAILED.md`](WRITEUP_DETAILED.md) |
 | **Unified position model (q)** — Part 1 | [`pos_model.q`](pos_model.q) |
 | **Unified position model (pandas port)** — same logic, powers the dashboards | [`dashboard/model.py`](dashboard/model.py) |
 | **Deck (Part 5)** — live on Gamma | [MAG Desk Analytics](https://gamma.app/docs/MAG-Desk-Analytics--6r9h3se2qni1wew) |
 | **Deck screenshots** | [`deck_assets/`](deck_assets/) |
-| **Source data** — loaded by `pos_model.q` | `fills.csv`, `marks.csv`, `quotes.csv`, `venue_cash.csv` |
-| **Model output** — the unified `pos` table materialized to CSV, for inspection without running q | [`pos.csv`](pos.csv) |
+| **Source data** — loaded by `pos_model.q` | [`data/`](data/) (`fills.csv`, `marks.csv`, `quotes.csv`, `venue_cash.csv`) |
+| **Model output** — the unified `pos` table materialized to CSV, for inspection without running q | [`data/pos.csv`](data/pos.csv) |
 
 ## The dashboard
 
@@ -29,7 +30,7 @@ computed by the same position-model code, just served statically.
 ## Running things locally
 
 ```bash
-# Part 1 model in q (loads the CSVs in this directory)
+# Part 1 model in q (loads the CSVs from data/)
 q pos_model.q
 
 # Dashboard
@@ -38,9 +39,9 @@ cd dashboard/webapp && npm install && npm start   # http://localhost:3000
 
 ## Map to the case-study parts
 
-1. **Unified position model** — `pos_model.q` (+ `dashboard/model.py`), Part 1 of `WRITEUP.md`
-2. **Desk P&L view** — dashboard home page, Part 2 of `WRITEUP.md`
-3. **Hold view** — dashboard Hold page, Part 3 of `WRITEUP.md`
-4. **Cash-at-exchange view** — dashboard Cash page, Part 4 of `WRITEUP.md`
+1. **Unified position model** — `pos_model.q` (+ `dashboard/model.py`), Part 1 of `WRITEUP_DETAILED.md`
+2. **Desk P&L view** — dashboard home page, Part 2 of `WRITEUP_DETAILED.md`
+3. **Hold view** — dashboard Hold page, Part 3 of `WRITEUP_DETAILED.md`
+4. **Cash-at-exchange view** — dashboard Cash page, Part 4 of `WRITEUP_DETAILED.md`
 5. **Deck** — [MAG Desk Analytics on Gamma](https://gamma.app/docs/MAG-Desk-Analytics--6r9h3se2qni1wew)
 6. **Plain-English summary** — Part 6 of `WRITEUP.md`

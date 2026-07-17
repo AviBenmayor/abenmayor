@@ -1,0 +1,6 @@
+crewai>=1.14.4
+crewai-tools>=1.14.4
+duckduckgo-search>=8.1.1
+openai>=2.0.0
+python-dotenv>=1.0.0
+notion-client>=2.2.1

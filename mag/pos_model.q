@@ -1,10 +1,10 @@
 / ---- load ----
-fills:  ("SPSSSSFFJSF"; enlist csv) 0: `:fills.csv
-marks:  ("SDSF";        enlist csv) 0: `:marks.csv
-quotes: ("SSSJS";       enlist csv) 0: `:quotes.csv
+fills:  ("SPSSSSFFJSF"; enlist csv) 0: `:data/fills.csv
+marks:  ("SDSF";        enlist csv) 0: `:data/marks.csv
+quotes: ("SSSJS";       enlist csv) 0: `:data/quotes.csv
 
 / venue-level collateral — different grain (venue x day), deliberately NOT joined into the position model
-venue_cash: ("SDSFFF"; enlist csv) 0: `:venue_cash.csv
+venue_cash: ("SDSFFF"; enlist csv) 0: `:data/venue_cash.csv
 
 / latest mark per position: sort by date, take last per fill
 lm: select current_mark: last mark_value, mark_as_of: last as_of
