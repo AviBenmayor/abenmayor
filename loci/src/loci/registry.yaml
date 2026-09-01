@@ -1,0 +1,311 @@
+# Loci — machine-readable data source registry
+# Human-readable mirror: CONTEXT.md §3. Keep the two in sync (verified by `make check-sources`).
+#
+# tier:    universal | city
+# role:    poi | panel | outcome | control | validation | excluded
+# status:  planned | verified | deferred | excluded
+
+version: 1
+verified_on: 2026-09-01
+budget:
+  currency: USD
+  projected_min: 0
+  projected_max: 100
+  ceiling: 500
+
+sources:
+
+  # ---------------------------------------------------------------- POI, present day
+  - id: overture_places
+    name: Overture Maps Places
+    tier: universal
+    role: poi
+    status: planned
+    url: https://docs.overturemaps.org/guides/places/
+    access: s3://overturemaps-us-west-2/release/  # via overturemaps-py
+    format: geoparquet
+    geography: point
+    temporal: {start: 2023, end: current, grain: monthly}
+    license: CDLA-Permissive-2.0
+    cost: {amount: 0, unit: total}
+    bias: >
+      Inherits OSM/Meta/Microsoft coverage gaps. Category schema is coarse for
+      personal services (salons, laundromats).
+    notes: Primary POI base layer.
+
+  - id: foursquare_os_places
+    name: Foursquare Open Source Places
+    tier: universal
+    role: poi
+    status: planned
+    url: https://opensource.foursquare.com/os-places/
+    format: parquet
+    geography: point
+    temporal: {start: 2024, end: current, grain: monthly}
+    license: Apache-2.0
+    cost: {amount: 0, unit: total}
+    bias: >
+      Skews toward venues with consumer check-in history, i.e. away from
+      laundromats and dry cleaners.
+    notes: Cross-check against Overture; different category taxonomy.
+
+  - id: osm_overpass
+    name: OpenStreetMap (Overpass API)
+    tier: universal
+    role: poi
+    status: planned
+    url: https://overpass-api.de/
+    geography: point/polygon
+    temporal: {start: 2004, end: current, grain: continuous}
+    license: ODbL
+    cost: {amount: 0, unit: total}
+    bias: >
+      CRITICAL. Undercounts small business in lower-income and immigrant
+      neighborhoods -- the same areas the thesis flags as underserved.
+      See CONTEXT.md 7.1.
+    notes: Third opinion on POI presence; also the tag vocabulary of record.
+
+  - id: nyc_dohmh_restaurants
+    name: DOHMH New York City Restaurant Inspection Results
+    tier: city
+    city: nyc
+    role: poi
+    status: planned
+    url: https://data.cityofnewyork.us/Health/DOHMH-New-York-City-Restaurant-Inspection-Results/43nn-pn8j
+    dataset_id: 43nn-pn8j
+    api: https://data.cityofnewyork.us/resource/43nn-pn8j.json
+    geography: address + lat/lon
+    temporal: {start: 2022, end: current, grain: rolling-3yr}
+    cost: {amount: 0, unit: total}
+    bias: >
+      Effectively unbiased -- every food establishment is inspected, so this is a
+      near-census. The project's best data asset and the anchor for calibrating
+      undercount in other sources.
+    notes: ~30k establishments. Anchor source for threat 7.1 mitigation.
+
+  - id: nyc_dcwp_licenses
+    name: NYC DCWP Legally Operating Businesses
+    tier: city
+    city: nyc
+    role: poi
+    status: verified
+    url: https://data.cityofnewyork.us/Business/Legally-Operating-Businesses/w7w3-xahh
+    dataset_id: w7w3-xahh
+    api: https://data.cityofnewyork.us/resource/w7w3-xahh.json
+    geography: point
+    temporal: {start: 2000, end: current, grain: issuance-dated}
+    cost: {amount: 0, unit: total}
+    bias: Only DCWP-licensed categories (includes laundries, not groceries).
+    open_question: >
+      Portal has shown a stale refresh date. VERIFY current vintage in W1
+      (CONTEXT.md 9, item 6). If stale, downgrade to snapshot-only.
+
+  - id: nys_dos_appearance_enhancement
+    name: NYS Active Appearance Enhancement and Barber Business Licensees
+    tier: city
+    city: nyc
+    role: poi
+    status: planned
+    url: https://data.ny.gov/Economic-Development/Active-Appearance-Enhancement-and-Barber-Business-/y3u4-jbgh
+    dataset_id: y3u4-jbgh
+    geography: point
+    temporal: {start: null, end: current, grain: snapshot}
+    cost: {amount: 0, unit: total}
+    bias: >
+      SURVIVORSHIP-BIASED. Active licenses only; closed salons are absent
+      entirely. Never use to construct openings/closings series.
+    notes: Snapshot enrichment for the nail/hair categories only.
+
+  - id: google_places
+    name: Google Places API — Nearby Search
+    tier: universal
+    role: validation
+    status: planned
+    url: https://developers.google.com/maps/documentation/places/web-service/usage-and-billing
+    geography: point
+    temporal: {start: null, end: current, grain: live}
+    cost:
+      amount: 32.0
+      unit: per_1000_calls
+      sku: Pro
+      free_tier: {calls_per_month: 5000}
+      budgeted_calls: 5000
+      budgeted_total: 100
+    bias: Ground truth for the stratified coverage-bias validation (prediction P3).
+    notes: >
+      Requesting ratings/hours reprices to Enterprise ($35/1k); reviews/photos to
+      Enterprise+Atmosphere ($40/1k). Request ONLY id/name/location/types.
+
+  # ---------------------------------------------------------------- panel backbone
+  - id: lodes_wac
+    name: LEHD LODES Workplace Area Characteristics (LODES8)
+    tier: universal
+    role: panel
+    status: planned
+    url: https://lehd.ces.census.gov/data/
+    access: https://lehd.ces.census.gov/data/lodes/LODES8/ny/wac/
+    geography: census block
+    temporal: {start: 2002, end: 2023, grain: annual}
+    cost: {amount: 0, unit: total}
+    bias: >
+      Counts JOBS, not establishments. Census noise infusion at block level.
+      Excludes most self-employed. See CONTEXT.md 7.4.
+    naics:
+      "4451": grocery
+      "4461": pharmacy
+      "7224": bars
+      "7225": restaurants
+      "8121": personal care
+      "8123": laundry and dry cleaning
+      "4441": hardware and home supply
+      "6244": childcare
+    open_question: >
+      Verify LODES8 uses 2020 TIGER blocks across all vintages (avoids a
+      2010/2020 crosswalk). CONTEXT.md 9, item 5.
+    notes: The panel backbone. Two alternative panel routes were rejected -- see CONTEXT.md 3.2.
+
+  # ---------------------------------------------------------------- outcomes
+  - id: acs_5yr
+    name: Census American Community Survey, 5-year estimates
+    tier: universal
+    role: outcome
+    status: planned
+    url: https://www.census.gov/data/developers/data-sets/acs-5year.html
+    api: https://api.census.gov/data/2023/acs/acs5
+    geography: tract
+    temporal: {start: 2013, end: 2024, grain: annual-5yr-window}
+    cost: {amount: 0, unit: total}
+    requires_key: CENSUS_API_KEY
+    bias: >
+      5-year smoothing damps recent change. Tract-level MOEs are large and must
+      be carried through interpolation, not discarded.
+    variables: [B01003_001E, B11001_001E, B19013_001E, B25003_001E]
+
+  - id: zillow_zori_zhvi
+    name: Zillow Observed Rent Index / Home Value Index
+    tier: universal
+    role: outcome
+    status: planned
+    url: https://www.zillow.com/research/data/
+    geography: zip
+    temporal: {start: 2000, end: current, grain: monthly}
+    cost: {amount: 0, unit: total}
+    bias: >
+      ZORI covers ~8.4k ZIPs nationally (a third of ZHVI's). Asking-rent index,
+      listing-density dependent. ZIP is much coarser than an H3 res-9 hex.
+    open_question: "ZIP -> hex crosswalk method. CONTEXT.md 9, item 4."
+    notes: Weakest of the four outcomes; label it as such in the memo.
+
+  - id: nyc_dob_hpd
+    name: NYC DOB Job Application Filings + HPD Housing Database
+    tier: city
+    city: nyc
+    role: outcome
+    status: planned
+    url: https://data.cityofnewyork.us/Housing-Development/DOB-Job-Application-Filings/ic3t-wcy2
+    geography: tax lot
+    temporal: {start: 2000, end: current, grain: annual}
+    cost: {amount: 0, unit: total}
+    bias: >
+      Supply-side. Responds to zoning changes more than to amenities.
+      Permits are not completions.
+
+  - id: irs_soi_migration
+    name: IRS SOI county-to-county migration
+    tier: universal
+    role: excluded
+    status: excluded
+    url: https://www.irs.gov/statistics/soi-tax-stats-migration-data
+    geography: county
+    temporal: {start: 1990, end: current, grain: annual}
+    cost: {amount: 0, unit: total}
+    bias: Only 5 units in NYC.
+    exclusion_reason: >
+      Too coarse for hex-level analysis. Recorded so the exclusion is a
+      deliberate decision rather than an oversight.
+
+  # ---------------------------------------------------------------- controls
+  - id: nyc_pluto
+    name: NYC MapPLUTO (Primary Land Use Tax Lot Output)
+    tier: city
+    city: nyc
+    role: control
+    status: planned
+    url: https://www.nyc.gov/site/planning/data-maps/open-data/dwn-pluto-mappluto.page
+    version: 26v2
+    geography: tax lot
+    temporal: {start: 2002, end: 2026, grain: semiannual}
+    cost: {amount: 0, unit: total}
+    bias: Assessment-derived; ZoneDist reflects mapped zoning, not variances or overlays in effect.
+    fields: [ZoneDist1, CommFAR, ResidFAR, BuiltFAR, UnitsRes, YearBuilt, LandUse]
+    notes: >
+      REQUIRED CONTROL (CONTEXT.md 1.3). Also the dasymetric ancillary surface
+      (UnitsRes) and the development-capacity term (ResidFAR - BuiltFAR).
+
+  - id: mta_subway_stations
+    name: MTA Subway Stations
+    tier: city
+    city: nyc
+    role: control
+    status: planned
+    url: https://data.ny.gov/Transportation/MTA-Subway-Stations/39hk-dx4f
+    dataset_id: 39hk-dx4f
+    geography: point
+    cost: {amount: 0, unit: total}
+    bias: Station centroid understates walk distance from far entrances.
+
+  - id: mta_subway_entrances
+    name: MTA Subway Entrances and Exits
+    tier: city
+    city: nyc
+    role: control
+    status: planned
+    url: https://data.ny.gov/en/Transportation/MTA-Subway-Entrances-and-Exits-2024-Map/68hr-j2j7
+    dataset_id: 68hr-j2j7
+    geography: point
+    cost: {amount: 0, unit: total}
+    bias: none material
+    notes: >
+      Preferred over station centroids -- a station can be 400m of walking from
+      its own far entrance.
+
+  - id: mta_subway_ridership
+    name: MTA Subway Hourly Ridership 2020-2024
+    tier: city
+    city: nyc
+    role: control
+    status: planned
+    url: https://data.ny.gov/Transportation/MTA-Subway-Hourly-Ridership-2020-2024/wujg-7c2s
+    dataset_id: wujg-7c2s
+    geography: station complex
+    temporal: {start: 2020, end: 2024, grain: hourly}
+    cost: {amount: 0, unit: total}
+    bias: Pandemic-era window; 2020-21 levels are not representative.
+    notes: Transit QUALITY, not mere presence.
+
+  - id: osm_walk_network
+    name: OSM pedestrian network via OSMnx
+    tier: universal
+    role: control
+    status: planned
+    url: https://osmnx.readthedocs.io/
+    geography: graph
+    cost: {amount: 0, unit: total}
+    bias: >
+      Sidewalk-level detail is uneven; most NYC walk routing runs on the
+      centerline graph, which slightly understates crossing friction.
+    notes: >
+      Extend the graph BEYOND the city boundary so cross-boundary businesses are
+      reachable where they genuinely are (CONTEXT.md 7.7).
+
+  - id: nyc_boundaries
+    name: NYC borough boundaries, shoreline, and Neighborhood Tabulation Areas
+    tier: city
+    city: nyc
+    role: control
+    status: planned
+    url: https://www.nyc.gov/site/planning/data-maps/open-data/districts-download-metadata.page
+    geography: polygon
+    cost: {amount: 0, unit: total}
+    bias: none material
+    notes: Grid clipping and human-legible reporting geography.

@@ -1,0 +1,189 @@
+Title,Description,Status,Priority,Estimate,Labels,Project,Milestone
+Write CONTEXT.md project charter,"Thesis (residual reformulation), definitions, source registry, method, viz plan, acceptance criteria, threats, phases, open questions.
+
+DONE — CONTEXT.md, 488 lines, 10 sections.",Backlog,2,3,docs,Loci,E0 · Foundations
+"Scaffold repo: package layout, pyproject, Makefile","loci/{sources,grid,score,model,viz}, uv-managed pyproject, Makefile, .env.example, .gitignore.
+
+DONE.",Backlog,3,2,infra,Loci,E0 · Foundations
+DuckDB schema DDL,"raw / staging / analysis schemas. staging.poi is the normalized contract that src/loci/score consumes — no city-specific columns downstream of staging.
+
+CAVEAT that the DB will not enforce: DuckDB GEOMETRY carries no SRID. Everything stored is EPSG:4326 by convention; metric work must reproject explicitly. Hold this in code.
+
+DONE — src/loci/sql/001_bootstrap.sql, 002_schema.sql. 9 tables verified.",Backlog,3,3,"infra,ingest",Loci,E0 · Foundations
+Machine-readable source registry + drift check,"registry.yaml mirrors CONTEXT.md §3. `loci check-sources` asserts schema validity, budget ceiling, and that every dataset_id in the registry appears in CONTEXT.md — so the human and machine registries cannot drift.
+
+It caught a real drift on its first run (MTA ridership wujg-7c2s was in the registry, missing from the charter).
+
+DONE.",Backlog,3,2,"infra,ingest",Loci,E0 · Foundations
+Drop PostGIS for DuckDB; remove Docker from the critical path,"Reversed the original PostGIS choice. The only available image ran emulated (amd64 on arm64) and the 'service path' rationale was speculative.
+
+DuckDB verified end to end: spatial + community h3 extensions, RTREE indexes, ST_Read, read_parquet, and every DDL feature the schema needs. H3 cells stringify to 15 chars, so the CHAR(15) design carried over unchanged.
+
+No container, no daemon, no emulation penalty.
+
+DONE — see CHECKPOINT decision D9.",Backlog,3,3,infra,Loci,E0 · Foundations
+Obtain Census API key,"Free and instant: https://api.census.gov/data/key_signup.html
+Set CENSUS_API_KEY in .env. Blocks ACS ingest (E1).",Backlog,2,1,"infra,blocker",Loci,E0 · Foundations
+Obtain Google Places key with a hard call budget,"Pro SKU $32/1k, 5,000 free calls/month. Budget 5,000 calls ≈ $0–100.
+
+GUARDRAIL: request ONLY id/name/location/types. Adding ratings or hours reprices to Enterprise ($35/1k); reviews or photos to Enterprise+Atmosphere ($40/1k). Enforce LOCI_GOOGLE_CALL_BUDGET in the client.
+
+Needed W4, not W1.",Backlog,3,1,"infra,blocker",Loci,E0 · Foundations
+VERIFY: LODES8 block vintage is 2020 TIGER across all years,"CONTEXT.md open question #5. If LODES8 uses 2020 blocks for every vintage, the 2002–2023 panel needs no 2010/2020 crosswalk. If it does not, budget a crosswalk before E3.
+
+This is the cheapest possible check and it de-risks the entire panel. Do it first.
+
+Source: https://lehd.ces.census.gov/data/lodes/LODES8/",Backlog,1,2,"ingest,rigor",Loci,E1 · Ingest and Grid
+VERIFY: DCWP Legally Operating Businesses freshness,"CONTEXT.md open question #6. The portal has shown a stale refresh date (data as of 2023). Confirm the current vintage via the Socrata metadata endpoint.
+
+If stale: downgrade DCWP to snapshot-only and lean harder on DOHMH as the anchor.",Backlog,2,1,"ingest,rigor",Loci,E1 · Ingest and Grid
+Overture Places adapter → staging.poi,"GeoParquet via overturemaps-py, NYC bbox. Map Overture categories onto the 15 Loci categories (CONTEXT.md §2.1).
+
+Overture's schema is coarse for personal services — expect the salon/laundromat mapping to be the lossy part, and record mapping confidence in staging.poi.confidence.",Backlog,2,5,ingest,Loci,E1 · Ingest and Grid
+Foursquare OS Places adapter,"Apache-2.0, separate taxonomy from Overture. Used as a cross-check, not as the base layer — FSQ skews toward venues with check-in history, i.e. away from laundromats.",Backlog,3,3,ingest,Loci,E1 · Ingest and Grid
+OSM Overpass adapter,"Tag vocabulary of record (CONTEXT.md §2.1 table). Also the third opinion on presence.
+
+Carries the project's most dangerous bias — see E4 coverage validation.",Backlog,3,3,ingest,Loci,E1 · Ingest and Grid
+DOHMH restaurant inspections adapter (ANCHOR source),"Dataset 43nn-pn8j. ~30k establishments, near-census of food service — every food establishment is inspected, so within the food tier the true count is effectively known.
+
+This is the calibration anchor for the whole coverage-bias mitigation (CONTEXT.md §7.1). Treat it as the project's most valuable data asset.",Backlog,1,3,ingest,Loci,E1 · Ingest and Grid
+DCWP licenses adapter,Dataset w7w3-xahh. Laundries and other DCWP-licensed categories. Has issuance dates — the raw material for the deferred E5 license panel.,Backlog,3,3,ingest,Loci,E1 · Ingest and Grid
+NYS DOS Appearance Enhancement adapter,"Dataset y3u4-jbgh. Best available source for nail/hair.
+
+CONSTRAINT: active-only, therefore survivorship-biased. Snapshot enrichment ONLY. Must never be used to construct an openings/closings series — enforce this in the adapter, not just in docs.",Backlog,3,2,ingest,Loci,E1 · Ingest and Grid
+Cross-source POI dedup / entity resolution,"The same laundromat appears in Overture, FSQ, OSM and DCWP. Without dedup the DNCI inflates wherever coverage overlaps — which is itself geographically biased, so the error is not random.
+
+Approach: spatial blocking (~25m) + normalized-name similarity, per category. Emit a survivorship record so counts are auditable.",Backlog,2,5,ingest,Loci,E1 · Ingest and Grid
+Build H3 res-9 shoreline-clipped grid,"~7,400 cells over NYC's ~778 km². Drop water-only hexes; retain partial hexes with land_fraction for edge normalization (threat §7.7).",Backlog,2,3,grid,Loci,E1 · Ingest and Grid
+PLUTO loader + commercial zoning capacity control,"MapPLUTO 26v2. Extract ZoneDist1, CommFAR, ResidFAR, BuiltFAR, UnitsRes, YearBuilt; area-weight onto hexes.
+
+REQUIRED CONTROL, not optional. Without commercial zoning capacity in the supply model the underserved tail fills with park edges, industrial zones and cemetery blocks, and the top-20 list is indefensible on first inspection.
+
+Also supplies the dasymetric ancillary surface and the development-headroom term.",Backlog,1,5,ingest,Loci,E1 · Ingest and Grid
+MTA transit access control,"Stations 39hk-dx4f, Entrances & Exits 68hr-j2j7, Hourly Ridership wujg-7c2s.
+
+Use ENTRANCES, not station centroids — a station can be 400m of walking from its own far entrance. Ridership captures transit quality: a 12-route complex is not a single-route stop.
+
+Caveat to record: ridership window is 2020–2024, so 2020–21 levels are pandemic-depressed.",Backlog,2,3,ingest,Loci,E1 · Ingest and Grid
+ACS ingest + dasymetric interpolation onto hexes,"ACS 5-yr tract → H3 via tobler, dasymetric with PLUTO UnitsRes as the ancillary surface. Plain areal weighting would spread population evenly across parks, rail yards and cemeteries.
+
+Propagate MOEs — do not silently treat tract point estimates as exact (threat §7.8).",Backlog,2,5,"grid,ingest",Loci,E1 · Ingest and Grid
+Staten Island leverage check,"CONTEXT.md open question #3. Low-density and car-oriented; may act as high-leverage points in the supply model. Include, but check Cook's distance and report results with and without.",Backlog,4,2,"model,ingest",Loci,E1 · Ingest and Grid
+SHIP W1: POI density map + queryable DB,Week-1 exit criterion. A crude choropleth of raw POI density per hex. Not the finding — proof the pipeline is real and the joins are right.,Backlog,3,2,milestone,Loci,E1 · Ingest and Grid
+Build OSMnx pedestrian walk graph,"network_type='walk', 4.8 km/h (80 m/min).
+
+Extend the graph BEYOND the city boundary so cross-boundary businesses are reachable where they genuinely are — otherwise every edge hex is spuriously underserved (threat §7.7).",Backlog,2,3,score,Loci,E2 · Access Engine
+Multi-source Dijkstra access engine,"THE performance-critical design decision. Do NOT compute ~7,400 isochrones.
+
+For each of the 15 categories, run ONE multi-source Dijkstra seeded from every POI in that category at once, cut off at threshold distance. Nodes within cutoff are 'served'.
+
+15 traversals instead of 7,400 — minutes not hours, and it makes the 5/10/15-min sweep affordable (45 traversals total).
+
+Emits analysis.hex_access.",Backlog,1,8,score,Loci,E2 · Access Engine
+Calibrate saturating k_c per category,"s_c = 1 − exp(−n_c / k_c), calibrated so the first reachable establishment scores ≈0.55.
+
+Essentials tighter (k≈1.25 — one grocery is nearly sufficient); food looser (one restaurant in a 10-min walk is thin, not complete). Revisit against observed count distributions. CONTEXT.md open question #2.",Backlog,3,3,score,Loci,E2 · Access Engine
+DNCI: weighted geometric mean + unit tests,"DNCI = Π (s_c + ε)^w_c, ε = 0.01.
+
+THE METHODOLOGICAL CRUX. An arithmetic mean lets a hex with fifty restaurants and no grocery, pharmacy or laundromat score well — precisely the failure the thesis exists to detect. Only the geometric form punishes zeros.
+
+Tests must include the adversarial case: 50 restaurants + 0 essentials must score LOW. If that test passes under an arithmetic mean, the test is wrong.",Backlog,1,5,score,Loci,E2 · Access Engine
+Run 5/10/15-minute threshold sweep,10 min (800m) is the headline. 5 min (400m) and 15 min (1200m) as sensitivity and for comparability with the 15-minute-city literature.,Backlog,3,2,score,Loci,E2 · Access Engine
+SHIP W2: the DNCI map,Week-2 exit criterion and the first genuinely interesting artifact. Sequential palette. Sanity-check against local knowledge before proceeding to E3.,Backlog,2,3,milestone,Loci,E2 · Access Engine
+Fit the supply model,"DNCI ~ pop_density + median_hh_income + transit_access + commercial_zoning_capacity + land_fraction + borough FE.
+
+Check prediction P1: the residual must have meaningful spread. If R² > 0.9 there is nothing left to explain and the thesis has no room to be true — report that honestly rather than tuning until it isn't.",Backlog,1,5,model,Loci,E3 · Residual and Panel
+Moran's I + spatial error/lag model,"MANDATORY, not optional. Compute Moran's I on residuals; if significant (it will be), re-estimate with pysal spreg and report both.
+
+OLS standard errors on gridded urban data are wrong. Shipping a p-value without this is shipping a p-value you cannot defend.",Backlog,2,5,"model,rigor",Loci,E3 · Residual and Panel
+Residual extraction + opportunity score,"opportunity = (−u_h)⁺ × transit_access × (ResidFAR − BuiltFAR)⁺.
+
+Underserved AND transit-connected AND room to build. Any one of the three missing disqualifies the hex.",Backlog,2,3,model,Loci,E3 · Residual and Panel
+LODES WAC annual panel loader 2002–2023,"NY state WAC files, target NAICS 4451/4461/7224/7225/8121/8123/4441/6244. Block-level, 22 vintages.
+
+Blocked on the LODES8 block-vintage verification (E1).",Backlog,2,5,"panel,ingest",Loci,E3 · Residual and Panel
+LODES block → hex apportionment,"Areal apportionment of block-level jobs onto H3 cells.
+
+Document the proxy assumption loudly: LODES counts JOBS, not establishments. A ten-employee supermarket and a one-employee laundromat are not comparable units (threat §7.4).",Backlog,2,3,"panel,grid",Loci,E3 · Residual and Panel
+Quantify pre-2020 LODES allocation bias,"Discovered while resolving the LODES vintage check.
+
+LODES8 puts every year on 2020 blocks, but historical years got there by ALLOCATION, not observation: when a 2010 block splits, each job is assigned to a child block at random with probability proportional to AREA share. Census: 'the allocation is a statistical process and may not result in a distribution of jobs that exactly matches the areal distribution.'
+
+Area-proportional is a poor assumption in NYC — a block splitting into a park half and a commercial half spreads jobs by area, putting employment in the park.
+
+This is BIAS, not noise: the error concentrates where blocks were split, blocks split where development happened, and development is the outcome variable.
+
+Size the exposure, test whether H3 res-9 aggregation actually absorbs it, and if not restrict the strongest claims to 2020+ observed data. CONTEXT.md threat 7.4(b).",Backlog,2,5,"panel,rigor",Loci,E3 · Residual and Panel
+Validate LODES 2023 against establishment counts,"Correlate the 2023 LODES cross-section against 2023 DOHMH/DCWP establishment counts per hex. Report the correlation.
+
+This is what licenses the jobs→establishments proxy. Without it the whole panel rests on an unexamined assumption.",Backlog,2,3,"panel,validation",Loci,E3 · Residual and Panel
+Assemble outcome variables,"Δlog population, Δlog households (ACS); Δlog ZORI (Zillow, ZIP→hex); permitted residential units (DOB/HPD).
+
+ZIP→hex crosswalk by population weighting — CONTEXT.md open question #4. Label rent as the weakest of the four outcomes in the memo and mean it.",Backlog,2,5,ingest,Loci,E3 · Residual and Panel
+Main growth regression (prediction P2),"Δy_{h,t0→t1} = β·u_{h,t0} + γ'X_{h,t0} + α_borough + ε, t0=2013 t1=2023.
+
+P2 predicts β < 0 (more negative residual → more subsequent growth). A null or wrong-signed result is a real answer: it would mean gaps persist because they reflect durable demand suppression, not latent opportunity. Report it either way.",Backlog,1,5,model,Loci,E3 · Residual and Panel
+Pre-trend test (2003→2013),"Estimate the same spec on the PRIOR decade. If u_2013 also 'predicts' 2003→2013 growth, parallel trends is broken and the causal reading is unavailable.
+
+Report it whichever way it comes out. This is the check a serious reader will ask for first.",Backlog,1,3,"model,rigor",Loci,E3 · Residual and Panel
+Placebo outcome,"An outcome with no plausible mechanism — e.g. change in share of population aged 65+ — must return a null. If it doesn't, the specification is picking up generic neighborhood trajectory rather than the retail channel.",Backlog,2,2,"model,rigor",Loci,E3 · Residual and Panel
+MAUP sweep at res 8 and res 10,"Re-run the whole chain at two other resolutions; report coefficient stability. If conclusions flip with grid size, say so plainly (threat §7.3).",Backlog,2,3,"model,rigor",Loci,E3 · Residual and Panel
+Tier-weight sensitivity analysis,"Tier weights (0.40/0.20/0.25/0.15) are judgment, not derived. Sweep plausible alternatives and report whether the top-20 list is stable under reweighting. CONTEXT.md open question #1.",Backlog,3,3,"model,score",Loci,E3 · Residual and Panel
+Top-20 list + zoning-artifact audit,"Produce the ranked list of transit-rich underserved hexes.
+
+HARD GATE: manually inspect for park edges, industrial zones and cemetery blocks. Any present means the commercial-zoning control failed — fix the model, do not hand-remove the rows.
+
+Also check it contains ≥3 genuine surprises. A list of only obvious places means the residual isn't doing any work.",Backlog,1,3,"model,infra",Loci,E3 · Residual and Panel
+Residual convergence test,"QUESTIONS.md T5 — does the gap close on its own?
+
+Over 2002–2023, do hexes with a negative residual at t converge toward their peers by t+k (retail employment growth regressed on the lagged residual, borough FE)?
+
+Why it matters: if the market already corrects undersupply, the opportunity is TIMING, not location — a different product and a different memo. Cheap once the LODES panel exists; pull forward if W3 has slack, otherwise it slides to Phase 5.",Backlog,4,3,"panel,model",Loci,E3 · Residual and Panel
+Retail lead/lag timing test,"QUESTIONS.md T6 — does retail lead or lag rooftops?
+
+Cross-correlate annual per-hex changes in LODES retail employment with changes in population at leads and lags of 1–5 years.
+
+Why it matters: 'retail follows rooftops' is the assumption the whole residual design rests on (D1). This is the one place it gets tested rather than asserted.
+
+CAVEATS to state: ACS 5-year smoothing limits timing resolution to roughly half-decades; LODES counts jobs, not storefronts (M2).",Backlog,4,3,"panel,model",Loci,E3 · Residual and Panel
+SHIP W3: empirical result + top-20,Week-3 exit criterion.,Backlog,2,2,milestone,Loci,E3 · Residual and Panel
+Design stratified coverage validation sample,"Prediction P3 and threat §7.1 — the one that can invalidate everything.
+
+OSM/Overture undercount small business in lower-income and immigrant neighborhoods: exactly the areas the thesis flags as underserved. If the undercount is strong there and weak in Park Slope, the 'retail gap' is a data gap wearing a costume.
+
+Draw hexes at random within each income decile, and cross-stratify by foreign-born share (ACS) so borough / immigrant-neighborhood contrasts in the residual (QUESTIONS.md X3) can be separated from coverage bias. Fix n per stratum against the 5,000-call budget before spending anything.",Backlog,1,3,"validation,critical",Loci,E4 · Validation and Artifact
+Run Google Places ground-truth enumeration,"Enumerate ground truth for the sampled hexes. Fields: id/name/location/types ONLY — anything more reprices the SKU.
+
+Enforce the call budget in code. Populate analysis.coverage_validation.",Backlog,1,5,"validation,critical,blocker",Loci,E4 · Validation and Artifact
+DOHMH-anchored undercount calibration,"Within the food tier the true count is effectively known (DOHMH is a near-census). Measure OSM/Overture discrepancy vs DOHMH per hex, then use that curve to estimate expected undercount in the other tiers where no census exists.
+
+This is the strongest available mitigation and it costs nothing extra.",Backlog,1,5,"validation,critical",Loci,E4 · Validation and Artifact
+Coverage-bias chart,"Undercount rate by income decile. NOT an appendix item.
+
+If the finding survives this chart, the chart is the most persuasive artifact in the set. If it doesn't, this chart is how the project learns that honestly rather than shipping a bias as a finding.",Backlog,1,2,"viz,critical",Loci,E4 · Validation and Artifact
+PMTiles export + MapLibre map,"H3 choropleth, static hosting, no server. Layer toggle between DNCI (sequential) and residual (DIVERGING — zero is a real midpoint, not an arbitrary one).
+
+Load the `dataviz` skill before writing chart code.",Backlog,2,5,viz,Loci,E4 · Validation and Artifact
+Bivariate transit × residual map,3×3 bivariate palette. This is the map that states the thesis in one image: where transit-rich and underserved overlap.,Backlog,2,3,viz,Loci,E4 · Validation and Artifact
+Per-category radar small multiples,"15-spoke radar per top-20 hex. Answers 'what specifically is missing here — grocery, or salons?' Turns a score into an actionable observation.",Backlog,3,3,viz,Loci,E4 · Validation and Artifact
+Scatter: residual@t0 vs growth t0→t1,"Fitted line + CI, borough-colored. The visual statement of P2.",Backlog,2,2,viz,Loci,E4 · Validation and Artifact
+4–6 neighborhood evidence cards,Narrative + inset map per selected hex cluster. Does the mechanism look real on the ground? This is what converts a coefficient into something a reader believes.,Backlog,2,5,docs,Loci,E4 · Validation and Artifact
+Methodology memo,"The document a skeptic attacks and you defend. Must state plainly: the residual design reduces but does not eliminate endogeneity (§7.2); no instrument is used; what the pre-trend test showed.
+
+Claiming cleaner identification than exists is the fastest way to lose an investment reader.",Backlog,2,5,docs,Loci,E4 · Validation and Artifact
+Fresh-clone reproducibility test,"Acceptance criterion C: fresh clone → `make nyc` → outputs in <30 min on a laptop. Pinned deps, documented lineage.
+
+Also assert loci/score/ contains no NYC-specific column names — the portability guarantee from CONTEXT.md §10.",Backlog,2,3,infra,Loci,E4 · Validation and Artifact
+SHIP W4: public artifact,Week-4 exit criterion: public map + memo + evidence cards.,Backlog,1,2,milestone,Loci,E4 · Validation and Artifact
+DCWP license issue/expiry panel reconstruction,"Establishment-level openings/closings from DCWP license dates — a true establishment panel rather than the LODES jobs proxy.
+
+Deferred from W3 because it is ~2 weeks of data engineering with real survivorship handling. Only NYS DOS is unusable for this; DCWP is genuinely dated.",Backlog,4,8,"panel,deferred",Loci,E5 · Deferred
+Extract universal interface; run a second city,"`loci run --city chicago` on universal sources only (Overture, FSQ, LODES, ACS, OSM, GTFS), with a coverage warning where NYC-grade local data has no analogue.
+
+The half-day spent in E0 keeping loci/score/ city-agnostic is what makes this possible rather than a rewrite.",Backlog,4,8,"infra,deferred",Loci,E5 · Deferred
+Foot-traffic outcome,"SafeGraph/Placekey-class data, $200–400 of the ~$400 unspent headroom. Shifts the outcome from 'did people move here' to 'did people start going here'. Nice-to-have; not load-bearing.
+
+Spend the headroom on enlarging the E4 validation sample FIRST — that has higher marginal value because it defends against the threat that can kill the project.",Backlog,4,5,"ingest,deferred,blocker",Loci,E5 · Deferred
+Identification strategy: quasi-experimental variation,"Addresses threat §7.2 properly. Candidates: historic rezonings, or transit shocks such as the L-train shutdown, as sources of variation in retail supply plausibly exogenous to neighborhood trajectory.
+
+Out of scope at 4 weeks. This is what a v2 would need to make a genuinely causal claim.",Backlog,4,8,"model,deferred",Loci,E5 · Deferred
