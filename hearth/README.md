@@ -1,54 +1,69 @@
-# Lead scoring — code
+# Lead scoring — the code
 
-The engineering behind the submission. The memo, the score and the rep tool came with the
-submission itself; this repo is the part worth reading as code.
+This is the engineering side of the submission. You already have the memo, the scored
+file and the rep tool; this repo is for anyone who wants to see how the pieces were
+actually built and why they're shaped the way they are.
 
-**Not everything is here.** The data was provided under confidentiality, and the terms allow
-describing the approach but not the data — so the scored output, the write-up and most of the
-analysis scripts are excluded. That exclusion is wider than it looks: the analysis scripts
-carry findings in their comments and console output, which is the same data in prose, so they
-are held back too. `.gitignore` names every excluded file with its reason. What's here is the
-engineering that stands on its own with none of your numbers embedded in it.
+## Why so much is missing
 
-## Decisions you may want to push on
+The data came with a confidentiality condition, and the terms let me talk about the
+approach but not the data. I took that seriously, and it turned out to cut deeper than
+just leaving out the CSVs. Most of my analysis scripts have the findings written into
+their comments and print statements — channel performance, rep patterns, segment win
+rates — and a script that says the number out loud is the number, whatever the file
+extension. So those stayed out too.
 
-**One model, several surfaces.** The fitted scikit-learn pipeline is collapsed into a
-per-value coefficient lookup in JSON. For a linear model on one-hot features that transform
-is exact rather than approximate, so the browser tool, the batch scorer and the API all
-evaluate identical arithmetic instead of three implementations that drift apart. The
-container fits nothing and unpickles nothing — it scores from that JSON, which also means the
-serving path is not version-coupled to the scikit-learn that produced it.
+Every excluded file is listed in `.gitignore` with a reason next to it. What survived is
+the code that stands on its own without any of your numbers inside it.
 
-**The parity harness is the load-bearing test.** `src/test_parity.js` extracts the JavaScript
-out of the built HTML tool, runs it in Node against the Python model's outputs, and fails on
-any disagreement. It also throws fourteen malformed CSVs at the parser — empty files, BOMs,
-CRLF, quoted commas, wrong delimiters, duplicate keys, out-of-range numbers — and scores
-50,000 rows to check it doesn't hang. Removing a calibration layer late in the build took
-agreement from ~1e-13 to exactly zero, because it removed a log/exp round trip.
+## What I built, and the thinking behind it
 
-**Assertions where drift would otherwise be silent.** The batch scorer fails if its own fit
-disagrees with the exported model; tier assignment fails if one record's tier differs from
-the submitted file. Both fired during development and caught real divergence in seconds —
-including the case where two artifacts had quietly ended up on different feature sets.
+**I collapsed the model into a lookup table so nothing could drift.** There were three
+places that needed to score a lead — the browser tool, the batch scorer, and the API — and
+the thing I was most worried about was those three quietly disagreeing. So rather than
+ship the scikit-learn pipeline and reimplement it twice, I flattened the fitted model into
+a per-value coefficient lookup in JSON. Because it's a linear model on one-hot features,
+that's an exact transform, not an approximation. Every surface reads the same file and
+does the same arithmetic. It also means the container never fits or unpickles anything;
+it's not tied to the scikit-learn version that produced the model.
 
-**A model deliberately smaller than the best one measured.** Features were kept or dropped on
-whether their effect survived into a period they weren't fitted on, not on whether they moved
-AUC. The larger model scored better on AUC and identically at the operational cutoff, which
-is the only place a ranking becomes a phone call.
+**Then I wrote a test that would tell me if that promise broke.** `src/test_parity.js`
+pulls the JavaScript out of the built HTML tool, runs it in Node against the Python
+model's outputs, and fails on any difference. While I was at it I made it throw fourteen
+ugly CSVs at the parser — empty files, BOMs, CRLF endings, quoted commas, the wrong
+delimiter, duplicate keys, out-of-range numbers — and score fifty thousand rows to make
+sure it wouldn't hang in front of someone. The nicest moment in the build was when I
+removed a calibration layer late on and the parity gap went from around 1e-13 to exactly
+zero, because there was no longer a log/exp round trip for floating point to disagree
+about.
 
-**Deployment that can't leak by accident.** `.railwayignore` uses an allowlist, so putting a
-file on the host is a deliberate named act rather than a default. It caught a build during
-development — a bundle failed to copy precisely because it hadn't been named.
+**I put assertions where a mistake would otherwise be silent.** The batch scorer refuses
+to run if its own fit doesn't match the exported model. Tier assignment refuses if even
+one record's tier differs from the file being submitted. Both of these went off during
+development — once because two artifacts had ended up on different feature sets without
+anyone noticing — and each time they saved me from shipping something inconsistent.
 
-## Layout
+**I shipped a smaller model than the best one I measured.** I decided which features to
+keep by asking whether their effect held up in a period they hadn't been fitted on, not
+by whether they nudged AUC. The bigger model won on AUC and tied at the operational
+cutoff — and the cutoff is the only place where a ranking turns into a phone call. Fewer
+fields meant fewer things to defend in front of a rep and less to break the next time
+the acquisition mix moves.
+
+**I made it hard to leak by accident.** `.railwayignore` is an allowlist, so getting a
+file onto the host is a deliberate, named act rather than the default. It bit me once:
+a build failed because a bundle I wanted to ship hadn't been added to the list. That's
+the guardrail working, and I'd rather have that failure than the other kind.
+
+## Where things are
 
 ```
 src/scorer.py             pure-numpy scorer; serving needs only pandas + numpy
-src/test_parity.js        cross-language parity + malformed-input suite
-src/model_final.py        model comparison, out-of-time validation
-src/model_select.py       feature ablation, target-equivalence tests
-src/target_choice.py      whether the candidate targets rank differently at all
-src/build_demo_bundle.py  narrows a dataset to what a demo needs, and nothing more
+src/test_parity.js        cross-language parity, plus the malformed-input suite
+src/model_final.py        model comparison and out-of-time validation
+src/model_select.py       feature ablation and target-equivalence tests
+src/target_choice.py      whether the candidate targets even rank differently
+src/build_demo_bundle.py  cuts a dataset down to what a demo needs and nothing more
 src/run_all.py            end-to-end rebuild
 app/                      FastAPI dashboard — data layer, charts, scoring endpoint
 Dockerfile                fits nothing, unpickles nothing
