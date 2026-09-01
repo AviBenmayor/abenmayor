@@ -1,0 +1,14 @@
+# The confidential pack must never enter the build context.
+data/
+transcripts/
+.venv/
+.git/
+output/*.parquet
+output/*.csv
+output/app_data/scored_leads.parquet
+output/app_data/scores_raw.parquet
+output/app_data/oof.npy
+output/app_data/model.joblib
+__pycache__/
+**/__pycache__/
+*.pyc

@@ -1,0 +1,16 @@
+# The raw pack stays out: it is their data, not my work.
+data/
+transcripts/
+brief.md
+
+# Derived artifacts. Only the submitted score goes up; the parquet frames and the
+# historical bundle are the pack re-serialised.
+output/*
+!output/submission.csv
+
+# Internal working notes
+PLAN.md
+
+.venv/
+__pycache__/
+*.pyc

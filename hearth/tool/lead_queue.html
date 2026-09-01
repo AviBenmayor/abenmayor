@@ -1,0 +1,944 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lead Queue</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#fff; --ink:#14171c; --muted:#666e7a; --line:#e2e5ea;
+    --a:#0b6e3f; --a-bg:#e7f4ec; --b:#1b5e9e; --b-bg:#e8f1f9;
+    --c:#8a6100; --c-bg:#fbf2dd; --d:#6b7280; --d-bg:#f0f1f3;
+    --warn:#a3311f; --warn-bg:#fbecea; --accent:#1b5e9e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       background:var(--bg);color:var(--ink)}
+  header{background:var(--panel);border-bottom:1px solid var(--line);padding:13px 20px;
+         position:sticky;top:0;z-index:20;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+  h1{font-size:17px;margin:0;font-weight:650;letter-spacing:-.01em}
+  .sub{color:var(--muted);font-size:13px}
+  /* The source line grows with the number of files loaded; truncate it rather than
+     letting it wrap the header onto a second row and shove the page down. */
+  #src{max-width:640px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .wrap{max-width:1180px;margin:0 auto;padding:20px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+  .drop{border:2px dashed var(--line);border-radius:10px;padding:34px 20px;text-align:center;
+        background:var(--panel);cursor:pointer;transition:.15s}
+  .drop.over{border-color:var(--accent);background:var(--b-bg)}
+  .drop h2{margin:0 0 6px;font-size:16px}
+  .drop p{margin:4px 0;color:var(--muted);font-size:13px}
+  button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+         padding:7px 13px;border-radius:7px;cursor:pointer}
+  button:hover{background:#eef0f3}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  button.primary:hover{background:#2b3038}
+  input[type=number]{font:inherit;width:74px;padding:6px 8px;border:1px solid var(--line);
+                     border-radius:7px}
+  .stats{display:flex;margin-bottom:18px;overflow:hidden}
+  .stat{flex:1;padding:13px 16px;border-right:1px solid var(--line)}
+  .stat:last-child{border-right:0}
+  .stat .k{font-size:23px;font-weight:660;letter-spacing:-.02em}
+  .stat .l{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;
+           margin-top:2px}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;
+     color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--line);font-weight:600}
+  td{padding:9px 12px;border-bottom:1px solid #f0f1f4;vertical-align:middle}
+  tr.lead{cursor:pointer}
+  tr.lead:hover{background:#fafbfc}
+  tr.below td{opacity:.55}
+  .tier{display:inline-block;min-width:20px;text-align:center;font-weight:700;font-size:12px;
+        padding:2px 7px;border-radius:5px}
+  .tA{background:var(--a-bg);color:var(--a)} .tB{background:var(--b-bg);color:var(--b)}
+  .tC{background:var(--c-bg);color:var(--c)} .tD{background:var(--d-bg);color:var(--d)}
+  .act{font-weight:600;font-size:13.5px}
+  .why{color:var(--muted);font-size:12.5px}
+  .mono{font-variant-numeric:tabular-nums}
+  .cut td{background:var(--warn-bg);color:var(--warn);font-weight:600;font-size:12.5px;
+          padding:7px 12px;border-top:1px solid #e8c9c3;border-bottom:1px solid #e8c9c3}
+  .err{background:var(--warn-bg);border:1px solid #e8c9c3;color:var(--warn);padding:11px 14px;
+       border-radius:9px;margin-bottom:14px;font-size:13.5px}
+  .err ul{margin:6px 0 0;padding-left:18px}
+  details{font-size:13px;color:var(--muted)}
+  summary{cursor:pointer;padding:4px 0}
+  code{background:#f0f1f4;padding:1px 5px;border-radius:4px;font-size:12.5px}
+  /* !important because .tabs/.stats set their own display and are declared after this;
+     a utility class that loses to the thing it is meant to hide is worse than useless. */
+  .hide{display:none!important}
+  .tabs{display:flex;gap:4px;margin-bottom:16px}
+  .tab{border-radius:8px;padding:8px 15px;font-size:14px;color:var(--muted)}
+  .tab.on{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:600}
+  .tab:disabled{opacity:.45;cursor:not-allowed}
+  .won{color:var(--a);font-weight:650} .lost{color:var(--muted)}
+
+  /* ---------- the brief ---------- */
+  .brief{max-width:860px;margin:0 auto}
+  .bhead{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;
+         padding:20px 22px;border-bottom:1px solid var(--line)}
+  .bhead h2{margin:0 0 3px;font-size:22px;letter-spacing:-.02em}
+  .bhead .who{color:var(--muted);font-size:14px}
+  .bhead .worth{text-align:right;white-space:nowrap}
+  .bhead .worth .n{font-size:26px;font-weight:680;letter-spacing:-.02em}
+  .bhead .worth .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .bsec{padding:18px 22px;border-bottom:1px solid var(--line)}
+  .bsec:last-child{border-bottom:0}
+  .bsec h3{margin:0 0 12px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+           color:var(--muted);font-weight:650}
+  .kv{display:grid;grid-template-columns:190px 1fr auto;gap:4px 14px;font-size:13.5px;
+      align-items:baseline}
+  .kv .k{color:var(--muted)}
+  .kv .v{font-weight:550}
+  .kv .n{color:var(--muted);font-size:12.5px;text-align:right}
+  .kv .row{display:contents}
+  .scored{border-left:3px solid var(--a);padding-left:9px;margin-left:-12px}
+  .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--a);
+       margin-right:6px;vertical-align:middle}
+  .say{background:var(--a-bg);border-left:3px solid var(--a);padding:10px 12px;
+       border-radius:0 6px 6px 0;font-size:14px;margin-bottom:8px}
+  .dont{background:var(--warn-bg);border-left:3px solid var(--warn);padding:10px 12px;
+        border-radius:0 6px 6px 0;font-size:14px}
+  .chip{display:inline-block;background:#f0f1f4;border-radius:5px;padding:3px 8px;font-size:12.5px;
+        margin:2px 4px 2px 0}
+  .chip.pos{background:var(--a-bg);color:var(--a)} .chip.neg{background:var(--warn-bg);color:var(--warn)}
+  .bar{height:6px;background:#eceef1;border-radius:3px;overflow:hidden;margin:6px 0 2px}
+  .bar i{display:block;height:100%;background:var(--a)}
+  .empty{background:#fafbfc;border:1px dashed var(--line);border-radius:8px;padding:14px 16px;
+         color:var(--muted);font-size:13.5px}
+  .tl{position:relative;padding-left:20px}
+  .tl:before{content:'';position:absolute;left:5px;top:4px;bottom:4px;width:2px;background:var(--line)}
+  .ev{position:relative;padding:7px 0;font-size:13.5px}
+  .ev:before{content:'';position:absolute;left:-18px;top:13px;width:8px;height:8px;
+             border-radius:50%;background:var(--muted);border:2px solid var(--panel)}
+  .ev.win:before{background:var(--a)} .ev.bad:before{background:var(--warn)}
+  .ev .when{color:var(--muted);font-size:12.5px}
+  .doit{background:var(--ink);color:#fff;border-radius:9px;padding:15px 18px}
+  .doit .t{font-size:19px;font-weight:670;letter-spacing:-.01em}
+  .doit .d{opacity:.82;font-size:13.5px;margin-top:3px}
+  @media print{
+    header,#queueView,.noprint{display:none!important}
+    body{background:#fff} .panel{border:0}
+    .brief{max-width:100%}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1 id="title">Lead Queue</h1>
+    <div class="sub" id="src">no leads loaded</div>
+  </div>
+  <div style="flex:1"></div>
+  <button id="back" class="hide">← Back to queue</button>
+  <button id="print" class="hide">Print brief</button>
+  <label class="sub" id="capWrap">Calls I can make today
+    <input type="number" id="cap" value="40" min="1" max="5000" step="5">
+  </label>
+  <a id="dashLink" class="hide" href="/" style="text-decoration:none">
+    <button>← Dashboard</button></a>
+  <button id="pick">Load files…</button>
+  <button id="demo" class="primary">Load sample</button>
+  <input type="file" id="file" accept=".csv,text/csv" multiple class="hide">
+</header>
+
+<div class="wrap">
+  <div id="errs"></div>
+
+  <div id="empty">
+    <div class="drop" id="drop">
+      <h2>Drop your leads CSV here</h2>
+      <p>Needs <code>lead_id</code>. Scores on <span id="usesFields"></span>.</p>
+      <p>Drop <strong>activities</strong>, <strong>call extractions</strong> or
+         <strong>objections</strong> alongside it and each brief gains a real history.
+         Files are identified by their columns, in any order.</p>
+      <p>Missing columns are scored as unknown — it will not refuse to run.</p>
+    </div>
+  </div>
+
+  <div id="tabs" class="hide tabs">
+    <button class="tab on" data-tab="queue">Queue</button>
+    <button class="tab" data-tab="hist" id="histTab">Historical</button>
+  </div>
+
+  <div id="queueView" class="hide">
+    <div class="panel stats" id="stats"></div>
+    <div class="panel" style="overflow:hidden">
+      <table><thead><tr>
+        <th style="width:36px">#</th><th>Lead</th><th style="width:44px">Tier</th>
+        <th style="width:78px" class="mono">Worth</th><th style="width:230px">Do this</th>
+      </tr></thead><tbody id="rows"></tbody></table>
+    </div>
+    <details style="margin-top:16px">
+      <summary>How good is this, and where does it break?</summary>
+      <div class="panel" style="margin-top:8px;padding:16px" id="honest"></div>
+    </details>
+  </div>
+
+  <div id="histView" class="hide">
+    <div class="panel" id="histExplain" style="padding:22px">
+      <h2 style="margin:0 0 8px;font-size:17px">Score leads whose outcome you already know</h2>
+      <p class="why" style="font-size:14px;margin:0 0 14px">
+        Drop <code>leads_history.csv</code> <strong>and</strong> <code>opps.csv</code> together and
+        this tab shows how the model would have ranked leads you already have the answers for —
+        win rate by tier, against the base rate. Add <code>call_extractions.csv</code> and
+        <code>call_objections.csv</code> and every brief gains its real timeline.</p>
+      <p class="why" style="font-size:14px;margin:0 0 6px">
+        <strong>Those files never leave this machine.</strong> The page scores in your browser and
+        uploads nothing — which is why the confidential pack is deliberately not baked into the
+        server this page is served from.</p>
+      <p class="why" style="font-size:13px;margin:0 0 16px">
+        <code>leads_history.csv</code> carries <code>converted_opp_id</code> but not whether the opp
+        was won; that lives in <code>opps.csv</code>. Without it, leads show as “Converted” rather
+        than being counted as wins.</p>
+      <div id="loadHistWrap" class="hide">
+        <button id="loadHist" class="primary">Load the Oct 2025–Feb 2026 window</button>
+        <span class="why" id="loadHistNote" style="margin-left:10px">5,507 leads with outcomes,
+          8,171 calls, 8,275 objections — served from this host, behind the same login.</span>
+      </div>
+    </div>
+    <div class="panel stats hide" id="hstats"></div>
+    <div id="histTables" class="hide">
+    <div class="panel" style="overflow:hidden;margin-bottom:16px">
+      <table><thead><tr>
+        <th>If we had scored it…</th><th style="width:90px">leads</th>
+        <th style="width:120px">actually won</th><th style="width:130px">win rate</th>
+        <th style="width:110px">vs base</th>
+      </tr></thead><tbody id="hbyTier"></tbody></table>
+    </div>
+    <div class="panel" style="overflow:hidden">
+      <table><thead><tr>
+        <th style="width:36px">#</th><th>Lead</th><th style="width:44px">Tier</th>
+        <th style="width:78px" class="mono">Worth</th><th style="width:150px">Outcome</th>
+      </tr></thead><tbody id="hrows"></tbody></table>
+    </div>
+    </div>
+  </div>
+
+  <div id="briefView" class="hide">
+    <div class="panel brief" id="brief"></div>
+  </div>
+</div>
+
+<script>
+const DATA = {"model": {"intercept": -1.266156536814946, "categorical": {"contractor_annual_revenue": {"$1,000,000 to $4,999,999": 0.5374087244436906, "$10,000,000 to $24,999,999": -0.027456460890124178, "$250,000 to $499,999": 0.04649417681212459, "$5,000,000 to $9,999,999": 0.5855807030979874, "$500,000 to $999,999": 0.36570442250760554, "Less than $250,000": -0.6567901365403566, "Personal Loan Inquiry": -1.1228468935501958, "__NA__": 0.23058866837352832, "__INFREQUENT__": 0.0}, "icp_category": {"High Value": -0.03304635615050613, "Ideal": 0.3537588303743843, "Low Value": -0.4032853104942892, "__INFREQUENT__": 0.041256040524687135, "Unknown": 0.041256040524687135}}, "numeric": {"legacy_score": {"median": 35.0, "mean": 40.18371228683865, "scale": 16.433265002334178, "coef": 0.48110557899302303, "lo": 7.9, "hi": 96.7}}, "amount": {"by_band": {"$1,000,000 to $4,999,999": 1750.0118343195265, "$10,000,000 to $24,999,999": 2221.125, "$250,000 to $499,999": 1525.4375, "$5,000,000 to $9,999,999": 2011.560975609756, "$500,000 to $999,999": 1604.860606060606, "Less than $250,000": 1452.4585987261146, "Personal Loan Inquiry": 1617.8982118294361}, "default": 1617.8982118294361}, "tier_cutoffs": {"A": 718.6664503165647, "B": 454.02412585155975, "C": 232.18275434844244}, "infrequent_key": "__INFREQUENT__", "na_key": "__NA__", "features": {"categorical": ["contractor_annual_revenue", "icp_category"], "numeric": ["legacy_score"]}}, "coaching": {"best_rebuttal_by_objection": {"timing": {"best_rebuttal": "defer_followup", "best_rate": 67.0, "worst_rebuttal": "value_case", "worst_rate": 15.6, "overall_rate": 34.9, "n": 2541}, "price": {"best_rebuttal": "discount_or_restructure", "best_rate": 35.6, "worst_rebuttal": "value_case", "worst_rate": 18.9, "overall_rate": 23.9, "n": 1642}, "partner_dm": {"best_rebuttal": "defer_followup", "best_rate": 44.9, "worst_rebuttal": "urgency", "worst_rate": 18.1, "overall_rate": 22.9, "n": 1051}, "no_need": {"best_rebuttal": "acknowledge_or_clarify", "best_rate": 32.2, "worst_rebuttal": "value_case", "worst_rate": 13.7, "overall_rate": 13.7, "n": 980}, "competitor": {"best_rebuttal": "acknowledge_or_clarify", "best_rate": 23.1, "worst_rebuttal": "value_case", "worst_rate": 22.9, "overall_rate": 18.6, "n": 722}, "product_gap": {"best_rebuttal": "acknowledge_or_clarify", "best_rate": 37.9, "worst_rebuttal": "value_case", "worst_rate": 29.1, "overall_rate": 28.8, "n": 479}, "trust": {"best_rebuttal": "acknowledge_or_clarify", "best_rate": 39.0, "worst_rebuttal": "value_case", "worst_rate": 37.6, "overall_rate": 33.4, "n": 338}, "financing_terms": {"best_rebuttal": "value_case", "best_rate": 47.4, "worst_rebuttal": "acknowledge_or_clarify", "worst_rate": 46.7, "overall_rate": 42.7, "n": 328}}, "objection_mix_by_segment": {"High Value": [["timing", 28.0], ["price", 17.6], ["partner_dm", 16.8]], "Ideal": [["timing", 30.5], ["price", 19.9], ["partner_dm", 13.9]], "Low Value": [["timing", 32.7], ["price", 21.1], ["no_need", 13.3]], "Unknown": [["timing", 30.8], ["price", 23.1], ["competitor", 23.1]], "rev::$1,000,000 to $4,999,999": [["timing", 24.0], ["price", 18.0], ["partner_dm", 17.8]], "rev::$10,000,000 to $24,999,999": [["partner_dm", 23.3], ["timing", 19.4], ["competitor", 14.6]], "rev::$250,000 to $499,999": [["timing", 31.9], ["price", 21.0], ["partner_dm", 13.0]], "rev::$5,000,000 to $9,999,999": [["timing", 22.0], ["partner_dm", 15.0], ["price", 14.0]], "rev::$500,000 to $999,999": [["timing", 28.0], ["price", 20.5], ["partner_dm", 14.1]], "rev::Less than $250,000": [["timing", 36.3], ["price", 21.4], ["no_need", 13.7]]}}, "validation": {"auc": 0.737, "lift_top10": 2.36, "lift_top20": 2.14, "baseline_auc": 0.645, "baseline_lift20": 1.6, "train_n": 5507, "val_window": "Jan-Feb 2026", "base_rate": 19.0}, "parity": {"L02231": 1248.9909358370799, "L08188": 1248.9909358370799, "L00708": 1176.9568457021976, "L03087": 1176.9568457021976, "L03614": 1176.9568457021976, "L03707": 1176.9568457021976, "L05504": 1176.9568457021976, "L06375": 1176.9568457021976, "L06696": 1176.9568457021976, "L06699": 1176.9568457021976, "L07154": 1176.9568457021976, "L02544": 1117.9864127109388, "L05097": 1069.7836516323378, "L05414": 1069.7836516323378, "L05872": 1069.7836516323378, "L05876": 1069.7836516323378, "L00259": 1066.6380171986777, "L03819": 1066.6380171986777, "L04844": 1066.6380171986777, "L01197": 1044.207631206725, "L07662": 1044.207631206725, "L01134": 1043.1721213608178, "L01600": 1043.1721213608178, "L05615": 1043.1721213608178, "L07753": 1043.1721213608178, "L09155": 1043.1721213608178, "L09671": 1043.1721213608178, "L05302": 1010.9790990260681, "L00215": 1003.3802447683191, "L00340": 1003.3802447683191, "L00365": 1003.3802447683191, "L00405": 1003.3802447683191, "L00502": 1003.3802447683191, "L00577": 1003.3802447683191, "L00953": 1003.3802447683191, "L01002": 1003.3802447683191, "L01449": 1003.3802447683191, "L01468": 1003.3802447683191, "L01474": 1003.3802447683191, "L01583": 1003.3802447683191, "L01821": 1003.3802447683191, "L02222": 1003.3802447683191, "L03030": 1003.3802447683191, "L03102": 1003.3802447683191, "L03171": 1003.3802447683191, "L03693": 1003.3802447683191, "L03766": 1003.3802447683191, "L03895": 1003.3802447683191, "L03979": 1003.3802447683191, "L04275": 1003.3802447683191, "L04644": 1003.3802447683191, "L04851": 1003.3802447683191, "L04935": 1003.3802447683191, "L05111": 1003.3802447683191, "L05189": 1003.3802447683191, "L05546": 1003.3802447683191, "L05558": 1003.3802447683191, "L05577": 1003.3802447683191, "L05667": 1003.3802447683191, "L05823": 1003.3802447683191, "L06103": 1003.3802447683191, "L06610": 1003.3802447683191, "L06754": 1003.3802447683191, "L06785": 1003.3802447683191, "L06858": 1003.3802447683191, "L07090": 1003.3802447683191, "L07230": 1003.3802447683191, "L07558": 1003.3802447683191, "L07794": 1003.3802447683191, "L07858": 1003.3802447683191, "L08022": 1003.3802447683191, "L08075": 1003.3802447683191, "L08154": 1003.3802447683191, "L08307": 1003.3802447683191, "L08424": 1003.3802447683191, "L08547": 1003.3802447683191, "L08555": 1003.3802447683191, "L08679": 1003.3802447683191, "L09101": 1003.3802447683191, "L09331": 1003.3802447683191, "L09736": 1003.3802447683191, "L09747": 1003.3802447683191, "L09451": 991.8404274732779, "L00234": 981.358498597241, "L09504": 981.358498597241, "L03741": 972.5321497735209, "L05866": 972.5321497735209, "L07068": 972.5321497735209, "L03358": 965.1807154233177, "L09292": 965.1807154233177, "L03899": 963.0275376314152, "L04603": 963.0275376314152, "L00329": 961.9185399994213, "L05485": 961.9185399994213, "L05720": 961.9185399994213, "L05723": 961.9185399994213, "L06812": 961.9185399994213, "L06985": 961.9185399994213, "L09440": 961.9185399994213, "L00678": 951.757381134004, "L00967": 951.757381134004, "L04224": 951.757381134004, "L04383": 951.757381134004, "L07254": 951.757381134004, "L09226": 911.4918236510435, "L00096": 909.669009178674, "L00657": 909.669009178674, "L00686": 909.669009178674, "L00908": 909.669009178674, "L01611": 909.669009178674, "L01678": 909.669009178674, "L01957": 909.669009178674, "L02241": 909.669009178674, "L02670": 909.669009178674, "L02917": 909.669009178674, "L02957": 909.669009178674, "L03445": 909.669009178674, "L04541": 909.669009178674, "L04852": 909.669009178674, "L05357": 909.669009178674, "L05392": 909.669009178674, "L05651": 909.669009178674, "L05903": 909.669009178674, "L05925": 909.669009178674, "L05999": 909.669009178674, "L06004": 909.669009178674, "L06071": 909.669009178674, "L06151": 909.669009178674, "L06197": 909.669009178674, "L06703": 909.669009178674, "L06801": 909.669009178674, "L06924": 909.669009178674, "L06992": 909.669009178674, "L07085": 909.669009178674, "L07155": 909.669009178674, "L07384": 909.669009178674, "L07471": 909.669009178674, "L07784": 909.669009178674, "L08077": 909.669009178674, "L08182": 909.669009178674, "L08203": 909.669009178674, "L08406": 909.669009178674, "L08476": 909.669009178674, "L09126": 909.669009178674, "L09489": 909.669009178674, "L03448": 898.1541261026966, "L02533": 897.2507198872024, "L01621": 895.5940323604563, "L05629": 895.5940323604563, "L00086": 886.4747383338986, "L00294": 886.4747383338986, "L00523": 886.4747383338986, "L00536": 886.4747383338986, "L00636": 886.4747383338986, "L01044": 886.4747383338986, "L02257": 886.4747383338986, "L02467": 886.4747383338986, "L02688": 886.4747383338986, "L02797": 886.4747383338986, "L02877": 886.4747383338986, "L03942": 886.4747383338986, "L04045": 886.4747383338986, "L04240": 886.4747383338986, "L04268": 886.4747383338986, "L04548": 886.4747383338986, "L04560": 886.4747383338986, "L04782": 886.4747383338986, "L04839": 886.4747383338986, "L05995": 886.4747383338986, "L06255": 886.4747383338986, "L06745": 886.4747383338986, "L06892": 886.4747383338986, "L06934": 886.4747383338986, "L07046": 886.4747383338986, "L07139": 886.4747383338986, "L08541": 886.4747383338986, "L09025": 886.4747383338986, "L09221": 886.4747383338986, "L09348": 886.4747383338986, "L09369": 886.4747383338986, "L09727": 886.4747383338986, "L08857": 873.358261143964, "L03643": 871.7350823367855, "L06917": 871.7350823367855, "L07607": 871.7350823367855, "L05263": 864.8411557715112, "L03559": 858.7435034829468, "L01035": 858.4552208163135, "L01420": 858.4552208163135, "L01998": 858.4552208163135, "L03603": 858.4552208163135, "L03829": 858.4552208163135, "L04876": 858.4552208163135, "L05243": 858.4552208163135, "L05257": 858.4552208163135, "L05396": 858.4552208163135, "L06220": 858.4552208163135, "L07325": 858.4552208163135, "L07524": 858.4552208163135, "L08755": 858.4552208163135, "L09120": 858.4552208163135, "L09139": 858.4552208163135, "L09457": 858.4552208163135, "L00176": 855.7381629646777, "L00120": 852.0588374463973, "L00167": 852.0588374463973, "L00352": 852.0588374463973, "L00510": 852.0588374463973, "L00559": 852.0588374463973, "L00574": 852.0588374463973, "L00578": 852.0588374463973, "L00589": 852.0588374463973, "L01580": 852.0588374463973, "L01970": 852.0588374463973, "L02176": 852.0588374463973, "L02930": 852.0588374463973, "L02960": 852.0588374463973, "L03110": 852.0588374463973, "L03389": 852.0588374463973, "L03542": 852.0588374463973, "L03760": 852.0588374463973, "L03816": 852.0588374463973, "L04528": 852.0588374463973, "L04736": 852.0588374463973, "L04810": 852.0588374463973, "L05025": 852.0588374463973, "L05099": 852.0588374463973, "L05343": 852.0588374463973, "L05367": 852.0588374463973, "L05407": 852.0588374463973, "L06739": 852.0588374463973, "L06943": 852.0588374463973, "L07026": 852.0588374463973, "L07105": 852.0588374463973, "L07264": 852.0588374463973, "L07281": 852.0588374463973, "L07315": 852.0588374463973, "L08103": 852.0588374463973, "L08135": 852.0588374463973, "L08538": 852.0588374463973, "L08838": 852.0588374463973, "L08868": 852.0588374463973, "L09082": 852.0588374463973, "L09454": 852.0588374463973, "L09494": 852.0588374463973, "L09684": 852.0588374463973, "L04981": 847.237231211801, "L09748": 847.237231211801, "L01135": 846.0975507024503, "L03557": 846.0975507024503, "L04985": 846.0975507024503, "L02293": 841.8181532743093, "L08894": 841.8181532743093, "L02784": 836.316445323087, "L03594": 836.316445323087, "L03994": 836.316445323087, "L07190": 836.316445323087, "L01593": 832.7127692660748, "L02109": 832.7127692660748, "L03641": 832.7127692660748, "L05090": 832.7127692660748, "L06221": 832.7127692660748, "L06289": 832.7127692660748, "L07520": 832.7127692660748, "L08033": 832.7127692660748, "L08237": 832.7127692660748, "L06156": 829.2952583811856, "L01054": 825.0490870952187, "L05413": 825.0490870952187, "L01063": 818.6685036730705, "L01333": 818.6685036730705, "L01713": 818.6685036730705, "L02110": 818.6685036730705, "L02405": 818.6685036730705, "L02455": 818.6685036730705, "L05117": 818.6685036730705, "L05958": 818.6685036730705, "L06884": 818.6685036730705, "L07871": 818.6685036730705, "L08021": 818.6685036730705, "L09291": 818.6685036730705, "L06020": 818.4886030475468, "L06275": 818.4886030475468, "L01172": 814.53380952, "L09580": 814.53380952, "L00944": 804.393917435354, "L08709": 804.393917435354, "L01954": 804.1067533710445, "L02056": 804.1067533710445, "L02240": 804.1067533710445, "L03079": 804.1067533710445, "L03274": 804.1067533710445, "L08269": 804.1067533710445, "L00181": 800.2536027306385, "L01898": 800.2536027306385, "L04871": 800.2536027306385, "L07246": 800.2536027306385, "L00382": 787.5912274345161, "L01997": 787.5912274345161, "L02534": 787.5912274345161, "L06173": 787.5912274345161, "L06677": 787.5912274345161, "L06846": 787.5912274345161, "L02319": 785.6703498857139, "L00325": 784.3342206464674, "L00754": 784.3342206464674, "L01281": 784.3342206464674, "L02941": 784.3342206464674, "L04182": 784.3342206464674, "L05165": 784.3342206464674, "L07586": 784.3342206464674, "L09683": 784.3342206464674, "L00003": 765.3709932876615, "L00184": 765.3709932876615, "L00286": 765.3709932876615, "L01053": 765.3709932876615, "L01285": 765.3709932876615, "L01346": 765.3709932876615, "L01374": 765.3709932876615, "L02169": 765.3709932876615, "L02430": 765.3709932876615, "L02553": 765.3709932876615, "L02658": 765.3709932876615, "L02929": 765.3709932876615, "L03289": 765.3709932876615, "L03476": 765.3709932876615, "L03598": 765.3709932876615, "L03640": 765.3709932876615, "L04293": 765.3709932876615, "L04410": 765.3709932876615, "L04562": 765.3709932876615, "L04702": 765.3709932876615, "L05314": 765.3709932876615, "L05386": 765.3709932876615, "L05661": 765.3709932876615, "L05714": 765.3709932876615, "L06481": 765.3709932876615, "L06612": 765.3709932876615, "L07124": 765.3709932876615, "L07285": 765.3709932876615, "L07372": 765.3709932876615, "L07715": 765.3709932876615, "L08456": 765.3709932876615, "L08522": 765.3709932876615, "L09717": 765.3709932876615, "L00703": 756.0221890769853, "L03152": 756.0221890769853, "L07020": 756.0221890769853, "L06763": 752.488530948632, "L08644": 752.488530948632, "L00813": 748.6752895923654, "L03013": 748.6752895923654, "L00139": 744.1608464297607, "L00380": 744.1608464297607, "L00418": 744.1608464297607, "L00932": 744.1608464297607, "L01704": 744.1608464297607, "L02372": 744.1608464297607, "L02646": 744.1608464297607, "L02940": 744.1608464297607, "L03567": 744.1608464297607, "L03732": 744.1608464297607, "L03832": 744.1608464297607, "L04336": 744.1608464297607, "L04855": 744.1608464297607, "L04934": 744.1608464297607, "L05029": 744.1608464297607, "L05461": 744.1608464297607, "L05560": 744.1608464297607, "L05727": 744.1608464297607, "L05788": 744.1608464297607, "L05846": 744.1608464297607, "L06267": 744.1608464297607, "L06880": 744.1608464297607, "L07547": 744.1608464297607, "L07674": 744.1608464297607, "L07776": 744.1608464297607, "L07800": 744.1608464297607, "L07988": 744.1608464297607, "L08279": 744.1608464297607, "L08655": 744.1608464297607, "L09566": 744.1608464297607, "L08414": 741.1724722347165, "L05183": 740.0459419751676, "L01682": 739.1610202834203, "L02277": 739.1610202834203, "L03883": 739.1610202834203, "L07378": 739.1610202834203, "L08778": 739.1610202834203, "L01658": 737.7586721942695, "L03902": 737.7586721942695, "L04204": 737.7586721942695, "L05021": 737.7586721942695, "L08199": 737.7586721942695, "L08645": 737.7586721942695, "L05289": 731.0415650936557, "L05809": 731.0415650936557, "L09013": 731.0415650936557, "L00681": 726.5384893225417, "L00719": 726.5384893225417, "L02399": 726.5384893225417, "L04302": 726.5384893225417, "L05037": 726.5384893225417, "L05536": 726.5384893225417, "L05617": 726.5384893225417, "L05830": 726.5384893225417, "L06348": 726.5384893225417, "L07345": 726.5384893225417, "L08230": 726.5384893225417, "L09375": 726.5384893225417, "L09379": 726.5384893225417, "L09556": 726.5384893225417, "L09642": 726.5384893225417, "L00010": 718.6664503165647, "L00738": 718.6664503165647, "L01703": 718.6664503165647, "L02888": 718.6664503165647, "L03185": 718.6664503165647, "L03704": 718.6664503165647, "L04367": 718.6664503165647, "L04453": 718.6664503165647, "L04612": 718.6664503165647, "L04701": 718.6664503165647, "L04749": 718.6664503165647, "L04777": 718.6664503165647, "L04900": 718.6664503165647, "L05197": 718.6664503165647, "L05902": 718.6664503165647, "L06224": 718.6664503165647, "L06246": 718.6664503165647, "L06258": 718.6664503165647, "L06436": 718.6664503165647, "L06849": 718.6664503165647, "L06889": 718.6664503165647, "L07556": 718.6664503165647, "L08613": 718.6664503165647, "L09070": 718.6664503165647, "L09142": 718.6664503165647, "L01563": 717.306339242713, "L00557": 716.6068988849662, "L01584": 716.6068988849662, "L05402": 716.6068988849662, "L05689": 716.6068988849662, "L06147": 716.6068988849662, "L07027": 716.6068988849662, "L07883": 716.6068988849662, "L07454": 716.201677228888, "L00060": 711.600665908008, "L01598": 711.600665908008, "L05492": 711.600665908008, "L06444": 711.600665908008, "L00323": 707.1857096958191, "L01886": 707.1857096958191, "L01996": 707.1857096958191, "L02269": 707.1857096958191, "L02341": 707.1857096958191, "L02442": 707.1857096958191, "L02539": 707.1857096958191, "L02574": 707.1857096958191, "L02575": 707.1857096958191, "L02855": 707.1857096958191, "L03740": 707.1857096958191, "L04609": 707.1857096958191, "L05016": 707.1857096958191, "L05655": 707.1857096958191, "L05810": 707.1857096958191, "L06131": 707.1857096958191, "L06249": 707.1857096958191, "L06900": 707.1857096958191, "L07014": 707.1857096958191, "L09644": 707.1857096958191, "L04941": 703.5946664983458, "L00166": 703.2323509997631, "L05991": 703.2323509997631, "L00137": 695.366651916547, "L00966": 695.366651916547, "L01019": 695.366651916547, "L03386": 695.366651916547, "L06039": 695.366651916547, "L09218": 695.366651916547, "L09413": 695.366651916547, "L02314": 689.6684313432168, "L07044": 689.6684313432168, "L09516": 689.6684313432168, "L00320": 688.4527317706785, "L00889": 688.4527317706785, "L01966": 688.4527317706785, "L03242": 688.4527317706785, "L09170": 688.4527317706785, "L01367": 686.7012125569563, "L03631": 686.7012125569563, "L07466": 686.7012125569563, "L09304": 686.7012125569563, "L00715": 682.7042500518501, "L01161": 682.7042500518501, "L01527": 682.7042500518501, "L01562": 682.7042500518501, "L04791": 682.7042500518501, "L06630": 682.7042500518501, "L07824": 682.7042500518501}, "segments": {"icp_category": {"High Value": {"n": 742, "win": 35.3}, "Ideal": {"n": 802, "win": 28.4}, "Low Value": {"n": 3014, "win": 13.7}}, "contractor_annual_revenue": {"$1,000,000 to $4,999,999": {"n": 583, "win": 35.8}, "$10,000,000 to $24,999,999": {"n": 79, "win": 22.8}, "$250,000 to $499,999": {"n": 993, "win": 19.9}, "$5,000,000 to $9,999,999": {"n": 134, "win": 38.1}, "$500,000 to $999,999": {"n": 679, "win": 30.2}, "Less than $250,000": {"n": 1923, "win": 10.1}, "Personal Loan Inquiry": {"n": 50, "win": 2.0}}, "_overall": {"n": 4574, "win": 19.8}}};
+const M = DATA.model, COACH = DATA.coaching, VAL = DATA.validation;
+const SEG = DATA.segments || {};
+
+// Served from the dashboard? Then offer the way back. Opened as a local file (the
+// demo-safe path, and the one that works with the wifi off) there is nothing to link to.
+const SERVED = location.protocol === 'http:' || location.protocol === 'https:';
+if(SERVED){
+  document.getElementById('dashLink').classList.remove('hide');
+  document.getElementById('loadHistWrap').classList.remove('hide');
+}
+
+document.getElementById('usesFields').innerHTML =
+  M.features.categorical.concat(M.features.numeric).map(f => '<code>'+f+'</code>').join(', ');
+
+/* ---------- CSV: quotes, CRLF, BOM, blank lines ---------- */
+function parseCSV(text){
+  text = text.replace(/^﻿/, '');
+  const rows=[]; let row=[], field='', q=false, i=0;
+  while(i < text.length){
+    const c = text[i];
+    if(q){
+      if(c === '"'){ if(text[i+1] === '"'){ field+='"'; i+=2; continue; } q=false; i++; continue; }
+      field += c; i++; continue;
+    }
+    if(c === '"'){ q=true; i++; continue; }
+    if(c === ','){ row.push(field); field=''; i++; continue; }
+    if(c === '\r'){ i++; continue; }
+    if(c === '\n'){ row.push(field); rows.push(row); row=[]; field=''; i++; continue; }
+    field += c; i++;
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r => r.length && !(r.length===1 && r[0].trim()===''));
+}
+function toObjects(text){
+  const rows = parseCSV(text);
+  if(!rows.length) throw new Error('That file has no rows in it.');
+  const head = rows[0].map(h => h.trim().toLowerCase().replace(/^﻿/,''));
+  if(head.length === 1 && rows.length > 1)
+    throw new Error('Only one column found — is this comma-separated? Tab- or semicolon-separated '
+                  + 'files need converting first.');
+  return rows.slice(1).map(r => {
+    const o = {}; head.forEach((h,i) => o[h] = (r[i] ?? '').trim()); return o;
+  });
+}
+
+/* ---------- identify a file by its columns, not its name ---------- */
+function classify(rows){
+  if(!rows.length) return 'empty';
+  const c = new Set(Object.keys(rows[0]));
+  if(c.has('opp_id') && (c.has('is_won') || c.has('stage'))) return 'opps';
+  if(c.has('call_ref') && (c.has('rebuttal_attempted') || (c.has('type') && !c.has('call_type'))))
+    return 'objections';
+  if(c.has('call_ref')) return 'calls';
+  if(c.has('who_id') || c.has('activity_id')) return 'activities';
+  if(c.has('lead_id')) return 'leads';
+  return 'unknown';
+}
+
+/* ---------- scoring: mirrors src/export_model.py exactly ---------- */
+const NA = M.na_key, INF = M.infrequent_key;
+function contributions(lead){
+  const parts = []; let z = M.intercept;
+  for(const f of M.features.categorical){
+    let v = (lead[f] ?? '').trim(); if(v === '') v = NA;
+    const lut = M.categorical[f];
+    const known = Object.prototype.hasOwnProperty.call(lut, v);
+    const w = known ? lut[v] : (lut[INF] ?? 0);
+    z += w; parts.push({feature:f, value:v, weight:w, known});
+  }
+  const n = M.numeric.legacy_score;
+  const rawLS = parseFloat(lead.legacy_score);
+  const inRange = Number.isFinite(rawLS) && rawLS >= n.lo && rawLS <= n.hi;
+  const clamped = Number.isFinite(rawLS) && !inRange;
+  const ls = inRange ? rawLS
+           : (Number.isFinite(rawLS) ? Math.min(n.hi, Math.max(n.lo, rawLS)) : n.median);
+  const wLS = (ls - n.mean) / n.scale * n.coef;
+  z += wLS;
+  parts.push({feature:'legacy_score',
+              value: !Number.isFinite(rawLS) ? 'missing'
+                   : clamped ? rawLS+' → clamped to '+ls.toFixed(1) : ls.toFixed(1),
+              weight:wLS, known:inRange, sd:((ls-n.mean)/n.scale)});
+  const p = 1/(1+Math.exp(-z));
+  const band = (lead.contractor_annual_revenue ?? '').trim();
+  const amt = M.amount.by_band[band] ?? M.amount.default;
+  return {p, amt, score:p*amt, parts, bandKnown: band in M.amount.by_band};
+}
+function tierOf(s){ const c=M.tier_cutoffs; return s>=c.A?'A':s>=c.B?'B':s>=c.C?'C':'D'; }
+
+/* ---------- what to do ---------- */
+const TOUCH_BUDGET = {A:30, B:22, C:0, D:0};
+function action(tier, rank, cap){
+  // Tier governs C and D, not rank. A tier D lead is below the cost of a call whatever
+  // spare capacity exists today -- if it flipped to "call if time" on a quiet morning the
+  // tier would mean nothing, and a rep would rightly stop believing it.
+  if(tier === 'C') return {t:'Email sequence', d:'Not worth a dial at any capacity. No rep time — the sequence does the work.'};
+  if(tier === 'D') return {t:'Nurture — do not dial', d:'Expected value is below the cost of a call. Re-scored monthly; it re-enters if the record improves.'};
+  if(rank >= cap)  return {t:'Tomorrow’s queue', d:`Tier ${tier}, but past today’s ${cap} calls. First thing tomorrow.`};
+  if(tier === 'A') return {t:'Call now', d:'Best odds in your queue today. Budget up to 30 touches.'};
+  return {t:'Call today', d:'Worth a dial before the day ends. Budget up to 22 touches.'};
+}
+
+const OBJ_LABEL = {timing:'timing / "not right now"', price:'price', partner_dm:'needs a partner or co-owner',
+  no_need:'"we don\'t need financing"', competitor:'already using someone else', product_gap:'a missing feature',
+  trust:'trust / never heard of you', financing_terms:'financing terms', seat_limits:'seat limits'};
+const REB_LABEL = {defer_followup:'book a specific follow-up time', value_case:'make the value case',
+  acknowledge_or_clarify:'acknowledge it and ask a clarifying question',
+  discount_or_restructure:'restructure the offer or discount', urgency:'create urgency'};
+const FIELD_LABEL = {contractor_annual_revenue:'annual revenue', icp_category:'ICP category',
+  legacy_score:'CRM legacy score', campaign_ref:'campaign', utm_medium:'medium', zip3:'ZIP prefix',
+  time_zone:'time zone', enrichment_status:'enrichment', created_at:'arrived', channel:'channel',
+  state:'state'};
+
+function coachFor(lead){
+  const rev = (lead.contractor_annual_revenue ?? '').trim();
+  const icp = (lead.icp_category ?? '').trim();
+  const mix = COACH.objection_mix_by_segment['rev::'+rev] || COACH.objection_mix_by_segment[icp]
+            || COACH.objection_mix_by_segment['Low Value'];
+  if(!mix || !mix.length) return null;
+  const top = mix[0];
+  return {objection:top[0], share:top[1], rest:mix.slice(1),
+          reb:COACH.best_rebuttal_by_objection[top[0]], basis: rev ? 'revenue band' : 'ICP category'};
+}
+
+/* ---------- state ---------- */
+let STATE = {leads:[], byId:{}, opps:{}, hist:{acts:{}, calls:{}, objs:{}},
+             view:'queue', tab:'queue', sel:null};
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtBand = v => String(v).replace(' to ','–');
+const fmtDate = v => {
+  const d = new Date(String(v).replace(' ','T'));
+  return isNaN(d) ? esc(v) : d.toLocaleString(undefined,
+    {day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+};
+function blurbFor(l){
+  const b = [l.icp_category, l.contractor_annual_revenue, l.campaign_ref].filter(Boolean).map(fmtBand);
+  return b.length ? b.join(' · ') : 'no segment data';
+}
+
+/* ================= QUEUE ================= */
+function renderQueue(){
+  const cap = Math.max(1, parseInt(document.getElementById('cap').value) || 40);
+  const L = STATE.leads;
+  const above = L.slice(0, cap);
+  const expW = above.reduce((a,x)=>a+x.s.p, 0), allW = L.reduce((a,x)=>a+x.s.p, 0);
+  document.getElementById('stats').innerHTML = [
+    [L.length.toLocaleString(),'leads scored'],
+    [Math.min(cap,L.length),'above your line'],
+    [expW.toFixed(0),'expected wins from those'],
+    [(allW?expW/allW*100:0).toFixed(0)+'%','of all winnable deals'],
+    ['$'+above.reduce((a,x)=>a+x.s.score,0).toLocaleString(undefined,{maximumFractionDigits:0}),
+     'expected value above line']
+  ].map(([k,l])=>`<div class="stat"><div class="k">${k}</div><div class="l">${l}</div></div>`).join('');
+
+  const rows=[];
+  L.slice(0, Math.min(L.length,400)).forEach((x,i)=>{
+    if(i===cap) rows.push(`<tr class="cut"><td colspan="5">▼ your ${cap} calls end here —
+      ${(L.length-cap).toLocaleString()} leads below hold ${(allW-expW).toFixed(0)} expected wins</td></tr>`);
+    const a = action(x.s.tier, i, cap);
+    const hist = STATE.hist.acts[x.lead.lead_id];
+    rows.push(`<tr class="lead ${i>=cap?'below':''}" data-i="${i}">
+      <td class="mono" style="color:var(--muted)">${i+1}</td>
+      <td><strong>${esc(x.lead.lead_id||'(no id)')}</strong>
+          <div class="why">${esc(x.blurb)}${hist?' · '+hist.length+' prior touches':''}</div></td>
+      <td><span class="tier t${x.s.tier}">${x.s.tier}</span></td>
+      <td class="mono">$${x.s.score.toFixed(0)}</td>
+      <td><span class="act">${a.t}</span></td></tr>`);
+  });
+  if(L.length>400) rows.push(`<tr><td colspan="5" class="why" style="padding:12px">showing first 400
+    of ${L.length.toLocaleString()} — the rest are tier D nurture</td></tr>`);
+  document.getElementById('rows').innerHTML = rows.join('');
+  document.querySelectorAll('tr.lead').forEach(tr =>
+    tr.onclick = () => openBrief(+tr.dataset.i));
+  document.getElementById('honest').innerHTML = honest();
+}
+
+/* ================= THE BRIEF ================= */
+function openBrief(i){
+  STATE.sel = i; STATE.view = 'brief';
+  document.getElementById('queueView').classList.add('hide');
+  document.getElementById('histView').classList.add('hide');
+  document.getElementById('tabs').classList.add('hide');
+  document.getElementById('briefView').classList.remove('hide');
+  document.getElementById('back').classList.remove('hide');
+  document.getElementById('print').classList.remove('hide');
+  document.getElementById('capWrap').classList.add('hide');
+  document.getElementById('title').textContent = 'Lead brief';
+  renderBrief();
+  window.scrollTo(0,0);
+}
+function backToQueue(){
+  STATE.view = 'queue';
+  document.getElementById('briefView').classList.add('hide');
+  document.getElementById('back').classList.add('hide');
+  document.getElementById('print').classList.add('hide');
+  document.getElementById('tabs').classList.remove('hide');
+  document.getElementById('title').textContent = 'Lead Queue';
+  showTab(STATE.tab || 'queue');
+}
+
+function sectionWhoTheyAre(l, x){
+  const bits = [];
+  if(l.contractor_annual_revenue) bits.push(fmtBand(l.contractor_annual_revenue)+' revenue');
+  if(l.icp_category) bits.push(l.icp_category+' ICP');
+  if(l.state) bits.push(l.state);
+  if(l.time_zone) bits.push(l.time_zone+' time');
+  const how = [l.channel, l.campaign_ref, l.utm_medium].filter(Boolean).map(esc).join(' · ');
+  return `<div class="bsec"><h3>Who they are</h3>
+    <div style="font-size:15px;margin-bottom:6px">${bits.map(esc).join(' · ') || 'No segment data on this record.'}</div>
+    <div class="why">${l.created_at ? 'Arrived '+fmtDate(l.created_at) : 'No arrival timestamp'}${
+      how ? ' via '+how : ''}</div></div>`;
+}
+
+function sectionWhatWeKnow(l, x){
+  const scored = new Set(M.features.categorical.concat(M.features.numeric));
+  const order = ['contractor_annual_revenue','icp_category','legacy_score','channel','campaign_ref',
+                 'utm_medium','state','zip3','time_zone','enrichment_status','created_at'];
+  const seen = new Set();
+  const rows = [];
+  const byFeat = {}; x.parts.forEach(p => byFeat[p.feature] = p);
+  for(const k of order.concat(Object.keys(l))){
+    if(seen.has(k) || k === 'lead_id') continue;
+    seen.add(k);
+    const raw = (l[k] ?? '').trim();
+    if(!raw && !scored.has(k)) continue;
+    const seg = SEG[k] && SEG[k][raw];
+    const note = seg ? seg.win + '% of these win'
+               : byFeat[k] ? 'scored'
+               : (k === 'enrichment_status' && /not enriched/i.test(raw)
+                  ? 'never populated in this data' : 'context only');
+    rows.push(`<div class="row">
+      <div class="k">${scored.has(k) ? '<span class="dot"></span>' : ''}${esc(FIELD_LABEL[k]||k.replace(/_/g,' '))}</div>
+      <div class="v">${raw ? (k==='created_at'?fmtDate(raw):esc(fmtBand(raw))) : '<span class="why">blank</span>'}</div>
+      <div class="n">${esc(note)}</div></div>`);
+  }
+  return `<div class="bsec"><h3>What we already know</h3>
+    <div class="kv">${rows.join('')}</div>
+    <div class="why" style="margin-top:10px"><span class="dot"></span>scored — the model uses only
+    these three. Everything else is context for the call, deliberately not signal: it either didn't
+    hold up out of period or drifts between quarters.</div></div>`;
+}
+
+function segEvidence(l){
+  // What actually happened to leads like this one. This is the rep-facing "why".
+  // A model coefficient is CONDITIONAL -- High Value carries a negative weight once
+  // revenue band is known, which is right arithmetically and reads as broken to anyone
+  // who knows High Value is their best segment. So observed rates lead, and the
+  // coefficient is available below, labelled for what it is.
+  const out = [];
+  const base = SEG._overall;
+  for(const col of ['contractor_annual_revenue','icp_category']){
+    const v = (l[col] ?? '').trim();
+    const rec = SEG[col] && SEG[col][v];
+    if(rec) out.push({label:fmtBand(v), win:rec.win, n:rec.n,
+                      lift: base ? rec.win / base.win : 1});
+  }
+  return {rows:out, base};
+}
+
+function sectionWhy(l, x){
+  const ev = segEvidence(l);
+  const unk = x.parts.filter(p=>!p.known);
+  const fmt = p => p.feature==='legacy_score' ? 'CRM score '+p.value
+             : !p.known ? FIELD_LABEL[p.feature]+': unknown'
+             : p.value===NA ? FIELD_LABEL[p.feature]+': blank' : fmtBand(p.value);
+  const evRows = ev.rows.map(r => {
+    const good = r.lift >= 1;
+    return `<div class="row">
+      <div class="k">${esc(r.label)}</div>
+      <div class="v">${r.win}% of these leads won <span class="why">(${r.n.toLocaleString()} in the training window)</span></div>
+      <div class="n" style="color:${good?'var(--a)':'var(--warn)'}">${good?'▲':'▼'} ${r.lift.toFixed(1)}× base</div>
+    </div>`;
+  }).join('');
+  const ls = parseFloat(l.legacy_score);
+  return `<div class="bsec"><h3>Why it ranked here</h3>
+    <div style="display:flex;gap:26px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+      <div><div class="why">Chance of winning</div>
+        <div style="font-size:24px;font-weight:670">${(x.p*100).toFixed(0)}%</div>
+        <div class="bar" style="width:170px"><i style="width:${Math.min(100,x.p*100).toFixed(0)}%"></i></div></div>
+      <div style="font-size:22px;color:var(--muted)">×</div>
+      <div><div class="why">Deal size if it lands</div>
+        <div style="font-size:24px;font-weight:670">$${x.amt.toFixed(0)}</div>
+        <div class="why">${x.bandKnown?'trimmed mean for this revenue band':'no band — using the overall mean'}</div></div>
+      <div style="font-size:22px;color:var(--muted)">=</div>
+      <div><div class="why">Worth working</div>
+        <div style="font-size:24px;font-weight:670">$${x.score.toFixed(0)}</div></div>
+    </div>
+    ${evRows ? `<div class="kv">${evRows}${Number.isFinite(ls)?`<div class="row">
+        <div class="k">CRM legacy score</div>
+        <div class="v">${ls} <span class="why">out of 100</span></div>
+        <div class="n">${ls >= M.numeric.legacy_score.mean ? '▲ above' : '▼ below'} the ${M.numeric.legacy_score.mean.toFixed(0)} average</div>
+      </div>`:''}</div>
+      <div class="why" style="margin-top:9px">Base rate across all worked leads:
+        <strong>${ev.base ? ev.base.win : '–'}%</strong>. These are what actually happened to leads
+        like this one — not model output.</div>`
+      : '<div class="why">No segment data on this record, so it sits at the base rate.</div>'}
+    ${unk.length?`<div class="why" style="margin-top:9px">⚠ scored as unknown:
+      ${unk.map(u=>esc(FIELD_LABEL[u.feature]||u.feature)).join(', ')} — treated as an average lead there.</div>`:''}
+    <details style="margin-top:11px" class="noprint"><summary>Show the model's own weights</summary>
+      <div style="margin-top:7px">
+      ${x.parts.map(p=>`<span class="chip ${p.weight>=0?'pos':'neg'}">${esc(fmt(p))} ${p.weight>=0?'+':''}${p.weight.toFixed(2)}</span>`).join('')}
+      </div>
+      <div class="why" style="margin-top:7px">These are <strong>conditional</strong> weights in
+      log-odds: each is the effect of that field <em>given the others</em>. They can disagree with
+      the plain win rates above — <code>High Value</code> is negative once revenue band is known,
+      because it is a size proxy rather than a quality signal. Correct arithmetic, wrong thing to
+      quote on a call.</div>
+    </details>
+    </div>`;
+}
+
+function sectionActions(l){
+  const id = l.lead_id;
+  const acts = STATE.hist.acts[id] || [];
+  const calls = STATE.hist.calls[id] || [];
+  if(!acts.length && !calls.length){
+    const loaded = Object.keys(STATE.hist.acts).length || Object.keys(STATE.hist.calls).length;
+    return `<div class="bsec"><h3>Actions taken</h3>
+      <div class="empty"><strong>Nothing yet — nobody has contacted this business.</strong><br>
+      ${loaded
+        ? 'History was loaded for other leads, so this record genuinely has none.'
+        : 'No activity file is loaded. This is also the normal state at the routing moment: a lead '
+          + 'that just hit the CRM has no history by definition, which is exactly why the score has '
+          + 'to work from intake fields alone.'}</div></div>`;
+  }
+  const evs = [];
+  calls.forEach(c => evs.push({when:c.call_at, kind:'call', o:c}));
+  acts.forEach(a => evs.push({when:a.created_at, kind:'act', o:a}));
+  evs.sort((a,b) => String(a.when).localeCompare(String(b.when)));
+  const objs = STATE.hist.objs[id] || [];
+  const html = evs.slice(-40).map(e => {
+    if(e.kind === 'call'){
+      const c = e.o;
+      const cls = c.outcome==='advanced' ? 'win' : (c.outcome==='rejected'||c.outcome==='regressed') ? 'bad' : '';
+      const o = objs.filter(x => x.call_ref === c.call_ref);
+      return `<div class="ev ${cls}"><strong>${esc((c.call_type||'call').replace(/_/g,' '))}</strong>
+        — reached ${esc((c.reached||'?').replace(/_/g,' '))}, ${esc(c.outcome||'?')}
+        <div class="when">${fmtDate(c.call_at)}</div>
+        ${o.length?`<div class="why">objections: ${o.map(x=>esc(OBJ_LABEL[x.type]||x.type)
+          + (x.resolved==='True'?' ✓ resolved':(x.rebuttal_attempted==='True'?' — rebutted, unresolved':' — no rebuttal'))).join('; ')}</div>`:''}</div>`;
+    }
+    const a = e.o;
+    return `<div class="ev"><strong>${esc(a.subtype||a.type||'activity')}</strong>${
+      a.call_disposition?' — '+esc(a.call_disposition):''}
+      <div class="when">${fmtDate(a.created_at)}</div></div>`;
+  }).join('');
+  const conn = acts.filter(a => /^Connect/.test(a.call_disposition||'')).length;
+  return `<div class="bsec"><h3>Actions taken</h3>
+    <div class="why" style="margin-bottom:10px"><strong>${acts.length}</strong> logged
+    ${acts.length===1?'activity':'activities'}${calls.length?`, <strong>${calls.length}</strong> of them
+    calls with an extraction`:''}${conn?`, <strong>${conn}</strong> connected`:''}.
+    ${evs.length>40?'Showing the most recent 40.':''}</div>
+    <div class="tl">${html}</div></div>`;
+}
+
+function sectionExpect(l){
+  const c = coachFor(l);
+  const objs = STATE.hist.objs[l.lead_id] || [];
+  let actual = '';
+  if(objs.length){
+    const seen = {};
+    objs.forEach(o => seen[o.type] = (seen[o.type]||0) + 1);
+    actual = `<div class="say" style="background:#f0f1f4;border-left-color:var(--muted)">
+      <strong>Already raised on this account:</strong> ${Object.entries(seen)
+      .map(([t,n])=>esc(OBJ_LABEL[t]||t)+(n>1?` (${n}×)`:'')).join(', ')}.</div>`;
+  }
+  if(!c) return `<div class="bsec"><h3>What to expect on the call</h3>${actual ||
+    '<div class="empty">Not enough calls logged on this segment to advise.</div>'}</div>`;
+  return `<div class="bsec"><h3>What to expect on the call</h3>
+    ${actual}
+    <div class="why" style="margin-bottom:9px">Contractors in this ${c.basis} raise
+      <strong>${esc(OBJ_LABEL[c.objection]||c.objection)}</strong> on ${c.share}% of their objections${
+      c.rest.length?', then '+c.rest.map(r=>esc(OBJ_LABEL[r[0]]||r[0])+' ('+r[1]+'%)').join(' and '):''}.</div>
+    ${c.reb?`<div class="say"><strong>Do:</strong> ${esc(REB_LABEL[c.reb.best_rebuttal]||c.reb.best_rebuttal)}
+        — resolves <strong>${c.reb.best_rate}%</strong> of the time across ${c.reb.n.toLocaleString()} logged objections.</div>
+      ${c.reb.worst_rebuttal!==c.reb.best_rebuttal?`<div class="dont"><strong>Don't:</strong>
+        ${esc(REB_LABEL[c.reb.worst_rebuttal]||c.reb.worst_rebuttal)} — only ${c.reb.worst_rate}%,
+        and it is the one reps reach for most.</div>`:''}`
+      :'<div class="empty">Not enough logged objections of this type to advise.</div>'}
+    </div>`;
+}
+
+/* ---------- outcomes: what actually happened to a historical lead ----------
+   leads_history.csv carries converted_opp_id but NOT whether the opp was won -- that
+   lives in opps.csv. So we follow the same chain the analysis does:
+       lead.converted_opp_id -> opps.opp_id -> is_won
+   With no opps file we can still say "converted", just not "won". The tool reports which
+   of the two it is rather than quietly treating conversion as a win. */
+function outcomeOf(l){
+  const oppId = (l.converted_opp_id ?? '').trim();
+  const status = (l.status ?? '').trim();
+  if(!oppId && !status) return null;
+  const opp = oppId && STATE.opps[oppId];
+  if(opp){
+    const won = String(opp.is_won).toLowerCase() === 'true';
+    return {won, label: won ? 'Won' : 'Lost', known:true,
+            detail: (opp.stage||'') + (opp.amount ? ' · $'+Number(opp.amount).toLocaleString() : '')};
+  }
+  if(oppId) return {won:null, label:'Converted', known:false,
+                    detail:'opp '+oppId+' — load opps.csv to see if it was won'};
+  return {won:false, label:status, known:true, detail:'never reached an opportunity'};
+}
+
+function renderHist(){
+  const H = STATE.leads.filter(x => x.outcome);
+  const explain = document.getElementById('histExplain');
+  const has = H.length > 0;
+  explain.classList.toggle('hide', has);
+  document.getElementById('histTables').classList.toggle('hide', !has);
+  document.getElementById('hstats').classList.toggle('hide', !has);
+  if(!has) return;
+  const decided = H.filter(x => x.outcome.won !== null);
+  const won = decided.filter(x => x.outcome.won).length;
+  const base = decided.length ? won/decided.length*100 : 0;
+  document.getElementById('hstats').innerHTML = [
+    [H.length.toLocaleString(),'leads with an outcome'],
+    [won.toLocaleString(),'actually won'],
+    [base.toFixed(1)+'%','base win rate'],
+    [decided.length ? (decided.filter(x=>x.s.tier==='A'&&x.outcome.won).length /
+       Math.max(1,decided.filter(x=>x.s.tier==='A').length)*100).toFixed(1)+'%' : '–','tier A win rate'],
+    [decided.length ? (decided.filter(x=>x.s.tier==='D'&&x.outcome.won).length /
+       Math.max(1,decided.filter(x=>x.s.tier==='D').length)*100).toFixed(1)+'%' : '–','tier D win rate']
+  ].map(([k,l])=>`<div class="stat"><div class="k">${k}</div><div class="l">${l}</div></div>`).join('');
+
+  const rows = ['A','B','C','D'].map(t => {
+    const g = decided.filter(x => x.s.tier === t);
+    if(!g.length) return '';
+    const w = g.filter(x => x.outcome.won).length;
+    const wr = w/g.length*100, lift = base ? wr/base : 0;
+    return `<tr><td><span class="tier t${t}">${t}</span>
+        <span class="why" style="margin-left:8px">${t==='A'?'call now':t==='B'?'call today':
+          t==='C'?'email sequence':'nurture, no dial'}</span></td>
+      <td class="mono">${g.length.toLocaleString()}</td>
+      <td class="mono">${w.toLocaleString()}</td>
+      <td class="mono"><strong>${wr.toFixed(1)}%</strong></td>
+      <td class="mono" style="color:${lift>=1?'var(--a)':'var(--warn)'}">${lift.toFixed(2)}×</td></tr>`;
+  }).join('');
+  document.getElementById('hbyTier').innerHTML = (rows ||
+    `<tr><td colspan="5" class="why" style="padding:14px">No decided outcomes. Load
+     <code>opps.csv</code> alongside the leads file to resolve wins.</td></tr>`)
+    + `<tr><td colspan="5" class="why" style="padding:12px;background:var(--c-bg);color:var(--c)">
+        <strong>Read this before quoting these numbers.</strong> If these leads are from the window
+        the model was trained on, this is <strong>in-sample</strong> and flatters it — the model has
+        already seen how they turned out. The number that counts is the out-of-time one under
+        “How good is this” on the Queue tab: <strong>${VAL.lift_top10}× in the top 10%</strong>,
+        measured on ${VAL.val_window} leads the model never saw.</td></tr>`;
+
+  document.getElementById('hrows').innerHTML = H.slice(0,400).map((x,i)=>{
+    const o = x.outcome;
+    return `<tr class="hlead" data-id="${esc(x.lead.lead_id)}">
+      <td class="mono" style="color:var(--muted)">${i+1}</td>
+      <td><strong>${esc(x.lead.lead_id)}</strong><div class="why">${esc(x.blurb)}</div></td>
+      <td><span class="tier t${x.s.tier}">${x.s.tier}</span></td>
+      <td class="mono">$${x.s.score.toFixed(0)}</td>
+      <td class="${o.won?'won':'lost'}">${esc(o.label)}<div class="why">${esc(o.detail||'')}</div></td></tr>`;
+  }).join('') || `<tr><td colspan="5" class="why" style="padding:14px">
+      No leads in this file carry an outcome column.</td></tr>`;
+  document.querySelectorAll('tr.hlead').forEach(tr => tr.onclick = () =>
+    openBrief(STATE.leads.findIndex(x => x.lead.lead_id === tr.dataset.id)));
+}
+
+function showTab(name){
+  STATE.tab = name;
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('on', b.dataset.tab === name));
+  document.getElementById('queueView').classList.toggle('hide', name !== 'queue');
+  document.getElementById('histView').classList.toggle('hide', name !== 'hist');
+  document.getElementById('capWrap').classList.toggle('hide', name !== 'queue');
+  if(name === 'queue') renderQueue(); else renderHist();
+}
+
+function renderBrief(){
+  const x = STATE.leads[STATE.sel]; if(!x) return backToQueue();
+  const l = x.lead, rank = STATE.sel;
+  const cap = Math.max(1, parseInt(document.getElementById('cap').value)||40);
+  const a = action(x.s.tier, rank, cap);
+  const budget = TOUCH_BUDGET[x.s.tier];
+  document.getElementById('brief').innerHTML = `
+    <div class="bhead">
+      <div>
+        <h2>${esc(l.lead_id||'(no id)')}</h2>
+        <div class="who">${esc(x.blurb)} · ranked <strong>#${rank+1}</strong> of
+          ${STATE.leads.length.toLocaleString()}</div>
+      </div>
+      <div class="worth">
+        <span class="tier t${x.s.tier}" style="font-size:14px;padding:3px 10px">${x.s.tier}</span>
+        <div class="n">$${x.s.score.toFixed(0)}</div><div class="l">worth working</div>
+      </div>
+    </div>
+    ${x.outcome ? `<div class="bsec"><div class="doit" style="background:${
+        x.outcome.won ? 'var(--a)' : x.outcome.won === null ? '#4a5260' : '#4a5260'}">
+      <div class="t">${x.outcome.won ? '✓ This one was won' :
+        x.outcome.won === null ? 'Converted — outcome unresolved' : 'Did not close — ' + esc(x.outcome.label)}</div>
+      <div class="d">${esc(x.outcome.detail || '')}${x.outcome.won !== null
+        ? ` · the model put it in tier ${x.s.tier} at $${x.s.score.toFixed(0)}` : ''}</div>
+    </div></div>` : `<div class="bsec"><div class="doit">
+      <div class="t">${a.t}</div><div class="d">${a.d}</div>
+    </div></div>`}
+    ${x.outcome ? `<div class="bsec"><h3>What the tool would have said</h3>
+      <div class="why"><strong>${a.t}</strong> — ${a.d}</div></div>` : ''}
+    ${sectionWhoTheyAre(l, x.s)}
+    ${sectionActions(l)}
+    ${sectionExpect(l)}
+    ${sectionWhatWeKnow(l, x.s)}
+    ${sectionWhy(l, x.s)}
+    <div class="bsec noprint"><h3>Honest limits</h3>
+      <div class="why">This ranks leads; it does not promise this one closes. About
+      ${(100 - x.s.p*100).toFixed(0)}% of leads scored like this will not. The model has never seen a
+      call — it knows only the three intake fields above, so two businesses with identical form data
+      score identically even if one is far better. ${budget ? `If you have spent ${budget} touches
+      without a connect, the evidence says stop and move down the queue.` : ''}</div></div>`;
+}
+
+function honest(){
+  return `<p style="margin-top:0">This ranks leads. It does not promise any single one will close.</p>
+  <div class="kv"><div class="row"><div class="k">Tested on</div><div class="v">${VAL.val_window} leads the model never saw</div><div class="n"></div></div>
+  <div class="row"><div class="k">Top 10% of the queue</div><div class="v"><strong>${VAL.lift_top10}×</strong> the average win rate</div><div class="n"></div></div>
+  <div class="row"><div class="k">Top 20%</div><div class="v"><strong>${VAL.lift_top20}×</strong></div><div class="n"></div></div>
+  <div class="row"><div class="k">The CRM score it replaces</div><div class="v">${VAL.baseline_lift20}× at the same cut</div><div class="n"></div></div>
+  <div class="row"><div class="k">AUC</div><div class="v">${VAL.auc} vs ${VAL.baseline_auc} for the legacy score</div><div class="n"></div></div></div>
+  <p style="margin-bottom:0"><strong>Where it breaks.</strong> It knows three intake fields, so two
+  leads with identical form data get an identical score. It has never seen a call. It was trained on
+  Oct 2025–Feb 2026, when the marketing mix was different — if the mix keeps moving, retrain before
+  trusting the tails.</p>`;
+}
+
+/* ---------- loading ---------- */
+function ingest(files){
+  const errs = [];
+  let leadRows = null;
+  const hist = {acts:{}, calls:{}, objs:{}}, opps = {};
+  const found = [];
+  for(const {name, text} of files){
+    let rows;
+    try { rows = toObjects(text); }
+    catch(e){ errs.push(esc(name)+': '+e.message); continue; }
+    const kind = classify(rows);
+    found.push(kind+' ('+rows.length.toLocaleString()+' rows)');
+    if(kind === 'leads'){
+      leadRows = leadRows ? leadRows.concat(rows) : rows;
+    } else if(kind === 'activities'){
+      rows.forEach(r => { const k = r.who_id || r.lead_id; if(!k) return;
+                          (hist.acts[k] = hist.acts[k] || []).push(r); });
+    } else if(kind === 'calls'){
+      rows.forEach(r => { if(!r.lead_id) return;
+                          (hist.calls[r.lead_id] = hist.calls[r.lead_id] || []).push(r); });
+    } else if(kind === 'objections'){
+      rows.forEach(r => { if(!r.lead_id) return;
+                          (hist.objs[r.lead_id] = hist.objs[r.lead_id] || []).push(r); });
+    } else if(kind === 'opps'){
+      rows.forEach(r => { if(r.opp_id) opps[r.opp_id] = r; });
+    } else if(kind !== 'empty'){
+      errs.push(esc(name)+': could not tell what this file is — no <code>lead_id</code>, '
+              + '<code>who_id</code> or <code>call_ref</code> column.');
+    }
+  }
+  if(!leadRows || !leadRows.length){
+    showErrs(errs.concat(['No leads file found. One file must have a <code>lead_id</code> column '
+                        + 'and intake fields.']));
+    return;
+  }
+  // Post-conversion activity hangs off a contact id, not the lead id. If the leads file
+  // carries converted_contact_id, follow it -- otherwise that history is simply invisible.
+  let remapped = 0;
+  leadRows.forEach(l => {
+    const c = l.converted_contact_id;
+    if(c && hist.acts[c]){
+      hist.acts[l.lead_id] = (hist.acts[l.lead_id]||[]).concat(hist.acts[c]);
+      remapped++;
+    }
+  });
+
+  const head = Object.keys(leadRows[0]);
+  const used = M.features.categorical.concat(M.features.numeric);
+  const missing = used.filter(c => !head.includes(c));
+  if(!head.includes('lead_id'))
+    errs.push('No <code>lead_id</code> column — rows are numbered instead, so you cannot match '
+            + 'these back to the CRM.');
+  if(missing.length)
+    errs.push('Missing '+missing.map(m=>'<code>'+m+'</code>').join(', ')+' — those leads are scored '
+            + 'as unknown on that field, which pulls them toward the middle of the queue.');
+
+  const seen = new Set(); let dupes = 0;
+  const leads = leadRows.map((lead,i) => {
+    if(!lead.lead_id) lead.lead_id = 'row '+(i+2);
+    if(seen.has(lead.lead_id)) dupes++;
+    seen.add(lead.lead_id);
+    const s = contributions(lead); s.tier = tierOf(s.score);
+    return {lead, s, blurb:blurbFor(lead)};
+  });
+  if(dupes) errs.push(dupes+' duplicate <code>lead_id</code>'+(dupes>1?'s':'')+' — scored anyway, '
+                    + 'but dedupe before routing or someone gets called twice.');
+  leads.sort((a,b) => b.s.score - a.s.score);
+
+  const withHist = leads.filter(x => hist.acts[x.lead.lead_id] || hist.calls[x.lead.lead_id]).length;
+  STATE = {leads, byId:{}, opps, hist, view:'queue', tab:'queue', sel:null};
+  leads.forEach(x => STATE.byId[x.lead.lead_id] = x);
+  leads.forEach(x => x.outcome = outcomeOf(x.lead));
+  const nHist = leads.filter(x => x.outcome).length;
+  document.getElementById('tabs').classList.remove('hide');
+  const ht = document.getElementById('histTab');
+  // Deliberately NOT disabled when empty: a greyed-out tab reads as broken, and the
+  // interesting thing here is WHY it is empty and what to drop to fill it.
+  ht.textContent = nHist ? `Historical (${nHist.toLocaleString()})` : 'Historical';
+  showErrs(errs);
+  document.getElementById('empty').classList.add('hide');
+  document.getElementById('src').textContent =
+    leads.length.toLocaleString()+' leads · '+found.join(' + ')
+    + (Object.keys(opps).length ? ' · '+Object.keys(opps).length.toLocaleString()+' opps' : '')
+    + (withHist ? ' · '+withHist.toLocaleString()+' with history' : '')
+    + (remapped ? ' · '+remapped+' contact-id timelines merged' : '');
+  backToQueue();
+}
+
+function showErrs(list){
+  document.getElementById('errs').innerHTML = list.length
+    ? `<div class="err"><strong>Heads up — scored anyway, but read this:</strong>
+       <ul>${list.map(e=>'<li>'+e+'</li>').join('')}</ul></div>` : '';
+}
+
+const fileEl = document.getElementById('file');
+document.getElementById('pick').onclick = () => fileEl.click();
+document.getElementById('back').onclick = backToQueue;
+
+const loadHistBtn = document.getElementById('loadHist');
+if(loadHistBtn) loadHistBtn.onclick = async () => {
+  const note = document.getElementById('loadHistNote');
+  loadHistBtn.disabled = true; note.textContent = 'loading…';
+  try{
+    const b = await fetch('/api/historical').then(r => {
+      if(!r.ok) throw new Error(r.status === 401 ? 'not signed in' : 'server said ' + r.status);
+      return r.json();
+    });
+    // Same path a dropped file takes -- ingest() re-derives everything, so the served
+    // bundle and four dragged CSVs cannot diverge.
+    const csv = rows => {
+      if(!rows.length) return '';
+      const h = Object.keys(rows[0]);
+      const q = v => /[",\n]/.test(v ?? '') ? '"' + String(v).replace(/"/g,'""') + '"' : (v ?? '');
+      return h.join(',') + '\n' + rows.map(r => h.map(k => q(r[k])).join(',')).join('\n');
+    };
+    ingest([{name:'leads_history.csv', text:csv(b.leads)},
+            {name:'opps.csv',          text:csv(b.opps)},
+            {name:'call_extractions.csv', text:csv(b.calls)},
+            {name:'call_objections.csv',  text:csv(b.objections)}]);
+    showTab('hist');
+  }catch(e){
+    note.textContent = 'could not load: ' + e.message;
+    loadHistBtn.disabled = false;
+  }
+};
+document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
+  if(!b.disabled) showTab(b.dataset.tab); });
+document.getElementById('print').onclick = () => window.print();
+document.getElementById('cap').oninput = () => { if(STATE.leads.length && STATE.view==='queue') renderQueue(); };
+
+function readFiles(fileList){
+  const fs = Array.from(fileList).slice(0, 8);
+  const big = fs.find(f => f.size > 60e6);
+  if(big) return showErrs([`${esc(big.name)} is ${(big.size/1e6).toFixed(0)} MB. Filter it to one `
+                         + `rep's leads first.`]);
+  let done = 0; const out = [];
+  fs.forEach((f, i) => {
+    const r = new FileReader();
+    r.onload = () => { out[i] = {name:f.name, text:r.result}; if(++done === fs.length) ingest(out); };
+    r.onerror = () => { out[i] = {name:f.name, text:''}; if(++done === fs.length) ingest(out); };
+    r.readAsText(f);
+  });
+}
+fileEl.onchange = e => { if(e.target.files.length) readFiles(e.target.files); };
+const drop = document.getElementById('drop');
+['dragenter','dragover'].forEach(t => drop.addEventListener(t, e => {
+  e.preventDefault(); drop.classList.add('over'); }));
+['dragleave','drop'].forEach(t => drop.addEventListener(t, e => {
+  e.preventDefault(); drop.classList.remove('over'); }));
+drop.addEventListener('drop', e => { if(e.dataTransfer.files.length) readFiles(e.dataTransfer.files); });
+drop.onclick = () => fileEl.click();
+document.getElementById('demo').onclick = () =>
+  ingest([{name:'sample leads', text:SAMPLE}, {name:'sample activity', text:SAMPLE_ACTS},
+          {name:'sample calls', text:SAMPLE_CALLS}, {name:'sample objections', text:SAMPLE_OBJS}]);
+
+/* Sample: two leads carry a history so the brief's "actions taken" path is demonstrable,
+   the rest are cold, which is the normal state at the routing moment. */
+const SAMPLE = `lead_id,created_at,channel,campaign_ref,utm_medium,contractor_annual_revenue,icp_category,state,zip3,time_zone,enrichment_status,legacy_score
+S0001,2026-06-01 09:12:00,google,cmp_04,brand,"$1,000,000 to $4,999,999",Ideal,PA,150,Eastern,Not Enriched,81.2
+S0002,2026-06-01 09:31:00,meta,cmp_10,prospecting,"Less than $250,000",Low Value,NY,100,Eastern,Not Enriched,22.4
+S0003,2026-06-01 10:02:00,google,cmp_43,rd,"$5,000,000 to $9,999,999",High Value,NC,270,Eastern,Not Enriched,74.9
+S0004,2026-06-01 10:44:00,meta,cmp_29,prospecting,"$250,000 to $499,999",Low Value,MI,480,Eastern,Not Enriched,38.1
+S0005,2026-06-01 11:15:00,bing,cmp_04,brand,"$500,000 to $999,999",Ideal,WI,530,Central,Not Enriched,66.0
+S0006,2026-06-01 11:50:00,google,cmp_99_new,brand,"$10,000,000 to $24,999,999",High Value,TX,750,Central,Not Enriched,
+S0007,2026-06-01 12:20:00,meta,cmp_10,retargeting,,Unknown,,,Notify Admin,Not Enriched,15.0
+S0008,2026-06-01 13:05:00,google,cmp_35,rd,Personal Loan Inquiry,Low Value,CA,900,Pacific,Not Enriched,41.7`;
+const SAMPLE_ACTS = `activity_id,who_id,owner_id,created_at,type,subtype,call_disposition,call_duration_seconds,status
+A1,S0001,rep_04,2026-06-01 09:40:00,Call,Call,No LVM,0,
+A2,S0001,rep_04,2026-06-01 14:05:00,Call,Call,Connect - DM,412,
+A3,S0001,rep_04,2026-06-02 10:00:00,Email,Email,,,
+A4,S0001,rep_04,2026-06-04 11:20:00,Call,Call,Connect - DM,690,
+A5,S0003,rep_11,2026-06-01 10:30:00,Call,Call,LVM,0,
+A6,S0003,rep_11,2026-06-03 09:15:00,Call,Call,Connect - non-DM,120,`;
+const SAMPLE_CALLS = `call_ref,lead_id,call_at,call_type,reached,outcome,financing,hearth_pay,harper_ai
+c1,S0001,2026-06-01 14:05:00,discovery,decision_maker,advanced,pitched,mentioned,not_mentioned
+c2,S0001,2026-06-04 11:20:00,demo,decision_maker,held,pitched,mentioned,mentioned
+c3,S0003,2026-06-03 09:15:00,gatekeeper,gatekeeper_only,no_contact,not_mentioned,not_mentioned,not_mentioned`;
+const SAMPLE_OBJS = `call_ref,lead_id,call_at,type,product,rebuttal_attempted,rebuttal_type,resolved
+c2,S0001,2026-06-04 11:20:00,timing,general,True,defer_followup,True
+c2,S0001,2026-06-04 11:20:00,price,financing,True,value_case,False`;
+
+console.log('%cLead Queue self-test','font-weight:bold');
+console.log('model loaded:', M.categorical ? 'ok' : 'FAILED',
+            '| categorical features:', Object.keys(M.categorical).length,
+            '| parity vectors:', Object.keys(DATA.parity).length);
+window.__parityCheck = rows => {
+  let worst = 0, n = 0;
+  rows.forEach(r => { const e = DATA.parity[r.lead_id]; if(e === undefined) return;
+                      worst = Math.max(worst, Math.abs(contributions(r).score - e)); n++; });
+  console.log(`parity: ${n} rows, max abs diff ${worst.toExponential(2)}`);
+  return worst;
+};
+</script>
+</body>
+</html>

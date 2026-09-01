@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% set nav='speed' %}{% block title %}Speed to lead{% endblock %}
+{% block body %}
+<h1>Does responding faster predict a higher win rate?</h1>
+<p class="sub">Yes — but about a third of it is reps calling the good leads first, and the real cliff is at three days, where leads weren't answered slowly so much as never worked.</p>
+
+<div class="grid g4">
+  <div class="stat"><b>{{ '%.1f'|format(s.headline.fast_win) }}%</b><span>win rate, first touch ≤1h</span></div>
+  <div class="stat"><b>{{ '%.1f'|format(s.headline.slow_win) }}%</b><span>win rate, first touch &gt;1h</span></div>
+  <div class="stat"><b>{{ '%.1f'|format(s.buckets[0].adj) }}%</b><span>the ≤5m bucket once lead quality is held equal</span></div>
+  <div class="stat"><b>{{ '%.1f'|format(s.buckets[-1].win) }}%</b><span>&gt;3 days — half the touches of every other bucket</span></div>
+</div>
+
+<div class="panel">
+{{ charts.hbar(s.buckets, value_key='win', label_key='bucket') | safe }}
+<div class="wrap"><table><thead><tr><th>Time to first touch</th><th class="num">n</th><th class="num">Win rate</th><th class="num">Quality-adjusted</th><th class="num">Touches after</th></tr></thead><tbody>
+{% for b in s.buckets %}<tr><td><b>{{ b.bucket }}</b></td><td class="num">{{ '{:,}'.format(b.n) }}</td>
+  <td class="num"><b>{{ '%.1f'|format(b.win) }}%</b></td>
+  <td class="num">{{ '%.1f'|format(b.adj) if b.adj else '—' }}%</td>
+  <td class="num muted">{{ '%.1f'|format(b.touches) }}</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="muted">"Quality-adjusted" reweights each bucket to the same legacy-score mix, so it compares like with like. Leads answered in five minutes average a legacy score of 47.8; leads left three days average 33.6. Reps triage, and the raw gradient is partly that. The {{ '{:,}'.format(s.n_untouched) }} leads never touched are excluded — they win 0% by construction.</p>
+</div>
+
+<div class="callout">
+<p><b>Would I act on it?</b> Enforce a same-business-day first touch — cheap, and the evidence supports it. Don't buy a speed-to-lead product on the raw {{ '%.1f'|format(s.headline.fast_win) }}% vs {{ '%.1f'|format(s.headline.slow_win) }}%: a lead that lands at 3am waits 17× longer for reasons unrelated to its quality and wins only 3 points less.</p>
+<p>The &gt;3-day bucket is the real finding. Those leads got 13 touches against ~27 everywhere else, and they're identifiable at intake — 83% Low Value, bottom-quintile legacy score. They didn't need to be called faster; they needed to be tiered down on day one. Routing fixes that. A stopwatch doesn't.</p>
+</div>
+{% endblock %}

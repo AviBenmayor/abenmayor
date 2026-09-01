@@ -1,0 +1,61 @@
+{% extends "base.html" %}{% set nav='queue' %}{% block title %}{{ r.lead_id }}{% endblock %}
+{% block body %}
+<p class="muted"><a href="/">← queue</a></p>
+<h1><span class="tier {{ TIER[r.tier].cls }}">{{ r.tier }}</span> {{ r.lead_id }} — {{ play.action }}</h1>
+<p class="sub">Rank {{ '{:,}'.format(rank) }} of {{ '{:,}'.format(n) }} · arrived {{ r.created_at.strftime('%a %d %b %Y, %H:%M') }} ({{ r.time_zone }})</p>
+
+<div class="grid g2">
+  <div class="panel">
+    <h3>Do this</h3>
+    <p style="font-size:16px;margin-top:2px"><b>{{ TIER[r.tier].sla }}.</b></p>
+    <p>{{ play.play }}</p>
+    <p class="muted">Budget: {{ r.planned_touches }} touches. If it is not connected after that, it goes back to nurture rather than absorbing more of the day.</p>
+  </div>
+  <div class="panel">
+    <h3>The number</h3>
+    <p><span class="big">{{ '%.0f'|format(r.p_win*100) }}%</span> <span class="muted">chance this lead wins</span></p>
+    <p class="muted">Book average is {{ '%.1f'|format(a.book_rate) }}%. The score, <b>${{ '{:,.0f}'.format(r.score) }}</b>, is that
+    probability times the typical won deal for this revenue band — expected dollars, which is what the queue ranks on
+    and what <span class="mono">submission.csv</span> contains.</p>
+  </div>
+</div>
+
+<h2>Why — what actually happened to leads like this one</h2>
+<div class="panel">
+{% for w in r.why %}
+  <div class="evi">
+    <div><b>{{ w.field }}</b> <span class="muted">{{ w.value }}</span></div>
+    <div style="text-align:right;white-space:nowrap">
+      {% if w.rate is none %}<span class="muted">{{ w.note }}</span>
+      {% else %}<span class="{{ w.dir }}"><b>{{ '%.1f'|format(w.rate) }}%</b> won</span>
+        <span class="muted mono">{{ '%.2f'|format(w.lift) }}× book · n={{ '{:,}'.format(w.n) }}</span>{% endif %}
+    </div>
+  </div>
+{% endfor %}
+<p class="muted" style="margin-top:12px">Each row is the observed win rate for that segment across {{ '{:,}'.format(a.funnel.leads) }} leads in Oct–Feb. These are the facts, not the model's opinion.</p>
+<details>
+  <summary>What the model itself weighted (conditional contributions)</summary>
+  <p class="muted">The score is a regularised logistic regression, so its coefficients are <em>conditional</em>: each one is the effect of that field <em>after</em> the others are accounted for. That is why a revenue band can carry a negative coefficient — the campaign and ICP dummies have already taken the credit. Useful for debugging the model, misleading as a reason to give a rep, which is why the panel above uses observed segment rates instead.</p>
+  <table><thead><tr><th>Field</th><th>Value</th><th class="num">Log-odds</th></tr></thead><tbody>
+  {% for m in r.model_why %}<tr><td>{{ m.field }}</td><td class="muted">{{ m.value }}</td>
+    <td class="num mono {{ m.dir }}">{{ '%+.2f'|format(m.effect) }}</td></tr>{% endfor %}
+  </tbody></table>
+</details>
+</div>
+
+<h2>What you will probably hear</h2>
+<div class="panel">
+<p class="muted">Objections raised on calls to <b>{{ r.icp_category }}</b> leads in the training window, deduplicated. “Resolved” is how often the objection was actually put to bed, not how often someone tried.</p>
+<table><thead><tr><th>Objection</th><th class="num">Share of objections</th><th class="num">Rebuttal attempted</th><th class="num">Actually resolved</th></tr></thead><tbody>
+{% for o in obj %}<tr><td><b>{{ o.type }}</b></td><td class="num">{{ '%.0f'|format(o.share) }}%</td>
+  <td class="num muted">{{ '%.0f'|format(o.attempted) }}%</td>
+  <td class="num {{ 'up' if o.resolved > 30 else 'down' }}">{{ '%.0f'|format(o.resolved) }}%</td></tr>{% endfor %}
+</tbody></table>
+<p class="muted" style="margin-top:10px">Reps attempt a rebuttal on ~76% of objections and resolve ~27%. The gap is the coaching opportunity, and it is bigger than anything a lead score can buy.</p>
+</div>
+
+<h2>What this does not know</h2>
+<div class="panel">
+<p class="muted">Twelve intake columns exist at the moment a lead lands. The score reads five of them — revenue band, ICP, campaign, time zone and the legacy score — because dropping <span class="mono">channel</span>, <span class="mono">utm_medium</span> and <span class="mono">state</span> <em>improved</em> out-of-time AUC, and those are the fields that drift hardest between windows. <span class="mono">enrichment_status</span> is dead in both windows and <span class="mono">zip3</span> is too sparse to fit. The score cannot see anything a human learned on a call, because none of the {{ '{:,}'.format(cap.leads) }} scored leads have call data. It does not know whether this contractor is real, whether the number connects, or whether they already bought. Treat it as where to spend the next hour, not as a verdict — and if you work a C or a D and it converts, that is a data point I want, not a violation.</p>
+</div>
+{% endblock %}

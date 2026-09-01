@@ -1,0 +1,61 @@
+{% extends "base.html" %}{% set nav='queue' %}{% block title %}Queue{% endblock %}
+{% block body %}
+<h1>Work queue</h1>
+<p class="sub">Ranked by expected dollars — P(win) × the typical won deal for that revenue band — highest first. Tier sets how hard you work it, not whether the lead is “good”.</p>
+
+<form class="filters" method="get">
+  <div><label>Day</label>
+    <select name="day" onchange="this.form.submit()">
+      <option value="all" {{ 'selected' if day=='all' }}>All {{ '{:,}'.format(cap.leads) }} leads</option>
+      {% for d in days %}<option value="{{ d.date }}" {{ 'selected' if day==d.date }}>{{ d.date }} — {{ d.n }} leads</option>{% endfor %}
+    </select></div>
+  <div><label>Tier</label>
+    <select name="tier" onchange="this.form.submit()">
+      <option value="">All tiers</option>
+      {% for code,m in TIER.items() %}<option value="{{ code }}" {{ 'selected' if tier==code }}>{{ code }} — {{ m.name }}</option>{% endfor %}
+    </select></div>
+  <div><label>Search</label><input type="text" name="q" value="{{ q }}" placeholder="state, ICP, channel, lead id"></div>
+  <button type="submit">Apply</button>
+  {% if tier or q or day!='' %}<a class="pill" href="/">reset</a>{% endif %}
+</form>
+
+<div class="grid g4">
+  <div class="stat"><b>{{ '{:,}'.format(total) }}</b><span>leads in view</span></div>
+  {% for code,m in TIER.items() %}
+  <div class="stat"><b><span class="tier {{ m.cls }}">{{ code }}</span> {{ counts.get(code,0) }}</b><span>{{ m.name }} — {{ m.sla }}</span></div>
+  {% endfor %}
+</div>
+<p class="muted" style="margin-top:12px">Planned effort for this view: <b>{{ '{:,}'.format(touch_load) }}</b> touches
+ ({{ cap.touches_per_rep_day }} touches per rep per business day × {{ cap.core_reps }} reps is the budget).</p>
+
+<div class="panel wrap" style="padding:0">
+<table>
+<thead><tr>
+  <th>Tier</th><th>Lead</th><th class="num">Score</th><th>ICP</th><th>Contractor revenue</th>
+  <th>Source</th><th>Geo</th><th>Arrived</th><th>Do this</th>
+</tr></thead>
+<tbody>
+{% for r in rows %}
+<tr>
+  <td><span class="tier {{ TIER[r.tier].cls }}">{{ r.tier }}</span></td>
+  <td class="mono"><a href="/lead/{{ r.lead_id }}">{{ r.lead_id }}</a></td>
+  <td class="num"><b>${{ '{:,.0f}'.format(r.score) }}</b><br><span class="muted mono">{{ '%.0f'|format(r.p_win*100) }}% win</span></td>
+  <td>{{ r.icp_category }}</td>
+  <td class="muted">{{ r.contractor_annual_revenue }}</td>
+  <td class="muted">{{ r.channel }} / {{ r.utm_medium }}</td>
+  <td class="muted">{{ r.state }} · {{ r.time_zone }}</td>
+  <td class="muted mono">{{ r.created_at.strftime('%b %d %H:%M') }}</td>
+  <td>{{ TIER[r.tier].sla }}<br><span class="muted">{{ r.planned_touches }} touches planned</span></td>
+</tr>
+{% else %}
+<tr><td colspan="9" class="muted" style="padding:24px">Nothing matches that filter.</td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+
+{% if pages > 1 %}
+<p class="muted">Page {{ page_n }} of {{ pages }} ·
+{% if page_n > 1 %}<a href="?day={{ day }}&tier={{ tier }}&q={{ q }}&p={{ page_n-1 }}">← previous</a>{% endif %}
+{% if page_n < pages %} <a href="?day={{ day }}&tier={{ tier }}&q={{ q }}&p={{ page_n+1 }}">next →</a>{% endif %}</p>
+{% endif %}
+{% endblock %}

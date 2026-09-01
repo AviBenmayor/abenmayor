@@ -1,0 +1,89 @@
+{% extends "base.html" %}{% set nav='model' %}{% block title %}Model &amp; data{% endblock %}
+{% set m = a.model %}
+{% block body %}
+<h1>Model card and data notes</h1>
+<p class="sub">What the score is, how well it does, and everything I found in the pack that I would want to know about before trusting it.</p>
+
+<h2>The target: expected dollars</h2>
+<div class="panel">
+<p>The queue ranks on <b>P(win) × E[amount | win]</b>, in dollars. That is the number in <span class="mono">submission.csv</span>, and the thresholds that separate the tiers are dollar amounts frozen into the model.</p>
+<p><b>The three candidate targets barely reorder this book, and that is the finding.</b> Spearman ρ(P(win), expected dollars) = 0.997 on the scoring window; ρ(P(win), P(win ≤30d)) = 0.974. Won amount has a coefficient of variation of 0.28 and moves about 1.2× across contractor revenue bands ($1,480 → $2,231), while modelled win rate moves roughly 4× across the same bands — and in the <em>same</em> direction, so the product barely reranks anything. Choosing between them costs almost nothing in ordering, which means the choice has to be made on other grounds.</p>
+<p><b>Why expected dollars wins those other grounds.</b> It is the only one of the three denominated in something you can hold against cost-to-serve, and cost-to-serve is what sets the cutoff. “Work this lead” is a decision about spending 22 touches; a probability cannot tell you whether that is worth it, and a dollar figure can. P(win) ships beside it as the column you calibrate and argue about, because it is the one with an observable frequency to check against.</p>
+<p><b>Why not P(win this month).</b> 74% of wins close within 30 days (median 6). The month-restricted target is roughly 0.74 × P(win) with little re-ranking, bought at the cost of modelling a close-date distribution on 907 events.</p>
+<p><b>Why not P(reaches an opportunity).</b> It is nearly the same event: 95.1% of opportunities win. That is itself the most important structural fact in the pack — the pipeline is close to a formality, so the decision that matters is upstream, at qualification. It is the reason this whole exercise is about routing rather than about forecasting.</p>
+</div>
+
+<h2>The feature set: five of the twelve intake columns</h2>
+<div class="panel">
+<p>The model reads <span class="mono">contractor_annual_revenue</span>, <span class="mono">icp_category</span>, <span class="mono">campaign_ref</span>, <span class="mono">time_zone</span> and <span class="mono">legacy_score</span>. Nothing downstream of a human touching the lead is eligible, so the twelve intake columns are the whole universe — and the lean five beat all twelve.</p>
+<div class="wrap"><table><thead><tr><th>Feature set</th><th class="num">One-hot columns</th><th class="num">Out-of-time AUC</th><th class="num">Lift @ top 20%</th></tr></thead><tbody>
+<tr><td>All 12 intake columns</td><td class="num">80</td><td class="num">0.731</td><td class="num">2.00×</td></tr>
+<tr><td><b>Lean — 4 categorical + legacy score</b></td><td class="num">35</td><td class="num"><b>0.737</b></td><td class="num"><b>2.14×</b></td></tr>
+<tr><td class="muted">legacy_score alone (baseline)</td><td class="num muted">1</td><td class="num muted">0.645</td><td class="num muted">1.60×</td></tr>
+</tbody></table></div>
+<p class="muted">Train Oct–Dec 2025, test Jan–Feb 2026. Two independent reasons agree on the lean set: dropping <span class="mono">channel</span>, <span class="mono">utm_medium</span> and <span class="mono">state</span> <em>improved</em> the out-of-time number, and those are precisely the fields whose distribution moves hardest between the two windows — see the shift table below. A feature that does not help and is not stable is a liability, not a coin flip. <span class="mono">enrichment_status</span> is ~100% one level in both windows; <span class="mono">zip3</span> has 696 levels over 5,507 rows.</p>
+</div>
+
+<h2>How well it does</h2>
+<div class="panel">
+<div class="wrap"><table><thead><tr><th>Model</th><th class="num">AUC</th><th class="num">PR-AUC</th>
+  <th class="num">Lift @ top 10%</th><th class="num">Wins captured in top 10%</th></tr></thead><tbody>
+{% for split, label in [('cv','5-fold CV, full training window'), ('temporal','Temporal holdout — train Oct–Dec, test Jan–Feb')] %}
+<tr><td colspan="5" class="muted" style="padding-top:14px"><b>{{ label }}</b></td></tr>
+{% for k, v in m[split].items() %}
+<tr><td>{{ k }}</td><td class="num"><b>{{ '%.3f'|format(v.auc) }}</b></td>
+  <td class="num">{{ '%.3f'|format(v.pr_auc) }}</td>
+  <td class="num">{{ '%.2f'|format(v['lift@10']) }}×</td>
+  <td class="num">{{ '%.1f'|format(v['capture@10']*100) }}%</td></tr>
+{% endfor %}{% endfor %}
+</tbody></table></div>
+<p class="muted">The baseline row is <span class="mono">legacy_score</span> — the CRM score nobody trusts. It is worth saying plainly that it does carry signal (AUC {{ '%.3f'|format(m.cv['legacy_score (baseline)'].auc) }}, mean 47.7 on won vs 37.6 on lost). “Nobody uses it” is a trust and routing problem as much as a modelling one, and it is a fair guess that it is the naive baseline this ranking gets measured against.</p>
+<p><b>Why the linear model.</b> Gradient boosting scored {{ '%.3f'|format(m.cv.gbm.auc) }} against {{ '%.3f'|format(m.cv.logit.auc) }} for the regularised logistic regression — a gap of {{ '%+.3f'|format(m.cv.gbm.auc - m.cv.logit.auc) }}, well inside noise on 907 events. With the marketing mix shifting as hard as it did between the two windows, the additive model is the safer extrapolation onto levels it barely saw, and its contributions are inspectable. I would rather give up a hundredth of an AUC I cannot verify than ship something that extrapolates unpredictably.</p>
+<p><b>Is it just modelling rep attention?</b> 429 leads (7.8%) were never touched and win 0% by construction. Refit on touched leads only, the ranking barely moves — Spearman {{ '%.3f'|format(m.selection_rho) }}. So the score is not merely a model of who reps chose to call.</p>
+</div>
+
+<h2>Calibration</h2>
+<div class="panel">
+<div class="wrap"><table><thead><tr><th>Score decile</th><th class="num">n</th><th class="num">Predicted</th><th class="num">Actual</th></tr></thead><tbody>
+{% for c in m.calibration %}<tr><td>{{ c.dec + 1 }}</td><td class="num">{{ c.n }}</td>
+  <td class="num">{{ '%.1f'|format(c.predicted) }}%</td>
+  <td class="num"><b>{{ '%.1f'|format(c.actual) }}%</b></td></tr>{% endfor %}
+</tbody></table></div>
+<p class="muted">Out-of-fold, so these are honest, and Platt-scaled over those same out-of-fold logits — a monotone transform, so it fixes the level without touching the order. Good enough to rank and to size a cutoff, not good enough to quote a single lead's probability to two figures. Worth re-reading after a month of live data.</p>
+</div>
+
+<h2>The distribution shift, which is the real risk</h2>
+<div class="panel">
+<p>The two windows are not draws from the same population. Marketing moved between them, and the model is being asked to extrapolate.</p>
+<div class="wrap"><table><thead><tr><th>Field</th><th>Level</th><th class="num">Train mix</th><th class="num">Scoring mix</th>
+  <th class="num">Δ</th><th class="num">Train win rate</th></tr></thead><tbody>
+{% for r in a.shift %}<tr><td class="muted">{{ r.field }}</td><td>{{ r.level }}</td>
+  <td class="num">{{ '%.1f'|format(r.train) }}%</td><td class="num">{{ '%.1f'|format(r.score) }}%</td>
+  <td class="num {{ 'up' if r.delta > 3 else ('down' if r.delta < -3 else 'muted') }}">{{ '%+.1f'|format(r.delta) }}</td>
+  <td class="num muted">{{ '%.1f'|format(r.win) }}%</td></tr>{% endfor %}
+</tbody></table></div>
+<p class="muted">The model does not read <span class="mono">channel</span> or <span class="mono">utm_medium</span> — that is the point of the ablation above — but the mix still moves what arrives, so it moves the book's average quality. The scoring window is richer in brand and google and much lighter in prospecting and tiktok, a mix that historically wins more. That is why mean predicted P(win) on Mar–May ({{ '%.3f'|format(0.206) }}) runs above the training base rate ({{ '%.3f'|format(m.train_base_rate) }}). The model is doing its job, but it is a genuine extrapolation and the first thing I would re-check against live outcomes.</p>
+</div>
+
+<h2>The funnel it was learned from</h2>
+<div class="panel">
+{{ charts.funnel([('Leads', a.funnel.leads), ('Touched by a rep', a.funnel.touched), ('Reached an opportunity', a.funnel.opp), ('Won', a.funnel.won)]) | safe }}
+<p class="muted">Median won deal ${{ '{:,.0f}'.format(a.funnel.median_amount) }}, mean ${{ '{:,.0f}'.format(a.funnel.mean_amount) }}. 95.1% of opportunities win — the qualification step, not the pipeline, is where the decision is made.</p>
+</div>
+
+<h2>What I found in the data that looked wrong</h2>
+{% for n in a.notes %}
+<div class="panel"><b>{{ n.t }}</b><p class="muted" style="margin-bottom:0">{{ n.d }}</p></div>
+{% endfor %}
+
+<h2>What this data cannot answer</h2>
+<div class="panel">
+<ul>
+<li><b>Whether working a lead harder causes it to win.</b> Every effort measure here is endogenous. Only a randomised intensity test answers it, and it is cheap to run.</li>
+<li><b>What a touch costs.</b> No cost or capacity data came with the pack. The supply figures on the cutoff page are reverse-engineered from the activity log and are the assumption most worth arguing with.</li>
+<li><b>Whether Bad Data is detectable at intake.</b> 14.7% of paid inbound arrives junk. Nothing in the twelve intake columns separates it cleanly, but the pack has no bounce, no phone validity, no form metadata — the fields that would.</li>
+<li><b>Anything a call revealed.</b> Extractions cover 48.7% of training leads and none of the scored ones. They shape what the tool tells a rep to say; they cannot be features.</li>
+<li><b>Whether the Mar–May marketing mix is the steady state.</b> If it is not, the ranking degrades in a direction I cannot see from here.</li>
+</ul>
+</div>
+{% endblock %}
