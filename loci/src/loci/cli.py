@@ -147,6 +147,10 @@ def controls(source: str = typer.Option("pluto", help="Control source: pluto."))
         from loci.grid.pluto import build_pluto_controls
         n = build_pluto_controls(con)
         console.print(f"[green]ok[/] PLUTO controls for {n} hexes")
+    elif source == "mta":
+        from loci.grid.mta import build_mta_controls
+        n = build_mta_controls(con)
+        console.print(f"[green]ok[/] MTA transit controls for {n} hexes")
     else:
         raise typer.BadParameter(f"unknown control source '{source}'")
 
