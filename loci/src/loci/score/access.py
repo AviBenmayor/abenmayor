@@ -25,7 +25,8 @@ from loci.score.walkgraph import OUT as GRAPH_PATH
 
 THRESHOLDS = {5: 400.0, 10: 800.0, 15: 1200.0}  # walk-minutes -> metres @ 80 m/min
 MAXCUT = max(THRESHOLDS.values())
-BATCH = 250
+BATCH = 100
+MIN_COMPONENT = 100  # drop tiny isolated graph fragments (park loops, plaza stubs)
 
 
 def _to_csr(G):
@@ -48,10 +49,22 @@ def _to_csr(G):
     return A, idx
 
 
-def compute_access(G, hexes, pois):
+def compute_access(G, hexes, pois, min_component: int = MIN_COMPONENT):
     """hexes: list[(h3, lon, lat)]; pois: list[(category, lon, lat)].
     Returns rows of (h3, category, threshold_min, n_reachable, served_share)
-    for n_reachable > 0 (missing (hex,cat,thr) means 0 — the DNCI treats it so)."""
+    for n_reachable > 0 (missing (hex,cat,thr) means 0 — the DNCI treats it so).
+
+    Drops graph components smaller than MIN_COMPONENT first: the big components
+    are the real separated landmasses (Manhattan, Staten Island, the Rockaways)
+    and must stay split, but the thousands of tiny fragments would make a hex or
+    POI snapped onto one reach nothing — a false zero, i.e. a fake retail gap."""
+    import networkx as nx
+    keep = set()
+    for comp in nx.weakly_connected_components(G):
+        if len(comp) >= min_component:
+            keep |= comp
+    if len(keep) < G.number_of_nodes():
+        G = G.subgraph(keep).copy()
     A, idx = _to_csr(G)
 
     hlon = [h[1] for h in hexes]; hlat = [h[2] for h in hexes]

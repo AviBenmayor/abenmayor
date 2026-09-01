@@ -20,7 +20,7 @@ def test_counts_and_threshold_boundaries():
     hexes = [("h", G.nodes[0]["x"], 40.75)]                 # hex at node 0
     pois = [("grocery", G.nodes[2]["x"], 40.75),            # 200 m
             ("grocery", G.nodes[5]["x"], 40.75)]            # 500 m
-    rows = {(c, t): n for _, c, t, n, _ in compute_access(G, hexes, pois)}
+    rows = {(c, t): n for _, c, t, n, _ in compute_access(G, hexes, pois, min_component=1)}
     # 5 min = 400 m: only the 200 m grocery -> 1
     assert rows[("grocery", 5)] == 1
     # 10 min = 800 m and 15 min = 1200 m: both -> 2
@@ -32,7 +32,7 @@ def test_absent_category_not_emitted():
     G = _line_graph()
     hexes = [("h", G.nodes[0]["x"], 40.75)]
     pois = [("pharmacy", G.nodes[11]["x"], 40.75)]          # 1100 m -> only 15 min
-    rows = {(c, t): n for _, c, t, n, _ in compute_access(G, hexes, pois)}
+    rows = {(c, t): n for _, c, t, n, _ in compute_access(G, hexes, pois, min_component=1)}
     assert ("pharmacy", 5) not in rows                      # 1100 m > 400
     assert ("pharmacy", 10) not in rows                     # 1100 m > 800
     assert rows[("pharmacy", 15)] == 1                      # 1100 m <= 1200

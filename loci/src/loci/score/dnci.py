@@ -42,7 +42,7 @@ def dnci_from_counts(counts: dict[str, int]) -> float:
     logsum = 0.0
     for slug, w in W.items():
         s = category_score(slug, counts.get(slug, 0))
-        logsum += w * math.log(s + EPS)
+        logsum += w * math.log(max(s, EPS))
     return math.exp(logsum)
 
 
