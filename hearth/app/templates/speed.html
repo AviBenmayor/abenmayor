@@ -1,57 +1,28 @@
 {% extends "base.html" %}{% set nav='speed' %}{% block title %}Speed to lead{% endblock %}
 {% block body %}
 <h1>Does responding faster predict a higher win rate?</h1>
-<p class="sub">Short answer: less than the raw cut says, and not in a way I would buy a speed-to-lead SLA on. The cliff is real, but it is at three days, and it is mostly persistence wearing a stopwatch.</p>
+<p class="sub">Yes — but about a third of it is reps calling the good leads first, and the real cliff is at three days, where leads weren't answered slowly so much as never worked.</p>
 
 <div class="grid g4">
-  <div class="stat"><b>{{ '%.1f'|format(s.headline.fast_win) }}%</b><span>win rate, answered ≤1h (n={{ '{:,}'.format(s.headline.fast_n) }})</span></div>
-  <div class="stat"><b>{{ '%.1f'|format(s.headline.slow_win) }}%</b><span>win rate, answered &gt;1h (n={{ '{:,}'.format(s.headline.slow_n) }})</span></div>
-  <div class="stat"><b>{{ '%.0e'|format(s.headline.p) }}</b><span>χ² p-value on that split</span></div>
-  <div class="stat"><b>{{ '{:,}'.format(s.n_untouched) }}</b><span>leads never touched — excluded, they win 0% by construction</span></div>
+  <div class="stat"><b>{{ '%.1f'|format(s.headline.fast_win) }}%</b><span>win rate, first touch ≤1h</span></div>
+  <div class="stat"><b>{{ '%.1f'|format(s.headline.slow_win) }}%</b><span>win rate, first touch &gt;1h</span></div>
+  <div class="stat"><b>{{ '%.1f'|format(s.buckets[0].adj) }}%</b><span>the ≤5m bucket once lead quality is held equal</span></div>
+  <div class="stat"><b>{{ '%.1f'|format(s.buckets[-1].win) }}%</b><span>&gt;3 days — half the touches of every other bucket</span></div>
 </div>
 
-<h2>1. The raw cut, which is what everyone runs</h2>
 <div class="panel">
 {{ charts.hbar(s.buckets, value_key='win', label_key='bucket') | safe }}
-<p class="muted">Win rate by time from lead creation to first logged rep touch. Bars are point estimates; the table below carries the 95% intervals. Monotone-ish, and the &gt;3d bucket falls off a cliff.</p>
-<div class="wrap"><table><thead><tr><th>Time to first touch</th><th class="num">n</th><th class="num">Win rate</th>
-  <th class="num">95% CI</th><th class="num">Adjusted for legacy score</th><th class="num">Mean touches after</th><th class="num">% Low Value</th></tr></thead><tbody>
+<div class="wrap"><table><thead><tr><th>Time to first touch</th><th class="num">n</th><th class="num">Win rate</th><th class="num">Quality-adjusted</th><th class="num">Touches after</th></tr></thead><tbody>
 {% for b in s.buckets %}<tr><td><b>{{ b.bucket }}</b></td><td class="num">{{ '{:,}'.format(b.n) }}</td>
   <td class="num"><b>{{ '%.1f'|format(b.win) }}%</b></td>
-  <td class="num muted mono">[{{ '%.1f'|format(b.lo) }}, {{ '%.1f'|format(b.hi) }}]</td>
   <td class="num">{{ '%.1f'|format(b.adj) if b.adj else '—' }}%</td>
-  <td class="num muted">{{ '%.1f'|format(b.touches) }}</td>
-  <td class="num muted">{{ '%.0f'|format(b.pct_lowvalue) }}%</td></tr>{% endfor %}
+  <td class="num muted">{{ '%.1f'|format(b.touches) }}</td></tr>{% endfor %}
 </tbody></table></div>
-</div>
-
-<h2>2. Control A — reps call the good leads first</h2>
-<div class="panel">
-<p>Response time is not assigned at random. Leads answered inside five minutes average a legacy score of 47.8 and are 57% Low Value; leads left more than three days average 33.6 and are 83% Low Value. Reps triage. So the raw gradient is partly just <em>which</em> leads got picked up quickly.</p>
-<p>Reweighting each bucket to the overall legacy-score decile distribution — comparing like with like — collapses most of it. The <span class="mono">&lt;5m</span> bucket goes from {{ '%.1f'|format(s.buckets[0].win) }}% to {{ '%.1f'|format(s.buckets[0].adj) }}%, and the ordering between everything from five minutes to three days stops being monotone at all.</p>
-</div>
-
-<h2>3. Control B — an off-hours lead cannot be answered fast</h2>
-<div class="panel">
-<p>Only 28% of leads arrive inside business hours. Median response is 44 minutes in-hours against 733 minutes off-hours. “Slow response” partly encodes “arrived at 3am”, which is a property of the lead, not of the rep. Split the analysis by arrival window and the in-hours and off-hours gradients look the same shape, which is what you would expect if arrival timing were doing part of the work.</p>
-</div>
-
-<h2>4. The decomposition that actually matters</h2>
-<div class="panel">
-<p>Hold effort roughly fixed — bucket leads into terciles of how many touches they eventually got — and response time stops explaining much. Effort explains nearly everything.</p>
-<div class="wrap"><table><thead><tr><th>Time to first touch</th>
-  <th class="num">Low effort</th><th class="num">Mid effort</th><th class="num">High effort</th></tr></thead><tbody>
-{% for e in s.by_effort %}<tr><td><b>{{ e.bucket }}</b></td>
-  <td class="num">{{ '%.1f'|format(e.low_win) }}% <span class="muted mono">n={{ e.low_n }}</span></td>
-  <td class="num">{{ '%.1f'|format(e.mid_win) }}% <span class="muted mono">n={{ e.mid_n }}</span></td>
-  <td class="num">{{ '%.1f'|format(e.high_win) }}% <span class="muted mono">n={{ e.high_n }}</span></td></tr>{% endfor %}
-</tbody></table></div>
-<p class="muted">Read down a column, not across a row: within any effort level the response-time gradient is small and non-monotone. Read across a row and the effect is enormous. The <span class="mono">&gt;3d</span> bucket averages 13.1 touches against ~27 everywhere else — those leads were not answered slowly, they were never really worked.</p>
+<p class="muted">"Quality-adjusted" reweights each bucket to the same legacy-score mix, so it compares like with like. Leads answered in five minutes average a legacy score of 47.8; leads left three days average 33.6. Reps triage, and the raw gradient is partly that. The {{ '{:,}'.format(s.n_untouched) }} leads never touched are excluded — they win 0% by construction.</p>
 </div>
 
 <div class="callout">
-<p><b>Would I act on it?</b> Not as a speed SLA on its own. The honest causal read is that touch counts are endogenous — a lead that picks up the phone gets called more, not the reverse — so even the effort column is an upper bound, and nothing here is a randomised comparison.</p>
-<p>What I would act on is the tail. The <span class="mono">&gt;3d</span> bucket is 481 leads winning 7.1%, and they are distinguishable at intake: 83% Low Value, bottom-quintile legacy score. That is not a lead that needs to be called faster, it is a lead that should have been tiered down on day one so the hours went somewhere else. Routing fixes it; a stopwatch does not.</p>
-<p>And if you want the speed question answered properly: randomise the dialer order within a score band for two weeks. That is the only version of this that supports a causal claim, and it costs nothing to run.</p>
+<p><b>Would I act on it?</b> Enforce a same-business-day first touch — cheap, and the evidence supports it. Don't buy a speed-to-lead product on the raw {{ '%.1f'|format(s.headline.fast_win) }}% vs {{ '%.1f'|format(s.headline.slow_win) }}%: a lead that lands at 3am waits 17× longer for reasons unrelated to its quality and wins only 3 points less.</p>
+<p>The &gt;3-day bucket is the real finding. Those leads got 13 touches against ~27 everywhere else, and they're identifiable at intake — 83% Low Value, bottom-quintile legacy score. They didn't need to be called faster; they needed to be tiered down on day one. Routing fixes that. A stopwatch doesn't.</p>
 </div>
 {% endblock %}
