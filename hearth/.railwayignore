@@ -1,0 +1,24 @@
+# The confidential pack must never enter the build context.
+data/
+transcripts/
+.venv/
+.git/
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# .gitignore excludes output/ so the derived artifacts never reach the public remote,
+# and Railway's uploader honours .gitignore as well. Re-include the directory here,
+# then allow only the three files the image actually serves. Everything else under
+# output/ -- the full scored CSV, the raw score frames, the OOF predictions -- stays out.
+!output/
+output/*
+!output/app_data/
+output/app_data/*
+!output/app_data/leads.parquet
+!output/app_data/analytics.json
+!output/app_data/model.json
+# The historical demo bundle for /tool's Historical tab. A deliberate, narrowed exception
+# to keeping the pack off the host: served only behind auth, activities.csv excluded, and
+# the lead columns the tool cannot use stripped. See src/build_demo_bundle.py.
+!output/app_data/historical.json.gz

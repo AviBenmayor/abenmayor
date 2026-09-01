@@ -1,0 +1,13 @@
+# What the deployed dashboard needs, and nothing else.
+#
+# scikit-learn, scipy and joblib are deliberately absent: the container scores from
+# output/model.json through src/scorer.py, which is pure numpy. Nothing on the serving
+# path is a pickle, so nothing is version-coupled to the scikit-learn that fitted the
+# model. The analysis scripts in src/ need the fuller set -- see README.
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+jinja2==3.1.6
+python-multipart==0.0.32
+pandas==3.0.5
+numpy==2.5.2
+pyarrow==25.0.1
