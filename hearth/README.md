@@ -4,7 +4,7 @@ This is the engineering side of the submission. You already have the memo, the s
 file and the rep tool; this repo is for anyone who wants to see how the pieces were
 actually built and why they're shaped the way they are.
 
-## Why so much is missing
+## What's not here, and why
 
 The data came with a confidentiality condition, and the terms let me talk about the
 approach but not the data. I took that seriously, and it turned out to cut deeper than
@@ -15,6 +15,12 @@ extension. So those stayed out too.
 
 Every excluded file is listed in `.gitignore` with a reason next to it. What survived is
 the code that stands on its own without any of your numbers inside it.
+
+One consequence worth saying up front: **this repo is for reading, not running.** The
+scripts here import the feature definitions and the fitted model, and those files carry
+findings in their comments, so they're held back. Clone it and the imports fail. That's the
+cost of the exclusion, and I'd rather take it than sanitise the code into something that
+runs but no longer says what I actually did.
 
 ## What I built, and the thinking behind it
 
@@ -32,16 +38,15 @@ pulls the JavaScript out of the built HTML tool, runs it in Node against the Pyt
 model's outputs, and fails on any difference. While I was at it I made it throw fourteen
 ugly CSVs at the parser — empty files, BOMs, CRLF endings, quoted commas, the wrong
 delimiter, duplicate keys, out-of-range numbers — and score fifty thousand rows to make
-sure it wouldn't hang in front of someone. The nicest moment in the build was when I
-removed a calibration layer late on and the parity gap went from around 1e-13 to exactly
-zero, because there was no longer a log/exp round trip for floating point to disagree
+sure it wouldn't hang in front of someone. When I removed a calibration layer late on, the parity gap went from around 1e-13 to
+exactly zero — there was no longer a log/exp round trip for floating point to disagree
 about.
 
 **I put assertions where a mistake would otherwise be silent.** The batch scorer refuses
 to run if its own fit doesn't match the exported model. Tier assignment refuses if even
 one record's tier differs from the file being submitted. Both of these went off during
 development — once because two artifacts had ended up on different feature sets without
-anyone noticing — and each time they saved me from shipping something inconsistent.
+me noticing — and each time they saved me from shipping something inconsistent.
 
 **I shipped a smaller model than the best one I measured.** I decided which features to
 keep by asking whether their effect held up in a period they hadn't been fitted on, not
@@ -64,8 +69,8 @@ src/model_final.py        model comparison and out-of-time validation
 src/model_select.py       feature ablation and target-equivalence tests
 src/target_choice.py      whether the candidate targets even rank differently
 src/build_demo_bundle.py  cuts a dataset down to what a demo needs and nothing more
-src/run_all.py            end-to-end rebuild
-app/                      FastAPI dashboard — data layer, charts, scoring endpoint
+app/                      dashboard data layer, charts and scoring helpers (the routes
+                          carry findings and are held back)
 Dockerfile                fits nothing, unpickles nothing
 ```
 

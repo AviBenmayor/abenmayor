@@ -45,6 +45,8 @@ src/features.py
 src/model.py
 src/objections.py
 src/score_leads.py
+# Orchestrates five scripts that are held back; on its own it only looks broken.
+src/run_all.py
 src/speed_to_lead.py
 src/speed_to_lead_2.py
 src/tool_template.html
