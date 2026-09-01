@@ -4,23 +4,16 @@ This is the code behind what I sent you. You already have the memo, the scored f
 the rep tool — I put this repo together for whoever wants to see how I built those and why
 I made the calls I did.
 
-## What's not here, and why
+## What I left out
 
-The data came with a confidentiality condition, and the terms let me talk about the
-approach but not the data. I took that seriously, and it cut deeper than I expected —
-much more than just leaving out the CSVs. Most of my analysis scripts have the findings written into
-their comments and print statements — channel performance, rep patterns, segment win
-rates — and a script that says the number out loud is the number, whatever the file
-extension. So those stayed out too.
+Anything with your numbers in it — the scored file, the memo, and most of the analysis
+scripts, because their comments and print statements say the findings out loud and a
+script that prints the number *is* the number. `.gitignore` lists each one. What's here is
+the engineering that reads fine without them.
 
-I listed every excluded file in `.gitignore` with a reason next to it. What's left is the
-code I could publish without any of your numbers inside it.
-
-One thing I should say up front: **I've published this to be read, not run.** The
-scripts import the feature definitions and the fitted model, and I held both of those
-back because their comments carry findings. Clone it and the imports fail. That's the
-cost of the exclusion, and I'd rather pay it than sanitise the code into something that
-runs but no longer shows you what I actually did.
+That does mean **this repo is to be read, not run.** The scripts import the feature
+definitions and the fitted model, and those are among the files I kept back. I'd rather
+that than sanitise the code into something that runs but no longer shows what I did.
 
 ## What I built, and the thinking behind it
 
