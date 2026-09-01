@@ -14,6 +14,28 @@ things that could make the whole thing wrong. Read it before writing code.
 
 ---
 
+## 0. Headline finding (2026-09-01)
+
+**The causal thesis is not supported by the data.** The descriptive tool works — it measures
+walkable daily-needs retail completeness and, via the residual, identifies where retail is thin
+relative to comparable places (top-20: Jamaica, the Rockaways, East New York, and a surprise at
+UES-Lenox Hill). But the investment claim — that these gaps represent latent demand that will
+*drive future residents* — fails its test:
+
+- **P2 (underserved → subsequent growth): REJECTED, wrong sign.** Regressing 2013→2023 population
+  growth on the 2013 retail gap gives β = **+0.069 (p=4.7e-16)** — over-retailed hexes grew MORE,
+  under-retailed hexes grew LESS. The placebo is a clean null, so the reversal is real.
+- **Pre-trend test: parallel trends BROKEN.** The 2013 gap also predicts *prior* (2002→2013) retail
+  growth (β=+0.27), so the gap marks neighborhoods already in a development cycle. Retail and
+  residents co-move; the gap does not identify latent opportunity.
+
+This is the endogeneity §7.2 and the whole residual design were built to detect, and the rigor
+(residualization + temporal ordering + pre-trend + placebo) is what caught it rather than
+shipping a confident-but-wrong thesis. **Loci is a valid descriptive instrument; its investment
+inference is not confirmed.** The honest product is the map + the method + this null.
+
+---
+
 ## 1. Thesis
 
 ### 1.1 The naive hypothesis
