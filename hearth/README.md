@@ -6,14 +6,14 @@ I made the calls I did.
 
 ## What I left out
 
-Anything with your numbers in it — the scored file, the memo, and most of the analysis
-scripts, because their comments and print statements say the findings out loud and a
-script that prints the number *is* the number. `.gitignore` lists each one. What's here is
-the engineering that reads fine without them.
+I left out anything that contains your numbers. That's the scored file, the memo, and most
+of the analysis scripts. The scripts had to go too because their comments and print
+statements state the findings directly — a script that prints a win rate is just another
+copy of the win rate. `.gitignore` lists each excluded file with a reason.
 
-That does mean **this repo is to be read, not run.** The scripts import the feature
-definitions and the fitted model, and those are among the files I kept back. I'd rather
-that than sanitise the code into something that runs but no longer shows what I did.
+That means this repo is to be read, not run. The scripts that are here import the feature
+definitions and the fitted model, and I held both of those back. I'd rather ship code that
+doesn't run than sanitise it into something that runs but no longer shows what I did.
 
 ## What I built, and the thinking behind it
 
