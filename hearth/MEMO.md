@@ -3,8 +3,11 @@
 **1 · Target: expected dollars, P(win) × E[size | win].** The brief says the three targets rank
 differently. **Here they don't, and that's the finding** — ρ(P(win), expected dollars) = **0.997**,
 ρ(P(win), P(win ≤30d)) = **0.974**. Deal size spans 1.9× p10–p90 while P(win) spans ~46×, and the two
-move together, so the product barely reorders. I picked expected dollars because it's the only one
-denominated in something you can hold against cost-to-serve — which is what sets the cutoff.
+move together, so the product barely reorders. I picked expected dollars anyway, on principle: this
+is a revenue business, and a rep's next call should go to the lead most likely to bring in the most
+money — not merely the one most likely to say yes. Expected revenue is the only target that says
+that directly, and the only one denominated in something you can hold against cost-to-serve, which
+is what sets the cutoff.
 
 **2 · What I found.** Logistic regression on three intake fields: revenue band, ICP category, legacy
 CRM score. Fifteen parameters, hand-computable. Validated out-of-time (Oct–Dec → Jan–Feb), never a
