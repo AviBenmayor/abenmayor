@@ -1,26 +1,26 @@
 # Lead scoring — the code
 
-This is the engineering side of the submission. You already have the memo, the scored
-file and the rep tool; this repo is for anyone who wants to see how the pieces were
-actually built and why they're shaped the way they are.
+This is the code behind what I sent you. You already have the memo, the scored file and
+the rep tool — I put this repo together for whoever wants to see how I built those and why
+I made the calls I did.
 
 ## What's not here, and why
 
 The data came with a confidentiality condition, and the terms let me talk about the
-approach but not the data. I took that seriously, and it turned out to cut deeper than
-just leaving out the CSVs. Most of my analysis scripts have the findings written into
+approach but not the data. I took that seriously, and it cut deeper than I expected —
+much more than just leaving out the CSVs. Most of my analysis scripts have the findings written into
 their comments and print statements — channel performance, rep patterns, segment win
 rates — and a script that says the number out loud is the number, whatever the file
 extension. So those stayed out too.
 
-Every excluded file is listed in `.gitignore` with a reason next to it. What survived is
-the code that stands on its own without any of your numbers inside it.
+I listed every excluded file in `.gitignore` with a reason next to it. What's left is the
+code I could publish without any of your numbers inside it.
 
-One consequence worth saying up front: **this repo is for reading, not running.** The
-scripts here import the feature definitions and the fitted model, and those files carry
-findings in their comments, so they're held back. Clone it and the imports fail. That's the
-cost of the exclusion, and I'd rather take it than sanitise the code into something that
-runs but no longer says what I actually did.
+One thing I should say up front: **I've published this to be read, not run.** The
+scripts import the feature definitions and the fitted model, and I held both of those
+back because their comments carry findings. Clone it and the imports fail. That's the
+cost of the exclusion, and I'd rather pay it than sanitise the code into something that
+runs but no longer shows you what I actually did.
 
 ## What I built, and the thinking behind it
 
@@ -60,7 +60,7 @@ file onto the host is a deliberate, named act rather than the default. It bit me
 a build failed because a bundle I wanted to ship hadn't been added to the list. That's
 the guardrail working, and I'd rather have that failure than the other kind.
 
-## Where things are
+## Where I put things
 
 ```
 src/scorer.py             pure-numpy scorer; serving needs only pandas + numpy
@@ -69,8 +69,8 @@ src/model_final.py        model comparison and out-of-time validation
 src/model_select.py       feature ablation and target-equivalence tests
 src/target_choice.py      whether the candidate targets even rank differently
 src/build_demo_bundle.py  cuts a dataset down to what a demo needs and nothing more
-app/                      dashboard data layer, charts and scoring helpers (the routes
-                          carry findings and are held back)
+app/                      dashboard data layer, charts and scoring helpers (I held the
+                          routes back — they carry findings)
 Dockerfile                fits nothing, unpickles nothing
 ```
 
