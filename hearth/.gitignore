@@ -1,59 +1,16 @@
-# Case study data is confidential per the exercise terms:
-# "Do not share the files or post them anywhere, and delete them once the process concludes."
+# The raw pack stays out: it is their data, not my work.
 data/
 transcripts/
+brief.md
 
-# Derived artifacts contain the scoring window's leads; they are deployed to Railway
-# from the local working copy (see .railwayignore), never committed.
-output/
+# Derived artifacts. Only the submitted score goes up; the parquet frames and the
+# historical bundle are the pack re-serialised.
+output/*
+!output/submission.csv
+
+# Internal working notes
+PLAN.md
+
 .venv/
 __pycache__/
 *.pyc
-
-# ---------------------------------------------------------------------------
-# Public-repo exclusions.
-#
-# github.com/AviBenmayor/abenmayor is PUBLIC. The exercise brief allows describing
-# the approach, not the data: "Do not share the files or post them anywhere. You are
-# welcome to describe your approach, not the data, in a portfolio."
-#
-# So the deliverables and the analysis stay local. The analysis scripts are excluded
-# too -- not because code is sensitive, but because these particular scripts carry the
-# client's findings in their comments and print statements, which is the same data in
-# prose form. What ships publicly is the README and the engineering that stands alone.
-# ---------------------------------------------------------------------------
-brief.md
-SUBMISSION.md
-MEMO.md
-APPENDIX.md
-CONTEXT.md
-QUESTIONS.md
-PLAN.md
-
-# Embeds a 500-row parity vector of real lead_ids and their scores.
-tool/
-
-# Carry client findings in comments and console output.
-src/build_app_data.py
-src/build_dataset.py
-src/build_tool.py
-src/capacity.py
-src/capacity_and_tiers.py
-src/data_quirks.py
-src/export_model.py
-src/features.py
-src/model.py
-src/objections.py
-src/score_leads.py
-# Orchestrates five scripts that are held back; on its own it only looks broken.
-src/run_all.py
-src/speed_to_lead.py
-src/speed_to_lead_2.py
-src/tool_template.html
-app/main.py
-app/templates/base.html
-app/templates/cutoff.html
-app/templates/lead.html
-app/templates/model.html
-app/templates/score.html
-app/templates/speed.html

@@ -1,0 +1,80 @@
+{% extends "base.html" %}{% set nav='cutoff' %}{% block title %}Cutoff{% endblock %}
+{% block body %}
+<h1>Where the cutoff sits, and what it costs</h1>
+<p class="sub">No cost or capacity data came with the pack. Rather than invent a number, the constraint below is measured from the client's own activity log — change any of it and the whole table moves.</p>
+
+<form class="filters" method="get">
+  <div><label>Tier A — call now (%)</label><input type="number" name="a_pct" value="{{ a_pct }}" min="0" max="100" step="5"></div>
+  <div><label>Tier B — work (%)</label><input type="number" name="b_pct" value="{{ b_pct }}" min="0" max="100" step="5"></div>
+  <div><label>Tier C — light (%)</label><input type="number" name="c_pct" value="{{ c_pct }}" min="0" max="100" step="5"></div>
+  <div><label>Reps working on a weekday</label><input type="number" name="reps" value="{{ reps }}" min="1" max="200"></div>
+  <div><label>Touches / rep / day</label><input type="number" name="tpd" value="{{ tpd }}" min="1" max="80"></div>
+  <button type="submit">Recompute</button>
+  <a class="pill" href="/cutoff">reset</a>
+</form>
+
+<div class="grid g4">
+  <div class="stat"><b>{{ '{:,}'.format(supply) }}</b><span>touches available, Mar–May ({{ reps }} reps × {{ tpd }}/day × {{ cap.business_days }} business days)</span></div>
+  <div class="stat"><b>{{ '{:,}'.format(used) }}</b><span>touches this policy spends</span></div>
+  <div class="stat" style="border-color:{{ 'var(--bad)' if used > supply else 'var(--line)' }}">
+    <b class="{{ 'down' if used > supply else 'up' }}">{{ '%.0f'|format(used / supply * 100) }}%</b><span>utilisation {{ '— over budget' if used > supply else '' }}</span></div>
+  <div class="stat"><b>{{ '%.0f'|format(worked_wins) }}%</b><span>of expected wins still covered by A+B+C</span></div>
+</div>
+
+<div class="panel wrap" style="padding:0;margin-top:14px">
+<table><thead><tr><th>Tier</th><th>Play</th><th class="num">Leads</th><th class="num">Share</th>
+  <th class="num">Mean P(win)</th><th class="num">Expected wins</th><th class="num">% of all expected wins</th>
+  <th class="num">Touches each</th><th class="num">Touch budget</th></tr></thead><tbody>
+{% for r in rows %}
+<tr><td><span class="tier {{ TIER[r.tier].cls }}">{{ r.tier }}</span></td><td>{{ r.name }}</td>
+  <td class="num">{{ '{:,}'.format(r.n) }}</td><td class="num muted">{{ '%.0f'|format(r.share) }}%</td>
+  <td class="num">{{ '%.1f'|format(r.mean_p) }}%</td><td class="num">{{ '%.0f'|format(r.wins) }}</td>
+  <td class="num"><b>{{ '%.1f'|format(r.pct_wins) }}%</b></td>
+  <td class="num muted">{{ r.touches }}</td><td class="num muted">{{ '{:,}'.format(r.budget) }}</td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+
+<h2>Reading this honestly</h2>
+<div class="panel">
+<p>The “expected wins” column holds each lead's P(win) fixed. It answers <em>if we only work the top X%, what share of the wins that happen today do we still get to?</em> It does <b>not</b> claim that touching a lead 30 times instead of {{ cap.touch_cost }} raises its probability. Effort in the training data is endogenous — engaged leads get called more, not the reverse — so any model of effort→outcome built on it would overstate the return, and I would rather say that than sell you a lift number I cannot defend.</p>
+<p>Which is why the intensity ladder is the part I would test rather than assume, and why the rollout below has a control group in it.</p>
+</div>
+
+<h2>Where I would put the line, and why there</h2>
+<div class="panel">
+<p><b>The constraint, measured rather than assumed.</b> {{ cap.distinct_reps }} reps logged activity in the training window.
+98% of it falls Monday to Friday, so the medians are weekday-only: <b>{{ cap.core_reps }}</b> reps working on a typical
+weekday at a median <b>{{ cap.touches_per_rep_day }}</b> touches each — {{ '{:,}'.format(cap.core_reps * cap.touches_per_rep_day) }} touches
+a day across the floor. A worked lead absorbs a median <b>{{ cap.touch_cost }}</b> touches, so the floor can properly work
+<b>{{ '%.0f'|format(cap.leads_per_day) }} new leads per business day</b> against <b>{{ '%.0f'|format(cap.arriving_per_bday) }}</b>
+arriving. That is <b>{{ '%.0f'|format(cap.workable_share * 100) }}%</b> of what marketing buys.</p>
+<p class="muted">Both sides are counted in the same unit, which is the part that is easy to get wrong. Measuring supply in dials
+(50,445 of them) while pricing a lead in touches — calls, email and SMS together — understates capacity by about a third;
+quoting supply per working day against arrivals per <em>calendar</em> day then overstates coverage by about a third in the other
+direction. The two errors nearly cancel, which is how a wrong derivation survives a sanity check.</p>
+<p><b>So why does the line sit at 30% and not {{ '%.0f'|format(cap.workable_share * 100) }}%?</b> Because working more leads
+and working them properly are competing uses of the same touches. Today a lead that wins 46% and a lead that wins 2% both get
+the flat ~{{ cap.touch_cost }}. The ladder above spends {{ '{:,}'.format(used) }} touches against a supply of
+{{ '{:,}'.format(supply) }} — <b>{{ '%.0f'|format(used / supply * 100) }}%</b> utilisation — by giving tier A a 30-touch
+cadence instead of {{ cap.touch_cost }}. Working {{ '%.0f'|format(cap.workable_share * 100) }}% flat and working 30% with a real
+ladder cost the floor the same day; the second is worth more.</p>
+<p>The D line sits at the bottom {{ '%.0f'|format(dropped.share) }}%: {{ '{:,}'.format(dropped.n) }} leads carrying
+<b>{{ '%.1f'|format(dropped.pct_wins) }}%</b> of expected wins, at a mean P(win) of {{ '%.1f'|format(dropped.mean_p) }}%.
+Giving up that {{ '%.1f'|format(dropped.pct_wins) }}% is what funds the ladder. If you tell me a touch costs
+more or less than I have measured, move the boxes above and the line moves with it — that is the point of the form.
+The model does not move with it.</p>
+<p><b>What happens below the line:</b> tier D is not deleted. It goes to marketing automation and is re-scored the moment it does anything — opens, replies, revisits pricing — at which point it re-enters the queue at its new tier. A lead that answers an email is no longer a bottom-tier lead.</p>
+</div>
+
+<h2>How you would know in 30 days</h2>
+<div class="panel">
+<p>Hold back a random 10% of tier D and work it exactly as today. That control is the only way to learn what the cutoff actually costs, and it turns the assumption above into a measurement inside one cycle. At 30 days, read four things:</p>
+<ul>
+<li><b>Suppression cost</b> — win rate in the held-out D control vs suppressed D. If the control materially outperforms, the line is too high.</li>
+<li><b>Intensity return</b> — win rate in tier A vs the same score decile in the Mar–May baseline. This is the only number that tests whether a 30-touch cadence beats the flat {{ cap.touch_cost }}.</li>
+<li><b>Efficiency</b> — touches per won deal, overall. This should fall even if total wins are flat; that is the whole point.</li>
+<li><b>Override rate</b> — how often a rep works a C or D anyway, and whether they were right. A high override rate that <em>wins</em> is the model being wrong, and I want to find that out from the reps rather than argue with them.</li>
+</ul>
+</div>
+{% endblock %}

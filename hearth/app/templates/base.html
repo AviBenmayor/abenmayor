@@ -1,0 +1,25 @@
+<!doctype html><html><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>{% block title %}Lead routing{% endblock %} · Hearth</title>
+<link rel="stylesheet" href="/static/style.css">
+</head><body>
+{% if open %}<div class="banner">Running with authentication disabled (DASH_ALLOW_OPEN=1). Local use only — this data is confidential.</div>{% endif %}
+<header><div class="hwrap">
+  <div class="brand">Lead routing <span>· Hearth GTM</span></div>
+  <nav>
+    <a href="/" class="{{ 'on' if nav=='queue' }}">Queue</a>
+    <a href="/score" class="{{ 'on' if nav=='score' }}">Score a lead</a>
+    <a href="/speed" class="{{ 'on' if nav=='speed' }}">Speed to lead</a>
+    <a href="/cutoff" class="{{ 'on' if nav=='cutoff' }}">Cutoff</a>
+    <a href="/model" class="{{ 'on' if nav=='model' }}">Model &amp; data</a>
+    <a href="/tool" class="{{ 'on' if nav=='tool' }}">Rep tool ↗</a>
+  </nav>
+</div></header>
+<main>{% block body %}{% endblock %}</main>
+<footer>
+  Scores {{ '{:,}'.format(cap.leads) }} leads, {{ a.window.score_from }} → {{ a.window.score_to }}.
+  Model trained on {{ a.window.train_from }} → {{ a.window.train_to }}. Target: P(win).
+  · <a href="/submission.csv">submission.csv</a>
+</footer>
+</body></html>

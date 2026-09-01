@@ -1,0 +1,46 @@
+{% extends "base.html" %}{% set nav='score' %}{% block title %}Score a lead{% endblock %}
+{% block body %}
+<h1>Score a lead the model has never seen</h1>
+<p class="sub">Paste CSV rows or upload a file with the intake columns. Same model, same transform as the queue — this goes through <span class="mono">src/scorer.py</span> against the same <span class="mono">model.json</span> that produced <span class="mono">submission.csv</span> and the browser tool, not a reimplementation.</p>
+
+<form method="post" enctype="multipart/form-data">
+  <div class="panel">
+    <label>Paste CSV (header row + one or more leads)</label>
+    <textarea name="pasted" placeholder="lead_id,created_at,channel,campaign_ref,utm_medium,contractor_annual_revenue,icp_category,state,zip3,time_zone,enrichment_status,legacy_score
+NEW-1,2026-06-01 09:12:00,google,cmp_57,brand,&quot;$1,000,000 to $4,999,999&quot;,High Value,TX,750,Central,Not Enriched,61.2">{{ pasted }}</textarea>
+    <p class="muted" style="margin:10px 0">…or upload a CSV: <input type="file" name="upload" accept=".csv"></p>
+    <button type="submit">Score</button>
+    <a class="pill" href="/score">clear</a>
+  </div>
+</form>
+
+{% for w in warn %}<div class="warn">{{ w }}</div>{% endfor %}
+
+{% if result %}
+<h2>Scored {{ result|length }} record{{ 's' if result|length != 1 }}</h2>
+<div class="panel wrap" style="padding:0">
+<table><thead><tr><th>Lead</th><th>Tier</th><th class="num">Score</th><th class="num">P(win)</th>
+  <th class="num">E[$ | win]</th><th>Do this</th></tr></thead><tbody>
+{% for r in result %}
+<tr><td class="mono">{{ r.lead_id }}</td>
+  <td><span class="tier {{ TIER[r.tier].cls }}">{{ r.tier }}</span> {{ TIER[r.tier].name }}</td>
+  <td class="num"><b>${{ '{:,.0f}'.format(r.score) }}</b></td>
+  <td class="num">{{ '%.1f'|format(r.p_win*100) }}%</td>
+  <td class="num muted">${{ '{:,.0f}'.format(r.expected_amount) }}</td>
+  <td>{{ TIER[r.tier].sla }}</td></tr>
+{% endfor %}
+</tbody></table>
+</div>
+<p class="muted">The score is expected dollars, P(win) × E[amount | win]. Tier boundaries are fixed expected-dollar thresholds frozen into the model (A ≥ ${{ '{:,.0f}'.format(cap.thresholds.A) }}, B ≥ ${{ '{:,.0f}'.format(cap.thresholds.B) }}, C ≥ ${{ '{:,.0f}'.format(cap.thresholds.C) }}) rather than percentiles of whatever batch you paste, so tier A means the same thing in every file. If tier sizes drift far from 10/20/30/40 on a representative batch, that is the refit signal.</p>
+{% endif %}
+
+<h2>Or call it as an API</h2>
+<div class="panel">
+<pre class="mono" style="overflow-x:auto;margin:0">curl -u hearth:$DASH_PASSWORD -H 'content-type: application/json' \
+  -d '{"lead_id":"NEW-1","contractor_annual_revenue":"$1,000,000 to $4,999,999",
+       "icp_category":"High Value","campaign_ref":"cmp_57",
+       "time_zone":"Central","legacy_score":"61.2"}' \
+  {{ request.base_url }}api/score</pre>
+</div>
+<p class="muted">Partial rows are fine. Missing columns are treated as their own “unknown” level rather than imputed to the mode, and anything the training window never saw is called out in the response rather than silently absorbed.</p>
+{% endblock %}
