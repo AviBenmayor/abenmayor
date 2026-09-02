@@ -34,7 +34,7 @@ input[list]{width:100%;font:inherit;font-size:13px;color:var(--ink);background:v
 .loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px;z-index:3}
 </style></head><body>
 <header><h1>The Missing Business</h1>
-  <p class="sub">Every NYC residential building, and the daily-needs business it lacks within a 10-minute walk. Where same-gap buildings cluster, that's the opening.</p></header>
+  <p class="sub">Every residential building in Manhattan, Brooklyn & Queens, and the daily-needs business it lacks within a 10-minute walk. Where same-gap buildings cluster, that's the opening.</p></header>
 <main>
   <aside class="side">
     <div class="sec"><h2>Buildings missing…</h2><div id="opts"></div></div>
@@ -47,7 +47,7 @@ input[list]{width:100%;font:inherit;font-size:13px;color:var(--ink);background:v
 <script>
 let META,NAV,FALL,biz='laundry';
 const COL={hardware:"#b5541f",convenience:"#2f7d5c",clinic:"#3d6fb4",fitness:"#c69a1e",childcare:"#9350a6",laundry:"#1f9aa1",pharmacy:"#cc4b63",hair_barber:"#6d8b3a",cafe_bakery:"#8a6d4b",grocery:"#417a2f",nails_beauty:"#b3689a",bar:"#7a5cc0",bank:"#4a7a8c",tailor_repair:"#996a3a"};
-const map=new maplibregl.Map({container:'map',style:'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',center:[-73.95,40.70],zoom:10.2,attributionControl:{compact:true}});
+const map=new maplibregl.Map({container:'map',style:'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',center:[-73.92,40.71],zoom:10.7,attributionControl:{compact:true}});
 map.addControl(new maplibregl.NavigationControl({showCompass:false}),'bottom-right');
 const lc=()=>COL[biz]||'#b5541f', bi=()=>META.cats.indexOf(biz);
 function subset(){const bit=1<<bi();return {type:'FeatureCollection',features:FALL.filter(f=>(f.properties.m&bit)!==0)};}

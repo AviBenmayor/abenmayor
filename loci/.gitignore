@@ -20,9 +20,3 @@ data/*.duckdb
 *.pkl
 
 # webmap generated data (regenerate from the DB)
-webmap/hexes.geojson
-webmap/meta.json
-webmap/gap_buildings.json
-webmap/gap_buildings.geojson
-webmap/buildings_meta.json
-webmap/nav.json

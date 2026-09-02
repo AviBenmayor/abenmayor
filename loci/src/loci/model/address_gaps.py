@@ -23,6 +23,7 @@ from loci.score.walkgraph import OUT as GRAPH_PATH
 from loci.grid.pluto import PLUTO_CSV
 
 THRESH_M = 800.0
+BOROCODES = ("1","3","4")  # Manhattan, Brooklyn, Queens
 EXPECTED = 0.80
 ALLCATS = list(CATEGORIES)
 
@@ -56,6 +57,7 @@ def run(out_geojson: pathlib.Path):
                TRY_CAST(unitsres AS DOUBLE) units, address, bbl
         FROM read_csv('{PLUTO_CSV}', ALL_VARCHAR=TRUE)
         WHERE TRY_CAST(unitsres AS DOUBLE)>0 AND TRY_CAST(latitude AS DOUBLE) IS NOT NULL
+          AND borocode IN ('1','3','4')
     """).df()
     lots = lots[(lots.lat.between(40.4,41.0)) & (lots.lon.between(-74.3,-73.6))].reset_index(drop=True)
     lots["address"] = lots["address"].fillna("").astype(str)
