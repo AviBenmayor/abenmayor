@@ -188,6 +188,15 @@ def score(threshold: int = typer.Option(10, help="Walk minutes: 5, 10 or 15.")) 
 
 
 @app.command()
+def gaps(threshold: int = typer.Option(10), min_present: int = typer.Option(12)) -> None:
+    """Present-day gap screen: walkable hexes missing an expected business."""
+    from loci.model.gaps import build_gaps
+    con = locidb.connect(); locidb.init_schema(con)
+    n, _ = build_gaps(con, threshold=threshold, min_present=min_present)
+    console.print(f"[green]ok[/] {n} gap hexes (missing an expected business)")
+
+
+@app.command()
 def model(t0: int = 2013, t1: int = 2023) -> None:
     """Fit the supply model, extract residuals, run the growth test."""
     raise NotImplementedError("W3 — see docs/TICKETS.md, epic E3.")

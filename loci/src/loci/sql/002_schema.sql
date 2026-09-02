@@ -142,3 +142,19 @@ CREATE TABLE IF NOT EXISTS analysis.poi_dedup (
     is_canonical BOOLEAN NOT NULL,
     category     VARCHAR NOT NULL
 );
+
+-- Per-hex investment screen (present-day): a walkable, populated hex missing an
+-- "expected" daily-needs business — one that areas like it normally have, so its
+-- absence is conspicuous. The missing business IS the opportunity. Ranked (for
+-- now) by resident population; "people affected" = walking-catchment population
+-- is a later refinement.
+CREATE TABLE IF NOT EXISTS analysis.hex_gaps (
+    h3_index          VARCHAR NOT NULL,
+    threshold_min     SMALLINT NOT NULL,
+    population        REAL,
+    present_count     SMALLINT NOT NULL,
+    lead_missing      VARCHAR,      -- the most-expected missing business
+    lead_prevalence   REAL,         -- share of areas that have it
+    missing_expected  VARCHAR,      -- all conspicuously-missing businesses (comma-sep)
+    PRIMARY KEY (h3_index, threshold_min)
+);

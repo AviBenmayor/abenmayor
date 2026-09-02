@@ -215,6 +215,9 @@ claim stands on.
 Each item names the epic it unblocks. Record the answer inline when found; do not open a
 ticket unless the answer turns into work.
 
+Links for every reading live in Notion: **Projects → LOCI → Loci Reading List**
+(https://app.notion.com/p/3cf48af1331b8108bfb3d2bd483b45fb).
+
 ### Literature
 
 ### H-L1 — What did "Consumer City" and "Urban Revival" find about amenities and residential demand?
