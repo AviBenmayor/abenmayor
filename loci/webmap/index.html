@@ -31,6 +31,10 @@ input[list]{width:100%;font:inherit;font-size:13px;color:var(--ink);background:v
 .pnb{font-weight:700;font-size:12.5px}.ppop{color:#57524a;font-size:11.5px;margin-top:1px}
 .pmi{margin-top:6px;font-size:10px;color:#948d80;text-transform:uppercase;letter-spacing:.06em}
 .biz{display:inline-block;margin:3px 4px 0 0;padding:2px 7px;border-radius:5px;font-size:11px;font-weight:600;color:#fff}
+.valbtn{position:absolute;top:12px;right:56px;z-index:2;background:var(--ink);color:#fff;border:0;border-radius:9px;padding:9px 13px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;box-shadow:var(--shadow)}
+.valbtn:hover{opacity:.92}.valbtn:disabled{opacity:.5;cursor:default}
+.valout{position:absolute;top:52px;right:12px;z-index:2;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:11px 13px;font-size:12.5px;max-width:300px;line-height:1.5}
+.valout .tag{font-weight:700}.valout .real{color:#2f7d5c}.valout .hole{color:#b5541f}
 .loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px;z-index:3}
 </style></head><body>
 <header><h1>The Missing Business</h1>
@@ -42,10 +46,11 @@ input[list]{width:100%;font:inherit;font-size:13px;color:var(--ink);background:v
     <div class="sec"><h2>Jump to neighborhood</h2><input list="ntal" id="ntaIn" placeholder="e.g. Williamsburg"><datalist id="ntal"></datalist></div>
     <div class="note">A building has a “gap” only when it lacks a business ≥80% of buildings can reach — so it’s a conspicuous hole, not a rarity. Zoom in and clusters break into individual addresses.</div>
   </aside>
-  <div class="mapwrap"><div id="map"></div><div class="banner" id="banner">Loading…</div><div class="loading" id="loading">Loading buildings…</div></div>
+  <div class="mapwrap"><div id="map"></div><div class="banner" id="banner">Loading…</div><button id="valBtn" class="valbtn">✓ Check this view against Google</button><div id="valOut" class="valout" hidden></div><div class="loading" id="loading">Loading buildings…</div></div>
 </main>
 <script>
 let META,NAV,FALL,biz='laundry';
+const clTip=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:12});
 const COL={hardware:"#b5541f",convenience:"#2f7d5c",clinic:"#3d6fb4",fitness:"#c69a1e",childcare:"#9350a6",laundry:"#1f9aa1",pharmacy:"#cc4b63",hair_barber:"#6d8b3a",cafe_bakery:"#8a6d4b",grocery:"#417a2f",nails_beauty:"#b3689a",bar:"#7a5cc0",bank:"#4a7a8c",tailor_repair:"#996a3a"};
 const map=new maplibregl.Map({container:'map',style:'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',center:[-73.92,40.71],zoom:10.7,attributionControl:{compact:true}});
 map.addControl(new maplibregl.NavigationControl({showCompass:false}),'bottom-right');
@@ -55,8 +60,8 @@ function subset(){const bit=1<<bi();return {type:'FeatureCollection',features:FA
 map.on('load',async()=>{
   [META,NAV]=await Promise.all([fetch('buildings_meta.json').then(r=>r.json()),fetch('nav.json').then(r=>r.json())]);
   const raw=await fetch('gap_buildings.json').then(r=>r.json());
-  FALL=[];const a=raw.pts;for(let i=0;i<a.length;i+=4){FALL.push({type:'Feature',geometry:{type:'Point',coordinates:[a[i],a[i+1]]},properties:{m:a[i+2],u:a[i+3]}});}
-  map.addSource('bld',{type:'geojson',data:subset(),cluster:true,clusterRadius:46,clusterMaxZoom:15});
+  FALL=[];const a=raw.pts,st=raw.stride||5;for(let i=0;i<a.length;i+=st){FALL.push({type:'Feature',geometry:{type:'Point',coordinates:[a[i],a[i+1]]},properties:{m:a[i+2],u:a[i+3],inc:a[i+4]||0}});}
+  map.addSource('bld',{type:'geojson',data:subset(),cluster:true,clusterRadius:46,clusterMaxZoom:15,clusterProperties:{u:['+',['get','u']]}});
   map.addLayer({id:'cl',type:'circle',source:'bld',filter:['has','point_count'],
     paint:{'circle-color':lc(),'circle-opacity':0.82,'circle-stroke-width':1.4,'circle-stroke-color':'#fff',
       'circle-radius':['step',['get','point_count'],11,25,16,100,23,500,32,2000,44]}});
@@ -68,11 +73,12 @@ map.on('load',async()=>{
   buildUI(); updateBanner();
   map.on('click','cl',e=>{const f=map.queryRenderedFeatures(e.point,{layers:['cl']})[0];
     map.getSource('bld').getClusterExpansionZoom(f.properties.cluster_id).then(z=>map.easeTo({center:f.geometry.coordinates,zoom:z+0.3}));});
-  map.on('mouseenter','cl',()=>map.getCanvas().style.cursor='pointer');
-  map.on('mouseleave','cl',()=>map.getCanvas().style.cursor='');
+  map.on('mouseenter','cl',e=>{map.getCanvas().style.cursor='pointer';const p=e.features[0].properties;
+    clTip.setLngLat(e.lngLat).setHTML(`<div class="pnb">${p.point_count.toLocaleString()} buildings</div><div class="ppop">${(+p.u).toLocaleString()} homes with no ${META.catLabels[bi()].toLowerCase()} nearby</div>`).addTo(map);});
+  map.on('mouseleave','cl',()=>{map.getCanvas().style.cursor='';clTip.remove();});
   map.on('click','pt',e=>{const p=e.features[0].properties;const ms=[];for(let i=0;i<META.cats.length;i++)if((p.m>>i)&1)ms.push(i);
     new maplibregl.Popup({closeButton:false,maxWidth:'240px'}).setLngLat(e.lngLat)
-      .setHTML(`<div class="pnb">Residential building</div><div class="ppop">${p.u} units</div><div class="pmi">missing</div>`+
+      .setHTML(`<div class="pnb">Residential building</div><div class="ppop">${p.u} homes${p.inc?" · area median income $"+(+p.inc).toLocaleString():""}</div><div class="pmi">missing</div>`+
         ms.map(i=>`<span class="biz" style="background:${COL[META.cats[i]]}">${META.catLabels[i]}</span>`).join('')).addTo(map);});
   map.on('mouseenter','pt',()=>map.getCanvas().style.cursor='pointer');
   map.on('mouseleave','pt',()=>map.getCanvas().style.cursor='');
@@ -94,4 +100,18 @@ function buildUI(){
   document.getElementById('ntaIn').addEventListener('change',e=>{const bb=NAV.ntaBounds[e.target.value];
     if(bb)map.fitBounds([[bb[0],bb[1]],[bb[2],bb[3]]],{padding:50,duration:800,maxZoom:16});});
 }
+
+document.getElementById('valBtn').onclick=async()=>{
+  const btn=document.getElementById('valBtn'),out=document.getElementById('valOut');
+  const c=map.getCenter();btn.disabled=true;btn.textContent='Checking Google…';
+  try{
+    const d=await fetch(`/api/validate?lat=${c.lat.toFixed(5)}&lng=${c.lng.toFixed(5)}&cat=${biz}`).then(r=>r.json());
+    const label=META.catLabels[bi()];
+    if(d.error){out.innerHTML=`<span class="hole">Couldn't reach Google (${d.error}).</span>`;}
+    else if(d.n===0){out.innerHTML=`<span class="tag real">Real gap ✓</span><br>Google finds <b>no ${label.toLowerCase()}</b> within 800 m of this spot. Our data agrees — worth a look.`;}
+    else{out.innerHTML=`<span class="tag hole">Data hole</span><br>Google finds <b>${d.n} ${label.toLowerCase()}</b> here that our map missed:<br>${(d.names||[]).slice(0,5).map(n=>'· '+n).join('<br>')}`;}
+    out.hidden=false;
+  }catch(e){out.innerHTML='<span class="hole">Validation failed.</span>';out.hidden=false;}
+  btn.disabled=false;btn.textContent='✓ Check this view against Google';
+};
 </script></body></html>
