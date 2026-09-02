@@ -18,3 +18,7 @@ cache/
 *.duckdb
 data/*.duckdb
 *.pkl
+
+# webmap generated data (regenerate from the DB)
+webmap/hexes.geojson
+webmap/meta.json
