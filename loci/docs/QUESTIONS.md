@@ -44,7 +44,7 @@ claim stands on.
 - **Prediction:** P3
 - **Answered by:** `Design stratified coverage validation sample` · `Run Google Places ground-truth enumeration` · `DOHMH-anchored undercount calibration` · `Coverage-bias chart` · `USDA SNAP retailer adapter (ANCHOR for grocery/convenience)`
 - **Fails if:** the undercount rate by income decile is materially higher in hexes flagged as underserved than in their well-served peers.
-- **Current answer:** Partly, and badly, for at least one category. 2026-09-02: adding the SNAP near-census cut bodega/convenience gap hexes from **166 to 16** — 90% of that gap type was an OSM/Overture coverage hole, not a missing business. Hardware, fitness and clinic gaps (the current top three) still rest on OSM/Overture only; the Google sample (`loci validate`) is aimed at those next.
+- **Current answer:** Partly, and badly, for at least one category. 2026-09-02: adding the SNAP near-census cut bodega/convenience gap hexes from **166 to 16** — 90% of that gap type was an OSM/Overture coverage hole, not a missing business. Hardware, fitness and clinic gaps (the current top three) still rest on OSM/Overture only; the Google sample (`loci validate`) is aimed at those next. **2026-09-03 (CHECKPOINT D29/D30):** the raw Google survival rates (hardware 58%, fitness 29%, clinic 0%) turned out to measure the Google type map, not coverage — split each result into geometry-artifact vs true coverage hole. Corrected true-hole rates: hardware 5% [2–12] (not disproven — Google's type is an upper bound), fitness 21% [10–37] (real hole, needs an anchor, M7), clinic 0% [0–15] but unfalsifiable by construction (loci excludes doctor's offices, Google doesn't) — clinic dropped from headline claims pending a re-anchor to licensed urgent care (D30).
 
 ### M2 — How well do LODES *jobs* proxy *establishments*?
 - **Status:** open
@@ -74,6 +74,27 @@ claim stands on.
 - **Fails if:** propagated MOEs on hex median income are wide enough that the income control cannot distinguish neighbouring hexes.
 - **Current answer:** —
 
+### M6 — For each loci category, are Google's included types narrower or wider than loci's definition?
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** `Google type-map audit per category`
+- **Fails if:** n/a — measurement. But any Google-validation survival rate is uninterpretable until this is aligned; D29 already found hardware narrower (excludes home_improvement_store) and fitness wider (gym/fitness_center sweeps in hotel/building gyms loci excludes) by inspection, not by a systematic audit.
+- **Current answer:** Known so far (2026-09-03, CHECKPOINT D29): hardware narrower, fitness wider, clinic maximally wider (`doctor` includes every solo physician practice, which loci's `foursquare_places.py` deliberately excludes). Not yet audited category-by-category for the other 12 categories.
+
+### M7 — What anchor source would establish a true fitness coverage hole?
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** `Fitness anchor source for the true coverage hole`
+- **Fails if:** n/a — measurement/sourcing question. Needed because D29 found a real ~21% [10–37] true-coverage-hole rate for fitness after removing geometry artifacts, and OSM/Overture/Foursquare are the only sources feeding that category today — none is a near-census the way DOHMH is for food or SNAP is for grocery.
+- **Current answer:** Open. Candidates to evaluate: NYS business registry, DOHMH (if it licenses fitness facilities), state gym/health-club licensing. None yet verified for NYC coverage or access.
+
+### M8 — Should the validator compare against network distance rather than a straight-line radius?
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** `Validator: network distance or circuity correction`
+- **Fails if:** n/a — measurement. D29's GEOMETRY-artifact category exists precisely because the validator's straight-line radius and the screen's network-distance threshold disagree; a circuity correction or a direct network-distance comparison would remove the need to split results after the fact.
+- **Current answer:** Open. Candidate approaches: reuse `analysis.hex_poi_distance` (already network-based) instead of a straight-line radius at validation time, or apply a circuity correction (~1.25–1.3 in NYC, so an 800m network threshold ≈ 620–640m straight-line).
+
 ### Tier D · Descriptive — what is where
 
 ### D1 — How complete is the daily-needs bundle within a 10-minute walk across NYC, and how is completeness distributed?
@@ -91,11 +112,23 @@ claim stands on.
 - **Current answer:** —
 
 ### D3 — How sensitive is the completeness picture to walk threshold and tier weights?
-- **Status:** open
+- **Status:** in-progress
 - **Prediction:** —
 - **Answered by:** `Run 5/10/15-minute threshold sweep` · `Tier-weight sensitivity analysis`
 - **Fails if:** the bottom decile of hexes reshuffles substantially between 5/10/15 minutes or across plausible reweightings — then "underserved" is an artifact of parameter choice.
-- **Current answer:** —
+- **Current answer:** **Partially answered — Manhattan only.** 2026-09-03 (`d3_manhattan_walk_threshold.py`, read-only; CHECKPOINT D31). It fails: not just a reshuffle but a category-mix flip.
+
+  | Walk window | Eligible hexes | Gap hexes | Lead categories |
+  |---|---|---|---|
+  | 10 min (gate fixed) | 419 | 9 | mixed, no single dominant type |
+  | 5 min (gate recomputed) | 371 | 19 | convenience (16), hair_barber (3) |
+  | 5 min (gate held fixed) | 419 | 53 | upper bound, noisier |
+
+  At 5 minutes, hardware/pharmacy/clinic/bank vanish as gap types (their 400m prevalence drops below
+  the 0.80 expected bar) and convenience/hair_barber dominate instead, concentrated in
+  superblock/institutional footprints (FiDi, Lincoln Square, Morningside Heights, Turtle Bay). Not
+  yet run for Brooklyn/Queens/Bronx/Staten Island or the 15-minute end of the sweep. Motivates D6/D7
+  (per-category, density-class thresholds) as the next-session focus.
 
 ### D4 — Where do transit-rich and daily-needs-poor hexes overlap?
 - **Status:** open
@@ -110,6 +143,20 @@ claim stands on.
 - **Answered by:** `Spacing and nearest-missing distance diagnostics` · `Cross-source POI dedup / entity resolution`
 - **Fails if:** n/a — descriptive. Bears on what a "gap" means: a hex 900 m from a hardware store is a marginal ten-minute gap; 3 km is a hole.
 - **Current answer:** (2026-09-02, **walk-network metres**, five boroughs, canonical POIs, same graph as `hex_access`) **Same-type spacing is tight.** Median network distance to the nearest other business of the same type: 0 m for nails and restaurants (same address), 13–32 m for bars, cafes, salons, groceries, clinics, gyms, 65–113 m for banks, pharmacies, bodegas, laundromats, ~200 m for childcare and hardware. Share with no competitor within a 10-minute walk: hardware 11%, tailors 16%, childcare 6%, everything else under 4%. **Gap hexes are a 10-to-17-minute band, not holes.** The nearest missing business is a median 860–1,030 m on foot from the hex (p90 1,100–1,400 m); only 26 of 726 hexes are beyond 1.5 km and none beyond 4 km. Run `loci spacing` (2 min). Straight-line numbers quoted earlier were superseded; D16 records the distance bug found on the way. Dedup lead in H-D11.
+
+### D6 — What is the empirical distribution of hex-to-nearest-business network distance per category, and should each category's "missing" threshold be set from it?
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** `Per-category walk thresholds from revealed spacing`
+- **Fails if:** n/a — descriptive/method question. Threat to validity: revealed spacing reflects historical supply, not demand — a systematically under-supplied category will look like it "naturally" spaces wide, so a threshold set purely from its own distribution can launder an existing coverage gap into a permissive threshold. Candidate rule: set each category's threshold from its 75th percentile of hex-to-nearest distance among populated hexes.
+- **Current answer:** Open. Motivating case: D31 (Manhattan 5-min result flips the category mix — a single citywide walk window is not defensible).
+
+### D7 — Should thresholds vary by density class or transit/car-dependence, not just by category?
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** `Density-class / mode-dependent thresholds`
+- **Fails if:** n/a — descriptive/method question. Lower Manhattan and car-dependent outer-borough areas should not share one walk window. Cheap proxy: scale the threshold by residential density class (no new data needed). Honest version: ACS vehicle ownership per tract (blocked on CENSUS_API_KEY). Note the interaction with D6: threshold(category, density_class) is one parameterization, not two independent sweeps — keep it small to avoid overfitting a matrix.
+- **Current answer:** Open. Blocked on `CENSUS_API_KEY` for the honest (vehicle-ownership) version; the density-class proxy needs no new data and can proceed first.
 
 ### Tier X · Explanatory — conditional structure, no temporal claim
 
@@ -257,6 +304,13 @@ questions here — a smaller remaining gap.
 - **Answered by:** `Frontier-diffusion map: where the edge moved, where it goes next`
 - **Fails if:** neither adjacency to an already-risen NTA nor a committed exogenous catalyst predicts which neighborhoods rise next.
 - **Current answer:** 2026-09-02. Reframed after O4: since ignition is **not** in a neighborhood's own trajectory (level/slope/acceleration all fail the backtest, D25), the predictive signal must be **exogenous**. Built `src/loci/model/ignition.py` + `loci ignition` (Axis 4b): a hand-curated **catalyst layer** (17 real committed/planned projects — SAS Phase 2, Interborough Express, DCP neighborhood rezonings, Willets Point) screened against low-mid maturity + a light urban-density floor. Key finding: a **naive PLUTO development-headroom score fails** (it floats low-density suburbs — Fresh Meadows, Bath Beach); **requiring a real catalyst is the actual suburb-filter**, and the density floor must stay LOW or it wrongly drops the low-rise-but-catalyzed frontiers (East New York) that are the whole point. 42 catalyst-anchored candidates; the committed tier is defensible and converges with the independent trajectory work — **East Harlem N (mat 29, SAS Ph2 Q-train + '17 rezoning)** is the flagship; the Atlantic-Ave-rezoning cluster (Ocean Hill, Crown Heights, Bed-Stuy) and the East New York cluster (2016 rezoning) follow. The screen's "dropped, no catalyst" list (Chinatown-Two Bridges, Harlem-125th, Washington Heights) is honest QA — real urban candidates whose catalysts the curated layer is still MISSING. Catalyst layer expanded to 28 dated projects (forward + historical). **DOB corroboration added** (`loci ignition` NB18-23 column, from 198k geocoded new-building filings): confirms heavy building in East New York (253), Crown Heights (215), Ocean Hill (151), East Harlem (118) — and flags stalled ones (Two Bridges 14). **Two-clock lag finding** (`loci ignition --lag`): catalyst→**construction** ~5–9 yr (permit surge, peak ~6–11 yr); catalyst→**demographic/human-behavior change** 10–20 yr, sustained, and **only if the rezoning is market-rate** — East New York (affordable-dominated, 2016) built the most but gentrified *below* the citywide drift, i.e. densified without tipping (confirms D21). So the construction/land play is this cycle; the appreciation play is a 2030s–40s horizon, conditional on catalyst type. Reports: ignition_lag_findings.md, nb_by_nta_year.json. Remaining: union DOB NOW (`w9ak-ipjd`) to fix the post-2016 undercount; a proper diff-in-diff to move from timing to causation; validate adjacency-diffusion as a distinct channel.
+
+### O6 — Will a new store in a gap hex push both itself and its nearest neighbor below break-even? · *risk / feasibility*
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** — (not yet ticketed; scope decision pending owner + investor-agent review before it enters Axis 1 investability)
+- **Fails if:** n/a — risk/feasibility question, not a screen result to validate. The concern: filling a gap hex could cannibalize a neighboring store rather than create net new viable retail.
+- **Current answer:** Open, sketch only (2026-09-03). Nearest-store catchment assignment over hexes already exists; missing pieces are a category-specific minimum viable catchment population (candidate sources: County Business Patterns receipts per establishment, or SNAP redemption per store) and a rule — qualify a gap only if the new store's own catchment clears the minimum AND no neighbor drops below it after entry. Belongs in **Axis 1 investability**, not the gap screen itself. Flagged explicitly as a scope-creep risk; needs investor-agent review of the framing before any build.
 
 ---
 
