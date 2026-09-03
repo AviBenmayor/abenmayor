@@ -55,7 +55,7 @@ Then say: **"read docs/CHECKPOINT.md and continue"**.
 
 ## Current state
 
-**Phase:** E0 Foundations — complete and verified. No analysis logic written yet.
+Phase: Core gap screen shipped (analysis.hex_gaps, `loci gaps`, "The Missing Business" map). Axes 1–4b exist as expansions; Axes 3 (premium) and 4b (ignition) are uncommitted-quality spikes now committed under E9. Current focus: validate the core — M1 coverage check on hardware/fitness/clinic via Google Places, and D3 walk-threshold sensitivity.
 
 ### Progress (E1 well underway)
 Done this session: GTM-17 (DOHMH anchor + adapter framework), GTM-10 (Census key, verified),
@@ -721,21 +721,11 @@ Ran in parallel with the session-7 work; it did not touch the model, the map, or
 
 ## Next actions
 
-0. ~~Load SNAP + SLA and rebuild gaps~~ done (8b): convenience gaps 166 → 16.
-0a. **Re-export the webmap JSON** so the map shows the rebuilt gaps.
-0b. ~~Unblock Foursquare~~ done (8c), with a freshness gate.
-0d. ~~Prevalence-threshold sweep~~ built as `loci gaps-sweep` (read-only) and `loci gaps --expected`.
-    Result: 0.75 and 0.80 give 726 hexes; 0.85 and 0.90 give the same 402 (bank 0.83 and hardware
-    0.84 drop out, nothing else moves); 0.95 gives 30. Owner's call which to publish.
-0c. **Run the Google sample on the anchor-less categories:** set `LOCI_GOOGLE_CALL_BUDGET=3000`,
-    `loci validate --categories hardware,fitness,clinic,laundry,childcare,pharmacy --run`
-    (1,200 calls, free tier), then the coverage-bias chart (GTM-50).
-1. **GTM-10 — get a Census API key** into `.env`. One minute, blocks GTM-24.
-2. **GTM-17 — DOHMH adapter.** The anchor source; the entire E4 coverage-bias mitigation
-   depends on having it, so build it before the biased sources rather than after.
-3. **GTM-22 — PLUTO + commercial zoning capacity.** The control that keeps the top-20 list
-   defensible.
-4. **GTM-21 — H3 grid.** Cheap, and everything joins to it.
+1. M1 coverage validation on hardware, fitness, clinic via Google Places (in progress 2026-09-03; budget LOCI_GOOGLE_CALL_BUDGET=3000).
+2. D3 sensitivity: rerun gap screen for Manhattan at a 5-minute walk window and compare against 10 (in progress 2026-09-03).
+3. Re-export webmap JSON to reflect rebuilt gaps.
+4. Get a Census API key (GTM-10) — still blocks ACS ingest.
+5. E9 ignition productionization: move off scratchpad paths, persist to DuckDB, unit tests. Not before 1–2 close.
 
 ~~GTM-12~~ done — see D12.
 
