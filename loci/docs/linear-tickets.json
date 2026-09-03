@@ -46,6 +46,11 @@
       "name": "E8 \u00b7 Second-City Feasibility",
       "description": "Which OTHER cities have data rich enough to run Loci. The universal POI layer (Overture, Foursquare, OSM, OSMnx walk graph) is already global and free, so it is NOT the constraint. The binding constraint is the three NYC-specific crown jewels \u2014 an UNBIASED near-census business anchor (DOHMH), parcel- or grid-level land use (MapPLUTO), and fine demographics + transit quality (ACS + MTA ridership). This milestone scores candidate cities on exactly those axes and picks the first pilot. Research + selection; the universal-interface engineering lives in E5.",
       "window": "Phase 5+"
+    },
+    {
+      "name": "E9 \u00b7 Ignition (Axis 4b)",
+      "description": "Where the NEXT neighborhood takes off. The 2033 projection backtest (D25) proved ignition is not in a neighborhood's own trajectory, and a naive zoning-headroom score just surfaces suburbs (D26) \u2014 ignition is EXOGENOUS: a committed transit expansion, rezoning, or megaproject. This milestone is the catalyst-anchored pre-ignition screen (`loci ignition`), its DOB development-activity corroboration, and the two-clock lag finding (construction ~5\u20139y, demographic tip 10\u201320y and only if market-rate; D27).",
+      "window": "Axis 4b"
     }
   ],
   "issues": [
@@ -938,6 +943,96 @@
       "Labels": "viz,model,milestone",
       "Project": "Loci",
       "Milestone": "E8 \u00b7 Second-City Feasibility"
+    },
+    {
+      "Title": "Catalyst-anchored pre-ignition screen (loci ignition)",
+      "Description": "Since ignition is not in a neighborhood's own trajectory (D25) and a naive PLUTO headroom score just surfaces low-density suburbs (D26), screen for PRE-IGNITION on the exogenous project pipeline instead: a curated CATALYST layer (committed transit / rezonings / megaprojects) \u00d7 low-mid maturity \u00d7 a light urban-density floor.\n\nTwo design lessons baked in: requiring a real catalyst IS the suburb-filter (so the density floor stays LOW or it wrongly drops low-rise-but-catalyzed frontiers like East New York); and the screen's no-catalyst reject list is honest QA for catalysts the layer is missing.\n\nDONE 2026-09-02 \u2014 src/loci/model/ignition.py + `loci ignition`. 44 candidates; East Harlem N (SAS Ph2 + rezoning) is the flagship, converging with the independent trajectory work. See CHECKPOINT D26 / QUESTIONS O5.",
+      "Status": "Backlog",
+      "Priority": 2,
+      "Estimate": 5,
+      "Labels": "model,score",
+      "Project": "Loci",
+      "Milestone": "E9 \u00b7 Ignition (Axis 4b)"
+    },
+    {
+      "Title": "DOB new-building corroboration layer",
+      "Description": "Is development ACTUALLY happening at a candidate, or is the catalyst just paper? Pull DOB new-building filings, geocode to NTA \u00d7 year, and attach a recent-activity column to the screen.\n\nDONE 2026-09-02 \u2014 198,514 NB filings (classic ic3t-wcy2) geocoded to NTA\u00d7year 2000\u20132023 (scratchpad/nb_by_nta_year.json); `loci ignition` now shows NB18-23 per candidate. It separates real building (East New York 253, Crown Heights 215, Ocean Hill 151, East Harlem 118) from stalled (Two Bridges 14). KNOWN GAP: ic3t-wcy2 undercounts post-2016 (DOB NOW migration) \u2014 see the DOB-NOW union ticket.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 3,
+      "Labels": "ingest",
+      "Project": "Loci",
+      "Milestone": "E9 \u00b7 Ignition (Axis 4b)"
+    },
+    {
+      "Title": "Catalyst\u2192change lag study (the two-clock finding)",
+      "Description": "Owner question: how long between a catalyst and completion / human-behavior change? Event study of dated past catalysts against DOB permits and the maturity panel (`loci ignition --lag`).\n\nDONE 2026-09-02 \u2014 TWO CLOCKS: catalyst\u2192construction ~5\u20139 yr (permit surge, peak ~6\u201311 yr, clean on the 2003\u201309 catalysts); catalyst\u2192demographic tip 10\u201320 yr, sustained, and ONLY if market-rate \u2014 East New York (affordable-dominated, 2016) built the most yet gentrified BELOW the citywide drift (densified without tipping, confirming D21). Product read: construction/land play is this cycle; appreciation play is 2030s\u201340s and conditional on catalyst type. CHECKPOINT D27, report ignition_lag_findings.md.",
+      "Status": "Backlog",
+      "Priority": 2,
+      "Estimate": 3,
+      "Labels": "model",
+      "Project": "Loci",
+      "Milestone": "E9 \u00b7 Ignition (Axis 4b)"
+    },
+    {
+      "Title": "Union DOB NOW to fix the post-2016 permit undercount",
+      "Description": "The classic DOB dataset (ic3t-wcy2) was superseded by DOB NOW (`w9ak-ipjd`) around 2016, so recent new-building filings are undercounted \u2014 which is exactly the window the forward catalysts live in, making the recent construction-lag numbers unreliable. Union DOB NOW with the classic set (dedup on job/BIN), re-geocode to NTA \u00d7 year, and re-run the corroboration + lag. This is what lets the recent catalysts (East Harlem, Atlantic Ave) get a trustworthy construction-response read.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 3,
+      "Labels": "ingest",
+      "Project": "Loci",
+      "Milestone": "E9 \u00b7 Ignition (Axis 4b)"
+    },
+    {
+      "Title": "Diff-in-diff: catalyst effect vs matched controls",
+      "Description": "The lag study is a descriptive event study \u2014 and catalysts cluster in already-rising areas, which is the SAME endogeneity that sank the \u00a70 causal thesis. Move from timing toward causation: match each catalyzed NTA to controls on pre-catalyst maturity, trajectory, transit and borough, and estimate a difference-in-differences on maturity and on new-building activity around the catalyst year.\n\nMandatory honesty per the project's standard: report the pre-trend (do treated and control move in parallel BEFORE the catalyst?), and state plainly if parallel trends fails \u2014 a catalyst that lands where growth was already coming is not a proven cause. Do NOT let the retail residual enter (D1).",
+      "Status": "Backlog",
+      "Priority": 2,
+      "Estimate": 5,
+      "Labels": "model,rigor",
+      "Project": "Loci",
+      "Milestone": "E9 \u00b7 Ignition (Axis 4b)"
+    },
+    {
+      "Title": "Expand the catalyst layer from DCP ZAP / MTA capital / EDC",
+      "Description": "The catalyst layer is hand-curated (28 projects) and demonstrably incomplete \u2014 the screen's own no-catalyst reject list surfaces real urban candidates whose catalysts are missing (Chinatown-Two Bridges was added after it appeared; Harlem-125th, Washington Heights still open). Systematize it: pull adopted + pending rezonings from DCP ZAP, funded/planned transit from the MTA capital program, and megaprojects from EDC/ESD, each with a date and status. Promote the CATALYSTS list to package data (a registry-style file), not an in-module literal.\n\nThe reject list is the acceptance test: after the pull, the high-headroom urban no-catalyst set should shrink to genuinely un-catalyzed places.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 5,
+      "Labels": "ingest",
+      "Project": "Loci",
+      "Milestone": "E9 \u00b7 Ignition (Axis 4b)"
+    },
+    {
+      "Title": "Validate adjacency-diffusion as a distinct ignition channel",
+      "Description": "Catalysts are one exogenous channel; spatial diffusion from the already-risen frontier (Williamsburg \u2192 Bed-Stuy \u2192 Bushwick \u2192 Crown Heights \u2192 Ocean Hill \u2192 East New York, O5) is another. Test whether adjacency to a high-maturity NTA predicts a subsequent maturity rise AFTER controlling for having a catalyst \u2014 i.e. does 'next to the frontier' add signal beyond 'has a rezoning'? If yes, add an adjacency term to the ignition score; if the two are collinear (catalysts land next to the frontier), say so.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 3,
+      "Labels": "model",
+      "Project": "Loci",
+      "Milestone": "E9 \u00b7 Ignition (Axis 4b)"
+    },
+    {
+      "Title": "Productionize the ignition layer (package data + DB)",
+      "Description": "ignition.py currently reads the maturity panel and the NB layer from hard-coded scratchpad paths and keeps the catalyst list as an in-module literal \u2014 fine for the spike, not for reproducibility (acceptance criterion C). Persist analysis.nta_trajectory and analysis.nb_by_nta_year into the DuckDB, move CATALYSTS to package data, drop the scratchpad paths, and add a unit test on the screen (a catalyst-less suburb must NOT appear; a low-rise catalyzed frontier MUST). Wire into `make check`.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 3,
+      "Labels": "infra",
+      "Project": "Loci",
+      "Milestone": "E9 \u00b7 Ignition (Axis 4b)"
+    },
+    {
+      "Title": "Relabel the Arrival Curve artifact as ranking / scenario",
+      "Description": "The 2033 backtest (O4/D25) showed the projection fails as a point forecast \u2014 it ships as ranking + scenario only. The published Arrival Curve still frames the 2033 arrows as a forecast. Update the artifact copy (arrows = trajectory ranking / scenario, not a prediction) and add a one-line note that ignition timing is exogenous and lagged (the two-clock finding), so the visual matches what the backtest actually licenses.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 2,
+      "Labels": "viz,docs",
+      "Project": "Loci",
+      "Milestone": "E9 \u00b7 Ignition (Axis 4b)"
     }
   ]
 }

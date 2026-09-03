@@ -25,7 +25,9 @@ QUESTIONS_PATH = ROOT / "docs" / "QUESTIONS.md"
 
 VALID_STATUS = {"open", "in-progress", "answered", "deferred", "dropped"}
 PREDICTIONS = {"P1", "P2", "P3"}
-PROJECT_ID = re.compile(r"^[MDXTC]\d+$")      # Part A: what the project answers
+PROJECT_ID = re.compile(r"^[MDXTCO]\d+$")     # Part A: what the project answers
+# Tier letters: Measurement, Descriptive, eXplanatory, Temporal/predictive, Causal,
+# Opportunity (Axes 3–4, the re-scoped present-day investment screens).
 HOMEWORK_ID = re.compile(r"^H-[LDMT]\d+$")    # Part B: what the owner must research
 HEADING = re.compile(r"^### (?P<id>\S+) — (?P<text>.+)$")
 FIELD = re.compile(r"^- \*\*(?P<key>[^*]+):\*\* ?(?P<val>.*)$")
@@ -78,7 +80,7 @@ def validate() -> tuple[list[str], list[str]]:
         is_project = bool(PROJECT_ID.match(qid))
         is_homework = bool(HOMEWORK_ID.match(qid))
         if not (is_project or is_homework):
-            errors.append(f"{qid}: id matches neither [MDXTC]<n> nor H-[LDMT]<n>")
+            errors.append(f"{qid}: id matches neither [MDXTCO]<n> nor H-[LDMT]<n>")
             continue
 
         status = f.get("status")

@@ -509,6 +509,25 @@ the screen (`loci ignition`). Recorded in O5. Caveats: DOB classic (`ic3t-wcy2`)
 cluster in already-rising areas (the §0 endogeneity) so read lags as TIMING, not causation.
 Reports: ignition_lag_findings.md, ignition_shortlist.json.
 
+**D28 — Axis 3 (premium amenities) v1 built; padel is a data hole; premium demand must be steeply top-weighted.** *(2026-09-02)*
+Started building E6. `src/loci/model/premium.py` + `loci premium`: the demand-vs-supply catchment
+inversion of the daily-needs screen (CONTEXT §11). Supply from the cached Foursquare extract (fresh
+rows, clean leaves: spa = `Health and Beauty Service > Spa` ~3.1k; boutique fitness = Pilates/Yoga/
+Boxing/Climbing studios ~1.3k). **PADEL = 0 supply rows** — it barely existed before 2022, so it
+cannot be screened from OSM/Foursquare at all (the charter's "undercount worse than §7.1" made
+concrete); padel demand is scored but its supply needs Google/manual. **Modeling lesson (caught and
+fixed):** a flat income×education demand weight × population surfaced populous *moderate*-income SE
+Queens (Baisley Park, St. Albans) — wrong market. Premium consumers concentrate HARD at the top, so
+demand is now population × maturity-CUBED, and opportunity = unmet demand (pool − PER×supply), not a
+ratio that explodes at zero supply. Result is defensible: spa → East Harlem S, UWS-Manhattan Valley,
+Fort Greene, Park Slope, Gowanus, Prospect Heights, Clinton Hill; boutique fitness → UES/UWS core +
+LIC/Astoria (young-professional Queens, demand outrunning studios); padel → the affluent core
+(Greenpoint, Gramercy, LES, West Village). Advances GTM-69 (bundle), GTM-70 (supply, minus Google
+validation), GTM-72 (demand pool), GTM-75 (v1 opportunity score). Remaining E6: GTM-71 drive-time/
+transit isochrones (v1 is straight-line), GTM-73 large-format feasibility gate, GTM-70 Google
+validation (mandatory before shipping a site list — padel especially), GTM-74 ship map. Report:
+premium_shortlist.json.
+
 **D28 — Scope arc: one corrected pivot, then deliberate expansion toward a where/what/when investment dataset.** *(2026-09-02)*
 A meta-entry recording how the project's scope has moved, so a later session reads the drift as
 intentional rather than as accumulated creep. Owner framing that governs it: **we are still looking

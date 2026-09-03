@@ -89,6 +89,22 @@ def gen_tickets() -> None:
 
 
 @app.command()
+def ignition(
+    lag: bool = typer.Option(False, "--lag", help="Catalyst→change timing study instead of the screen."),
+) -> None:
+    """Pre-ignition screen (Axis 4b), or --lag for the historical catalyst→change lag study."""
+    from loci.model import ignition as ig
+    ig.lag() if lag else ig.run()
+
+
+@app.command()
+def premium() -> None:
+    """Axis 3: where a premium destination amenity (spa, padel, boutique fitness) could open."""
+    from loci.model import premium as pr
+    pr.run()
+
+
+@app.command()
 def ingest(
     source: str = typer.Option(..., help="Source id from the registry."),
     city: str = typer.Option("nyc"),
