@@ -88,6 +88,37 @@ session.** If a project has one, it is the first file to open.
   tools are missing, check `claude mcp list` — a `✔ Connected` server whose tools do not
   appear means restart, not reconfigure.
 
+### Session operating model — Fable is the executive, not the worker
+
+Established 2026-09-03. Applies whenever the session is running on Fable (or any
+top-tier model). The point is token economics: the expensive model talks to the owner
+and directs; cheaper models do the work.
+
+- **Fable does not read large files, run analyses, or edit code itself.** It dispatches
+  agents and relays results. The only direct actions Fable takes are cheap probes
+  (`wc`, `git status`, `git diff --stat`) and tiny edits where spawning an agent would
+  cost more than the edit.
+- **Model routing by task type:**
+  - **Haiku** — mechanical work: commits, doc regeneration, CHECKPOINT/QUESTIONS edits
+    from dictated text, file moves, running an existing command and reporting output.
+  - **Sonnet** — reading and summarizing docs or diffs, running and interpreting
+    analyses, writing straightforward code against a clear spec, drafting tickets.
+  - **Opus** (or the project's specialist agents: `contrarian`, `statistician`,
+    `data-scientist`, `investor`, `urban-planner`) — judgment-heavy work: modeling
+    choices, methodology review, whether a result survives scrutiny.
+- **Every dispatch gets a one-line spec shown to the owner first** so it can be vetoed
+  before tokens are spent. Independent dispatches run in parallel.
+- **Start of session:** a Sonnet agent briefs from `docs/CHECKPOINT.md` and
+  `docs/QUESTIONS.md` (charter, phase, scope arc, uncommitted work, blockers, most
+  load-bearing open questions). Fable digests that into a short picture and proposes
+  **one narrow deliverable** for the session. Focus is decided together, not assumed.
+- **Scope-creep pressure valve:** anything interesting that is not the session's focus
+  becomes a `docs/QUESTIONS.md` entry, never code. Batch these into one Haiku edit at
+  the end of the session rather than editing as they arise.
+- **End of session:** Haiku updates `CHECKPOINT.md` (phase, decision log, session log,
+  next actions) and appends the batched questions. Fable verifies the stale-header
+  problem did not recur: the phase line and next-actions list must match the body.
+
 ### Verification habits
 
 - **Verify before committing to a dependency, not after.** Probe the real capability —
