@@ -19,6 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.table import Table
 
@@ -26,10 +27,16 @@ from loci import db as locidb
 from loci import questions, registry, tickets as tickets_mod
 from loci import sources as source_adapters
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# GOOGLE_PLACES_KEY etc. live in loci/.env, but nothing was loading it — `loci
+# validate --run` failed with "GOOGLE_PLACES_KEY is not set" even with a
+# populated .env. override=False: a real environment variable always wins over
+# the file.
+load_dotenv(REPO_ROOT / ".env", override=False)
+
 app = typer.Typer(add_completion=False, help=__doc__)
 console = Console()
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @app.command(name="init-db")
@@ -257,13 +264,22 @@ def validate(
     per_decile: int = typer.Option(20, help="Hexes sampled per income decile (10 deciles)."),
     categories: str = typer.Option("all", help="Comma-separated Loci categories, or 'all'."),
     dry_run: bool = typer.Option(True, "--dry-run/--run", help="Plan only (default) or spend calls."),
+    recount_local: bool = typer.Option(False, "--recount-local",
+        help="Recompute n_overture/n_osm/n_city_source/n_local_canonical for every EXISTING row "
+             "in analysis.coverage_validation against current staging.poi/poi_dedup. Spends no "
+             "Google calls and touches n_ground_truth for nobody; ignores --dry-run/--run/sampling."),
 ) -> None:
     """Coverage validation (P3): Google Places as SAMPLED ground truth, counts only, hard budget."""
     from loci.categories import CATEGORIES
     from loci.validation.google_places import GooglePlacesClient
     from loci.validation import sample as smp
-    cats = list(CATEGORIES) if categories == "all" else [c.strip() for c in categories.split(",")]
     con = locidb.connect(); locidb.init_schema(con)
+    if recount_local:
+        n = smp.recount_local(con)
+        console.print(f"[green]ok[/] recomputed local counts for {n} existing rows "
+                       f"in analysis.coverage_validation — no Google calls spent.")
+        raise typer.Exit(0)
+    cats = list(CATEGORIES) if categories == "all" else [c.strip() for c in categories.split(",")]
     s = smp.draw_sample(con, per_decile=per_decile)
     p = smp.plan(s, cats)
     client = GooglePlacesClient()

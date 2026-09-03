@@ -146,6 +146,18 @@ CREATE TABLE IF NOT EXISTS analysis.coverage_validation (
     PRIMARY KEY (h3_index, category)
 );
 
+-- n_overture/n_osm/n_city_source above are read straight off staging.poi (raw,
+-- un-deduped) and, before this fix, only ever unpacked two of the three+ source
+-- ids actually ingested -- see loci.validation.sample._local_counts. Neither
+-- defect touches the gap screen itself (analysis.hex_gaps is built from the
+-- deduped canonical layer via hex_poi_distance), but it made every row in this
+-- table compare Google's enumeration against a partial, non-canonical inventory
+-- of loci's own coverage. n_local_canonical is the corrected total: canonical
+-- (is_canonical) POIs of the category, across ALL ingested sources, within the
+-- same straight-line RADIUS_M used for n_ground_truth. Nullable so historical
+-- rows read NULL until `loci validate --recount-local` backfills them.
+ALTER TABLE analysis.coverage_validation ADD COLUMN IF NOT EXISTS n_local_canonical INTEGER;
+
 -- Cross-source entity resolution (GTM-20). Maps each staging.poi row to a
 -- cluster of duplicates across sources; is_canonical marks the one kept for
 -- scoring. Without this the DNCI inflates wherever source coverage overlaps,
