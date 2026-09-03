@@ -130,6 +130,12 @@ claim stands on.
   yet run for Brooklyn/Queens/Bronx/Staten Island or the 15-minute end of the sweep. Motivates D6/D7
   (per-category, density-class thresholds) as the next-session focus.
 
+  **2026-09-03:** this 10-vs-5 comparison is what revealed that the "missing" rule itself violates
+  monotonicity (a gap at 10 min must survive at 5 min, and here it didn't) — see D6, now rewritten
+  around that finding, and CHECKPOINT D33. D3 is superseded in spirit by D6: the open question is no
+  longer "how sensitive is completeness to one shared threshold" but "the shared threshold was never
+  well-defined." Status left as-is below pending the reach-based rebuild.
+
 ### D4 — Where do transit-rich and daily-needs-poor hexes overlap?
 - **Status:** open
 - **Prediction:** —
@@ -147,9 +153,12 @@ claim stands on.
 ### D6 — What is the empirical distribution of hex-to-nearest-business network distance per category, and should each category's "missing" threshold be set from it?
 - **Status:** open
 - **Prediction:** —
-- **Answered by:** `Per-category walk thresholds from revealed spacing`
-- **Fails if:** n/a — descriptive/method question. Threat to validity: revealed spacing reflects historical supply, not demand — a systematically under-supplied category will look like it "naturally" spaces wide, so a threshold set purely from its own distribution can launder an existing coverage gap into a permissive threshold. Candidate rule: set each category's threshold from its 75th percentile of hex-to-nearest distance among populated hexes.
-- **Current answer:** Open. Motivating case: D31 (Manhattan 5-min result flips the category mix — a single citywide walk window is not defensible).
+- **Answered by:** `Redefine 'missing' via per-category reach (monotonicity fix)`
+- **Fails if:** n/a — descriptive/method question. **Finding (2026-09-03, owner-identified):** the current "missing" rule violates monotonicity. A hex is a gap for category c at window w iff (no c within w) AND (c is present within w for ≥80% of walkable hexes). Anything absent within 800m is absent within 400m, so a gap at 10 min must survive at 5 min — but D3's Manhattan sweep (D31) shows hardware gaps at 10 min vanishing at 5 min, because hardware's 400m prevalence drops to 51% and the 80% bar simply stops expecting it. The rule fuses two questions that must be separated: (a) how far people normally go for category c — a property of the category; (b) whether this hex is anomalous relative to that norm — a property of the hex. Reusing one window for both means the window silently decides which categories are eligible to be missing, so the 10-min and 5-min lists are two different screens, not two views of one.
+  **Definition (supersedes the single citywide window):** each category gets a fixed REACH, set once from revealed spacing (e.g. the distance within which ≥80% of populated hexes already have one — the 80% bar survives only as the quantile that sets reach, never again as an eligibility filter). A hex is a gap for c iff its nearest c is beyond reach(c); no global window remains. The "walkable" eligibility gate (currently ≥12/15 categories present within the window) gets the same treatment: walkable iff within reach of most categories, each at its own reach.
+  **Acceptance test — MONOTONICITY:** tightening any distance parameter may only add gaps, never remove them. The current screen fails this; the reach-based redefinition must pass it as a unit test.
+  **Caveat to carry:** revealed spacing reflects historical supply, not demand — a category the whole city under-supplies will look like it "naturally" spaces wide and its gaps vanish. Contrarian review required before trusting the reach values. See D3 (the Manhattan sweep that exposed this), D7 (density-class scaling of reach), CHECKPOINT D33.
+- **Current answer:** Open. Redefined 2026-09-03 (CHECKPOINT D33) from "pick a threshold from the distribution" to "each category gets its own fixed reach; monotonicity is the acceptance test" — this is now next session's focus, not a parameter sweep.
 
 ### D7 — Should thresholds vary by density class or transit/car-dependence, not just by category?
 - **Status:** open

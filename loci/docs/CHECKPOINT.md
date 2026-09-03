@@ -598,6 +598,28 @@ footprints (FiDi, Lincoln Square, Morningside Heights, Turtle Bay). The 5-min Ma
 near-census anchors (SNAP, DOHMH) and reads as an opportunity list; the gate-held-fixed variant
 (53 hexes) is an upper bound and noisier. Next session's focus: per-category thresholds derived from
 revealed spacing (typical hex-to-nearest distance per category), then density-class scaling.
+*Refined by D33 (2026-09-03): the flip isn't a tuning problem, it's a monotonicity violation — see
+below. Next session's focus is now the reach-based redefinition, not a parameter sweep.*
+
+**D33 — The "missing" rule is definitionally broken, not mistuned.** *(2026-09-03)*
+Why: the current rule — a hex is a gap for category c at window w iff (no c within w) AND (c is
+present within w for ≥80% of walkable hexes) — violates a basic invariant. Anything absent within
+800m is absent within 400m, so a gap at 10 min must survive at 5 min. D31's Manhattan sweep shows the
+opposite: hardware gaps at 10 min vanish at 5 min because hardware's prevalence at 400m drops to 51%
+and the 80% bar simply stops expecting it. The rule fuses two questions that must be separated: (a)
+how far people normally go for category c — a property of the category; (b) whether this hex is
+anomalous relative to that norm — a property of the hex. Reusing one window for both means the window
+silently decides which categories are eligible to be missing, so the 10-min and 5-min Manhattan lists
+are two different screens, not two views of one. Redefinition (QUESTIONS D6): each category gets a
+fixed REACH set once from revealed spacing (the distance within which ≥80% of populated hexes already
+have one — the 80% bar survives only as the quantile that sets reach, never again as an eligibility
+filter); a hex is a gap for c iff its nearest c is beyond reach(c), and the "walkable" eligibility gate
+gets the same per-category-reach treatment. Acceptance test: MONOTONICITY — tightening any distance
+parameter may only add gaps, never remove them; the current screen fails this and the new one must
+pass it as a unit test. Caveat: revealed spacing reflects historical supply, not demand — a category
+the whole city under-supplies will look like it "naturally" spaces wide and its gaps vanish; contrarian
+review of the reach values is required before trusting them. Next session's focus is this redefinition,
+not a parameter sweep.
 
 **D32 — Validator bug fixed (commit 877d162).** *(2026-09-03)*
 `_local_counts` read un-deduplicated staging.poi and looked up only 'overture_places' and a
@@ -778,8 +800,8 @@ Ran in parallel with the session-7 work; it did not touch the model, the map, or
 
 ## Next actions
 
-1. Per-category walk thresholds from revealed spacing (next session focus; see QUESTIONS D6).
-   Manhattan 5-min result is the motivating case.
+1. Redefine "missing" via per-category reach (QUESTIONS D6, CHECKPOINT D33); monotonicity unit
+   test is the acceptance criterion. Next session focus.
 2. Google type-map audit per category (QUESTIONS M6) — required before any further validation
    run is interpretable.
 3. Fitness anchor source for the ~20% true coverage hole (QUESTIONS M7).
