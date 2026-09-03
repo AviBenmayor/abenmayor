@@ -454,6 +454,97 @@ validated; 60% car-free), Coney Island-Sea Gate (laundromat, 1,104 bldgs, 58%), 
 Next: (a) bake category-radius + car-free gate into invest.py/rising.py; (b) Google-validate the
 laundromat/cafe candidates (coverage-bias risk). Scripts: scratchpad/catchment_retest.json, /tmp/carfree.json.
 
+**D25 — The 2033 maturity projection FAILS its 10-year backtest as a point forecast; it ships as ranking + scenario only.** *(2026-09-02, overnight — numbered D25 because a parallel session already used D22/D23 above)*
+O4/GTM-82. Built the multi-decade panel (`nta_trajectory.json`: ACS 2009 via the B15002→B15003
+college crosswalk + 2013/2018/2023, per-vintage tract centroids; 611 rows, 4 years, 155 NTAs). Fit
+on ≤2013 (2009→2013 momentum), predict 2023, compare to actual: damped MAE **8.25** vs
+naive-persistence **9.35** — only ~12% better, beats naive on just **56%** of NTAs — with a severe
+**−7.75** under-prediction bias that LOO-CV damping-tuning does not fix. The neighborhoods that
+mattered were flat 2009→2013 then surged (Bed-Stuy East 23→pred 27 vs actual 44; Ridgewood 23→pred
+24 vs 41; Williamsburg 49→pred 62 vs 81), so **own-trajectory momentum does not anticipate ignition
+at a 10-year horizon** — the flat-then-surge S-curve defeats it, and 2009–13 was an anomalously flat
+post-crisis base. The 5-yr proxy worked only because the surge was already visible by 2013–18: skill
+decays sharply with horizon. **What survives is rank order (corr 0.96).** Consequence: the
+Arrival-Curve 2033 arrows and any "where growth reaches by 2033" claim are **ranking + scenario
+illustration, not point forecasts** — the honest verdict, a direct echo of §0. Does NOT reinstate D1
+(retail never entered the projection). Overnight-agent note: the data-engineer subagent built the
+panel correctly before the stream watchdog killed it (600s stall); the statistician/data-scientist/
+contrarian stages stalled too, so the backtest + verdict were finished in the main session. Remaining:
+logistic/Markov forms, placebo/pre-trend, an accelerating-regime term — none likely to overturn the
+horizon-decay finding. Report: scratchpad/O4_backtest_findings.md.
+
+**D26 — Ignition is exogenous: the predictive model is a curated CATALYST layer, not zoning or trajectory (Axis 4b).** *(2026-09-02)*
+Follows D25. Since a neighborhood's own trajectory does not predict ignition (D25) AND a naive PLUTO
+development-headroom score just surfaces low-density suburbs (Fresh Meadows, Bath Beach — headroom
+only because they're zoned/built low, no catalyst), the ignition signal comes from the **exogenous
+project pipeline**: committed transit (SAS Phase 2 → East Harlem; proposed Interborough Express), DCP
+neighborhood rezonings (East New York '16, East Harlem '17, Inwood '18, Gowanus '21, Atlantic Ave
+'24), megaprojects (Willets Point). Built `src/loci/model/ignition.py` + `loci ignition`: a curated
+17-project catalyst layer screened against low-mid maturity + a **deliberately LOW** density floor
+(built_far≥0.6). Two design lessons: (1) **requiring a real catalyst IS the suburb-filter** — a
+headroom gate is redundant and, set high, wrongly drops the low-rise-but-catalyzed frontiers (East
+New York, built ~0.8) that are exactly the "underdeveloped, ripe for rezoning" case; (2) the screen's
+"no-catalyst" reject list (Chinatown-Two Bridges, Harlem-125th, Washington Heights) is honest QA for
+catalysts the layer is still missing. 42 candidates; the committed tier is defensible and CONVERGES
+with the independent trajectory work — **East Harlem N (mat 29 + Q-train + rezoning) is the flagship**,
+then the Atlantic-Ave cluster (Ocean Hill / Crown Heights / Bed-Stuy) and the ENY cluster. Does NOT
+reinstate D1 (retail never enters). Recorded as O5. Remaining: expand the layer from DCP ZAP / MTA
+capital / EDC, add DOB large-permit corroboration, productionize the layer as package data.
+Report: scratchpad/ignition_shortlist.json.
+
+**D27 — Catalysts run on TWO clocks: construction ~5–9y, demographic tip 10–20y and only if market-rate.** *(2026-09-02)*
+Extends D26. Expanded the catalyst layer to 28 dated projects (forward + historical), pulled **198,514
+DOB new-building filings** geocoded to NTA×year (2000–2023; `nb_by_nta_year.json`), and ran an event
+study (`loci ignition --lag`) of dated past catalysts against NB permits and the maturity panel.
+Finding: (1) **catalyst → construction** — new-building permits surge ~4–9 yr after a rezoning, peak
+~6–11 yr (clean on the 2003–2009 catalysts: Williamsburg '05, Downtown Bklyn '04, LIC '08, Atlantic
+Yards '06). (2) **catalyst → human-behavior/demographic change** — much longer and sustained:
+neighborhoods catalyzed 2003–2008 were still gentrifying +8 to +13 pts ABOVE the +9.3 citywide drift
+in 2013→2023, i.e. 15–20 yr later. (3) **Type matters** — East New York (affordable-dominated, 2016)
+built the MOST (253 NB filings) yet gentrified *below* baseline: it densified without tipping
+(confirms D21). Product consequence: the construction/land bet is this cycle; the appreciation bet is
+a 2030s–40s horizon, conditional on the rezoning being market-rate. DOB corroboration column added to
+the screen (`loci ignition`). Recorded in O5. Caveats: DOB classic (`ic3t-wcy2`) undercounts post-2016
+(DOB NOW migration — union `w9ak-ipjd` to fix); descriptive event study, not diff-in-diff; catalysts
+cluster in already-rising areas (the §0 endogeneity) so read lags as TIMING, not causation.
+Reports: ignition_lag_findings.md, ignition_shortlist.json.
+
+**D28 — Scope arc: one corrected pivot, then deliberate expansion toward a where/what/when investment dataset.** *(2026-09-02)*
+A meta-entry recording how the project's scope has moved, so a later session reads the drift as
+intentional rather than as accumulated creep. Owner framing that governs it: **we are still looking
+for the diamond in the rough, and the axes are being assembled into one dataset that answers where to
+invest, what to invest in, and when.** That through-line is the thing to protect; the axes are not
+five unrelated projects, they are the columns of one investment question.
+
+The movement, in four parts:
+1. **The pivot (a correction, not creep).** The project began (D1) as a *causal* thesis — the retail
+   gap/residual predicts subsequent residential growth. That was the assistant's reframing, not the
+   owner's hypothesis, and it also **empirically failed** (β wrong-signed +0.069, broken pre-trends).
+   Session 7 re-scoped to a **present-day investment screen** — walkable, populated hexes missing one
+   obvious daily-needs business. The E3 causal apparatus survives only as honest negative science
+   (see the SCOPE CORRECTION banner). This drift made the project *better*: it caught a misread that
+   the data had already contradicted.
+2. **Axis expansion → the where/what/when dataset (owner-driven).** One screen became a set of axes,
+   each a column of the investment question: **WHERE** = Axis 1 Investability (D18) + Axis 2 Rising
+   (D19–D21); **WHAT** = the gap screen itself (which business is missing) + Axis 3 Premium/
+   destination amenities (D22, inverted method); **WHEN** = Axis 4 Maturity/2033 (D23, D25) + Axis 4b
+   Catalyst/ignition (D26, D27). This is expansion, and it is coherent under the where/what/when
+   frame — but two honesty flags stay attached: **Axis 4 failed its own 10-year backtest** (D25) and
+   ships as ranking + scenario only, and every forward axis is explicitly fenced from reviving D1
+   (retail is never a growth predictor).
+3. **Deliverable drift: finding → tool.** From a public map + methodology memo (an argument you
+   defend) to a hosted read-only query app + toggleable layers (D24-app) — from "here is the finding"
+   to "here is a dataset you can interrogate." Consistent with the dataset framing above.
+4. **Geographic drift both directions.** Manhattan cut once it had no validated gaps (D17), narrowing
+   to Brooklyn/Queens — then E8 (GTM-87…94) expands the other way, NYC → a portable multi-city
+   feasibility framework.
+
+The failure mode to watch, stated so a later session can check against it: the sharp question
+("areas missing an obvious business") must not quietly dissolve into "a general-purpose NYC
+opportunity platform." Focus is what made the original finding defensible. Each new axis earns its
+place only by serving where/what/when for the diamond-in-the-rough hunt — not by being interesting on
+its own. Does NOT reinstate D1.
+
 ### 2026-09-02 — Session 8e: the distance table
 - Owner asked whether every data point is stored and whether a graph DB would help. Answer:
   POIs yes, distances no — `hex_access` kept counts at three thresholds and threw the Dijkstra
