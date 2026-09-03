@@ -40,11 +40,11 @@ These gate every tier below. A "no" here does not narrow a claim; it removes the
 claim stands on.
 
 ### M1 — Is the measured retail gap real, or a POI-coverage artifact?
-- **Status:** open
+- **Status:** in-progress
 - **Prediction:** P3
-- **Answered by:** `Design stratified coverage validation sample` · `Run Google Places ground-truth enumeration` · `DOHMH-anchored undercount calibration` · `Coverage-bias chart`
+- **Answered by:** `Design stratified coverage validation sample` · `Run Google Places ground-truth enumeration` · `DOHMH-anchored undercount calibration` · `Coverage-bias chart` · `USDA SNAP retailer adapter (ANCHOR for grocery/convenience)`
 - **Fails if:** the undercount rate by income decile is materially higher in hexes flagged as underserved than in their well-served peers.
-- **Current answer:** —
+- **Current answer:** Partly, and badly, for at least one category. 2026-09-02: adding the SNAP near-census cut bodega/convenience gap hexes from **166 to 16** — 90% of that gap type was an OSM/Overture coverage hole, not a missing business. Hardware, fitness and clinic gaps (the current top three) still rest on OSM/Overture only; the Google sample (`loci validate`) is aimed at those next.
 
 ### M2 — How well do LODES *jobs* proxy *establishments*?
 - **Status:** open
@@ -61,11 +61,11 @@ claim stands on.
 - **Current answer:** —
 
 ### M4 — Do Overture, Foursquare and OSM agree on presence, and where do they disagree?
-- **Status:** open
+- **Status:** in-progress
 - **Prediction:** —
-- **Answered by:** `Cross-source POI dedup / entity resolution`
+- **Answered by:** `Cross-source POI dedup / entity resolution` · `Foursquare OS Places adapter`
 - **Fails if:** disagreement is concentrated by geography or by category (laundromats, salons) rather than spread randomly — then source choice is itself a bias.
-- **Current answer:** —
+- **Current answer:** Loaded 2026-09-02. Dedup on six sources collapses 25% of rows (299,029 → 224,370 canonical). **Foursquare's disagreement is mostly staleness, not geography:** rows last refreshed before 2019 are corroborated by any other source <10% of the time, 2026-refreshed rows 55%. With a 2024 freshness gate it adds 54k canonical POIs, concentrated in bars, gyms, cafes and salons. Its effect on the gap screen is modest (hardware 270→245, fitness 154→138) — the ungated version had erased far more, all ghosts. Also observed: adding any source can push a category's prevalence over the 80% 'expected' line and turn its absences into gaps (bank did, 0→285 hexes). That is a screen-design sensitivity, filed for the owner.
 
 ### M5 — Do ACS margins of error leave hex-level income and population usable as controls?
 - **Status:** open
@@ -103,6 +103,13 @@ claim stands on.
 - **Answered by:** `Bivariate transit × residual map` · `MTA transit access control`
 - **Fails if:** n/a — descriptive. This is the thesis stated as one image.
 - **Current answer:** —
+
+### D5 — How far apart do same-type businesses sit, and how far is the nearest missing business from a gap hex?
+- **Status:** answered
+- **Prediction:** —
+- **Answered by:** `Spacing and nearest-missing distance diagnostics` · `Cross-source POI dedup / entity resolution`
+- **Fails if:** n/a — descriptive. Bears on what a "gap" means: a hex 900 m from a hardware store is a marginal ten-minute gap; 3 km is a hole.
+- **Current answer:** (2026-09-02, **walk-network metres**, five boroughs, canonical POIs, same graph as `hex_access`) **Same-type spacing is tight.** Median network distance to the nearest other business of the same type: 0 m for nails and restaurants (same address), 13–32 m for bars, cafes, salons, groceries, clinics, gyms, 65–113 m for banks, pharmacies, bodegas, laundromats, ~200 m for childcare and hardware. Share with no competitor within a 10-minute walk: hardware 11%, tailors 16%, childcare 6%, everything else under 4%. **Gap hexes are a 10-to-17-minute band, not holes.** The nearest missing business is a median 860–1,030 m on foot from the hex (p90 1,100–1,400 m); only 26 of 726 hexes are beyond 1.5 km and none beyond 4 km. Run `loci spacing` (2 min). Straight-line numbers quoted earlier were superseded; D16 records the distance bug found on the way. Dedup lead in H-D11.
 
 ### Tier X · Explanatory — conditional structure, no temporal claim
 
@@ -286,6 +293,21 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Status:** open
 - **Unblocks:** E1 · Ingest and Grid
 - **Current answer:** — (Freshness is already a ticket; this is about coverage of the 15 categories.)
+
+### H-D9 — Which NYS Liquor Authority license descriptions denote a bar?
+- **Status:** open
+- **Unblocks:** E1 · Ingest and Grid
+- **Current answer:** — (The active-licenses file `9s3h-dpkz` has no "bar" type. The adapter currently emits `bar` for Food & Beverage Business, Club, Cabaret and Bottle Club, skips Restaurant (DOHMH anchors it) and skips "Additional Bar" riders (they attach to an existing premises). Confirm against the SLA licence-class guide whether Food & Beverage Business is the tavern class, and whether a material share of bars hold a Restaurant licence.)
+
+### H-D10 — Is a Foursquare "Medical Center" a neighbourhood clinic, and is a Foursquare "Gym and Studio" a gym?
+- **Status:** open
+- **Unblocks:** E4 · Validation and Artifact
+- **Current answer:** — (Medical Center is 6,971 of the 10,579 Foursquare clinic rows before the freshness gate and looks like a catch-all; Gym and Studio is a level-2 label used as a leaf on ~4k rows. Both are exactly what the Google sample on clinic/fitness should test — run `loci validate --categories clinic,fitness` and compare undercount by source.)
+
+### H-D11 — Are same-category cross-source pairs within 25 m the same business under two names?
+- **Status:** open
+- **Unblocks:** E1 · Ingest and Grid
+- **Current answer:** — (71k restaurant pairs sit within 25 m across sources with non-matching names, e.g. DOHMH "Bronx Burger Company" vs Overture "Peter Dorcas Ventures Inc". Some are food halls and shared addresses; some are legal-name vs trade-name for one establishment. Sample 50 by hand; if most are the same business, dedup needs an address-level merge for anchor sources, and every count-based result is inflated.)
 
 ### Methods & stats
 

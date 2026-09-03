@@ -28,7 +28,9 @@ Obtain Google Places key with a hard call budget,"Pro SKU $32/1k, 5,000 free cal
 
 GUARDRAIL: request ONLY id/name/location/types. Adding ratings or hours reprices to Enterprise ($35/1k); reviews or photos to Enterprise+Atmosphere ($40/1k). Enforce LOCI_GOOGLE_CALL_BUDGET in the client.
 
-Needed W4, not W1.",Backlog,3,1,"infra,blocker",Loci,E0 · Foundations
+Needed W4, not W1.
+
+DONE 2026-09-02 — src/loci/validation/google_places.py: persisted call ledger, refuses when LOCI_GOOGLE_CALL_BUDGET is unset or exhausted, minimal field mask (id/location/types). `loci validate --dry-run` plans the spend; `--run` executes under the cap. Webmap per-click calls capped by GOOGLE_CLICK_BUDGET (default OFF).",Backlog,3,1,"infra,blocker",Loci,E0 · Foundations
 VERIFY: LODES8 block vintage is 2020 TIGER across all years,"CONTEXT.md open question #5. If LODES8 uses 2020 blocks for every vintage, the 2002–2023 panel needs no 2010/2020 crosswalk. If it does not, budget a crosswalk before E3.
 
 This is the cheapest possible check and it de-risks the entire panel. Do it first.
@@ -40,7 +42,13 @@ If stale: downgrade DCWP to snapshot-only and lean harder on DOHMH as the anchor
 Overture Places adapter → staging.poi,"GeoParquet via overturemaps-py, NYC bbox. Map Overture categories onto the 15 Loci categories (CONTEXT.md §2.1).
 
 Overture's schema is coarse for personal services — expect the salon/laundromat mapping to be the lossy part, and record mapping confidence in staging.poi.confidence.",Backlog,2,5,ingest,Loci,E1 · Ingest and Grid
-Foursquare OS Places adapter,"Apache-2.0, separate taxonomy from Overture. Used as a cross-check, not as the base layer — FSQ skews toward venues with check-in history, i.e. away from laundromats.",Backlog,3,3,ingest,Loci,E1 · Ingest and Grid
+Foursquare OS Places adapter,"Apache-2.0, separate taxonomy from Overture. Used as a cross-check, not as the base layer — FSQ skews toward venues with check-in history, i.e. away from laundromats.
+
+Why it matters under the gap screen: it is the only free bulk source with fine-grained gym / hardware / urgent-care labels — the top gap types with no government anchor.
+
+BLOCKED 2026-09-02 on access: public S3 bucket retired (holds LICENSE/NOTICE only); data is on the Places Portal (Iceberg token) or the gated Hugging Face mirror. Adapter written (sources/universal/foursquare_places.py, tests pass); set HF_TOKEN after accepting the terms, then `loci ingest --source foursquare_os_places --dry-run` and tighten LEAF_CATEGORY against the reported unmapped leaves.
+
+DONE 2026-09-02 — token obtained, NYC extract cached (821k rows, <1 min), category map rebuilt from the real 1,279-label taxonomy (path-prefix rules for the restaurant/bar/cafe families; Deli, ATM, Doctor's Office and specialist physicians deliberately dropped). FRESHNESS GATE added: corroboration by other sources is <10% for rows last refreshed before 2019 vs 55% for 2026, so only rows refreshed since 2024 load (109k of 191k mapped; 54k canonical). Effect on the gap screen was modest once ghosts were removed: hardware 270→245, fitness 154→138, clinic 148→91.",Backlog,3,3,ingest,Loci,E1 · Ingest and Grid
 OSM Overpass adapter,"Tag vocabulary of record (CONTEXT.md §2.1 table). Also the third opinion on presence.
 
 Carries the project's most dangerous bias — see E4 coverage validation.",Backlog,3,3,ingest,Loci,E1 · Ingest and Grid
@@ -51,6 +59,18 @@ DCWP licenses adapter,Dataset w7w3-xahh. Laundries and other DCWP-licensed categ
 NYS DOS Appearance Enhancement adapter,"Dataset y3u4-jbgh. Best available source for nail/hair.
 
 CONSTRAINT: active-only, therefore survivorship-biased. Snapshot enrichment ONLY. Must never be used to construct an openings/closings series — enforce this in the adapter, not just in docs.",Backlog,3,2,ingest,Loci,E1 · Ingest and Grid
+USDA SNAP retailer adapter (ANCHOR for grocery/convenience),"USDA SNAP Retailer Locator via its ArcGIS feature service. Near-census of stores that accept SNAP; store type separates Supermarket/Grocery from Convenience by stocking breadth.
+
+Why: tier 1 is 40% of the index and had no anchor. Its bias runs the OPPOSITE way from OSM (misses non-SNAP stores in affluent areas), which makes it a second calibration curve for the coverage-bias check.
+
+Verified 2026-09-02: 8,052 five-borough rows, lat/lon on every row.",Backlog,2,3,ingest,Loci,E1 · Ingest and Grid
+NYS SLA liquor license adapter (ANCHOR for bars),"Dataset 9s3h-dpkz. Anchor for the bar category, which the DOHMH adapter deliberately does not emit.
+
+Mapping is conservative — license descriptions do not say bar. Emits `bar` for Food & Beverage Business, Club, Cabaret, Bottle Club; skips Restaurant (DOHMH) and Additional Bar riders. QUESTIONS.md H-D9 tracks the open mapping question.
+
+Companion inactive file 6dg3-2z7i makes closures recoverable — a candidate E5 panel.
+
+Verified 2026-09-02: 24,711 NYC rows, 98.5% georeferenced.",Backlog,2,3,ingest,Loci,E1 · Ingest and Grid
 Cross-source POI dedup / entity resolution,"The same laundromat appears in Overture, FSQ, OSM and DCWP. Without dedup the DNCI inflates wherever coverage overlaps — which is itself geographically biased, so the error is not random.
 
 Approach: spatial blocking (~25m) + normalized-name similarity, per category. Emit a survivorship record so counts are auditable.",Backlog,2,5,ingest,Loci,E1 · Ingest and Grid
@@ -134,6 +154,9 @@ Top-20 list + zoning-artifact audit,"Produce the ranked list of transit-rich und
 HARD GATE: manually inspect for park edges, industrial zones and cemetery blocks. Any present means the commercial-zoning control failed — fix the model, do not hand-remove the rows.
 
 Also check it contains ≥3 genuine surprises. A list of only obvious places means the residual isn't doing any work.",Backlog,1,3,"model,infra",Loci,E3 · Residual and Panel
+Spacing and nearest-missing distance diagnostics,"QUESTIONS.md D5. Two read-only diagnostics the gap screen cannot answer on its own: (1) nearest-neighbour distance between businesses of the SAME category — how clustered each trade is and how often a business has no competitor within a walk; (2) for each gap hex, straight-line distance to the nearest business of its lead-missing category — separates marginal 10-minute gaps from real holes.
+
+DONE 2026-09-02 — `loci spacing` (src/loci/model/spacing.py). Found and fixed on the way: DuckDB ST_Distance_Sphere reads (lat, lon) — decision D16, shared METRES_SQL in db.py.",Backlog,4,2,model,Loci,E3 · Residual and Panel
 Residual convergence test,"QUESTIONS.md T5 — does the gap close on its own?
 
 Over 2002–2023, do hexes with a negative residual at t converge toward their peers by t+k (retail employment growth regressed on the lagged residual, borough FE)?
@@ -151,7 +174,9 @@ Design stratified coverage validation sample,"Prediction P3 and threat §7.1 —
 
 OSM/Overture undercount small business in lower-income and immigrant neighborhoods: exactly the areas the thesis flags as underserved. If the undercount is strong there and weak in Park Slope, the 'retail gap' is a data gap wearing a costume.
 
-Draw hexes at random within each income decile, and cross-stratify by foreign-born share (ACS) so borough / immigrant-neighborhood contrasts in the residual (QUESTIONS.md X3) can be separated from coverage bias. Fix n per stratum against the 5,000-call budget before spending anything.",Backlog,1,3,"validation,critical",Loci,E4 · Validation and Artifact
+Draw hexes at random within each income decile, and cross-stratify by foreign-born share (ACS) so borough / immigrant-neighborhood contrasts in the residual (QUESTIONS.md X3) can be separated from coverage bias. Fix n per stratum against the 5,000-call budget before spending anything.
+
+DONE 2026-09-02 — src/loci/validation/sample.py: NTILE(10) on median income among populated hexes, seeded random draw per decile, like-for-like 800 m straight-line counts for Google vs Overture/OSM/anchor. Foreign-born cross-stratification NOT possible yet: hex_demographics has no foreign-born column (add to ACS ingest first). Default plan: 200 hexes × 15 categories = 3,000 calls, inside the free tier.",Backlog,1,3,"validation,critical",Loci,E4 · Validation and Artifact
 Run Google Places ground-truth enumeration,"Enumerate ground truth for the sampled hexes. Fields: id/name/location/types ONLY — anything more reprices the SKU.
 
 Enforce the call budget in code. Populate analysis.coverage_validation.",Backlog,1,5,"validation,critical,blocker",Loci,E4 · Validation and Artifact
@@ -187,3 +212,63 @@ Spend the headroom on enlarging the E4 validation sample FIRST — that has high
 Identification strategy: quasi-experimental variation,"Addresses threat §7.2 properly. Candidates: historic rezonings, or transit shocks such as the L-train shutdown, as sources of variation in retail supply plausibly exogenous to neighborhood trajectory.
 
 Out of scope at 4 weeks. This is what a v2 would need to make a genuinely causal claim.",Backlog,4,8,"model,deferred",Loci,E5 · Deferred
+Charter the premium-amenity axis (CONTEXT §11),"Owner add 2026-09-02: screen NYC for where a PREMIUM, destination amenity could open — padel courts and spa/wellness studios first.
+
+Why this needs its own charter section and cannot reuse the daily-needs gap screen: the two goods behave oppositely.
+ • Daily needs are convenience goods — consumed often, near-zero willingness to travel, so the geography is the 800 m walk and the screen is 'present in ≥80% of walkable peers, absent here.'
+ • Premium amenities are DESTINATION goods — consumed occasionally, high ticket price, people will drive/transit 15–30 min for them (the owner's own premise). They are RARE by nature, so a prevalence-gap screen would flag almost everywhere and mean nothing.
+
+So the method inverts to a classic trade-area / gravity site-selection model: a travel-time CATCHMENT with enough qualifying premium demand but little or no supply within that catchment, plus a feasible large-format site. Document it as CONTEXT §11 and CHECKPOINT D22. This is Axis 3, parallel to Axis 1 (Investability, invest.py) and Axis 2 (Rising, rising.py) — NOT a return to the rejected residual-growth thesis (D1).",Backlog,2,2,"docs,infra",Loci,E6 · Premium Amenities
+Define the premium-amenity bundle + demand-target per category,"Padel and spa are the two named anchors; extend to the destination-amenity family that shares the travel-for-it behavior, each kept as its OWN category because catchment size, demand target and site needs differ: padel, spa / day-spa, med-spa, pilates / reformer, boutique fitness / boxing, climbing gym, bathhouse / sauna, golf & sports simulator.
+
+Each category carries (a) its demand TARGET — not raw population: padel skews affluent + athletic + 25–44; med-spa skews affluent women 30–55; climbing skews younger + college-educated — and (b) a nominal catchment travel time and site footprint. These are judgment calls, stated explicitly and tunable, exactly like the daily-needs tier weights and the invest.py ECON minimums (D18). Emit the bundle as data (a PREMIUM dict mirroring ECON), not hard-coded in the scorer.",Backlog,2,3,score,Loci,E6 · Premium Amenities
+Ingest premium-amenity supply + Google-validate (mandatory here),"These amenities are OUTSIDE the daily-needs 15, so they need their own supply layer. Sources: OSM (padel = leisure=pitch + sport=padel; spa = leisure=spa / shop=beauty+beauty=spa; climbing = sport=climbing; sauna = leisure=sauna), Foursquare leaves (Spa, Pilates Studio, Climbing Gym, Boxing Gym, Gym and Studio subtypes), Google Places for ground truth.
+
+Why Google validation is load-bearing here, not optional as it is for daily needs: padel barely existed before 2022 and boutique studios open fast, so OSM/Foursquare snapshots undercount them SEVERELY and unevenly. A padel 'gap' is far more likely to be a data gap than a daily-needs gap is (threat: the §7.1 coverage bias, but worse). Validate every candidate site's catchment against Google + a manual web check before it ships. Reuse the budget-guarded validation client (src/loci/validation/).",Backlog,2,5,"ingest,validation",Loci,E6 · Premium Amenities
+Travel-time catchment engine (drive + transit isochrones),"Replaces the 800 m walk ring with a per-amenity travel-time CATCHMENT — the load-bearing modeling choice for this axis, and the owner's core premise ('people will travel longer').
+
+Build drive-time isochrones (car network) unioned with transit-time where the amenity is transit-oriented (a Manhattan spa is reached on foot/subway; an outer-borough padel box is reached by car with parking). Default 15 min, and because willingness-to-travel is ASSUMED not measured, sweep 10 / 15 / 20 / 30 min and report how the site ranking moves — the sensitivity IS the honesty here. Reuse the OSMnx graph machinery from E2; the drive network and isochrone reach are the new parts. Emits a catchment membership table (site/hex → reachable population + supply).",Backlog,2,8,score,Loci,E6 · Premium Amenities
+Premium demand pool per catchment,"Score each catchment's DEMAND — not raw homes (that is the daily-needs driver) but a premium demand pool: population weighted toward the top income deciles, the category's target age band, and college/education share (which D20 already computes and found correlated 0.72 with income). Per-category weighting from the demand TARGET defined in the bundle ticket.
+
+Re-use hex_demographics (income, renter) + the ACS momentum module's age/education pulls (model/momentum.py). Output: qualifying-demand headcount and $ per candidate catchment, comparable across amenities.",Backlog,2,5,model,Loci,E6 · Premium Amenities
+Large-format feasibility gate,"The invest.py feasibility gate (D18) but re-tuned for destination formats. A padel court needs ~1,000+ m² and height (warehouse, parking deck, flex/industrial — often NOT a ground-floor retail bay); a day-spa needs mid-size retail or upper-floor; a climbing gym needs a tall shell. So the PLUTO test changes from 'any CommFAR>0 storefront' to lot size + floorplate + a zoning district that permits commercial recreation / personal-service, plus vacancy/industrial-conversion candidates.
+
+Without this the screen recommends amenities onto lots where they physically or legally cannot go — the D3 zoning-artifact failure in a new costume. Gate each candidate site on a buildable/leasable large-format space before it can rank.",Backlog,3,5,"model,ingest",Loci,E6 · Premium Amenities
+Premium opportunity score + ranked site list,"Combine: opportunity = qualifying demand pool in the catchment − existing supply reachable within that catchment, gated on a feasible large-format site, ranked per amenity.
+
+Three threats to state plainly on the list, because a reader will raise them:
+ • Supply undercount is worse for these new categories (padel especially) — every top site must survive Google + manual validation or it is presumed a data gap, not an opportunity.
+ • Willingness-to-travel is assumed; the catchment radius is the biggest lever, so report the ranking under the 10/15/20/30-min sweep, not a single radius.
+ • National-chain pipeline (Life Time, Equinox, Padel Haus, etc.) may already have a site under LOI — outside the data, flagged as manual diligence per top pick.
+
+Produces the padel and spa shortlists the owner asked for.",Backlog,2,5,model,Loci,E6 · Premium Amenities
+SHIP: 'Where could a padel court / spa go?' map layer,"Axis-3 deliverable, parallel to the invest/rising buy-list artifacts. A map layer (toggle per amenity) showing travel-time catchments shaded by UNMET premium demand, with feasible large-format sites pinned and each top site carrying its demand pool, nearest existing supply, and the validation result. Load the `dataviz` skill before writing chart code.",Backlog,2,3,"viz,milestone",Loci,E6 · Premium Amenities
+"Charter the maturity + projection axis (CONTEXT §12), honestly vs §0/D1","Owner add 2026-09-02, two linked questions: (1) where is each neighborhood on its MATURITY curve today, and (2) where could growth get to by 2033 — how do we project it.
+
+This is the forward extension of Axis 2 (Rising, D19/D20/D21), and it MUST be framed to not revive the project's central rejected result. Be explicit in CONTEXT §12:
+ • DEAD and staying dead (§0/D1): 'the retail gap/residual at t0 predicts subsequent residential growth' — β was wrong-signed (+0.069), pre-trends broken. This axis never uses the retail residual as a growth predictor.
+ • LEGITIMATE and different: locating a neighborhood on a development S-curve from its OWN observed multi-metric history (income, college, rent, permits, jobs), then EXTRAPOLATING that trajectory. The pre-trend finding — that these places are on a development cycle — is precisely what licenses extrapolation.
+ • The honesty is in the caveats: extrapolation assumes the frontier keeps diffusing and no macro shock intervenes. D21 already caught ENY rents COOLING to +1.9%/yr — trajectories bend, so the output is scenario bands, never a point forecast, and it is credible only if it passes the backtest ticket.
+
+Retail (Loci's core product) attaches at the END as the dependent read: given a projected 2033 demand surface, today's Axis-1/Axis-3 sites can be re-scored forward. Write CONTEXT §12 + CHECKPOINT D23.",Backlog,2,3,"docs,infra",Loci,E7 · Maturity and 2033 Projection
+Assemble the multi-decade neighborhood trajectory panel,"momentum.py (D20) pulled only two points (2013 & 2023). Staging and projection need a real time series per NTA. Assemble: decennial 2000 + 2010, ACS 5-yr 2009/2013/2018/2023 (real HH income via B19025/B11001, college share B15003, tenure, age bands), LODES WAC 2002–2023 (already downloaded), Zillow ZORI/ZHVI 2000– (D21), DOB/HPD permit pipeline by year.
+
+Deflate every dollar series to 2023 real (CPI ×1.308 for 2013→2023 per D20 — extend the factor to each vintage) or the trend is mostly inflation. Aggregate each vintage to 2020 NTA via that year's tract centroids (the momentum.py gazetteer method). Output: analysis.nta_trajectory, one row per NTA per year per metric. This is the raw material for BOTH the maturity classifier and the projection.",Backlog,2,8,"ingest,panel",Loci,E7 · Maturity and 2033 Projection
+Neighborhood maturity-stage classifier,"Place each NTA on the development S-curve. THE methodological point: stage is defined by LEVEL and RATE and ACCELERATION (1st + 2nd derivative) of the panel metrics, not by level alone — that is what separates a maturity model from a static wealth map. A high-income but decelerating neighborhood is 'maturing'; high-income and still accelerating is 'rising'.
+
+Stages: pre-frontier/dormant (low level, flat) → emerging (income accelerating, college still low, first permits — where ENY sits: +42% income but college only 9→14%, D21) → rising (income+college both climbing fast, rent + permit boom) → maturing (high level, growth decelerating — Williamsburg now) → mature/saturated (high, flat or declining — the 5 rich Manhattan NTAs in real decline, D20). Spatial adjacency to the already-risen frontier is a feature (gentrification diffuses to neighbors). Output: each NTA's stage + a 0–1 position along the curve.",Backlog,2,5,"model,score",Loci,E7 · Maturity and 2033 Projection
+"Frontier-diffusion map: where the edge moved, where it goes next","Half of 'where could growth get to' is spatial. Trace the observed gentrification frontier 2000→2023 — Williamsburg → Bed-Stuy → Bushwick → Crown Heights → Ocean Hill → East New York (D20 already found this path) — as a datable wave, and identify the not-yet-risen neighborhoods ADJACENT to today's rising edge as the mechanistic next steps.
+
+This is the most communicable form of the forecast and the one most tied to an actual mechanism (diffusion to neighbors), so it anchors the more model-driven projection. Report the frontier's measured pace (blocks/decade) — that pace is what sets the 2033 reach.",Backlog,2,5,"model,viz",Loci,E7 · Maturity and 2033 Projection
+2033 trajectory projection with scenario bands,"Project each NTA's income / college / rent to 2033. Two complementary methods, reported together:
+ • Per-metric LOGISTIC (saturating) extrapolation — logistic not linear, because a neighborhood cannot gentrify past 100% and linear extrapolation of a hot decade is the classic forecasting error.
+ • Stage-transition (Markov) roll-forward — estimate P(stage→stage per decade) from the historical panel, then advance each NTA one step to 2033, giving a probabilistic stage.
+
+Output is SCENARIO BANDS, never a point estimate: continued-diffusion / stall / reversal, motivated by the live evidence that trajectories bend (ENY rents cooled to +1.9%/yr post-2022, D21). Also produce the analogue read — for each emerging NTA, the already-matured NTA it most resembles at the same stage (ENY-2023 ≈ Bushwick-2011?) and that analogue's realized path as an interpretable forecast.",Backlog,2,8,model,Loci,E7 · Maturity and 2033 Projection
+"Backtest the projection (fit 2000→2013, predict 2013→2023)","The load-bearing credibility check — the analogue to E3's pre-trend/placebo rigor, and the reason this axis is not astrology. Fit the classifier + projection on data through 2013 ONLY, project 2013→2023, and compare to what actually happened. If the model cannot retrodict the Bushwick/Crown Heights/ENY arc it demonstrably cannot forecast 2033, and the memo must say so.
+
+Report out-of-sample error by stage (emerging neighborhoods are the hardest and the most important). This ticket gates whether the 2033 numbers ship as a forecast or only as a scenario illustration.",Backlog,1,5,"model,rigor",Loci,E7 · Maturity and 2033 Projection
+Bridge to the product: forward-looking demand for Axes 1 & 3,"Close the loop WITHOUT reviving D1. Take the projected 2033 demand surface (population/income/education by scenario) and re-score the Axis-1 investability gaps and Axis-3 premium sites against it, so a site that is marginal on today's demand but sits in a neighborhood projected to mature by ~2030 becomes visible as a forward bet.
+
+Guardrail, stated in code and memo: retail is the DEPENDENT variable of the projection (projected rooftops/income drive projected demand), never the predictor of growth. The moment a retail gap is used to predict neighborhood growth, this has become the rejected thesis again.",Backlog,3,5,model,Loci,E7 · Maturity and 2033 Projection
+SHIP: maturity + 2033 projection artifact,"Axis-4 deliverable. Per-neighborhood: its position on the S-curve, its 2033 scenario cone (continued/stall/reversal), and its nearest historical analogue; plus the frontier-diffusion map showing where the edge goes next. Every projected number carries its backtest error. Load the `dataviz` skill before writing chart code.",Backlog,2,3,"viz,milestone",Loci,E7 · Maturity and 2033 Projection

@@ -1,5 +1,5 @@
 import networkx as nx
-from loci.score.access import compute_access
+from loci.score.access import compute_access, compute_distances
 
 
 def _line_graph(n=13):
@@ -36,3 +36,17 @@ def test_absent_category_not_emitted():
     assert ("pharmacy", 5) not in rows                      # 1100 m > 400
     assert ("pharmacy", 10) not in rows                     # 1100 m > 800
     assert rows[("pharmacy", 15)] == 1                      # 1100 m <= 1200
+
+
+def test_compute_distances_emits_pairs_with_network_metres_and_expands_shared_nodes():
+    G = _line_graph()
+    hexes = [("h", G.nodes[0]["x"], 40.75)]
+    pois = [("a", "grocery", G.nodes[2]["x"], 40.75),       # 200 m
+            ("b", "grocery", G.nodes[2]["x"], 40.75),       # same node as a
+            ("c", "pharmacy", G.nodes[9]["x"], 40.75),      # 900 m
+            ("d", "bank", G.nodes[12]["x"], 40.75)]         # 1200 m
+    rows = [r for batch in compute_distances(G, hexes, pois, limit=1000.0, min_component=1) for r in batch]
+    got = {(pid, cat): d for _, pid, cat, d in rows}
+    assert set(got) == {("a", "grocery"), ("b", "grocery"), ("c", "pharmacy")}   # d is beyond the limit
+    assert abs(got[("a", "grocery")] - 200.0) < 1e-6 and abs(got[("b", "grocery")] - 200.0) < 1e-6
+    assert abs(got[("c", "pharmacy")] - 900.0) < 1e-6

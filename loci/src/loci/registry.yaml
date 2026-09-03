@@ -6,7 +6,7 @@
 # status:  planned | verified | deferred | excluded
 
 version: 1
-verified_on: 2026-09-01
+verified_on: 2026-09-02
 budget:
   currency: USD
   projected_min: 0
@@ -37,8 +37,9 @@ sources:
     name: Foursquare Open Source Places
     tier: universal
     role: poi
-    status: planned
+    status: verified
     url: https://opensource.foursquare.com/os-places/
+    access: hf://datasets/foursquare/fsq-os-places  # GATED (accept terms + HF_TOKEN); public S3 bucket retired 2025-10
     format: parquet
     geography: point
     temporal: {start: 2024, end: current, grain: monthly}
@@ -46,8 +47,15 @@ sources:
     cost: {amount: 0, unit: total}
     bias: >
       Skews toward venues with consumer check-in history, i.e. away from
-      laundromats and dry cleaners.
-    notes: Cross-check against Overture; different category taxonomy.
+      laundromats and dry cleaners. GHOSTS: closed venues are rarely marked
+      closed, they just stop being refreshed — gate on date_refreshed.
+    notes: >
+      Cross-check against Overture; different category taxonomy, plus
+      date_created/date_refreshed/date_closed. Loaded 2026-09-02 via the gated
+      Hugging Face mirror (HF_TOKEN; public S3 retired). NYC bbox: 821k rows,
+      191k map to the bundle, 109k survive the FRESHNESS GATE (refreshed
+      >= 2024-01-01) — rows last refreshed before 2019 are corroborated by
+      another source <10% of the time; they are ghosts. 54k canonical after dedup.
 
   - id: osm_overpass
     name: OpenStreetMap (Overpass API)
@@ -116,6 +124,103 @@ sources:
       entirely. Never use to construct openings/closings series.
     notes: Snapshot enrichment for the nail/hair categories only.
 
+  - id: usda_snap_retailers
+    name: USDA SNAP Retailer Locator
+    tier: universal
+    role: poi
+    status: verified
+    url: https://www.fns.usda.gov/snap/retailer-locator
+    access: https://services1.arcgis.com/RLQu0rK7h4kbsBq5/arcgis/rest/services/snap_retailer_location_data/FeatureServer/0
+    format: arcgis-feature-service
+    geography: point
+    temporal: {start: null, end: current, grain: snapshot}
+    license: public-domain
+    cost: {amount: 0, unit: total}
+    bias: >
+      Near-census of stores that ACCEPT SNAP. Misses stores that do not — which
+      skews toward affluent areas, the opposite direction from OSM's bias. Store
+      type (Supermarket / Grocery / Convenience) is USDA's stocking-breadth
+      classification, not the owner's.
+    notes: >
+      Anchor for the grocery and convenience categories (tier 1, 40% of the
+      index). Verified 2026-09-02: 16,624 NY rows, 8,052 in the five boroughs,
+      lat/lon on every row, paginated at 1,000. Complements DOHMH (food) as a
+      second calibration curve for the coverage-bias check.
+
+  - id: nys_sla_liquor_licenses
+    name: NYS Liquor Authority Current Active Licenses
+    tier: city
+    city: nyc
+    role: poi
+    status: verified
+    url: https://data.ny.gov/Economic-Development/Current-Liquor-Authority-Active-Licenses/9s3h-dpkz
+    dataset_id: 9s3h-dpkz
+    geography: point
+    temporal: {start: null, end: current, grain: snapshot}
+    cost: {amount: 0, unit: total}
+    bias: >
+      Active licenses only, BUT a companion inactive-licenses file (6dg3-2z7i)
+      exists, so — unlike NYS DOS — closures are recoverable. License
+      descriptions do not say "bar": on-premises types are mapped
+      conservatively (QUESTIONS.md H-D9), so this undercounts bars that hold a
+      Restaurant license.
+    notes: >
+      Anchor for the bar category, which DOHMH deliberately does not emit.
+      Verified 2026-09-02: 59,846 rows statewide, 24,711 in NYC, 98.5%
+      georeferenced. Restaurant and retail (beer/liquor store) licenses are
+      NOT emitted — DOHMH and SNAP anchor those.
+
+  - id: nyc_dohmh_childcare
+    name: NYC DOHMH Child Care Center Inspections
+    tier: city
+    city: nyc
+    role: poi
+    status: planned
+    url: https://data.cityofnewyork.us/Health/DOHMH-Childcare-Center-Inspections/dsg6-ifza
+    dataset_id: dsg6-ifza
+    geography: address
+    temporal: {start: null, end: current, grain: rolling}
+    cost: {amount: 0, unit: total}
+    bias: >
+      Permitted group centers only; home-based family daycare is licensed by
+      NYS OCFS and absent here. Address-level — needs geocoding (BIN present).
+    notes: >
+      Near-census of the childcare category by the same inspection logic as
+      restaurants. Verified reachable 2026-09-02: 3,014 distinct centers. Build
+      after the W2 map shows whether childcare drives the residual.
+
+  - id: fdic_bank_branches
+    name: FDIC BankFind Locations (Summary of Deposits)
+    tier: universal
+    role: poi
+    status: planned
+    url: https://banks.data.fdic.gov/docs/
+    access: https://api.fdic.gov/banks/locations
+    geography: point
+    temporal: {start: 1994, end: current, grain: annual}
+    cost: {amount: 0, unit: total}
+    bias: >
+      FDIC-insured banks only; credit unions (NCUA) absent. Branch closures
+      are dated, so this doubles as a panel.
+    notes: >
+      Census of the bank category. Verified reachable 2026-09-02: 4,005 NY
+      locations with lat/lon. Low priority — bank is tier 4.
+
+  - id: nys_pharmacy_registrations
+    name: NYS Office of Professions — registered pharmacies
+    tier: city
+    city: nyc
+    role: poi
+    status: planned
+    url: https://www.op.nysed.gov/professions/pharmacy
+    geography: address
+    temporal: {start: null, end: current, grain: snapshot}
+    cost: {amount: 0, unit: total}
+    bias: Registered establishments; address-only, needs geocoding.
+    notes: >
+      Candidate anchor for the pharmacy category. Bulk access NOT verified —
+      the site is a licence-verification lookup; check data.ny.gov for a bulk
+      file before ticketing.
   - id: google_places
     name: Google Places API — Nearby Search
     tier: universal
@@ -283,6 +388,36 @@ sources:
     bias: Pandemic-era window; 2020-21 levels are not representative.
     notes: Transit QUALITY, not mere presence.
 
+  - id: mta_bus_gtfs
+    name: MTA Bus GTFS static (stops)
+    tier: city
+    city: nyc
+    role: control
+    status: planned
+    url: https://new.mta.info/developers
+    geography: point
+    temporal: {start: null, end: current, grain: snapshot}
+    cost: {amount: 0, unit: total}
+    bias: Stop presence, not service frequency; frequency needs the schedule join.
+    notes: >
+      Transit access is subway-only today. Bus coverage matters most in the
+      outer-borough hexes the residual will flag.
+
+  - id: hud_usps_vacancy
+    name: HUD aggregated USPS vacancy data
+    tier: universal
+    role: outcome
+    status: planned
+    url: https://www.huduser.gov/portal/datasets/usps.html
+    geography: tract
+    temporal: {start: 2005, end: current, grain: quarterly}
+    cost: {amount: 0, unit: total}
+    bias: >
+      Requires HUD user registration. "Vacant" is a carrier judgment; long-term
+      vacancy definitions changed over time.
+    notes: >
+      Faster-moving residential outcome than ACS 5-year and cleaner than
+      permits. Candidate fifth outcome for the growth test.
   - id: osm_walk_network
     name: OSM pedestrian network via OSMnx
     tier: universal

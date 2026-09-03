@@ -58,6 +58,7 @@ def validate(check_urls: bool = False) -> list[str]:
         errors.append(f"budgeted spend {budgeted} exceeds projected_max {reg['budget']['projected_max']}")
 
     if check_urls:
+        import urllib.error
         import urllib.request
         for s in sources:
             req = urllib.request.Request(s["url"], method="HEAD",
@@ -65,9 +66,11 @@ def validate(check_urls: bool = False) -> list[str]:
             try:
                 with urllib.request.urlopen(req, timeout=20) as r:
                     code = r.status
+            except urllib.error.HTTPError as exc:   # 4xx/5xx still means "present"
+                code = exc.code
             except Exception as exc:  # noqa: BLE001 - report, don't raise
                 code = f"ERR {exc}"
-            ok = code in (200, 301, 302, 403)  # 403 = bot-blocked but present
+            ok = code in (200, 202, 301, 302, 403)  # 403 = bot-blocked, 202 = challenge page; both mean present
             print(f"{'ok ' if ok else 'FAIL'} {code:<24} {s['id']}")
             if not ok:
                 errors.append(f"{s['id']}: url {s['url']} -> {code}")

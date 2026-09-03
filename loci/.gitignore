@@ -20,3 +20,6 @@ data/*.duckdb
 *.pkl
 
 # webmap generated data (regenerate from the DB)
+
+# Loci query app DB must ship to Railway
+!queryapp/loci_query.duckdb

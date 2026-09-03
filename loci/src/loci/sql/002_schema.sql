@@ -74,6 +74,18 @@ CREATE TABLE IF NOT EXISTS analysis.hex_controls (
     subway_riders_2024 FLOAT
 );
 
+-- Every (hex, business) pair within a 30-minute walk, with the NETWORK distance
+-- along the pedestrian graph (CONTEXT.md 4.3). This is the primary access artifact;
+-- hex_access below is DERIVED from it by counting at each threshold, so any walk
+-- time, nearest-distance or spacing question is a query here, not a recompute.
+CREATE TABLE IF NOT EXISTS analysis.hex_poi_distance (
+    h3_index   VARCHAR REFERENCES analysis.hex(h3_index),
+    poi_id     VARCHAR NOT NULL,
+    category   VARCHAR NOT NULL,
+    network_m  REAL    NOT NULL CHECK (network_m >= 0),
+    PRIMARY KEY (h3_index, poi_id)
+);
+
 -- Per-category access at each walk threshold (CONTEXT.md 4.3).
 CREATE TABLE IF NOT EXISTS analysis.hex_access (
     h3_index      VARCHAR REFERENCES analysis.hex(h3_index),

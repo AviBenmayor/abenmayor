@@ -34,3 +34,10 @@ def connect(path: pathlib.Path | str | None = None,
 def init_schema(con: duckdb.DuckDBPyConnection) -> None:
     """Apply loci/sql/002_schema.sql. Idempotent."""
     con.execute((SQL_DIR / "002_schema.sql").read_text())
+
+
+# DuckDB's ST_Distance_Sphere reads POINT(x, y) as (LATITUDE, LONGITUDE); our geometry
+# is (lon, lat), so both sides must be flipped or every distance is computed at the
+# equator (1° lon at NYC → 111 km instead of 84 km). Decision D16. Use this, never the
+# raw function.  METRES_SQL.format(a="geom", b="ST_Point(?, ?)")
+METRES_SQL = "ST_Distance_Sphere(ST_FlipCoordinates({a}), ST_FlipCoordinates({b}))"

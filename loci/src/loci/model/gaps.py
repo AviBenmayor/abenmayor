@@ -19,13 +19,18 @@ from loci.categories import CATEGORIES
 ALLCATS = list(CATEGORIES)
 
 
-def build_gaps(con, threshold: int = 10, min_present: int = 12,
-               expected: float = 0.80, min_pop: float = 800.0) -> int:
+def compute_gaps(con, threshold: int = 10, min_present: int = 12,
+                 expected: float = 0.80, min_pop: float = 800.0):
+    """Pure computation: returns (rows, prevalence) without writing. `expected` is the
+    prevalence a category needs before its absence counts as a conspicuous gap; it
+    is the screen's most sensitive knob (bank/hardware sit near 0.80–0.85), so sweep
+    it with `loci gaps-sweep` before trusting a top-N list."""
     rows = con.execute("""
         SELECT h.h3_index, dm.population, list(a.category) present
         FROM analysis.hex h
         JOIN analysis.hex_demographics dm ON dm.h3_index=h.h3_index AND dm.acs_year=2023
-        JOIN analysis.hex_access a ON a.h3_index=h.h3_index AND a.threshold_min=? AND a.n_reachable>=1
+        JOIN (SELECT DISTINCT h3_index, category FROM analysis.hex_poi_distance
+              WHERE network_m <= ? * 80.0) a ON a.h3_index=h.h3_index
         WHERE dm.population > ?
         GROUP BY 1,2
     """, [threshold, min_pop]).fetchall()
@@ -43,7 +48,12 @@ def build_gaps(con, threshold: int = 10, min_present: int = 12,
             continue
         lead = max(missing, key=lambda c: prevalence[c])
         out.append((h, threshold, pop, len(pr), lead, prevalence[lead], ",".join(missing)))
+    return out, prevalence
 
+
+def build_gaps(con, threshold: int = 10, min_present: int = 12,
+               expected: float = 0.80, min_pop: float = 800.0) -> int:
+    out, prevalence = compute_gaps(con, threshold, min_present, expected, min_pop)
     con.execute("DELETE FROM analysis.hex_gaps WHERE threshold_min = ?", [threshold])
     import pandas as pd
     df = pd.DataFrame(out, columns=["h3_index", "threshold_min", "population",

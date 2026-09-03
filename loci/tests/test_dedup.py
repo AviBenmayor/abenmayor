@@ -34,3 +34,11 @@ def test_dedup_category_merges_twins_not_neighbors():
     # canonical of the twin cluster is the DOHMH anchor
     assert out["nyc_dohmh_restaurants:b"][1] is True
     assert out["overture_places:a"][1] is False
+
+
+def test_source_rank_new_anchors_win_their_category():
+    assert source_rank("convenience", "usda_snap_retailers") < source_rank("convenience", "overture_places")
+    assert source_rank("bar", "nys_sla_liquor_licenses") < source_rank("bar", "nyc_dohmh_restaurants")
+    assert source_rank("hardware", "foursquare_os_places") > source_rank("hardware", "overture_places")
+    # anchors carry no authority outside their category
+    assert source_rank("hardware", "usda_snap_retailers") == source_rank("hardware", "some_unknown_source")

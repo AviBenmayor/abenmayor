@@ -107,7 +107,8 @@ document.getElementById('valBtn').onclick=async()=>{
   try{
     const d=await fetch(`/api/validate?lat=${c.lat.toFixed(5)}&lng=${c.lng.toFixed(5)}&cat=${biz}`).then(r=>r.json());
     const label=META.catLabels[bi()];
-    if(d.error){out.innerHTML=`<span class="hole">Couldn't reach Google (${d.error}).</span>`;}
+    if(d.error==='disabled'||d.error==='budget'){out.innerHTML=`<span class="hole">Live Google check is off — coverage is validated in a capped batch (<code>loci validate</code>), not per click.</span>`;}
+    else if(d.error){out.innerHTML=`<span class="hole">Couldn't reach Google (${d.error}).</span>`;}
     else if(d.n===0){out.innerHTML=`<span class="tag real">Real gap ✓</span><br>Google finds <b>no ${label.toLowerCase()}</b> within 800 m of this spot. Our data agrees — worth a look.`;}
     else{out.innerHTML=`<span class="tag hole">Data hole</span><br>Google finds <b>${d.n} ${label.toLowerCase()}</b> here that our map missed:<br>${(d.names||[]).slice(0,5).map(n=>'· '+n).join('<br>')}`;}
     out.hidden=false;

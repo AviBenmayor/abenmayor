@@ -6,9 +6,13 @@ const GT={grocery:['grocery_store','supermarket'],convenience:['convenience_stor
   laundry:['laundry'],hair_barber:['hair_salon','barber_shop'],nails_beauty:['nail_salon','beauty_salon'],
   restaurant:['restaurant'],cafe_bakery:['cafe','bakery','coffee_shop'],bar:['bar','pub'],
   childcare:['child_care_agency'],clinic:['doctor'],fitness:['gym'],bank:['bank'],hardware:['hardware_store'],tailor_repair:['tailor']};
-// global rate limit (protect the key on a public URL): ~30/min
+// Spend guard for a PUBLIC url. Two layers:
+//  1. hard total cap per process: GOOGLE_CLICK_BUDGET calls, default 0 = per-click validation OFF.
+//     The coverage check now runs as a capped, stratified batch (`loci validate`), not per click.
+//  2. rate limit ~30/min on top, so a burst can't drain the cap in seconds.
+const CLICK_BUDGET=parseInt(process.env.GOOGLE_CLICK_BUDGET||'0',10); let clicks=0;
 let tok=30, last=Date.now();
-function allow(){const now=Date.now();tok=Math.min(30,tok+(now-last)/1000*0.5);last=now;if(tok>=1){tok-=1;return true;}return false;}
+function allow(){if(!(CLICK_BUDGET>0)||clicks>=CLICK_BUDGET)return false;const now=Date.now();tok=Math.min(30,tok+(now-last)/1000*0.5);last=now;if(tok>=1){tok-=1;clicks+=1;return true;}return false;}
 
 function googleNearby(lat,lng,cat){return new Promise((resolve)=>{
   const types=GT[cat]; if(!types||!GKEY)return resolve({error:'unavailable'});
@@ -24,7 +28,7 @@ function googleNearby(lat,lng,cat){return new Promise((resolve)=>{
 http.createServer(async(req,res)=>{
   const u=new URL(req.url,'http://x'); const p0=u.pathname;
   if(p0==='/api/validate'){
-    if(!allow()){res.writeHead(429);return res.end('{"error":"rate"}');}
+    if(!allow()){res.writeHead(CLICK_BUDGET>0&&clicks<CLICK_BUDGET?429:503);return res.end(JSON.stringify({error:CLICK_BUDGET>0?(clicks>=CLICK_BUDGET?'budget':'rate'):'disabled'}));}
     const lat=parseFloat(u.searchParams.get('lat')),lng=parseFloat(u.searchParams.get('lng')),cat=u.searchParams.get('cat');
     if(!isFinite(lat)||!isFinite(lng)||!cat){res.writeHead(400);return res.end('{"error":"bad"}');}
     const out=await googleNearby(lat,lng,cat);
@@ -37,4 +41,4 @@ http.createServer(async(req,res)=>{
     const ct=T[path.extname(fp)]||'application/octet-stream', ae=req.headers['accept-encoding']||'';
     if(/gzip/.test(ae)&&data.length>2048){res.writeHead(200,{'Content-Type':ct,'Content-Encoding':'gzip','Cache-Control':'public,max-age=300'});res.end(zlib.gzipSync(data));}
     else{res.writeHead(200,{'Content-Type':ct,'Cache-Control':'public,max-age=300'});res.end(data);}});
-}).listen(port,()=>console.log('loci webmap+validate on :'+port));
+}).listen(port,()=>console.log('loci webmap on :'+port+' (per-click Google validation '+(CLICK_BUDGET>0?'capped at '+CLICK_BUDGET:'OFF')+')'));

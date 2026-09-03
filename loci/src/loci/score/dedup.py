@@ -25,18 +25,27 @@ BLOCK_RES = 11          # ~24 m edge; +neighbors covers the 25 m match radius
 MATCH_METERS = 40.0
 
 # Source authority per category. The near-census anchor wins where it applies.
-FOOD = {"restaurant", "cafe_bakery", "bar"}
+FOOD = {"restaurant", "cafe_bakery"}
 SALON = {"hair_barber", "nails_beauty"}
+SNAP = {"grocery", "convenience"}
+# Every list ends with the same tail: the aggregators, most-conflated first.
+_TAIL = ["overture_places", "osm_overpass", "foursquare_os_places", "nyc_dcwp_licenses"]
 
 
 def source_rank(category: str, source_id: str) -> int:
-    """Lower = more authoritative (preferred as canonical)."""
+    """Lower = more authoritative (preferred as canonical). The near-census
+    anchor wins its category: DOHMH for food, SLA for bars, SNAP for
+    grocery/convenience, NYS DOS for salons."""
     if category in FOOD:
-        order = ["nyc_dohmh_restaurants", "overture_places", "osm_overpass"]
+        order = ["nyc_dohmh_restaurants"] + _TAIL
+    elif category == "bar":
+        order = ["nys_sla_liquor_licenses", "nyc_dohmh_restaurants"] + _TAIL
     elif category in SALON:
-        order = ["nys_dos_appearance_enhancement", "overture_places", "osm_overpass"]
+        order = ["nys_dos_appearance_enhancement"] + _TAIL
+    elif category in SNAP:
+        order = ["usda_snap_retailers"] + _TAIL
     else:
-        order = ["overture_places", "osm_overpass", "nyc_dcwp_licenses"]
+        order = _TAIL
     return order.index(source_id) if source_id in order else len(order)
 
 

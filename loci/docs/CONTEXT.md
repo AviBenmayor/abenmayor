@@ -154,18 +154,23 @@ demographics must be interpolated onto them — see §4.2.
 
 ## 3. Data source registry
 
-Costs verified 2026-09-01. Machine-readable mirror: [`src/loci/registry.yaml`](../src/loci/registry.yaml).
+Costs verified 2026-09-01; SNAP and SLA sources verified 2026-09-02. Machine-readable mirror: [`src/loci/registry.yaml`](../src/loci/registry.yaml).
 
 ### 3.1 Business locations — present day
 
 | Source | Geography | Temporal | Refresh | Cost | Known bias |
 |---|---|---|---|---|---|
 | **Overture Maps Places** — GeoParquet on S3, `overturemaps-py` | point | 2023– | monthly | **$0** (CDLA-Permissive-2.0) | Inherits OSM/Meta/Microsoft coverage gaps; category schema is coarse for personal services |
-| **Foursquare OS Places** — 100M+ POI | point | 2024– | monthly | **$0** (Apache-2.0) | Skews toward venues with consumer check-in history — i.e. away from laundromats |
+| **Foursquare OS Places** — 100M+ POI | point | 2024– | monthly | **$0** (Apache-2.0) | Skews toward venues with consumer check-in history — i.e. away from laundromats. **Access is gated since 2025-10** (Hugging Face terms + `HF_TOKEN`; public S3 retired). Loaded 2026-09-02. **Ghost venues:** rows last refreshed before 2019 are corroborated <10% of the time, so the adapter keeps only rows refreshed since 2024 (109k of 191k mapped) |
 | **OpenStreetMap** via Overpass | point/poly | live | continuous | **$0** (ODbL) | **Undercounts small business in lower-income and immigrant neighborhoods.** The project's most dangerous bias — see §7.1 |
 | **NYC DOHMH Restaurant Inspections** `43nn-pn8j` | address + lat/lon | 3-yr rolling | daily | **$0** | **Near-census of food service** — every establishment is inspected. Effectively unbiased. The project's best asset. |
 | **NYC DCWP Legally Operating Businesses** `w7w3-xahh` | point | issuance-dated | daily (rowsUpdatedAt 2026-08-20 — **not stale**) | **$0** | **Contributes ~nothing to the daily-needs bundle:** consumer "Laundries" has *zero* active licenses (all active laundry licenses are industrial B2B linen suppliers, excluded). No pharmacies licensed. Retained only for the E5 license-history panel. |
 | **NYS DOS Appearance Enhancement & Barber** `y3u4-jbgh` | address | **active only** | periodic | **$0** | **Survivorship-biased** — closed salons absent entirely. Snapshot enrichment only, never panel input |
+| **USDA SNAP Retailer Locator** — ArcGIS feature service | point | current | snapshot | **$0** | **Near-census of stores that accept SNAP** — anchor for grocery/convenience (tier 1). Misses non-SNAP stores, which skews *toward* affluent areas, the opposite of OSM's bias. Verified 2026-09-02 |
+| **NYS Liquor Authority Active Licenses** `9s3h-dpkz` | point (98.5% georef.) | current | snapshot | **$0** | **Anchor for bars.** Companion inactive file `6dg3-2z7i` makes closures recoverable. License descriptions don't say "bar"; mapped conservatively (QUESTIONS.md H-D9). Verified 2026-09-02 |
+| *Planned:* **NYC DOHMH Child Care Center Inspections** `dsg6-ifza` | address | rolling | — | **$0** | Near-census of childcare by the restaurant-inspection logic. 3,014 centers. Build after the W2 map |
+| *Planned:* **FDIC BankFind locations** | point | annual 1994– | — | **$0** | Census of bank branches; closures dated. Tier 4, low priority |
+| *Planned:* **NYS registered pharmacies** | address | current | — | **$0** | Bulk access **unverified** — lookup site only. Check data.ny.gov before ticketing |
 | **Google Places Nearby Search** | point | current | live | **~$32/1k** (Pro SKU); 5k/mo free | Ground truth for validation. **Budgeted: 3–5k calls ≈ $0–100** |
 
 ### 3.2 Longitudinal business panel
@@ -194,6 +199,7 @@ deferred to Phase 5.
 | **Zillow ZORI / ZHVI** | **ZIP** | monthly 2000– | **$0** | ZORI covers ~8.4k ZIPs nationally (a third of ZHVI's) — asking-rent index, listing-density dependent. ZIP is coarser than hex; requires crosswalk (§9) |
 | **NYC DOB job filings + HPD Housing DB** | tax lot | annual | **$0** | Supply-side; responds to zoning changes more than to amenities. Permits ≠ completions |
 | **IRS SOI county migration** | **county** | annual | **$0** | Only 5 units in NYC. **Too coarse — documented and dropped.** Recorded here so the exclusion is deliberate, not an oversight |
+| *Planned:* **HUD aggregated USPS vacancy** | tract | quarterly 2005– | **$0** (registration) | Faster-moving than ACS 5-year, cleaner than permits. Candidate fifth outcome |
 
 ### 3.4 Controls and context
 
@@ -203,6 +209,7 @@ deferred to Phase 5.
 | **MTA Subway Stations** `39hk-dx4f` / **Entrances & Exits** `68hr-j2j7` | Transit access. Entrances matter more than station centroids — a station can be 400 m of walking from its own far entrance | **$0** |
 | **MTA Subway Hourly Ridership 2020–2024** `wujg-7c2s` | Transit *quality*, not mere presence. A station with 12 routes ≠ a station with one | **$0** |
 | **OSM walk network** via OSMnx | Isochrone routing graph | **$0** |
+| *Planned:* **MTA Bus GTFS stops** | Transit access beyond the subway — matters most in outer-borough hexes | **$0** |
 | **NYC NTAs / Community Districts** | Human-legible reporting geography | **$0** |
 | **NYC shoreline / borough boundaries** | Grid clipping | **$0** |
 
@@ -562,3 +569,161 @@ reachable:
 
 This costs roughly half a day now. Without it, the "generalize later" refactor is the one
 that never happens.
+
+---
+
+## 11. Premium amenities — the destination-amenity axis (Axis 3)
+
+*Added 2026-09-02 at the owner's request. This is a third analytical axis, parallel to
+Axis 1 (Investability, `model/invest.py`) and Axis 2 (Rising trajectory, `model/rising.py`),
+and like them it is **not** a return to the rejected residual-growth thesis (§0 / D1).*
+
+### 11.1 The question
+
+Where in NYC could a **premium, destination amenity** open and be underserved today —
+starting with **padel courts** and **spa / wellness studios**? The owner's premise: people
+will travel materially longer for these than for daily needs, *and there is still
+opportunity* — i.e. real catchments of qualifying demand with no nearby supply.
+
+### 11.2 Why this inverts the daily-needs gap screen (do not reuse it)
+
+The daily-needs bundle (§2.1) and the present-day gap screen work because those are
+**convenience goods**: consumed often, near-zero willingness to travel, so the relevant
+geography is the 800 m walk and a category counts as a conspicuous gap when it is present in
+≥80% of walkable peers yet absent here. Premium amenities behave oppositely on both axes:
+
+| | Daily needs | Premium amenities |
+|---|---|---|
+| Trip frequency | daily / weekly | occasional |
+| Willingness to travel | ~800 m walk | 15–30 min drive or transit |
+| Prevalence | common (the screen needs ≥80%) | **rare by nature** |
+| Right geography | walkable hex | **travel-time catchment / trade area** |
+| Right screen | missing what peers have | **demand pool minus supply, over the catchment** |
+
+A prevalence-gap screen applied to padel would flag almost the whole city and mean nothing,
+because almost nowhere has one. So Axis 3 uses a **classic trade-area / gravity
+site-selection model** instead: find a travel-time catchment with enough *qualifying premium
+demand* but little or no supply reachable inside it, and a feasible large-format site.
+
+### 11.3 Method sketch
+
+1. **Bundle** (judgment, tunable — a `PREMIUM` dict mirroring `invest.py`'s `ECON`): padel and
+   spa/day-spa as the named anchors, extended to the destination-amenity family that shares
+   the travel-for-it behavior — med-spa, pilates/reformer, boutique fitness/boxing, climbing
+   gym, bathhouse/sauna, golf & sports simulator. Each kept as its own category (catchment,
+   demand target and site footprint all differ).
+2. **Supply** — a new POI layer outside the 15: OSM (`sport=padel`, `leisure=spa`,
+   `sport=climbing`…), Foursquare leaves (Spa, Pilates Studio, Climbing Gym…), Google for
+   ground truth. **Google validation is load-bearing here, not optional** — padel barely
+   existed before 2022 and studios open fast, so the snapshot undercount is severe and
+   uneven; a padel "gap" is more likely a data gap than a daily-needs gap is (§7.1, worse).
+3. **Demand** — a *premium demand pool*, not raw population: population weighted toward top
+   income deciles, the category's target age band, and college share (already computed in
+   `model/momentum.py`, corr 0.72 with income — D20). Per-category demand target.
+4. **Catchment** — per-amenity **drive-time ∪ transit-time isochrones** (default 15 min),
+   the load-bearing choice. Willingness-to-travel is assumed, not measured, so sweep
+   10/15/20/30 min and report how the ranking moves — the sensitivity is the honesty.
+5. **Feasibility** — the `invest.py` gate re-tuned for large formats: lot size + floorplate +
+   a zoning district permitting commercial recreation / personal-service, plus
+   vacancy/industrial-conversion candidates. A padel court needs ~1,000+ m² and height, not a
+   ground-floor retail bay. Without this the screen recommends sites that physically or
+   legally cannot host the use — the §7.6 zoning-artifact failure in a new costume.
+6. **Deliverable** — `opportunity = qualifying demand in catchment − supply reachable in
+   catchment`, gated on a feasible site, ranked per amenity; and a map layer **"Where could a
+   padel court / spa go?"** — catchments shaded by unmet premium demand, feasible sites pinned.
+
+### 11.4 Axis-specific threats
+
+- **Supply undercount is worse than §7.1**, and concentrated in the newest categories. Every
+  top site must survive Google + a manual web check or it is presumed a data gap.
+- **Willingness-to-travel is assumed.** The catchment radius is the biggest single lever;
+  report every ranking under the travel-time sweep, never a single radius.
+- **Demand ≠ income alone.** Matching the demographic to the specific amenity (padel: affluent,
+  athletic, 25–44; med-spa: affluent women 30–55) is judgment and must be stated per category.
+- **Chain pipeline.** A "gap" may already be under LOI by a national operator (Life Time,
+  Equinox, Padel Haus…). Outside the data; flagged as manual diligence per top pick.
+
+---
+
+## 12. Maturity curve and 2033 projection (Axis 4)
+
+*Added 2026-09-02 at the owner's request: (1) where is each neighborhood on its maturity curve,
+and (2) where could growth get to by 2033, and how would we project it. This is the **forward
+extension of Axis 2 (Rising)**.*
+
+### 12.1 Reconcile with §0 first — this is not the rejected thesis
+
+The project's central result (§0 / D1) is that **"the retail gap at t0 predicts subsequent
+residential growth"** failed: β was wrong-signed (+0.069), and the pre-trend test broke parallel
+trends. That causal arrow — *retail undersupply causes growth* — stays **dead**, and this axis
+never uses the retail residual as a growth predictor.
+
+What is being asked is a **different** thing, and it is legitimate:
+
+- **Maturity (descriptive).** Locate each neighborhood on a development S-curve *from its own
+  observed multi-metric history* — income, college share, rent, permits, jobs. This is a
+  positioning statement about the present, not a causal claim.
+- **Projection (extrapolative).** Extend that trajectory to 2033. The very pre-trend finding that
+  sank the causal thesis — *these neighborhoods are on a development cycle* — is what **licenses
+  extrapolation**: a place already moving along the frontier tends to keep moving. That is
+  forecasting from momentum, not inferring causation from a gap.
+
+The discipline that keeps this honest is threefold: (a) the retail signal is the **dependent**
+read, re-scored against projected demand at the very end, never an input to the projection; (b) the
+output is **scenario bands**, never a point forecast, because trajectories bend (D21 already caught
+East New York rents cooling to +1.9%/yr post-2022); (c) it ships as a forecast **only if it passes
+a backtest** (§12.4).
+
+### 12.2 The maturity curve
+
+Stage is defined by **level *and* rate *and* acceleration** (1st and 2nd derivative) of the panel
+metrics — not level alone. That distinction is the whole point: it is what separates a maturity
+model from a static wealth map. A high-income but *decelerating* neighborhood is *maturing*;
+high-income and still *accelerating* is *rising*.
+
+| Stage | Signature | NYC exemplar (from D20/D21) |
+|---|---|---|
+| Pre-frontier / dormant | low level, flat momentum, no pipeline | deep outer-borough |
+| **Emerging** | income accelerating, college still low, first permits | **East New York** (+42% income, college only 9→14%) |
+| **Rising** | income + college both climbing fast, rent + permit boom | Crown Heights / Ocean Hill recently |
+| **Maturing** | high level, growth decelerating | Williamsburg now |
+| **Mature / saturated** | high level, flat or declining | the 5 rich Manhattan NTAs in real decline |
+
+Spatial adjacency to the already-risen frontier is a feature — gentrification diffuses to
+neighbors, which is also the mechanism behind the projection.
+
+### 12.3 Projecting to 2033
+
+Three complementary reads, reported together:
+
+1. **Frontier diffusion (spatial, most communicable).** The frontier is a datable wave —
+   Williamsburg → Bed-Stuy → Bushwick → Crown Heights → Ocean Hill → East New York (D20). Measure
+   its pace (blocks/decade); the not-yet-risen neighborhoods adjacent to today's rising edge are
+   the mechanistic next steps, and the pace sets how far it reaches by 2033.
+2. **Per-metric logistic extrapolation.** Fit each metric's trajectory with a **logistic
+   (saturating)** form, not linear — a neighborhood cannot gentrify past 100%, and linearly
+   extrapolating a hot decade is the classic forecasting error.
+3. **Stage-transition (Markov) roll-forward.** Estimate P(stage→stage per decade) from the
+   historical panel, advance each NTA one step to 2033, giving a probabilistic stage.
+
+Plus an **analogue read** for interpretability: for each emerging NTA, the already-matured NTA it
+most resembles at the same stage (is 2023 East New York ≈ 2011 Bushwick?), and that analogue's
+realized path as a concrete forecast. Everything is reported as **continued-diffusion / stall /
+reversal** scenario bands.
+
+### 12.4 The load-bearing check — backtest, or it is astrology
+
+Fit the classifier and projection on data **through 2013 only**, project 2013→2023, and compare to
+what actually happened. If the model cannot retrodict the Bushwick / Crown Heights / East New York
+arc, it cannot forecast 2033, and the memo says so. Report out-of-sample error by stage (emerging
+neighborhoods are the hardest and the most important). This is the Axis-4 analogue of E3's
+pre-trend/placebo rigor, and it gates whether the 2033 numbers ship as a forecast or only as a
+scenario illustration.
+
+### 12.5 Data
+
+momentum.py (D20) pulled only two time points. This axis needs a real per-NTA time series:
+decennial 2000/2010 + ACS 5-yr 2009/2013/2018/2023 (real income, college, tenure, age), LODES
+2002–2023 (in hand), Zillow 2000– (D21), DOB/HPD permits by year — all deflated to real dollars and
+aggregated to 2020 NTAs. Assembled once as `analysis.nta_trajectory`, feeding both the classifier
+and the projection.

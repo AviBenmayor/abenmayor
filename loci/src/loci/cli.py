@@ -3,9 +3,12 @@
     loci init-db
     loci check-sources [--urls]
     loci check-questions
+    loci gaps [--expected 0.8]
+    loci gaps-sweep [--expected 0.75,0.80,0.85,0.90]   (read-only)
+    loci spacing                                        (read-only)
     loci ingest --source overture_places --city nyc [--dry-run]
     loci grid   --city nyc --resolution 9
-    loci score  --threshold 10
+    loci score  [--limit-min 30]
     loci model  --t0 2013 --t1 2023
     loci export --format pmtiles
 
@@ -180,20 +183,108 @@ def dedup() -> None:
 
 
 @app.command()
-def score(threshold: int = typer.Option(10, help="Walk minutes: 5, 10 or 15.")) -> None:
-    """Multi-source Dijkstra access scoring, then the DNCI."""
-    if threshold not in (5, 10, 15):
-        raise typer.BadParameter("threshold must be 5, 10 or 15")
-    raise NotImplementedError("W2 — see docs/TICKETS.md, epic E2.")
+def score(limit_min: int = typer.Option(30, help="Persist hex↔business network distances up to this many walk-minutes.")) -> None:
+    """Walk-network access: persist hex_poi_distance, derive hex_access, then the DNCI."""
+    from loci.score.access import build_access
+    from loci.score.dnci import build_dnci
+    con = locidb.connect(); locidb.init_schema(con)
+    n_acc = build_access(con, limit=limit_min * 80.0)
+    n_pairs = con.execute("SELECT count(*) FROM analysis.hex_poi_distance").fetchone()[0]
+    n_dnci = build_dnci(con)
+    console.print(f"[green]ok[/] {n_pairs:,} hex↔business pairs within {limit_min} min; "
+                  f"{n_acc:,} hex_access rows; {n_dnci:,} DNCI rows")
 
 
 @app.command()
-def gaps(threshold: int = typer.Option(10), min_present: int = typer.Option(12)) -> None:
+def gaps(threshold: int = typer.Option(10), min_present: int = typer.Option(12),
+         expected: float = typer.Option(0.80, help="Prevalence a category needs before its absence is a gap.")) -> None:
     """Present-day gap screen: walkable hexes missing an expected business."""
     from loci.model.gaps import build_gaps
     con = locidb.connect(); locidb.init_schema(con)
-    n, _ = build_gaps(con, threshold=threshold, min_present=min_present)
-    console.print(f"[green]ok[/] {n} gap hexes (missing an expected business)")
+    n, _ = build_gaps(con, threshold=threshold, min_present=min_present, expected=expected)
+    console.print(f"[green]ok[/] {n} gap hexes (missing an expected business) at expected={expected}")
+
+
+@app.command(name="gaps-sweep")
+def gaps_sweep(expected: str = typer.Option("0.75,0.80,0.85,0.90", help="Comma-separated prevalence thresholds."),
+               threshold: int = typer.Option(10), min_present: int = typer.Option(12)) -> None:
+    """Compare the gap screen across prevalence thresholds. Read-only: writes nothing."""
+    from collections import Counter
+    from loci.categories import CATEGORIES
+    from loci.model.gaps import compute_gaps
+    con = locidb.connect(read_only=True)
+    vals = [float(v) for v in expected.split(",")]
+    results = {}
+    prevalence = None
+    for e in vals:
+        rows, prevalence = compute_gaps(con, threshold=threshold, min_present=min_present, expected=e)
+        results[e] = (len(rows), Counter(r[4] for r in rows), Counter(c for r in rows for c in r[6].split(",")))
+    cats = sorted(CATEGORIES, key=lambda c: -prevalence[c])
+    table = Table(title=f"gap screen by `expected`  ({threshold} min, ≥{min_present}/15 present)  cells = lead / any")
+    table.add_column("category"); table.add_column("prev.", justify="right")
+    for e in vals:
+        table.add_column(f"{e:.2f}", justify="right")
+    for c in cats:
+        cells = [c, f"{prevalence[c]:.2f}"]
+        for e in vals:
+            _, lead, anym = results[e]
+            cells.append(f"{lead.get(c, 0)} / {anym.get(c, 0)}" if prevalence[c] >= e else "·")
+        table.add_row(*cells)
+    table.add_row("[bold]gap hexes[/]", "", *[f"[bold]{results[e][0]}[/]" for e in vals])
+    console.print(table)
+    console.print("[dim]lead = most-expected missing category per hex · any = hexes missing it at all · "
+                  "'·' = below the threshold, so its absence never counts.[/]")
+
+
+@app.command()
+def validate(
+    per_decile: int = typer.Option(20, help="Hexes sampled per income decile (10 deciles)."),
+    categories: str = typer.Option("all", help="Comma-separated Loci categories, or 'all'."),
+    dry_run: bool = typer.Option(True, "--dry-run/--run", help="Plan only (default) or spend calls."),
+) -> None:
+    """Coverage validation (P3): Google Places as SAMPLED ground truth, counts only, hard budget."""
+    from loci.categories import CATEGORIES
+    from loci.validation.google_places import GooglePlacesClient
+    from loci.validation import sample as smp
+    cats = list(CATEGORIES) if categories == "all" else [c.strip() for c in categories.split(",")]
+    con = locidb.connect(); locidb.init_schema(con)
+    s = smp.draw_sample(con, per_decile=per_decile)
+    p = smp.plan(s, cats)
+    client = GooglePlacesClient()
+    console.print(f"sample: {p['hexes']} hexes × {p['categories']} categories = {p['calls']} calls; "
+                  f"est. ${p['est_cost_usd']} beyond the free tier. Budget {client.calls_used}/{client.budget} used.")
+    if dry_run:
+        console.print("[dim]--dry-run: nothing spent, nothing written. Re-run with --run.[/]")
+        raise typer.Exit(0)
+    if p["calls"] > client.calls_left:
+        console.print(f"[red]refusing:[/] {p['calls']} calls needed, {client.calls_left} left in budget.")
+        raise typer.Exit(1)
+    n = smp.run(con, client, s, cats, dry_run=False)
+    console.print(f"[green]ok[/] {n} rows in analysis.coverage_validation; budget now {client.calls_used}/{client.budget}")
+
+
+@app.command()
+def spacing(threshold: int = typer.Option(10), citywide: bool = typer.Option(False, "--citywide", help="Include the NJ/Westchester fringe."),
+            per_category: int = typer.Option(2000, help="Businesses sampled per category for the spacing table.")) -> None:
+    """Read-only, on the WALK NETWORK: how far apart same-type businesses sit, and how far each gap hex is from its missing business."""
+    from loci.model.spacing import same_type_spacing, gap_to_nearest, _graph, WALK_M_PER_MIN
+    con = locidb.connect(read_only=True)
+    console.print("[dim]loading walk graph…[/]")
+    graph = _graph()
+    t1 = Table(title="Same-type spacing — network metres to the nearest OTHER business of the same category")
+    for col in ("category", "n", "sampled", "p10", "median", "p90", "> 10 min", "> 30 min"):
+        t1.add_column(col, justify="right" if col != "category" else "left")
+    for cat, n, ns, p10, med, p90, far, cens in same_type_spacing(con, core_only=not citywide, per_category=per_category, graph=graph):
+        t1.add_row(cat, str(n), str(ns), f"{p10:.0f}", f"{med:.0f}", f"{p90:.0f}" if cens < .10 else f">{p90:.0f}", f"{100*far:.1f}%", f"{100*cens:.1f}%")
+    console.print(t1)
+    t2 = Table(title=f"Gap hexes ({threshold} min) — network metres from the hex to the nearest business of its lead missing category (from hex_poi_distance)")
+    for col in ("lead missing", "gaps", "min", "median", "p90", "> 1.5 km", "> 30 min"):
+        t2.add_column(col, justify="right" if col != "lead missing" else "left")
+    for cat, n, mn, med, p90, far, cens in gap_to_nearest(con, threshold=threshold, core_only=not citywide, graph=graph):
+        t2.add_row(cat, str(n), f"{mn:.0f}", f"{med:.0f}", f"{p90:.0f}", str(far), str(cens))
+    console.print(t2)
+    console.print(f"[dim]Walking at {WALK_M_PER_MIN:.0f} m/min: 800 m = 10 min, 1,200 m = 15 min, 2,400 m = 30 min. "
+                  "Same graph, snapping and component pruning as hex_access.[/]")
 
 
 @app.command()
