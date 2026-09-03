@@ -642,6 +642,7 @@ failed.
 - Correction: the CENSUS_API_KEY blocker row was stale (key verified as GTM-10); removed 2026-09-03. Outstanding work is the ACS vehicle-ownership ingest for D7, not a key.
 - Spikes committed (4206ccc); CHECKPOINT header fixed (aed7be0).
 - Session operating model recorded in root CLAUDE.md: Fable directs, Haiku/Sonnet/Opus agents work.
+- Owner added O7 (fair-value storefront rent) and O8 (buy vs build inflection) to QUESTIONS.md; both parked in Axis 1 behind O6; no tickets.
 
 ### 2026-09-02 — Session 8e: the distance table
 - Owner asked whether every data point is stored and whether a graph DB would help. Answer:
