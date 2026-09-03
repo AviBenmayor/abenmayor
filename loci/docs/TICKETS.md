@@ -293,7 +293,7 @@ Threat to validity, must be stated in the output: revealed spacing reflects hist
 ### Density-class / mode-dependent thresholds
 `Medium` · `5 pts` · `score`
 
-QUESTIONS.md D7, CHECKPOINT D31. Lower Manhattan and car-dependent outer-borough areas should not share one walk window — a 10-minute walk means something different in a district built for foot traffic than in one built for cars. Cheap proxy needing no new data: scale the per-category threshold (from the sibling ticket) by residential density class. Honest version: ACS vehicle ownership per tract (table B25044), BLOCKED on CENSUS_API_KEY (see E0's Census key ticket).
+QUESTIONS.md D7, CHECKPOINT D31. Lower Manhattan and car-dependent outer-borough areas should not share one walk window — a 10-minute walk means something different in a district built for foot traffic than in one built for cars. Cheap proxy needing no new data: scale the per-category threshold (from the sibling ticket) by residential density class. Honest version: ACS vehicle ownership per tract (table B25044), depends on an ACS vehicle-ownership ingest; Census key is set.
 
 Note the interaction with per-category thresholds: threshold(category, density_class) is one small parameterization, not two independent sweeps multiplied together — keep it deliberately small (e.g. 2–3 density tiers) to avoid overfitting a matrix nobody can audit by eye.
 

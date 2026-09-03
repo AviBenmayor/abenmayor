@@ -169,8 +169,7 @@ GTM-22 PLUTO (verifying), GTM-23 MTA, GTM-24 ACS, GTM-25 SI leverage, GTM-26 shi
 ### Blocked
 | Blocker | Blocks | Action |
 |---|---|---|
-| `CENSUS_API_KEY` not set | ACS ingest — GTM-24; now also the ACS vehicle-ownership pull for the walk-vs-drive mode question (D31 / QUESTIONS D7) | Free + instant: https://api.census.gov/data/key_signup.html → add to `.env` |
-| ~~`GOOGLE_PLACES_KEY` not set~~ | ~~Coverage validation (E4)~~ | **Resolved 2026-09-03** — key set, and `.env` loading fixed (CLI now loads `loci/.env` via python-dotenv, `override=False`). |
+| none | — | — |
 
 Docker is **no longer a blocker** — removed from the critical path entirely (D9). Linear is
 no longer a blocker — all 58 issues are pushed.
@@ -186,7 +185,7 @@ no longer a blocker — all 58 issues are pushed.
 | Docker Desktop | Working, unused | 29.7.2 / Compose v5.5.0, wired up via user-level symlinks (D5). Kept in case it's wanted later. |
 | `uv` / Python | Working | 3.12 target; `.venv` gitignored |
 | Linear connector | **Working** | `claude.ai Linear`. 6 milestones + 58 issues live in project `loci-723fa10296fb`, team **Go To Market** (GTM-5 … GTM-62). |
-| Census API key | **Missing** | Blocks E1, and now also D7 (mode question) |
+| Census API key | **Working** | Set in .env; GTM-10 verified. ACS vehicle-ownership ingest (for D7) is a task, not a blocker. |
 | `python-dotenv` | **Working** | Loads `loci/.env` in `cli.py` (`override=False`); fixed 2026-09-03 — previously `GOOGLE_PLACES_KEY` in `.env` was invisible to `loci validate --run`. |
 
 ---
@@ -618,6 +617,7 @@ failed.
 - Manhattan D3 sensitivity at a 5-minute walk window (`d3_manhattan_walk_threshold.py`, read-only):
   category mix flips vs the 10-minute screen (D31).
 - Validator source-lookup bug found and fixed (commit 877d162, D32); 42 tests pass.
+- Correction: the CENSUS_API_KEY blocker row was stale (key verified as GTM-10); removed 2026-09-03. Outstanding work is the ACS vehicle-ownership ingest for D7, not a key.
 - Spikes committed (4206ccc); CHECKPOINT header fixed (aed7be0).
 - Session operating model recorded in root CLAUDE.md: Fable directs, Haiku/Sonnet/Opus agents work.
 
@@ -785,7 +785,7 @@ Ran in parallel with the session-7 work; it did not touch the model, the map, or
 3. Fitness anchor source for the ~20% true coverage hole (QUESTIONS M7).
 4. Clinic re-anchor to licensed urgent care (D30).
 5. Re-export webmap JSON to reflect rebuilt gaps.
-6. Census API key (GTM-10) — now also blocks the mode question (D7).
+6. ACS vehicle-ownership pull per tract (for D7 density-class / mode thresholds). Key is set; this is just an ingest task.
 7. E9 ignition productionization — not before 1–3.
 
 ~~GTM-12~~ done — see D12.

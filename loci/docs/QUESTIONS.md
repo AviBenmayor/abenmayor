@@ -155,8 +155,8 @@ claim stands on.
 - **Status:** open
 - **Prediction:** —
 - **Answered by:** `Density-class / mode-dependent thresholds`
-- **Fails if:** n/a — descriptive/method question. Lower Manhattan and car-dependent outer-borough areas should not share one walk window. Cheap proxy: scale the threshold by residential density class (no new data needed). Honest version: ACS vehicle ownership per tract (blocked on CENSUS_API_KEY). Note the interaction with D6: threshold(category, density_class) is one parameterization, not two independent sweeps — keep it small to avoid overfitting a matrix.
-- **Current answer:** Open. Blocked on `CENSUS_API_KEY` for the honest (vehicle-ownership) version; the density-class proxy needs no new data and can proceed first.
+- **Fails if:** n/a — descriptive/method question. Lower Manhattan and car-dependent outer-borough areas should not share one walk window. Cheap proxy: scale the threshold by residential density class (no new data needed). Honest version: ACS vehicle ownership per tract (needs an ACS vehicle-ownership ingest; key is set). Note the interaction with D6: threshold(category, density_class) is one parameterization, not two independent sweeps — keep it small to avoid overfitting a matrix.
+- **Current answer:** Open. Needs an ACS vehicle-ownership ingest for the honest (vehicle-ownership) version; the density-class proxy needs no new data and can proceed first.
 
 ### Tier X · Explanatory — conditional structure, no temporal claim
 
