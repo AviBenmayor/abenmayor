@@ -272,6 +272,12 @@ for category in 15 categories:
 A hex's category access is then (a) the population-weighted share of its graph nodes that
 are served, and (b) the count of distinct POIs reachable from the hex's weighted centroid.
 
+**Persisted, as of 2026-09-02:** the primary access artifact is `analysis.hex_poi_distance`
+— one row per (hex, canonical business) pair within a 30-minute walk, with the network
+distance. `hex_access` (counts per hex, category and threshold) is *derived* from it in SQL,
+so any walk time, nearest-distance, spacing or coverage question is a query rather than a
+recompute. ~16.2M rows for NYC; `loci score` rebuilds it in about three minutes.
+
 **15 graph traversals instead of 7,400 isochrone computations.** Minutes, not hours, and
 it makes the 5/10/15-minute sensitivity sweep affordable (45 traversals total).
 

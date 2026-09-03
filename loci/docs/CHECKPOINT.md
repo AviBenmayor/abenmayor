@@ -438,9 +438,38 @@ SELECT/WITH-only + single-statement + table whitelist + forced/clamped LIMIT + 2
 gate via LOCI_QUERY_PASSWORD (set to loci-eny-2026; rotate as needed). Rebuild the DB to refresh
 (it's a snapshot). `!queryapp/loci_query.duckdb` added to .gitignore so `railway up` ships it.
 
----
+**D23 — Gym/ENY recommendation OVERTURNED; gaps need category-radius + walkability-demand gating.** *(2026-09-02)*
+Three end-of-session checks reversed D21's ENY value-gym call. (1) At a gym's real catchment,
+ENY is served: 0 gyms @0.5mi walk but a Planet Fitness @1mi and ~20 gyms @2mi (Google) — the
+800m "gap" was an artifact. (2) The uniform 800m threshold manufactures gaps for destination
+categories (gym/supermarket/hardware — people travel for these; re-test at 1.4-2.4km) AND in
+car-oriented neighborhoods; conditioning on category-appropriate radius + car-free share (ACS
+B25044) dissolves nearly the whole buy list. (4) ENY new housing (3,224 units 2018-24 +2,111
+pipeline, DCP kyz5-72x5) is affordable-dominated — no market-rate boom, confirming
+densifying-not-gentrifying. **Corrected rule:** a gap counts only if it's a WALK-category
+(bodega/laundry/cafe/hair/restaurant, ~800m) in a WALK-DEPENDENT nbhd (car-free ≥~50%).
+**Revised candidates (need Google validation): East New York-City Line (bodega, already
+validated; 60% car-free), Coney Island-Sea Gate (laundromat, 1,104 bldgs, 58%), Spring Creek
+(laundry), Brownsville (cafe), Elmhurst (bodega, $92k).** Supersedes the gym thesis in D21.
+Next: (a) bake category-radius + car-free gate into invest.py/rising.py; (b) Google-validate the
+laundromat/cafe candidates (coverage-bias risk). Scripts: scratchpad/catchment_retest.json, /tmp/carfree.json.
 
-## Session log
+### 2026-09-02 — Session 8e: the distance table
+- Owner asked whether every data point is stored and whether a graph DB would help. Answer:
+  POIs yes, distances no — `hex_access` kept counts at three thresholds and threw the Dijkstra
+  results away. Graph DB: no; the graph is a road network and the only operation is
+  shortest-path, which scipy does in C in seconds (D9 stands).
+- **`analysis.hex_poi_distance`** — every (hex, canonical business) pair within 30 min with
+  its network distance. 16.2M rows, ~3 min via `loci score` (now implemented; `make nyc`
+  runs dedup → score → gaps). `hex_access` is derived from it in SQL; regression check
+  matched the previous build row-for-row. `gaps`, `gaps-sweep`, `spacing` read the table;
+  the nearest-of-category query answers in 60 ms instead of a 2-minute graph run.
+- **Size:** the file hit 2 GB. Measured: the table is 453 MB as parquet and 533 MB in DuckDB
+  without a key, 1,640 MB with the (h3_index, poi_id) primary key, which also made the load
+  7× slower. Dropped the key — uniqueness holds by construction — and swapped the table in
+  place. DuckDB does not shrink a file, so `data/loci.duckdb` stays ~2 GB until recreated;
+  a fresh `make nyc` lands near 600 MB.
+- 39 tests pass.
 
 ### 2026-09-02 — Session 8d: threshold knob, spacing, and a distance bug
 - `loci gaps --expected` and read-only `loci gaps-sweep`. 0.75/0.80 → 726 hexes; 0.85/0.90 →

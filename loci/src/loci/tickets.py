@@ -130,6 +130,8 @@ T = [
  "DNCI = Π (s_c + ε)^w_c, ε = 0.01.\n\nTHE METHODOLOGICAL CRUX. An arithmetic mean lets a hex with fifty restaurants and no grocery, pharmacy or laundromat score well — precisely the failure the thesis exists to detect. Only the geometric form punishes zeros.\n\nTests must include the adversarial case: 50 restaurants + 0 essentials must score LOW. If that test passes under an arithmetic mean, the test is wrong."),
 ("E2 · Access Engine", "Run 5/10/15-minute threshold sweep", M, 2, "score",
  "10 min (800m) is the headline. 5 min (400m) and 15 min (1200m) as sensitivity and for comparability with the 15-minute-city literature."),
+("E2 · Access Engine", "Persist hex↔business network distances (hex_poi_distance)", M, 3, "score,data-model",
+ "hex_access stored only counts at 5/10/15 min and discarded the Dijkstra results, so every new question (another walk time, distance to nearest, spacing, the Google coverage comparison) meant a two-minute graph recompute — and the threshold could not be swept.\n\nNow: analysis.hex_poi_distance holds every (hex, canonical business) pair within 30 min with its network distance; hex_access is DERIVED from it in SQL so the two cannot disagree. gaps, spacing and the sweep read the table. `loci score` builds it.\n\nDONE 2026-09-02 — 16.2M rows, ~3 min; derived hex_access matched the previous build row-for-row (229,133 rows; 461,421 / 1,880,500 / 4,235,014 pairs). Nearest-of-category per hex now answers in 60 ms."),
 ("E2 · Access Engine", "SHIP W2: the DNCI map", H, 3, "milestone",
  "Week-2 exit criterion and the first genuinely interesting artifact. Sequential palette. Sanity-check against local knowledge before proceeding to E3."),
 # ------------------------------------------------------------------ E3

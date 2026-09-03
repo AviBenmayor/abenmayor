@@ -78,12 +78,14 @@ CREATE TABLE IF NOT EXISTS analysis.hex_controls (
 -- along the pedestrian graph (CONTEXT.md 4.3). This is the primary access artifact;
 -- hex_access below is DERIVED from it by counting at each threshold, so any walk
 -- time, nearest-distance or spacing question is a query here, not a recompute.
+-- No primary key ON PURPOSE: (h3_index, poi_id) is unique by construction (one
+-- Dijkstra row per hex node, expanded per POI), and DuckDB's ART index on two
+-- VARCHARs for 16M rows tripled the file (533 MB -> 1.6 GB) and slowed the load 7x.
 CREATE TABLE IF NOT EXISTS analysis.hex_poi_distance (
-    h3_index   VARCHAR REFERENCES analysis.hex(h3_index),
+    h3_index   VARCHAR NOT NULL,
     poi_id     VARCHAR NOT NULL,
     category   VARCHAR NOT NULL,
-    network_m  REAL    NOT NULL CHECK (network_m >= 0),
-    PRIMARY KEY (h3_index, poi_id)
+    network_m  REAL    NOT NULL CHECK (network_m >= 0)
 );
 
 -- Per-category access at each walk threshold (CONTEXT.md 4.3).

@@ -335,6 +335,16 @@
       "Milestone": "E2 \u00b7 Access Engine"
     },
     {
+      "Title": "Persist hex\u2194business network distances (hex_poi_distance)",
+      "Description": "hex_access stored only counts at 5/10/15 min and discarded the Dijkstra results, so every new question (another walk time, distance to nearest, spacing, the Google coverage comparison) meant a two-minute graph recompute \u2014 and the threshold could not be swept.\n\nNow: analysis.hex_poi_distance holds every (hex, canonical business) pair within 30 min with its network distance; hex_access is DERIVED from it in SQL so the two cannot disagree. gaps, spacing and the sweep read the table. `loci score` builds it.\n\nDONE 2026-09-02 \u2014 16.2M rows, ~3 min; derived hex_access matched the previous build row-for-row (229,133 rows; 461,421 / 1,880,500 / 4,235,014 pairs). Nearest-of-category per hex now answers in 60 ms.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 3,
+      "Labels": "score,ingest",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
       "Title": "SHIP W2: the DNCI map",
       "Description": "Week-2 exit criterion and the first genuinely interesting artifact. Sequential palette. Sanity-check against local knowledge before proceeding to E3.",
       "Status": "Backlog",

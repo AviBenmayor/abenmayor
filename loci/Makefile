@@ -20,7 +20,9 @@ tickets:       ## Regenerate docs/TICKETS.md + docs/linear-*.{csv,json}
 nyc: db-init   ## Full NYC pipeline
 	uv run loci ingest --source overture_places --city nyc
 	uv run loci grid   --city nyc --resolution 9
-	uv run loci score  --threshold 10
+	uv run loci dedup
+	uv run loci score
+	uv run loci gaps
 	uv run loci model  --t0 2013 --t1 2023
 	uv run loci export --format pmtiles
 

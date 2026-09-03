@@ -109,6 +109,11 @@ THE METHODOLOGICAL CRUX. An arithmetic mean lets a hex with fifty restaurants an
 
 Tests must include the adversarial case: 50 restaurants + 0 essentials must score LOW. If that test passes under an arithmetic mean, the test is wrong.",Backlog,1,5,score,Loci,E2 · Access Engine
 Run 5/10/15-minute threshold sweep,10 min (800m) is the headline. 5 min (400m) and 15 min (1200m) as sensitivity and for comparability with the 15-minute-city literature.,Backlog,3,2,score,Loci,E2 · Access Engine
+Persist hex↔business network distances (hex_poi_distance),"hex_access stored only counts at 5/10/15 min and discarded the Dijkstra results, so every new question (another walk time, distance to nearest, spacing, the Google coverage comparison) meant a two-minute graph recompute — and the threshold could not be swept.
+
+Now: analysis.hex_poi_distance holds every (hex, canonical business) pair within 30 min with its network distance; hex_access is DERIVED from it in SQL so the two cannot disagree. gaps, spacing and the sweep read the table. `loci score` builds it.
+
+DONE 2026-09-02 — 16.2M rows, ~3 min; derived hex_access matched the previous build row-for-row (229,133 rows; 461,421 / 1,880,500 / 4,235,014 pairs). Nearest-of-category per hex now answers in 60 ms.",Backlog,3,3,"score,ingest",Loci,E2 · Access Engine
 SHIP W2: the DNCI map,Week-2 exit criterion and the first genuinely interesting artifact. Sequential palette. Sanity-check against local knowledge before proceeding to E3.,Backlog,2,3,milestone,Loci,E2 · Access Engine
 Fit the supply model,"DNCI ~ pop_density + median_hh_income + transit_access + commercial_zoning_capacity + land_fraction + borough FE.
 
