@@ -51,6 +51,11 @@ the Linear tools become available.
 
 Then say: **"read docs/CHECKPOINT.md and continue"**.
 
+**Next session starts on D6** (QUESTIONS.md D6, decision D33): redefine "missing" via fixed
+per-category reach, no global walk window; the monotonicity unit test is the acceptance bar.
+Per root CLAUDE.md, Fable briefs via a Sonnet agent and delegates; contrarian attacks the reach
+values before they are trusted. Branch pushed to origin 2026-09-04.
+
 ---
 
 ## Current state
@@ -643,6 +648,7 @@ failed.
 - Spikes committed (4206ccc); CHECKPOINT header fixed (aed7be0).
 - Session operating model recorded in root CLAUDE.md: Fable directs, Haiku/Sonnet/Opus agents work.
 - Owner added O7 (fair-value storefront rent) and O8 (buy vs build inflection) to QUESTIONS.md; both parked in Axis 1 behind O6; no tickets.
+- Session closed 2026-09-04: branch `loci/eny-investment-and-query-app` pushed to origin (first push). Owner confirmed D6 as next session's starting point.
 
 ### 2026-09-02 — Session 8e: the distance table
 - Owner asked whether every data point is stored and whether a graph DB would help. Answer:
