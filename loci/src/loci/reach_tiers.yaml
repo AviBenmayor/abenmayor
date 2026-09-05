@@ -1,0 +1,259 @@
+# ADOPTED 2026-09-05 (CHECKPOINT D41). QUESTIONS D8 / CHECKPOINT D35, D39.
+# Drafted 2026-09-05 from cited walk thresholds where they exist (4 of 15),
+# analogs (3), and the owner's conveniences.yaml norms for the 8 with no walk-scale
+# literature. This is now the default reach source (`loci.reach.load_reach`,
+# `loci address-gaps --reach tiers`); reach.yaml (the older p80 revealed-spacing
+# table) stays selectable via `--reach p80` for comparison. Ranking is continuous
+# (max nearest_m / reach_m) per D39, so tier edges are not load-bearing for the
+# ranking, only for the gap flag.
+# Bibliography: docs/reach_sources.md.
+
+# Proposed externally-sourced walk-time tiers for the 15 Loci daily-needs
+# categories (docs/QUESTIONS.md H-L3, H-L4). Candidate reach_m values are
+# restricted to the tier set the calibration compared: 400 / 800 / 1200 m
+# (5 / 10 / 15 min at 80 m/min), with 600 m reserved for a case where a
+# source clearly names it (none did).
+#
+# basis:
+#   cited  - a source names this category, or an obvious superset of it
+#            (e.g. "supermarket" for grocery), at this distance.
+#   analog - no source names this category; the value is carried over from a
+#            source about a related category or a general amenity-decay
+#            radius, by explicit judgment call (stated below).
+#   none   - no walk-distance literature found for this category at all;
+#            falls back to the owner's conveniences.yaml norm untouched.
+#
+# owner_m / owner_min are read from src/loci/conveniences.yaml (owner-set
+# 2026-09-05, m_per_min: 80.0). See sources.md for full citations.
+
+version: 1
+drafted_on: 2026-09-05
+candidate_tiers_m: [400, 800, 1200]
+note_600m: "No source reviewed named 600 m specifically for any category."
+
+categories:
+
+  grocery:
+    reach_m: 800
+    basis: cited
+    owner_m: 640
+    owner_min: 8
+    justification: >
+      USDA Food Access Research Atlas' urban low-access threshold for
+      supermarkets is 0.5 mi (~805 m); NYC FRESH treats 0.5 mi as "comfortable
+      walking distance" to a supermarket; Portland's 20-minute-neighborhood
+      plan targets 90% of residents within 0.5 mi of a grocery store. Three
+      independent sources converge on 800 m. Literature is 160 m (25%) longer
+      than the owner's 640 m norm.
+    citations:
+      - "USDA Economic Research Service, Food Access Research Atlas documentation (ers.usda.gov/data-products/food-access-research-atlas) — low-income tract is low-access if >=500 people or 33% of population live >0.5 mi (urban) from nearest supermarket/supercenter/large grocery."
+      - "NYC Department of City Planning, FRESH program overview (nyc.gov/site/planning/plans/fresh2/fresh2-overview.page; FRESH Food Store Areas report) — underserved area defined by absence of full-service supermarket within a 'comfortable walking distance,' operationalized as ~0.5 mi."
+      - "City of Portland, Portland Climate Action Plan / 20-Minute Neighborhood program — objective: 90% of Portlanders within 0.5 mi of a store selling affordable groceries."
+
+  convenience:
+    reach_m: 400
+    basis: analog
+    owner_m: 320
+    owner_min: 4
+    justification: >
+      No source addresses corner stores/bodegas specifically — USDA FARA
+      explicitly excludes them (supermarkets/supercenters/large grocery
+      only), and NYC FRESH targets full-service supermarket development, not
+      bodegas. Mapped by analogy to Walk Score's 0.25 mi (400 m) full-credit
+      radius, the shortest "immediate errand" distance in any source
+      reviewed. Literature-analog (400 m) is 80 m (25%) longer than the
+      owner's 320 m norm — the same ratio as grocery, which is reassuring
+      internal consistency rather than independent confirmation.
+    citations:
+      - "Walk Score Methodology (walkscore.com/methodology.shtml) — amenities within a 5-minute walk (0.25 mi) receive maximum points; used here only as an analog distance, not as a bodega-specific finding."
+      - "USDA ERS, Food Access Research Atlas documentation — explicitly scopes 'food retailer' to supermarkets/supercenters/large grocery stores, i.e. excludes convenience stores from its access measure (negative evidence that no on-point standard exists)."
+
+  pharmacy:
+    reach_m: 800
+    basis: cited
+    owner_m: 640
+    owner_min: 8
+    justification: >
+      Guadamuz, Qato et al. (Health Affairs, 2021) define a pharmacy desert
+      as a neighborhood averaging >=1 mi to the nearest pharmacy, but drop
+      the qualifying distance to >=0.5 mi (800 m) in low-income
+      neighborhoods with substantial no-vehicle-household shares — the
+      applicable case for dense, transit-dependent NYC. This is the category
+      the calibration flagged as most load-bearing (moving 400->800 m
+      changes the gap count 763->21), so the citation matters most here.
+      Literature (800 m) is 160 m (25%) longer than the owner's 640 m norm.
+    citations:
+      - "Guadamuz JS, Wilder J, Mouslim MC, Zenk SN, Alexander GC, Qato DM. 'Fewer Pharmacies In Black And Hispanic/Latino Neighborhoods Compared With White Or Diverse Neighborhoods, 2007-15.' Health Affairs 40(5), 2021. Defines pharmacy deserts as average distance to nearest pharmacy >=1 mile, or >=0.5 mile in low-income neighborhoods with >=100 no-vehicle households (see USC Schaeffer Center summary: today.usc.edu/pharmacy-deserts-american-cities-health-disparities-usc-research)."
+
+  laundry:
+    reach_m: 320
+    basis: none
+    owner_m: 320
+    owner_min: 4
+    justification: >
+      No consumer-access walk-distance standard found for laundromats/dry
+      cleaners in any planning, public-health, or food/retail-access
+      literature reviewed. Siting guidance found is business-viability
+      framing (trade-area radius for the OPERATOR, e.g. "serve housing
+      within about a mile"), not a normative access threshold for
+      residents. Falls back unchanged to the owner's norm.
+    citations: []
+
+  hair_barber:
+    reach_m: 640
+    basis: none
+    owner_m: 640
+    owner_min: 8
+    justification: >
+      No walk-distance access literature found for personal-grooming
+      services. Not covered by Walk Score's amenity list, USDA/food-desert
+      literature, or the 15-minute-city papers reviewed (which discuss
+      amenity classes in aggregate — work/food/health/education/
+      culture/recreation — without a per-service-type distance). Falls back
+      unchanged to the owner's norm.
+    citations: []
+
+  nails_beauty:
+    reach_m: 640
+    basis: none
+    owner_m: 640
+    owner_min: 8
+    justification: Same as hair_barber — no literature found.
+    citations: []
+
+  tailor_repair:
+    reach_m: 960
+    basis: none
+    owner_m: 960
+    owner_min: 12
+    justification: >
+      No walk-distance access literature found for tailors/shoe repair/
+      clothes repair. Falls back unchanged to the owner's norm.
+    citations: []
+
+  restaurant:
+    reach_m: 400
+    basis: cited
+    owner_m: 320
+    owner_min: 4
+    justification: >
+      Walk Score's methodology names restaurants as one of its highest-
+      weighted, most frequently-visited amenity categories (10 nearest
+      restaurants counted, more than any other category) and applies full
+      credit within 0.25 mi (400 m), decaying to zero credit by 1 mi.
+      Literature (400 m) is 80 m (25%) longer than the owner's 320 m norm.
+    citations:
+      - "Walk Score Methodology (walkscore.com/methodology.shtml) and Carr LJ, Dunsiger SI, Marcus BH. 'Walk Score as a Global Estimate of Neighborhood Walkability.' American Journal of Preventive Medicine 39(5):460-463, 2010 — restaurants are counted (top 10 nearest) and weighted highly for frequency of use; full points awarded within 0.25 mi."
+
+  cafe_bakery:
+    reach_m: 400
+    basis: cited
+    owner_m: 320
+    owner_min: 4
+    justification: >
+      Walk Score names cafes/coffee shops as an explicit amenity category
+      (2 nearest counted) under the same 0.25 mi full-credit radius as
+      restaurants. Literature (400 m) is 80 m (25%) longer than owner's
+      320 m norm.
+    citations:
+      - "Walk Score Methodology (walkscore.com/methodology.shtml) — cafes are an explicit scored category, distinct from restaurants, with 2 nearest locations counted."
+
+  bar:
+    reach_m: 400
+    basis: analog
+    owner_m: 640
+    owner_min: 8
+    justification: >
+      Walk Score's published amenity list (grocery, restaurants, shopping,
+      coffee, banks, parks, schools, book stores, entertainment) has no
+      distinct "bar/pub" category — the closest fit is "entertainment,"
+      scored on the same 0.25 mi/1 mi decay as every other category. Mapped
+      by analogy, not by an on-point citation. This is a WEAK analog: the
+      owner deliberately placed bar in the "weekly-use" 8-min/640 m tier,
+      not the "daily-use" 4-min tier that grocery/restaurant/cafe/
+      convenience/laundry occupy, and no source contradicts that judgment.
+      Flagged as one of the more contestable rows below.
+    citations:
+      - "Walk Score Methodology (walkscore.com/methodology.shtml) — amenity category list and 0.25 mi/1 mi decay envelope, used here only as an analog distance."
+
+  childcare:
+    reach_m: 640
+    basis: none
+    owner_m: 640
+    owner_min: 8
+    justification: >
+      The dominant childcare-access literature (Center for American
+      Progress "child care deserts"; Davis, Lee & Sojourner 2019, Early
+      Childhood Research Quarterly) measures access as a SUPPLY RATIO
+      (>=3 children under 6 per licensed slot) or as continuous distance at
+      regional scale (CAP's hexagon methodology considers providers within
+      30 MILES), not as a pedestrian walk-access threshold. NYC's own 2026
+      childcare map (nyc.gov Mayor's Office, April 2026) gives walking/
+      transit directions per family but does not publish a walk-distance
+      access standard. No citable walk threshold exists; falls back to the
+      owner's norm.
+    citations:
+      - "Center for American Progress, 'Mapping America's Child Care Deserts' / 'Measuring America's Licensed Child Care Supply' — capacity-ratio definition (>=3 children per slot), and a 30-mile provider search radius for the underlying access measure, not a walk-distance standard."
+      - "Davis EE, Lee W, Sojourner A. 'Peer Reviewed: A Count of the Legal Docket, and a Look at Trends in the Number of Children per Child Care Slot.' Early Childhood Research Quarterly, 2019 — introduces continuous family-to-provider distance as an access measure but does not set a walk-specific policy threshold."
+
+  clinic:
+    reach_m: 960
+    basis: none
+    owner_m: 960
+    owner_min: 12
+    justification: >
+      As the task anticipated, the standard primary-care/urgent-care access
+      benchmark in the literature (HRSA-funded research: 94% of Americans
+      live within a 30-minute DRIVE time of a health-center site) is
+      explicitly drive-based, not walk-based, and drive-time standards do
+      not translate to a walk-distance tier in a dense pedestrian city. No
+      walk standard exists for clinic/urgent-care access in any source
+      reviewed. Falls back to the owner's norm.
+    citations:
+      - "HRSA Bureau of Primary Health Care / rural health access research — 30-minute drive-time standard for health-center access (hrsa.gov/rural-health; graham-center.org PCSA/drive-time comparison), noted here as evidence that no walk-based standard exists, not as a source for reach_m."
+
+  fitness:
+    reach_m: 1200
+    basis: analog
+    owner_m: 640
+    owner_min: 8
+    justification: >
+      CDC's national built-environment measure of "access to exercise
+      opportunities" (Preventing Chronic Disease, 2015) counts a resident as
+      having access if they live within 0.5 mi of a park OR within 1 mile
+      (1,609 m) of a recreational facility in an urban area. The 1-mile
+      recreational-facility figure exceeds Loci's tier ceiling of 1,200 m,
+      so 1,200 m is used as the closest available approximation and
+      UNDERSTATES the cited distance by ~400 m. This is a real citation for
+      the category (fitness centres are the closest match to "recreational
+      facility") but the tier-set mismatch makes it an analog mapping, not
+      an exact one. Literature-analog (1,200 m) is roughly double the
+      owner's 640 m norm — flagged below as contestable.
+    citations:
+      - "Centers for Disease Control and Prevention, 'Development of a Nationally Representative Built Environment Measure of Access to Exercise Opportunities.' Preventing Chronic Disease 12:E140, 2015 (cdc.gov/pcd/issues/2015/14_0378.htm) — access = within 0.5 mi of a park OR within 1 mi of a recreational facility (urban); 3 mi rural."
+
+  bank:
+    reach_m: 640
+    basis: none
+    owner_m: 640
+    owner_min: 8
+    justification: >
+      The standard "banking desert" convention (Federal Reserve Bank of
+      St. Louis; widely cited FDIC-adjacent literature) uses a 2-mile urban
+      / 5-mile mixed / 10-mile rural radius from a census-tract centroid —
+      designed around DRIVING access and roughly 2.7-8x Loci's max 1,200 m
+      walk tier. It is not usable as a walk-scale citation without
+      distorting the category beyond recognition, so this is scored `none`
+      rather than a forced analog. Falls back to the owner's norm.
+    citations:
+      - "Federal Reserve Bank of St. Louis / banking-desert literature summarized in Richmond Fed 'High and Dry' (2024) and Bank Policy Institute research — banking desert = census tract centroid >2 mi (urban) / >5 mi (mixed) / >10 mi (rural) from nearest branch. Cited to document that the standard convention does not operate at walk scale."
+
+  hardware:
+    reach_m: 960
+    basis: none
+    owner_m: 960
+    owner_min: 12
+    justification: >
+      No walk-distance access literature found for hardware/home-supply
+      stores. Falls back unchanged to the owner's norm.
+    citations: []

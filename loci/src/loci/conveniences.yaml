@@ -1,0 +1,59 @@
+# Per-category CONVENIENCE distance: how far a resident should have to walk
+# before a category counts as "satisfied," for the address-level convenience
+# check (docs/CHECKPOINT.md D-conveniences).
+#
+# These are OWNER-SET NORMS, NOT FITTED. Unlike reach.yaml (revealed-spacing
+# quantiles of existing supply -- see reach.yaml's own caveat: a category the
+# whole city under-supplies "naturally" looks fine under a data-derived
+# threshold, because the threshold bakes in whatever the missing share already
+# is), these minutes are a deliberate normative claim about what a convenient
+# city looks like, set by the owner, not derived from any distribution. That is
+# the point: a data-derived quantile can never show citywide undersupply of a
+# category (it is defined as the distance most places already clear), while an
+# owner-set norm can. Edit distance_min directly to change the standard.
+#
+# minutes -> metres at 80 m/min (WALK_M_PER_MIN, score/access.py). Distances
+# capped at 30 min (2400 m) by the same rule hex_poi_distance uses -- a
+# category with no reachable business within 30 min network-walk is simply
+# unsatisfied, no need to resolve exactly how far.
+
+version: 1
+owner_set_on: 2026-09-05
+m_per_min: 80.0
+
+distance_min:
+  # 4 min / 320 m -- immediate, daily-use conveniences
+  cafe_bakery:   4
+  restaurant:    4
+  convenience:   4
+  laundry:       4
+  # 8 min / 640 m -- weekly-use conveniences
+  grocery:       8
+  bar:           8
+  pharmacy:      8
+  bank:          8
+  fitness:       8
+  nails_beauty:  8
+  hair_barber:   8
+  childcare:     8
+  # 12 min / 960 m -- occasional-use conveniences
+  hardware:      12
+  clinic:        12
+  tailor_repair: 12
+
+distance_m:
+  cafe_bakery:   320
+  restaurant:    320
+  convenience:   320
+  laundry:       320
+  grocery:       640
+  bar:           640
+  pharmacy:      640
+  bank:          640
+  fitness:       640
+  nails_beauty:  640
+  hair_barber:   640
+  childcare:     640
+  hardware:      960
+  clinic:        960
+  tailor_repair: 960

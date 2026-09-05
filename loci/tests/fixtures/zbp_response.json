@@ -1,0 +1,13 @@
+[
+  ["ESTAB", "EMPSZES", "EMPSZES_LABEL", "NAICS2017", "NAICS2017_LABEL", "zip code"],
+  ["18", "001", "All establishments", "445110", "Supermarkets and other grocery (except convenience) stores", "11206"],
+  ["7", "210", "Establishments with less than 5 employees", "445110", "Supermarkets and other grocery (except convenience) stores", "11206"],
+  ["5", "220", "Establishments with 5 to 9 employees", "445110", "Supermarkets and other grocery (except convenience) stores", "11206"],
+  ["6", "001", "All establishments", "4451", "Grocery stores", "11206"],
+  ["17", "001", "All establishments", "445120", "Convenience stores", "11206"],
+  ["10", "210", "Establishments with less than 5 employees", "445120", "Convenience stores", "11206"],
+  ["9", "001", "All establishments", "812310", "Coin-operated laundries and drycleaners", "11206"],
+  ["4", "001", "All establishments", "812320", "Drycleaning and laundry services (except coin-operated)", "11206"],
+  ["3", "230", "Establishments with 10 to 19 employees", "812320", "Drycleaning and laundry services (except coin-operated)", "11206"],
+  ["2", "241", "Establishments with 20 to 49 employees", "812320", "Drycleaning and laundry services (except coin-operated)", "11206"]
+]

@@ -1,0 +1,111 @@
+# Per-category business-for-sale listing comps (revenue, cash flow / SDE,
+# rent, asking-vs-cashflow multiple), intended source: bizbuysell.com NYC
+# listings. Feeds src/loci/model/comps.py -- the comps-based fair-value model
+# (expected revenue, supportable rent, cushion). This is a SEPARATE model from
+# analysis.site_fairvalue (the household-spend fair-value model another
+# session is building); the two are not compared against each other here.
+#
+# ============================================================================
+# COLLECTION STATUS: BLOCKED. Zero real listings collected as of 2026-09-05.
+# ============================================================================
+#
+# robots.txt: could not be read. https://www.bizbuysell.com/robots.txt itself
+# returned HTTP 403 (WebFetch), so BizBuySell's crawl terms were never
+# observable -- the site blocks at the edge before robots.txt is served.
+#
+# Every fetch attempt below returned HTTP 403 (consistent with a Cloudflare-
+# class bot challenge that WebFetch cannot pass -- it has no JS execution or
+# cookie jar to clear a challenge page):
+#   1. https://www.bizbuysell.com/robots.txt                              -> 403
+#   2. https://www.bizbuysell.com/new-york-businesses-for-sale/           -> 403
+#   3. https://www.bizbuysell.com/new-york-city-ny/restaurants-for-sale/  -> 403
+#   4. https://www.bizbuysell.com/new-york-city-ny/restaurants-and-food-for-sale/ -> 403
+# Per the task brief's stop condition (1 initial + at most 2 more with
+# different index URLs), collection stopped after (4).
+#
+# Fallbacks checked per the brief, both also blocked:
+#   5. https://www.bizquest.com/new-york-businesses-for-sale/  -> 403
+#   6. https://www.loopnet.com/new-york_new-york/businesses-for-sale/ -> 403
+#
+# MANUAL EXPORT PROCEDURE (for the owner, since automated access is blocked):
+# Open https://www.bizbuysell.com/new-york-businesses-for-sale/ in a logged-out
+# browser, filter to NYC (borough or "New York, NY"), and for each of the 14
+# listable categories below open ~10-15 listings, one at a time, at least a
+# few seconds apart. For each listing, copy into
+# data/benchmarks/bizbuysell_nyc_listings.csv (one row per listing, matching
+# its header exactly): the listing URL, the Loci category you mapped it to,
+# BizBuySell's own category label, the borough/neighborhood text shown, asking
+# price, "Cash Flow" (their SDE figure), gross/"Gross Revenue", rent if the
+# listing states it (often under "Real Estate" or in the description as
+# "$X/mo rent" or "cash flow after rent"), sqft if shown, and self_reported=true
+# for all of these (every BizBuySell figure is seller-supplied, never audited).
+# Once >=8 rows exist for a category, `loci comps --write` will pick them up
+# automatically -- no code changes needed. Regenerate the percentile block
+# below by hand or with a small pandas groupby once real rows exist.
+#
+# CAVEATS (apply to every number below, once populated):
+#   - self-reported: every figure is seller/broker-supplied, never audited.
+#   - survivorship: only businesses an owner has decided are WORTH selling get
+#     listed; distressed exits are underrepresented.
+#   - asks, not closes: asking price and even "cash flow" are marketing
+#     figures, not closing-basis financials.
+#
+# occupancy_cost_ratio: rent as a fraction of gross revenue. THESE ARE GENERIC
+# SMALL-BUSINESS RULES OF THUMB (commonly cited commercial-retail-leasing
+# ranges), NOT derived from any BizBuySell listing -- collection is blocked,
+# so there is no real rent data yet. Used only as comps.py's LAST-RESORT
+# fallback for `supportable_rent` when a category/geography has no listed
+# rent and no cash-flow-before-rent add-back. Replace with real medians (see
+# comps.py's `rent_source="listed"` path) the moment listings.csv has data.
+version: 1
+collected_on: 2026-09-05
+source: bizbuysell.com (blocked; see collection block above)
+
+collection:
+  status: blocked
+  robots_txt: unreadable (403)
+  attempts:
+    - {url: "https://www.bizbuysell.com/robots.txt", result: 403}
+    - {url: "https://www.bizbuysell.com/new-york-businesses-for-sale/", result: 403}
+    - {url: "https://www.bizbuysell.com/new-york-city-ny/restaurants-for-sale/", result: 403}
+    - {url: "https://www.bizbuysell.com/new-york-city-ny/restaurants-and-food-for-sale/", result: 403}
+  fallbacks_tried:
+    - {site: bizquest, url: "https://www.bizquest.com/new-york-businesses-for-sale/", result: 403}
+    - {site: loopnet, url: "https://www.loopnet.com/new-york_new-york/businesses-for-sale/", result: 403}
+  n_listings_collected: 0
+
+occupancy_cost_ratio:
+  restaurant: 0.08
+  cafe_bakery: 0.10
+  bar: 0.08
+  convenience: 0.06
+  grocery: 0.03
+  pharmacy: 0.04
+  laundry: 0.12
+  nails_beauty: 0.12
+  hair_barber: 0.12
+  fitness: 0.15
+  hardware: 0.06
+  clinic: 0.08
+  childcare: 0.10
+  tailor_repair: 0.10
+
+# Per-category raw comps table (loci.model.comps also computes this on the
+# fly from the CSV via comps_for()/all_comps() -- this block is the checked-in
+# snapshot `loci benchmarks` prints without touching the CSV). All n=0 today.
+categories:
+  restaurant:      {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
+  cafe_bakery:     {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
+  bar:             {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
+  convenience:     {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
+  grocery:         {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
+  pharmacy:        {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
+  laundry:         {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
+  nails_beauty:    {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
+  hair_barber:     {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
+  fitness:         {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
+  hardware:        {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
+  clinic:          {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
+  childcare:       {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
+  tailor_repair:   {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
+  # bank: skipped -- not listable as a small-business comp (task scope).

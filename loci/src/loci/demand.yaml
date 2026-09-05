@@ -1,0 +1,102 @@
+# Income elasticity of demand, per category (docs/CHECKPOINT.md, demand-caveat
+# ticket). Source: Meltzer & Schuetz (2012), "Bodegas or Bagel Shops? Neighborhood
+# Retail at the Intersection of Race and Poverty," Economic Development Quarterly
+# 26(1):73-94 (NYC ZIP-level, ZIP Business Patterns 1998-2007).
+#
+# Their finding: low-income NYC neighborhoods (household income < 80% of the
+# citywide mean -- `low_income_cutoff` below) are NOT under-supplied on
+# establishment counts for necessity categories -- groceries had HIGHER
+# establishments/land in low-income ZIPs (0.051 vs 0.036, Table 6), drugstores
+# showed only a small income gap -- but food service (restaurants, cafes), gyms
+# (0.29 vs 1.04 per ZIP, Tables 5-7), and other discretionary retail
+# disproportionately locate in higher-income areas.
+#
+# Consequence for the gap screen: a missing DISCRETIONARY category in a
+# low-income hex is plausibly demand-following (the paper's own finding), not a
+# conspicuous supply gap, while a missing NECESSITY category there is a real
+# gap either way. This file ANNOTATES gaps.py output with that context; it does
+# not change which hexes are gaps or which (hex, category) pairs are missing
+# (see model/gaps.py docstring and tests/test_demand_caveat.py part (c)).
+#
+# `evidence: paper` rows are read directly off the tables cited above.
+# `evidence: assumed` rows are OWNER PRIORS -- a reasonable extrapolation of the
+# same necessity/discretionary logic to categories the paper doesn't cover --
+# and are AWAITING CONTRARIAN REVIEW. Do not treat an `assumed` row as having
+# the same evidentiary weight as a `paper` row in any downstream claim.
+
+low_income_cutoff: 0.80   # share of the citywide population-weighted mean
+                          # household income; mirrors the paper's own cutoff.
+
+source: >
+  Meltzer, R. and Schuetz, J. (2012). "Bodegas or Bagel Shops? Neighborhood
+  Retail at the Intersection of Race and Poverty." Economic Development
+  Quarterly 26(1):73-94.
+
+categories:
+  # --- Tier 1: necessities ---
+  grocery:
+    income_elasticity: necessity
+    evidence: paper
+    note: "Table 6 -- groceries/land HIGHER in low-income ZIPs (0.051 vs 0.036)."
+  convenience:
+    income_elasticity: necessity
+    evidence: paper
+    note: "Table 6, grouped with grocery/food retail -- no income undersupply found."
+  pharmacy:
+    income_elasticity: necessity
+    evidence: paper
+    note: "Table 6 -- drugstores show only a small income gap."
+  laundry:
+    income_elasticity: necessity
+    evidence: assumed
+    note: "Not covered by the paper. Owner prior: a daily-needs necessity like grocery/pharmacy. Awaiting contrarian review."
+
+  # --- Tier 2: personal services ---
+  hair_barber:
+    income_elasticity: necessity
+    evidence: assumed
+    note: "Not covered by the paper. Owner prior: routine personal-care necessity, unlike discretionary food/fitness. Awaiting contrarian review."
+  nails_beauty:
+    income_elasticity: discretionary
+    evidence: assumed
+    note: "Not covered by the paper. Owner prior: closer to discretionary personal spending than to routine necessity. Awaiting contrarian review."
+  tailor_repair:
+    income_elasticity: discretionary
+    evidence: assumed
+    note: "Not covered by the paper. Owner prior: occasional-use, income-sensitive service. Awaiting contrarian review."
+
+  # --- Tier 3: food & gathering ---
+  restaurant:
+    income_elasticity: discretionary
+    evidence: paper
+    note: "Tables 5-7 -- food service disproportionately locates in higher-income areas."
+  cafe_bakery:
+    income_elasticity: discretionary
+    evidence: paper
+    note: "Tables 5-7 -- grouped with food service/discretionary retail."
+  bar:
+    income_elasticity: discretionary
+    evidence: paper
+    note: "Tables 5-7 -- grouped with food service/discretionary retail."
+
+  # --- Tier 4: civic & wellness ---
+  childcare:
+    income_elasticity: necessity
+    evidence: assumed
+    note: "Not covered by the paper. Owner prior: a working-family necessity, not discretionary spending. Awaiting contrarian review."
+  clinic:
+    income_elasticity: necessity
+    evidence: assumed
+    note: "Not covered by the paper. Owner prior: healthcare access is a necessity. Awaiting contrarian review."
+  fitness:
+    income_elasticity: discretionary
+    evidence: paper
+    note: "Tables 5-7 -- gyms per ZIP 0.29 (low-income) vs 1.04 (higher-income), the paper's sharpest gap."
+  bank:
+    income_elasticity: necessity
+    evidence: assumed
+    note: "Not covered by the paper. Owner prior: financial-services access is a necessity, especially given bank-desert literature. Awaiting contrarian review."
+  hardware:
+    income_elasticity: necessity
+    evidence: assumed
+    note: "Not covered by the paper. Owner prior: home-maintenance necessity, not discretionary spending. Awaiting contrarian review."

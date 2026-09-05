@@ -1,0 +1,125 @@
+# NAICS 2017 crosswalk, per Loci category, for Census ZIP Business Patterns
+# (ZBP) / County Business Patterns (CBP) validation (registry.yaml
+# `census_zbp`; docs/CHECKPOINT.md ZBP-validation ticket).
+#
+# CAVEAT THAT MATTERS MORE THAN ANY CODE BELOW (Meltzer & Schuetz 2012, "Bodegas
+# or Bagel Shops?"): NAICS is SELF-classified by the business at registration,
+# and it bleeds between adjacent formats. A bodega that sells prepared
+# sandwiches may file under 445120 (convenience store) or 722513
+# (limited-service restaurant); a combined nail-and-hair salon may file under
+# either 812112 or 812113. Category boundaries here are therefore SOFT --
+# this crosswalk is good enough for a ZIP-level sanity check on Loci's POI
+# coverage, never precise enough to be a category label on an individual
+# establishment. Never promote a zbp_naics mapping into the POI/dedup pipeline.
+#
+# confidence: high  -- the NAICS code is essentially definitional for the category
+# confidence: medium -- plausible primary code, but material bleed with a
+#                        neighboring category or the code is broader/narrower
+#                        than the category boundary
+#
+# Every code below was verified present in a live CBP API pull for NYC ZIPs on
+# 2026-09-05 (see src/loci/sources/universal/census_zbp.py docstring for the
+# probe). Codes are 6-digit NAICS 2017 -- the finest level CBP returns.
+
+categories:
+  grocery:
+    - naics: "445110"
+      confidence: high
+      note: "Supermarkets and other grocery (except convenience) stores -- definitional."
+
+  convenience:
+    - naics: "445120"
+      confidence: high
+      note: "Convenience stores -- definitional, though see the bodega/restaurant bleed above."
+
+  pharmacy:
+    - naics: "446110"
+      confidence: high
+      note: "Pharmacies and drug stores -- definitional."
+
+  laundry:
+    - naics: "812310"
+      confidence: high
+      note: "Coin-operated laundries and drycleaners."
+    - naics: "812320"
+      confidence: high
+      note: "Drycleaning and laundry services (except coin-operated) -- covers most storefront dry cleaners."
+
+  hair_barber:
+    - naics: "812111"
+      confidence: high
+      note: "Barber shops."
+    - naics: "812112"
+      confidence: high
+      note: "Beauty salons -- included here because many NYC hair salons file under this code regardless of clientele; bleeds with nails_beauty where a shop offers both."
+
+  nails_beauty:
+    - naics: "812113"
+      confidence: high
+      note: "Nail salons -- definitional. Combined hair+nail shops may instead file under 812112 (hair_barber); this is the bleed the header warns about."
+
+  tailor_repair:
+    - naics: "811430"
+      confidence: medium
+      note: >
+        Footwear and leather goods repair -- the closest single NAICS code to
+        a walkable "tailor/repair" storefront (shoe repair is the dominant
+        real-world instance in NYC). 812320 (laundry/drycleaning) is
+        deliberately EXCLUDED even though some dry cleaners also do
+        alterations, because 812320 is already the laundry anchor and double
+        counting it here would inflate both categories from the same
+        establishments. True clothing tailors/dressmakers have no clean NAICS
+        home (they scatter across 315990 apparel manufacturing, 812990 other
+        personal services, and retail alteration counters inside clothing
+        stores), so this single code is a deliberate undercount, not a bug --
+        treat any zbp-compare ratio for this category as a floor, not a
+        point estimate.
+
+  restaurant:
+    - naics: "722511"
+      confidence: high
+      note: "Full-service restaurants."
+    - naics: "722513"
+      confidence: high
+      note: "Limited-service restaurants -- includes fast food/counter service; bleeds with cafe_bakery and convenience."
+
+  cafe_bakery:
+    - naics: "722515"
+      confidence: high
+      note: "Snack and nonalcoholic beverage bars -- the coffee-shop code."
+    - naics: "311811"
+      confidence: medium
+      note: "Retail bakeries -- manufacturing-sector code (311xxx), so it undercounts bakeries that are primarily cafe seating rather than a bake shop; kept because it is the only NAICS home for a storefront bakery."
+
+  bar:
+    - naics: "722410"
+      confidence: high
+      note: "Drinking places (alcoholic beverages) -- definitional, though a bar with a full kitchen may file under 722511 instead (same ambiguity CONTEXT.md flags for the SLA license mapping)."
+
+  childcare:
+    - naics: "624410"
+      confidence: high
+      note: "Child day care services -- definitional; matches the DOHMH childcare anchor's scope (group centers), excludes home-based family daycare licensed separately by NYS OCFS."
+
+  clinic:
+    - naics: "621111"
+      confidence: high
+      note: "Offices of physicians (except mental health specialists)."
+    - naics: "621493"
+      confidence: high
+      note: "Freestanding ambulatory surgical and emergency centers -- the urgent-care code."
+
+  fitness:
+    - naics: "713940"
+      confidence: high
+      note: "Fitness and recreational sports centers -- definitional."
+
+  bank:
+    - naics: "522110"
+      confidence: high
+      note: "Commercial banking -- definitional for the bank-branch category; excludes credit unions (522130), which are out of scope the same way FDIC BankFind excludes them."
+
+  hardware:
+    - naics: "444130"
+      confidence: high
+      note: "Hardware stores -- definitional."

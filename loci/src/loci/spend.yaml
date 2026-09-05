@@ -1,0 +1,340 @@
+# Fair-value engine v1 -- demand-side (CEX spend) and rent-side (OCR/GLA) parameters.
+# See docs/QUESTIONS.md O6/O7 and the investor spec (fair_value_spec.md, sections 2/5).
+#
+# NOTE ON PROVENANCE: the BLS CEX tables WERE pulled on 2026-09-05. Plain `curl` from this
+# network gets an HTTP 403 at the BLS edge for everything under bls.gov, including
+# robots.txt, so a direct fetch tool reads as "blocked" -- but the workbooks were
+# retrieved successfully via a different fetcher and verified as genuine Microsoft OOXML
+# (.xlsx) files (`file` reports "Microsoft OOXML", not HTML error text). The raw files
+# live in data/raw/bls/: `cu-msa-northeast-2-year-average-2023-2024.xlsx` (Table 3004,
+# Northeastern MSAs, 2023-2024 two-year average) and `cu-income-quintiles-before-taxes-
+# 2024.xlsx` (Table 1101, national, 2024), plus parsed CSVs of both. Vintage: MSA figures
+# are 2023-2024; national figures are 2024.
+#
+# Table 3004 (MSA) is FAR coarser than Table 1101 (national): it reports ~35 rolled-up
+# lines (e.g. one "Food away from home" total, one "Personal care products and services"
+# total) versus Table 1101's ~100 finely split lines (e.g. Drugs, Fees and admissions
+# broken out separately). Consequently only the categories listed below -- grocery,
+# restaurant, cafe_bakery, bar, hair_barber, nails_beauty -- have a real New York MSA
+# figure, because those are the only categories whose CEX line item survives the MSA
+# table's rollup. Every other category below is `source: national` (or
+# `national_unverified`) for that GRANULARITY reason, not because the fetch failed --
+# the NY-specific number simply does not exist at this level of BLS publication.
+#
+# INCOME-QUINTILE SCALING: CEX line items are not reproduced quintile-by-quintile from
+# memory. Instead each category gets ONE annual per-household figure (`annual_spend`; see
+# the per-category `source` for whether that's a real NY MSA number or a national one)
+# plus an `income_elasticity` in [0,1] (0 = necessity, flat across income; 1 = spend
+# scales linearly with income). `E_c(income)` = annual_spend * (1 + elasticity * (idx_q -
+# 1)), where idx_q is the quintile-income-index below for the quintile the hex's
+# median_hh_income falls into.
+#
+# quintile boundaries: REAL 2024 BLS CEX Table 1101 "Lower limit" row (data/raw/bls/
+# cu-income-quintiles-before-taxes-2024.xlsx, row 4), income before taxes, consumer unit
+# basis. These are the actual published cutoffs, not approximations.
+quintile_income_breaks_usd: [29932, 57452, 94511, 155925]   # 4 breakpoints -> 5 bins
+# quintile_income_index: REAL 2024 Table 1101 quintile mean income / overall mean income
+# ($104,207 -- Table 1101, "Income before taxes" row, "All consumer units" column).
+# Quintile means: 16658 / 42925 / 74474 / 121548 / 264510. Simple average of the 5 index
+# values is 0.998 (not exactly 1.0 -- these are the real, unequal quintile-mean-to-overall
+# ratios, not a construction forced to average to 1; the small gap is legitimate rounding
+# in BLS's published means, not a modeling artifact).
+quintile_income_index: [0.160, 0.412, 0.715, 1.166, 2.538]
+
+# ACS MOE -> standard error conversion. ACS margins of error are published at 90%
+# confidence (Census convention); SE = MOE / 1.645.
+moe_z90: 1.645
+# Fallback household uncertainty when households_moe is NULL for a hex (task instruction):
+# treat 20% of the household count as if it were the 90%-confidence MOE, so it feeds the
+# same SE formula. Flagged per-run via `moe_source`.
+fallback_moe_fraction: 0.20
+
+# distance floor (metres) used in the Huff denominator so a trade-area hex that IS (or is
+# extremely close to) the candidate site does not divide by ~0. Set to roughly half a
+# res-9 hex's centroid-to-centroid spacing (~174 m edge length at this latitude).
+huff_min_distance_m: 50.0
+
+# CONVENTION for categories with a real NY MSA figure (source: ny_msa_2023_2024[_allocated]):
+# `annual_spend` = the NY MSA figure, since this model is NYC-only and a New York number
+# beats a national one whenever both exist. `annual_spend_national` keeps the national
+# figure alongside for reference/comparison. `annual_spend_ny_msa` duplicates the NY
+# figure explicitly for readability (it always equals `annual_spend` for these
+# categories). `ny_msa_ratio` = annual_spend_ny_msa / annual_spend_national. Applied
+# consistently across grocery, restaurant, cafe_bakery, bar, hair_barber, nails_beauty.
+
+categories:
+
+  # ---- Tier 1: necessities -------------------------------------------------
+  grocery:
+    cex_mapping: "Food at home, CEX Table 3004 (NY MSA) / Table 1101 (national)"
+    annual_spend: 7033              # = annual_spend_ny_msa; see convention note below
+    annual_spend_national: 6224     # real 2024 Table 1101 national figure
+    annual_spend_ny_msa: 7033       # real 2023-2024 Table 3004 New York MSA figure
+    ny_msa_ratio: 1.13              # 7033 / 6224
+    income_elasticity: 0.35   # necessity but not flat -- higher-income HH buy more/pricier
+    source: ny_msa_2023_2024
+    ocr_low: 0.02
+    ocr_high: 0.04
+    gla_sqft_low: 8000
+    gla_sqft_high: 25000
+    reliable: true
+    daytime_augmented: false
+
+  convenience:
+    cex_mapping: >
+      No single CEX line item exists for "convenience/bodega." Blended estimate: a small
+      share of food-at-home (~8%, impulse/fill-in trips) plus "miscellaneous household
+      products" and OTC sundries. LOW CONFIDENCE -- the category itself is fine, but the
+      spend estimate is a blend, not a CEX line, and is the weakest anchor of tier 1.
+    annual_spend: 700
+    income_elasticity: 0.20
+    source: national_blended
+    ocr_low: 0.05
+    ocr_high: 0.08
+    gla_sqft_low: 1200
+    gla_sqft_high: 2800
+    reliable: true
+    daytime_augmented: true
+    work_annual_spend: 150    # per daytime job in the trade area (snack/sundries run)
+
+  pharmacy:
+    cex_mapping: "Drugs, out-of-pocket (nonprescription + prescription net of insurance), CEX Table 1101"
+    annual_spend: 658         # real 2024 Table 1101 national figure (was a 500 guess)
+    income_elasticity: 0.10   # near-flat: need-driven
+    source: national
+    mapping_note: >
+      Clean 1:1 CEX line ("Drugs"), but Table 3004 (MSA) does not break this line out
+      separately -- it only survives at the national level, so no NY MSA figure exists.
+    ocr_low: 0.04
+    ocr_high: 0.07
+    gla_sqft_low: 8000
+    gla_sqft_high: 12000
+    # T5 (spec sec.4): pharmacy revenue is overwhelmingly third-party-payer Rx, not
+    # household out-of-pocket budget. A household-spend model on this category is
+    # structurally wrong in SHAPE, not just noisy -- flag it, don't hide it.
+    reliable: false
+    daytime_augmented: false
+
+  laundry:
+    cex_mapping: "Laundry and dry cleaning -- shares 'Other apparel products and services' with tailor_repair, CEX Table 1101"
+    annual_spend: 130         # unchanged: mapping not clean enough to replace with the real figure
+    income_elasticity: 0.15
+    source: national
+    mapping_note: >
+      No line item cleanly isolates laundry/dry-cleaning spend. The real 2024 Table 1101
+      value for "Other apparel products and services" (which covers laundry sent out,
+      dry cleaning, alterations/repair, and clothing storage/rental together) is 252 for
+      ALL of that combined line -- i.e. less than the 130+60=190 already assumed here for
+      laundry+tailor_repair combined, but the two can't be cleanly split from this one
+      number, so the prior placeholder is kept rather than guessing a new split.
+    ocr_low: 0.08
+    ocr_high: 0.12
+    gla_sqft_low: 1500
+    gla_sqft_high: 3000
+    reliable: true
+    daytime_augmented: false
+
+  # ---- Tier 2: personal services -------------------------------------------
+  hair_barber:
+    cex_mapping: >
+      "Personal care products and services" (CEX combines goods+services in one line);
+      allocated 35% to hair/barber, 25% to nails/beauty, remainder to goods (soap,
+      cosmetics -- not sold at either storefront category, excluded here). Same
+      allocation share as before, now applied to the real 2024 figures.
+    annual_spend: 407                # = annual_spend_ny_msa (0.35 * 1163, NY total)
+    annual_spend_national: 342       # 0.35 * 978 (real 2024 Table 1101 national total)
+    annual_spend_ny_msa: 407         # 0.35 * 1163 (real 2023-2024 Table 3004 NY total)
+    ny_msa_ratio: 1.19               # 407 / 342 (same as the raw line ratio, 1163/978)
+    income_elasticity: 0.30
+    source: ny_msa_2023_2024_allocated
+    ocr_low: 0.08
+    ocr_high: 0.12
+    gla_sqft_low: 800
+    gla_sqft_high: 1500
+    reliable: true
+    daytime_augmented: false
+
+  nails_beauty:
+    cex_mapping: "Personal care products and services, allocated share -- see hair_barber note."
+    annual_spend: 291                # = annual_spend_ny_msa (0.25 * 1163, NY total)
+    annual_spend_national: 245       # 0.25 * 978 (real 2024 Table 1101 national total)
+    annual_spend_ny_msa: 291         # 0.25 * 1163 (real 2023-2024 Table 3004 NY total)
+    ny_msa_ratio: 1.19               # 291 / 245 (same as the raw line ratio, 1163/978)
+    income_elasticity: 0.35
+    source: ny_msa_2023_2024_allocated
+    ocr_low: 0.08
+    ocr_high: 0.12
+    gla_sqft_low: 800
+    gla_sqft_high: 1500
+    reliable: true
+    daytime_augmented: false
+
+  tailor_repair:
+    cex_mapping: "Clothing alteration, repair, and storage -- shares 'Other apparel products and services' with laundry, CEX Table 1101."
+    annual_spend: 60          # unchanged: see laundry's mapping_note (same shared line)
+    income_elasticity: 0.30
+    source: national
+    mapping_note: >
+      Shares one CEX line ("Other apparel products and services", real 2024 national
+      value 252) with laundry, combined with clothing storage/rental. Can't be cleanly
+      split from that single number; see laundry's mapping_note for the shared-line math.
+    ocr_low: 0.06
+    ocr_high: 0.10
+    gla_sqft_low: 400
+    gla_sqft_high: 900
+    reliable: true
+    daytime_augmented: false
+
+  # ---- Tier 3: food & gathering ---------------------------------------------
+  restaurant:
+    cex_mapping: "Food away from home, CEX Table 3004 (NY MSA) / Table 1101 (national), ~75% share (full+fast service)."
+    annual_spend: 3509               # = annual_spend_ny_msa (0.75 * 4679, NY total)
+    annual_spend_national: 2959      # 0.75 * 3945 (real 2024 Table 1101 national total)
+    annual_spend_ny_msa: 3509        # 0.75 * 4679 (real 2023-2024 Table 3004 NY total)
+    ny_msa_ratio: 1.19               # 3509 / 2959 (same as the raw line ratio, 4679/3945)
+    income_elasticity: 0.45
+    source: ny_msa_2023_2024_allocated
+    ocr_low: 0.06
+    ocr_high: 0.12   # spec: 6-10% national, commonly 8-12% NYC -- use the wider band
+    gla_sqft_low: 1500
+    gla_sqft_high: 4500
+    reliable: true
+    daytime_augmented: true
+    work_annual_spend: 500   # weekday lunch spend per daytime job in trade area
+
+  cafe_bakery:
+    cex_mapping: "Food away from home, CEX Table 3004 (NY MSA) / Table 1101 (national), ~15% share (coffee shops, bakeries)."
+    annual_spend: 702                # = annual_spend_ny_msa (0.15 * 4679, NY total)
+    annual_spend_national: 592       # 0.15 * 3945 (real 2024 Table 1101 national total)
+    annual_spend_ny_msa: 702         # 0.15 * 4679 (real 2023-2024 Table 3004 NY total)
+    ny_msa_ratio: 1.19               # 702 / 592 (same as the raw line ratio, 4679/3945)
+    income_elasticity: 0.40
+    source: ny_msa_2023_2024_allocated
+    ocr_low: 0.08
+    ocr_high: 0.12
+    gla_sqft_low: 800
+    gla_sqft_high: 1500
+    reliable: true
+    daytime_augmented: true
+    work_annual_spend: 300   # coffee runs per daytime job
+
+  bar:
+    cex_mapping: >
+      "Alcoholic beverages," CEX Table 3004 (NY MSA) / Table 1101 (national) -- but this
+      CEX line is TOTAL alcohol spend (at-home + away-from-home combined), not
+      away-from-home only. The prior version of this file guessed 420 as the
+      away-from-home-only national figure with no documented share; that guess implies an
+      away-from-home share of 420/643 = 65.3% of the real total alcohol line. That share
+      is undocumented/unverified (not sourced from BLS) but is KEPT here for continuity,
+      applied to the real totals, rather than invented anew -- flagged accordingly.
+    annual_spend: 556                # = annual_spend_ny_msa (0.653 * 851, NY total)
+    annual_spend_national: 420       # 0.653 * 643 (real 2024 Table 1101 national total; ~= prior guess)
+    annual_spend_ny_msa: 556         # 0.653 * 851 (real 2023-2024 Table 3004 NY total)
+    ny_msa_ratio: 1.32               # 556 / 420 (same as the raw line ratio, 851/643)
+    income_elasticity: 0.50
+    source: ny_msa_2023_2024_allocated
+    mapping_note: >
+      The 65.3% away-from-home share is an unverified carryover assumption, not a BLS
+      figure -- CEX does not publish an at-home/away-from-home split for alcohol. Treat
+      bar's annual_spend as lower-confidence than grocery/restaurant/cafe_bakery/
+      hair_barber/nails_beauty despite sharing the ny_msa_2023_2024_allocated tag.
+    ocr_low: 0.06
+    ocr_high: 0.10
+    gla_sqft_low: 1200
+    gla_sqft_high: 3000
+    reliable: true
+    daytime_augmented: false
+
+  # ---- Tier 4: civic & wellness -----------------------------------------------
+  childcare:
+    cex_mapping: >
+      "Day care centers, nursery schools, and preschools," averaged across ALL households
+      (payers and non-payers) -- understates spend among households that actually buy
+      childcare and overstates it among those that don't; high-variance, small CEX sample.
+    annual_spend: 700
+    income_elasticity: 0.30
+    source: national_unverified
+    mapping_note: >
+      No CEX line item exists for childcare/day-care as its own category and no NY MSA
+      figure is possible at any grain -- this value is not a real BLS number, just the
+      prior placeholder retained unchanged.
+    ocr_low: 0.10
+    ocr_high: 0.18
+    gla_sqft_low: 2500
+    gla_sqft_high: 6000
+    reliable: true
+    daytime_augmented: false
+
+  clinic:
+    cex_mapping: >
+      No household-budget analogue: clinic/urgent-care revenue is insurance
+      reimbursement, structurally like pharmacy (T5). Already excluded from headline
+      claims under CHECKPOINT D30.
+    annual_spend: 300
+    income_elasticity: 0.10
+    source: national_unverified
+    mapping_note: >
+      No CEX line item exists for clinic/urgent-care spend -- structurally, this revenue
+      is insurance reimbursement, not household out-of-pocket budget, so no BLS line
+      would even be the right analogue. This value is not a real BLS number, just the
+      prior placeholder retained unchanged.
+    ocr_low: 0.06
+    ocr_high: 0.10
+    gla_sqft_low: 1500
+    gla_sqft_high: 4000
+    reliable: false
+    daytime_augmented: false
+
+  fitness:
+    cex_mapping: "Fees and admissions (recreation), CEX Table 1101 -- broader than gym membership alone."
+    annual_spend: 935         # real 2024 Table 1101 national figure (was a 500 guess)
+    income_elasticity: 0.40
+    source: national
+    mapping_note: >
+      Clean-ish CEX line ("Fees and admissions"), but it is broader than gym/fitness
+      membership alone (also covers movies, sporting events, park/museum fees, etc.), and
+      Table 3004 (MSA) does not break it out separately, so no NY MSA figure exists.
+    ocr_low: 0.12
+    ocr_high: 0.20
+    gla_sqft_low: 12000
+    gla_sqft_high: 25000
+    reliable: true
+    daytime_augmented: false
+
+  bank:
+    cex_mapping: >
+      CEX has no meaningful consumer "bank fee" spend line -- branch revenue is mostly
+      net interest margin and loan origination, not a household out-of-pocket budget item.
+      Structurally mismatched like pharmacy/clinic; kept only so the 15-category registry
+      is complete.
+    annual_spend: 100
+    income_elasticity: 0.10
+    source: national_unverified
+    mapping_note: >
+      No CEX line item exists for consumer bank-fee spend -- branch revenue is net
+      interest margin and loan origination, not a household budget item. This value is
+      not a real BLS number, just the prior placeholder retained unchanged.
+    ocr_low: 0.03
+    ocr_high: 0.06
+    gla_sqft_low: 2500
+    gla_sqft_high: 5000
+    reliable: false
+    daytime_augmented: false
+
+  hardware:
+    cex_mapping: "No CEX line item; nearest (much broader) analogue is 'Miscellaneous household equipment,' CEX Table 1101."
+    annual_spend: 200         # unchanged: mapping too broad to replace with the real figure
+    income_elasticity: 0.35
+    source: national
+    mapping_note: >
+      No CEX line item isolates hardware-store spend. The nearest analogue, "Miscellaneous
+      household equipment" (real 2024 Table 1101 national value 1,089), is much broader --
+      it includes small appliances, decor, and other household goods well beyond tools and
+      hardware -- so the prior 200 placeholder is kept rather than substituting a number
+      that would overstate the category by roughly 5x.
+    ocr_low: 0.03
+    ocr_high: 0.06
+    gla_sqft_low: 2000
+    gla_sqft_high: 8000
+    reliable: true
+    daytime_augmented: false

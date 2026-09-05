@@ -95,6 +95,13 @@ claim stands on.
 - **Fails if:** n/a — measurement. D29's GEOMETRY-artifact category exists precisely because the validator's straight-line radius and the screen's network-distance threshold disagree; a circuity correction or a direct network-distance comparison would remove the need to split results after the fact.
 - **Current answer:** Open. Candidate approaches: reuse `analysis.hex_poi_distance` (already network-based) instead of a straight-line radius at validation time, or apply a circuity correction (~1.25–1.3 in NYC, so an 800m network threshold ≈ 620–640m straight-line).
 
+### M9 — How do Loci's deduped POI counts compare with Census ZIP Business Patterns establishment counts, per category and ZIP?
+- **Status:** in-progress
+- **Prediction:** Ratios near 1 for employer-heavy categories (pharmacy, bank, grocery, hardware); above 1 for sole-proprietor-heavy categories (nails, barber, tailor) because CBP/ZBP counts only establishments with paid employees.
+- **Answered by:** `loci ingest-zbp` + `loci zbp-compare` → `analysis.zip_coverage_check` (built 2026-09-05, CBP 2023 vintage, NAICS 2017, 213 NYC ZIPs)
+- **Fails if:** ratios are far above 1 in categories that are NOT sole-proprietor-heavy — that would mean the POI feeds overcount supply (stale or duplicate records), which tightens every reach value and hides gaps.
+- **Current answer:** First run (2026-09-05, ZIPs with population ≥1,000; ratio = Loci POIs / ZBP establishments): median ratio by category — childcare 0.85, clinic 0.95, laundry 1.33, pharmacy 1.48, grocery 2.06, bank 2.17, convenience 2.31, hair_barber 2.79, restaurant 3.16, hardware 3.21, cafe_bakery 3.51, fitness 5.92, bar 6.00, nails_beauty 7.96. Share of ZIPs above 2× is 94–98% for restaurant, cafe_bakery, fitness, bar, nails. Pattern: the categories closest to 1 are the OSM/Overture-only ones (childcare, clinic, laundry, pharmacy); the largest overcounts are exactly the license-registry-anchored categories (DOHMH → restaurant/cafe, NYS DOS → hair/nails, SLA → bar) plus fitness. Consistent with D36 (DOHMH turnover duplication) and suggests SLA and NYS DOS anchors also carry closed or non-storefront licensees. Bank at 2.17 and hardware at 3.21 are not explained by the employer-only bias and point to POI duplication or ZIP assignment error. Caveats: POI→ZIP uses a majority-vote hex→ZIP crosswalk from PLUTO lots (no ZCTA polygons in the DB); ZIP population is summed dasymetric hex population; CBP excludes non-employers and noise-infuses cells from 2017 on; NAICS self-classification bleeds between adjacent formats (Meltzer & Schuetz). Next: (a) rerun per SOURCE (which feed drives each overcount), (b) ZCTA polygons for a proper ZIP join, (c) use `analysis.zip_category_establishments` size bands for D9 and establishments-per-resident for O6.
+
 ### Tier D · Descriptive — what is where
 
 ### D1 — How complete is the daily-needs bundle within a 10-minute walk across NYC, and how is completeness distributed?
@@ -151,21 +158,35 @@ claim stands on.
 - **Current answer:** (2026-09-02, **walk-network metres**, five boroughs, canonical POIs, same graph as `hex_access`) **Same-type spacing is tight.** Median network distance to the nearest other business of the same type: 0 m for nails and restaurants (same address), 13–32 m for bars, cafes, salons, groceries, clinics, gyms, 65–113 m for banks, pharmacies, bodegas, laundromats, ~200 m for childcare and hardware. Share with no competitor within a 10-minute walk: hardware 11%, tailors 16%, childcare 6%, everything else under 4%. **Gap hexes are a 10-to-17-minute band, not holes.** The nearest missing business is a median 860–1,030 m on foot from the hex (p90 1,100–1,400 m); only 26 of 726 hexes are beyond 1.5 km and none beyond 4 km. Run `loci spacing` (2 min). Straight-line numbers quoted earlier were superseded; D16 records the distance bug found on the way. Dedup lead in H-D11.
 
 ### D6 — What is the empirical distribution of hex-to-nearest-business network distance per category, and should each category's "missing" threshold be set from it?
-- **Status:** open
+- **Status:** answered
 - **Prediction:** —
 - **Answered by:** `Redefine 'missing' via per-category reach (monotonicity fix)`
 - **Fails if:** n/a — descriptive/method question. **Finding (2026-09-03, owner-identified):** the current "missing" rule violates monotonicity. A hex is a gap for category c at window w iff (no c within w) AND (c is present within w for ≥80% of walkable hexes). Anything absent within 800m is absent within 400m, so a gap at 10 min must survive at 5 min — but D3's Manhattan sweep (D31) shows hardware gaps at 10 min vanishing at 5 min, because hardware's 400m prevalence drops to 51% and the 80% bar simply stops expecting it. The rule fuses two questions that must be separated: (a) how far people normally go for category c — a property of the category; (b) whether this hex is anomalous relative to that norm — a property of the hex. Reusing one window for both means the window silently decides which categories are eligible to be missing, so the 10-min and 5-min lists are two different screens, not two views of one.
   **Definition (supersedes the single citywide window):** each category gets a fixed REACH, set once from revealed spacing (e.g. the distance within which ≥80% of populated hexes already have one — the 80% bar survives only as the quantile that sets reach, never again as an eligibility filter). A hex is a gap for c iff its nearest c is beyond reach(c); no global window remains. The "walkable" eligibility gate (currently ≥12/15 categories present within the window) gets the same treatment: walkable iff within reach of most categories, each at its own reach.
   **Acceptance test — MONOTONICITY:** tightening any distance parameter may only add gaps, never remove them. The current screen fails this; the reach-based redefinition must pass it as a unit test.
   **Caveat to carry:** revealed spacing reflects historical supply, not demand — a category the whole city under-supplies will look like it "naturally" spaces wide and its gaps vanish. Contrarian review required before trusting the reach values. See D3 (the Manhattan sweep that exposed this), D7 (density-class scaling of reach), CHECKPOINT D33.
-- **Current answer:** Open. Redefined 2026-09-03 (CHECKPOINT D33) from "pick a threshold from the distribution" to "each category gets its own fixed reach; monotonicity is the acceptance test" — this is now next session's focus, not a parameter sweep.
+- **Current answer:** Built and verified 2026-09-05 (CHECKPOINT D34): fixed per-category reach, `loci gaps --rule reach`, monotone on real data. But reach = p80 of the hex-to-nearest distribution fixes the gap rate at ~20% per category by construction, so per-category counts are flat and the exactly-one list is a quantile artifact (p80∩p90 = 95/468). The architecture stands; the calibration statistic and the lead rule do not. Continues as D8.
 
 ### D7 — Should thresholds vary by density class or transit/car-dependence, not just by category?
 - **Status:** open
 - **Prediction:** —
 - **Answered by:** `Density-class / mode-dependent thresholds`
 - **Fails if:** n/a — descriptive/method question. Lower Manhattan and car-dependent outer-borough areas should not share one walk window. Cheap proxy: scale the threshold by residential density class (no new data needed). Honest version: ACS vehicle ownership per tract (needs an ACS vehicle-ownership ingest; key is set). Note the interaction with D6: threshold(category, density_class) is one parameterization, not two independent sweeps — keep it small to avoid overfitting a matrix.
-- **Current answer:** Open. Needs an ACS vehicle-ownership ingest for the honest (vehicle-ownership) version; the density-class proxy needs no new data and can proceed first.
+- **Current answer:** Open; still needs the ACS vehicle-ownership ingest for the mode/car-dependence threshold (key is set). 2026-09-05 (CHECKPOINT D43): mature Manhattan's complete areas reveal amenity distances 3–7× tighter than the adopted citywide tiers — a single reach is either too loose for Manhattan or too tight for Queens. Proposed: reach(c) per density class from complete addresses in that class, floored by reach_tiers.yaml's cited values. See docs/market_reach_manhattan.md.
+
+### D8 — What statistic sets reach(c) without fixing the per-category gap rate, and how should the lead category be ranked?
+- **Status:** answered
+- **Prediction:** —
+- **Answered by:** `Redefine 'missing' via per-category reach (monotonicity fix)`
+- **Fails if:** every candidate calibration statistic still yields flat per-category gap counts, or the exactly-one list overlaps <80% across reasonable calibration variants — in which case "the one missing business" is not identifiable from spacing alone and needs an external norm (walk-time tiers per category, D7 density classes). Candidates to compare: (a) median same-type nearest-neighbour spacing; (b) external per-category walk-time norms (H-L3, H-L4); (c) p80 restricted to the gated universe (shrinks reach 8–25%). Acceptance battery is in CHECKPOINT D34: monotonicity, non-flat category counts, ≥80% list stability, lead excess ≥100 m, coverage split on the lowest POI-density decile. Also carry: corr(n_missing, log local POI count) = −0.67 — any calibration must be checked against M1's coverage question before a gap count is quoted.
+- **Current answer:** Compared 2026-09-05 (CHECKPOINT D35). Same-type store-to-store spacing measures clustering (median 0–218 m) and is unusable; p80 on any universe pins the gap rate (CV 0.003–0.063). External walk-time tiers (400/800/1,200 m by trip frequency) are the only calibration whose per-category counts carry information (CV 1.07) and the most stable under ±10% perturbation (Jaccard 0.54); lead by max nearest/reach ratio. Not adopted: the tier assignment is now the load-bearing judgment and must be pinned to H-L3/H-L4 or to conveniences.yaml's owner norms. The −0.6 to −0.7 correlation with local POI density survives every calibration — that is M1, not D8. Address-level re-run 2026-09-05 (CHECKPOINT D39) confirms: external tiers are the only non-tautological calibration, the tier assignment is load-bearing, and the exactly-one list is unstable under every calibration — publish a continuous ranking, not a binary list. The eligibility gate must be reach-independent or monotonicity fails. Tier sources researched 2026-09-05: 4/15 categories have a citable walk threshold (grocery 800 m — USDA FARA 0.5 mi urban, NYC FRESH, Portland 20-min; pharmacy 800 m — Guadamuz/Qato 2021 low-income/low-vehicle threshold; restaurant and cafe_bakery 400 m — Walk Score full-credit radius), 3 are analogs (convenience 400, bar 400 weak, fitness 1200 vs CDC's 1 mi), 8 have no walk-scale literature (laundry, hair_barber, nails_beauty, tailor_repair, childcare, clinic, bank, hardware — clinic and bank standards are drive-based). Literature runs ~25% wider than conveniences.yaml where both exist. Walk Score uses continuous decay, not tiers. Proposed table: src/loci/reach_tiers.yaml; sources: docs/reach_sources.md. Recommendation pending owner: cited values where they exist, owner norms elsewhere, continuous ranking. ADOPTED 2026-09-05 (CHECKPOINT D41): reach_tiers.yaml (cited where available, owner norms elsewhere) + continuous max nearest/reach ranking; tier edges set only the flag, not the order. Shipped at address level 2026-09-05 (CHECKPOINT D44); ranking is dominated by tailor_repair and laundry, so a lead-viability rule is the next decision.
+
+### D9 — Is a count/distance-based gap flag missing quality gaps that a size or diversity measure would catch?
+- **Status:** open
+- **Prediction:** Some hexes that pass the reach test for grocery are served only by small-format stores (bodega-scale), which Meltzer & Schuetz show is the actual low-income pattern.
+- **Answered by:** (not ticketed) — needs an establishment-size proxy (employment band, floor area from PLUTO retail sqft, or chain identity) per POI
+- **Fails if:** size/diversity metrics are highly correlated with count-based presence (paper reports 0.70–0.90 correlation among density metrics but weak correlation to size/diversity — so expect this NOT to fail).
+- **Current answer:** — (Source: Meltzer & Schuetz 2012 Table 4 and the Herfindahl index over NAICS subsectors.)
 
 ### Tier X · Explanatory — conditional structure, no temporal claim
 
@@ -203,6 +224,13 @@ claim stands on.
 - **Answered by:** `Staten Island leverage check`
 - **Fails if:** Cook's distance flags Staten Island hexes and coefficients move materially with them excluded. Report with and without.
 - **Current answer:** —
+
+### X6 — Does race/ethnicity predict gap incidence net of income and density, and in which direction?
+- **Status:** open
+- **Prediction:** Per Meltzer & Schuetz, predominantly Black hexes show more gaps than income alone predicts; predominantly Hispanic hexes fewer (more small-format supply). Loci has NO race/ethnicity column today; needs an ACS B03002 ingest.
+- **Answered by:** (not ticketed)
+- **Fails if:** gap incidence by race is fully explained by income_class + population density.
+- **Current answer:** — (Descriptive only; this is the "retail redlining" question. Investor lens: a gap that exists for supply-side reasons in a high-demand area is the strongest kind of opportunity; a gap that reflects thin demand is not. The demand_caveat flag is the first, crude version of that distinction.)
 
 ### Tier T · Predictive — temporal ordering, no identification claim
 
@@ -319,7 +347,7 @@ questions here — a smaller remaining gap.
 - **Prediction:** —
 - **Answered by:** — (not yet ticketed; scope decision pending owner + investor-agent review before it enters Axis 1 investability)
 - **Fails if:** n/a — risk/feasibility question, not a screen result to validate. The concern: filling a gap hex could cannibalize a neighboring store rather than create net new viable retail.
-- **Current answer:** Open, sketch only (2026-09-03). Nearest-store catchment assignment over hexes already exists; missing pieces are a category-specific minimum viable catchment population (candidate sources: County Business Patterns receipts per establishment, or SNAP redemption per store) and a rule — qualify a gap only if the new store's own catchment clears the minimum AND no neighbor drops below it after entry. Belongs in **Axis 1 investability**, not the gap screen itself. Flagged explicitly as a scope-creep risk; needs investor-agent review of the framing before any build.
+- **Current answer:** Open, sketch only (2026-09-03). Nearest-store catchment assignment over hexes already exists; missing pieces are a category-specific minimum viable catchment population (candidate sources: County Business Patterns receipts per establishment, or SNAP redemption per store) and a rule — qualify a gap only if the new store's own catchment clears the minimum AND no neighbor drops below it after entry. Belongs in **Axis 1 investability**, not the gap screen itself. Flagged explicitly as a scope-creep risk; needs investor-agent review of the framing before any build. 2026-09-05: the address screen's leads are dominated by the thinnest category (tailor); a supply-floor or viability filter on lead eligibility is now needed for the screen itself, not only for Axis 1 (CHECKPOINT D44).
 
 ### O7 — Fair-value rent for a storefront at a given site. · *pricing / feasibility*
 - **Status:** open
@@ -334,6 +362,13 @@ questions here — a smaller remaining gap.
 - **Answered by:** — (not yet ticketed; scope decision pending investor-agent review before it enters Axis 1 investability)
 - **Fails if:** n/a — strategy/feasibility question, not a screen result to validate.
 - **Current answer:** Open, sketch only (2026-09-03). For a category and area, is it cheaper (risk-adjusted) to acquire an existing store than to open one, and what saturation level flips the answer? Sketch: acquisition cost ≈ multiple of seller's discretionary earnings (small retail typically 2–3×; category-dependent — bodega goodwill low, restaurant higher) vs. build cost = startup cost + ramp-period losses + failure risk. Inflection = the catchment-saturation level at which the acquisition premium falls below the ramp-plus-risk cost. Key structural link to the core screen: in a true gap hex there is nothing to acquire by definition, so buy-vs-build applies to the NON-gap, saturated areas — the gap screen says "build here," O8 says "elsewhere, buy instead." Data candidates: BizBuySell / BizQuest listings (asking price, revenue, cash flow — public but self-reported), SBA 7(a) loan data (public; flags business-acquisition loans by NAICS and location), the O6 catchment model. Threats: listing prices are asks, not closes; survivorship (only businesses worth selling get listed); ramp curves are category folklore. Depends on O6 and O7 (cross-ref O6, Axis 1). Scope-creep risk flagged: this is a second product (an acquisition screen), not a refinement of the first. Investor-agent review required before any build.
+
+### O9 — Should the three parallel uncommitted streams (comps, conveniences, spend.yaml) be kept, parked, or deleted? · *governance / scope*
+- **Status:** answered
+- **Prediction:** —
+- **Answered by:** owner decision with investor-agent review (as O6–O8 already require)
+- **Fails if:** n/a — governance. Found 2026-09-05: model/comps.py + benchmarks.yaml + tests/test_comps.py (O7/O8 comps; zero real listings, listing sites 403, one failing test); model/conveniences.py + conveniences.yaml + sources/cities/nyc/addresses.py (address-level owner-set-norm check citing a nonexistent CHECKPOINT decision); spend.yaml (fair-value parameters for an `analysis.site_fairvalue` model that does not exist in this tree). All build toward O6–O8 without the review those entries require. Until decided: no further work, no tickets.
+- **Current answer:** Owner directed 2026-09-05 that all streams be picked back up. Conveniences: wired as `loci conveniences` with tests. Spend: grounded in real BLS tables (CHECKPOINT Session 10) but no model reads it and the cited fair-value spec/model do not exist. Comps: still no real listings (BizQuest detail pages 403); manual export or an approved browser session needed.
 
 ---
 
@@ -353,24 +388,59 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Current answer:** — (Glaeser, Kolko & Saiz 2001; Couture & Handbury 2020. Would T1 replicate or contradict them? What controls did they use?)
 
 ### H-L2 — What have Meltzer & Schuetz, and Meltzer & Capperis, already established about NYC neighbourhood retail?
-- **Status:** open
+- **Status:** answered
 - **Unblocks:** E3 · Residual and Panel
-- **Current answer:** — (Unit of analysis, controls, findings on retail density vs. income and on churn. Is a residual thesis consistent with their results?)
+- **Current answer:** Meltzer & Schuetz 2012 (EDQ 26(1):73–94; full text https://www.rachelmeltzer.com/uploads/1/4/5/3/14532900/appendix_23_retail_edq.pdf). Unit: 208 NYC ZIPs, ZBP 1998–2007 averaged over ten years to suppress year noise, Census 2000 income/race, PLUTO/DoF for corridors and transit, CUF 2009 chain list. Findings that bind Loci: (a) NECESSITY vs DISCRETIONARY split — low-income ZIPs (<80% of citywide mean HH income) have MORE grocery establishments per acre (0.051 vs 0.036) but smaller ones (7.5 vs 14.6 emp/est), and small drugstore gaps; food service, gyms (0.29 vs 1.04/ZIP), and upscale chains concentrate in higher-income ZIPs. So a missing restaurant/cafe/gym in a low-income hex is plausibly demand-following, a missing grocery/pharmacy is a real gap. Implemented 2026-09-05 as `demand.yaml` + `demand_caveat` annotation in gaps.py (annotates, never filters). (b) Transit and retail space per building do NOT explain the income disparity — low-income ZIPs have more of both — so subway access is not a valid "expected supply" covariate for the screen. (c) Density, size, diversity (Herfindahl over NAICS subsectors) and corridor proximity are weakly inter-correlated; count-based reach alone is one-dimensional (see D9). (d) Race predicts retail net of income in opposite directions: predominantly Black ZIPs have less retail and less corridor proximity than White despite more transit; predominantly Hispanic ZIPs have more diverse retail and closer access despite less transit (see X6). (e) Method bits to reuse: 80%-of-mean income cutoff; exclude-Manhattan / exclude-tiny-units / alternate-cutoff robustness battery; symmetric growth rate g=(x1−x0)/(0.5(x1+x0)); within-stratum difference-in-differences for growth comparisons. A residual thesis is NOT what they test; they are explicitly descriptive.
 
 ### H-L3 — What thresholds and saturation forms do food-desert and 15-minute-city measurements use?
 - **Status:** open
 - **Unblocks:** E2 · Access Engine
-- **Current answer:** — (USDA Food Access Research Atlas; Moreno et al. on the 15-minute city. Precedent for k_c and the 800 m headline.)
+- **Current answer:** (USDA Food Access Research Atlas; Moreno et al. on the 15-minute city. Precedent for k_c and the 800 m headline. Full research: docs/reach_sources.md.)
 
 ### H-L4 — What does Walk Score's methodology do for distance decay and category weights?
 - **Status:** open
 - **Unblocks:** E2 · Access Engine
-- **Current answer:** — (Borrow the decay shape if defensible; avoid inheriting its category weights uncritically.)
+- **Current answer:** (Borrow the decay shape if defensible; avoid inheriting its category weights uncritically. Full research: docs/reach_sources.md.)
 
 ### H-L5 — Spatial error or spatial lag on gridded urban data: which is the right default?
 - **Status:** open
 - **Unblocks:** E3 · Residual and Panel
 - **Current answer:** — (Anselin's LM / robust LM tests; LeSage & Pace on when lag is theoretically motivated. Decide before W3 so the choice is not made by the result.)
+
+### H-L6 — What does Zukin et al. (2009) say about which retail categories signal gentrification, and does that contaminate the gap screen?
+- **Status:** open
+- **Unblocks:** Axis 2 (Rising) · D9
+- **Current answer:** — (Zukin, Trujillo, Frase, Jackson, Recuber & Walker, "New Retail Capital and Neighborhood Change: Boutiques and Gentrification in NYC", City & Community 8:47–64. Harlem/Williamsburg: gentrification arrives as independent boutique retail. Question for Loci: a cafe "gap" closing may be a trajectory signal, not a need being met — should discretionary-category arrivals feed rising.py rather than gaps?)
+
+### H-L7 — What covariates does Schuetz, Kolko & Meltzer (2010, 58 metros) find for retail density, and can they make the screen city-agnostic?
+- **Status:** open
+- **Unblocks:** D7
+- **Current answer:** — (SSRN 1681734. Density + with population density, − with distance to CBD and with owner-occupancy share; establishment size + with income for all types. Loci stores renter_share already; test it as a density-class covariate before ACS vehicle ownership.)
+
+### H-L8 — Does Waldfogel (2008) "median consumer" logic mean "comparable areas" must be defined on composition, not income alone?
+- **Status:** open
+- **Unblocks:** X6 · D8
+- **Current answer:** — (J. Urban Econ. 63:567–582. Local private goods follow the locally dominant group's preferences. If true, a citywide reach per category is mis-specified for categories whose demand is composition-driven.)
+
+### H-L9 — What does Zenk et al. (2005) establish about supermarket access by race net of poverty, and which access metric did they use?
+- **Status:** open
+- **Unblocks:** X6 · M-tier access metric choice
+- **Current answer:** — (Detroit tracts, GIS distance to nearest supermarket; segregation, not poverty alone, drives access. Precedent for a distance-based rather than count-based "missing".)
+
+### H-L10 — Does Powell et al. (2007) national ZIP-level food-store availability by race/SES replicate Meltzer & Schuetz's NYC pattern, and is its establishment-count method close enough to Loci's to borrow?
+- **Status:** open
+- **Unblocks:** X6
+- **Current answer:** — (Preventive Medicine 44:189–195. National ZIP counts by store type; count-based, so a useful contrast with Zenk's distance-based access.)
+
+### H-L11 — Do Haltiwanger, Jarmin & Krizan (2010) give a usable displacement/complementarity estimate for the minimum-viable-catchment check?
+- **Status:** open
+- **Unblocks:** O6
+- **Current answer:** — (J. Urban Econ. 67:116–134, big-box entry vs mom-and-pop exit.)
+
+### H-L12 — Chapple & Jacobus (2009): where does gap-filling retail actually succeed, and does that argue for an income floor in Axis 1?
+- **Status:** open
+- **Unblocks:** Axis 1 (invest.py)
+- **Current answer:** — (Bay Area; revitalization gains concentrate in middle-income, not poorest, neighborhoods.)
 
 ### Data quirks
 
@@ -383,6 +453,7 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Status:** open
 - **Unblocks:** E1 · Ingest and Grid
 - **Current answer:** — (Read the Overture categories file before writing the adapter. Expect laundromat, nail and tailor to be the lossy ones; record mapping confidence.)
+- **Touched 2026-09-05 (D42, `src/loci/categories.yaml`):** the current per-slug Overture `categories.primary` lists are now recorded in one place (`sources.overture` per slug) alongside each slug's NAICS 2022 anchor, but lossiness/confidence per mapping is still not scored — this question stays open.
 
 ### H-D3 — Does Google Nearby Search's 60-result cap bias enumeration in dense hexes?
 - **Status:** open
@@ -397,7 +468,7 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 ### H-D5 — How does DOHMH represent closed establishments within the 3-year rolling window?
 - **Status:** open
 - **Unblocks:** E1 · Ingest and Grid
-- **Current answer:** — (What is the effective "active" definition? A closed restaurant still in the window inflates the anchor.)
+- **Current answer:** — (What is the effective "active" definition? A closed restaurant still in the window inflates the anchor.) Finding 2026-09-05 (CHECKPOINT D36): the adapter dedupes by CAMIS but never drops closed establishments, so successive tenants at one address survive as separate canonical points — the source of the 13–14% exact-coordinate same-type share in restaurant/nails_beauty/clinic. Fix: active-establishment filter before dedup.
 
 ### H-D6 — ACS tract vintages: 2009–13 is on 2010 tracts, 2019–23 on 2020 tracts. Crosswalk, or interpolate per vintage?
 - **Status:** open
@@ -427,7 +498,7 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 ### H-D11 — Are same-category cross-source pairs within 25 m the same business under two names?
 - **Status:** open
 - **Unblocks:** E1 · Ingest and Grid
-- **Current answer:** — (71k restaurant pairs sit within 25 m across sources with non-matching names, e.g. DOHMH "Bronx Burger Company" vs Overture "Peter Dorcas Ventures Inc". Some are food halls and shared addresses; some are legal-name vs trade-name for one establishment. Sample 50 by hand; if most are the same business, dedup needs an address-level merge for anchor sources, and every count-based result is inflated.)
+- **Current answer:** — (71k restaurant pairs sit within 25 m across sources with non-matching names, e.g. DOHMH "Bronx Burger Company" vs Overture "Peter Dorcas Ventures Inc". Some are food halls and shared addresses; some are legal-name vs trade-name for one establishment. Sample 50 by hand; if most are the same business, dedup needs an address-level merge for anchor sources, and every count-based result is inflated.) 2026-09-05: of 24,908 restaurant pairs within 15 m, 0.09% share a normalized name; cross-source naming is not the dominant duplication driver (see H-D5, CHECKPOINT D36).
 
 ### Methods & stats
 
@@ -453,7 +524,6 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 
 ### H-M5 — How sensitive is the DNCI ranking to ε in the geometric mean?
 - **Status:** open
-- **Touched 2026-09-05 (D42, `src/loci/categories.yaml`):** the current per-slug Overture `categories.primary` lists are now recorded in one place (`sources.overture` per slug) alongside each slug's NAICS 2022 anchor, but lossiness/confidence per mapping is still not scored — this question stays open.
 - **Unblocks:** E2 · Access Engine
 - **Current answer:** — (ε = 0.01 is stated. Sweep 0.001–0.05 and confirm the bottom decile is stable.)
 

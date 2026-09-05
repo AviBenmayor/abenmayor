@@ -1,109 +1,493 @@
-"""Address-level gap analysis (per building), then let same-gap buildings cluster.
+"""Address-level gap screen (per residential PLUTO lot -- D38: one tax lot
+with UnitsRes > 0 is one "address" for this purpose).
 
-For every residential tax lot (PLUTO ~ a building/address), compute which
-daily-needs categories are reachable on foot (<=800 m network) and which
-"expected" ones (present for >=80% of buildings) are conspicuously missing. The
-action signal is clusters of nearby buildings sharing the same missing business.
+SUPERSEDES the old rule entirely (CHECKPOINT D33/D38/D39/D41): a single
+shared 800 m walk window plus an 80%-prevalence "expected" test, the same
+design defect model/gaps.py's `rule="window"` has (QUESTIONS D6/CHECKPOINT
+D33) -- tightening the window could make a gap disappear, because "expected"
+was re-derived from the whole city on every call. The old 800m/80% code path
+is deleted here, not kept behind a flag.
 
-Reuses the walk graph: one multi-source min-distance Dijkstra per category gives
-each graph node its distance to the nearest business of that category; a building
-inherits its nearest node's reachability. Fast at ~300k buildings.
+The new rule, at address grain:
+
+  - ELIGIBILITY is a FIXED, reach-independent walkability gate: an address is
+    in scope iff >= `MIN_PRESENT` (12) of the 15 categories sit within
+    `WINDOW_M` (800 m, the window rule's own 10-minute definition) of it --
+    mirrors model/gaps.py's `_eligible_universe` at address grain, so
+    changing the reach table can never change which addresses are screened
+    (tests/test_address_gaps.py part a).
+
+  - Among eligible addresses, `ratio[c] = nearest_m[c] / reach[c]` is a
+    CONTINUOUS score per category (D39), not a binary flag: `gap_score` is
+    its row-max, `lead_category` its argmax (ties -> the LARGER raw
+    nearest_m, since a farther near-miss is the more conspicuous absence),
+    `lead_excess_m` is nearest - reach at the lead, and `n_missing` counts
+    categories with ratio > 1. Tightening any reach can only grow the set of
+    (address, category) pairs with ratio > 1, never shrink it (part b) --
+    reach never touches the gate, only the ratio.
+
+  - `units_capped` clips units at `UNITS_CAP` (500/lot) for any unit-weighted
+    ranking: D39 found Co-op City-scale lots (~10k units) would otherwise
+    dominate every cluster ranking on their own. Raw `units` is kept too.
+
+  - Eligible, gap_score > 1 addresses that share a `lead_category` and sit
+    within `CLUSTER_RADIUS_M` (200 m) of each other are grouped into one
+    `cluster_id` (single-linkage / DBSCAN-like, eps=200m, min_samples=1) --
+    the action signal is a CLUSTER of addresses missing the same business,
+    not any one address on its own.
+
+Reuses the conveniences engine's METHOD (model/conveniences.py's
+`compute_address_convenience`: one multi-source Dijkstra per category via
+score/access.py's `_prune`/`_to_csr`, 15 passes total, independent of address
+count) via `_dijkstra_per_category` below -- but does NOT call
+`compute_address_convenience` itself, because that function materializes two
+15-key python dicts PER ADDRESS; at NYC's ~767k residential addresses that is
+tens of millions of short-lived dicts for data that is one (n, 15) float
+array. `address_nearest_matrix` is the shared entry point: it caches the
+per-NODE distance matrix (every pruned graph node's nearest-category
+distance) as parquet under `data/interim/`, keyed by (graph_version,
+canonical POI count) -- independent of which addresses are queried, so a
+`--borough MN` smoke run and a later `--borough ALL` run share one cache file
+instead of repeating 15 citywide Dijkstra passes.
 """
 from __future__ import annotations
 
-import pathlib, pickle, h3
-import numpy as np, pandas as pd, osmnx as ox
+import datetime
+import hashlib
+import json
+import pathlib
+import pickle
+
+import numpy as np
+import osmnx as ox
+import pandas as pd
 from scipy.sparse.csgraph import dijkstra
-from scipy.spatial import cKDTree
 
-from loci import db as locidb
 from loci.categories import CATEGORIES
-from loci.score.access import MIN_COMPONENT, _to_csr
+from loci.model.conveniences import ALLCATS, graph_version
+from loci.reach import load_reach
+from loci.score.access import DIST_LIMIT, MIN_COMPONENT, _prune, _to_csr
 from loci.score.walkgraph import OUT as GRAPH_PATH
-from loci.grid.pluto import PLUTO_CSV
 
-THRESH_M = 800.0
-BOROCODES = ("1","3","4")  # Manhattan, Brooklyn, Queens
-EXPECTED = 0.80
-ALLCATS = list(CATEGORIES)
+REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
+INTERIM_DIR = REPO_ROOT / "data" / "interim"
+
+WINDOW_M = 800.0        # gaps.py's own window-rule presence definition (10 min @ 80 m/min)
+MIN_PRESENT = 12        # gaps.py's _eligible_universe default gate, mirrored at address grain
+UNITS_CAP = 500.0       # D39: cap per-lot units for any unit-weighted ranking
+CLUSTER_RADIUS_M = 200.0
 
 
-def run(out_geojson: pathlib.Path):
-    con = locidb.connect(read_only=True)
-    G = pickle.load(open(GRAPH_PATH, "rb"))
-    import networkx as nx
-    keep = set()
-    for comp in nx.weakly_connected_components(G):
-        if len(comp) >= MIN_COMPONENT: keep |= comp
-    G = G.subgraph(keep).copy()
+# --------------------------------------------------------------- the engine
+
+def _dijkstra_per_category(A, idx: dict, N: int, by_cat: dict[str, list[tuple[float, float]]],
+                            G, cap_m: float) -> np.ndarray:
+    """(N, 15) network distance from EVERY graph node to the nearest canonical
+    POI of each category (ALLCATS order), censored at `cap_m` for a category
+    with nothing reachable. The one Dijkstra-per-category loop, shared by the
+    pure test engine (`_address_nearest_matrix_from_graph`) and the cached,
+    DB-backed engine (`address_nearest_matrix`) -- so there is exactly one
+    place in this module that calls `dijkstra`."""
+    node_m = np.full((N, len(ALLCATS)), cap_m, dtype=np.float64)
+    for ci, cat in enumerate(ALLCATS):
+        pts = by_cat.get(cat) or []
+        if not pts:
+            continue
+        nodes = ox.distance.nearest_nodes(G, X=[p[0] for p in pts], Y=[p[1] for p in pts])
+        src = np.unique([idx[n] for n in nodes])
+        d = dijkstra(A, directed=False, indices=src, min_only=True, limit=cap_m)
+        node_m[:, ci] = np.where(np.isfinite(d), d, cap_m)
+    return node_m
+
+
+def _address_nearest_matrix_from_graph(
+    G,
+    addresses: list[tuple[str, float, float]],
+    pois: list[tuple[str, float, float]],
+    cap_m: float = DIST_LIMIT,
+    min_component: int = MIN_COMPONENT,
+) -> np.ndarray:
+    """Pure engine, no DB, no cache: (n_addresses, 15) network distance to the
+    nearest POI per category (ALLCATS order). addresses: [(id, lon, lat)];
+    pois: [(category, lon, lat)]. This is what tests/test_address_gaps.py
+    exercises directly on a tiny synthetic graph -- the DB-free half that
+    `address_nearest_matrix` wraps with a real graph, a DB read of
+    staging.poi, and a parquet cache.
+    """
+    G = _prune(G, min_component)
     A, idx = _to_csr(G)
     N = A.shape[0]
 
-    # per-node served distance to nearest POI, per category
-    served = np.zeros((N, len(ALLCATS)), dtype=bool)
-    for ci, cat in enumerate(ALLCATS):
-        pts = con.execute("""SELECT ST_X(p.geom), ST_Y(p.geom) FROM staging.poi p
-            JOIN analysis.poi_dedup d ON d.poi_id=p.poi_id AND d.is_canonical
-            WHERE p.category=?""", [cat]).fetchall()
-        if not pts: continue
-        nodes = ox.distance.nearest_nodes(G, X=[x for x,_ in pts], Y=[y for _,y in pts])
-        src = np.unique([idx[n] for n in nodes])
-        dist = dijkstra(A, directed=False, indices=src, min_only=True, limit=THRESH_M)
-        served[:, ci] = np.isfinite(dist)
+    by_cat: dict[str, list[tuple[float, float]]] = {c: [] for c in ALLCATS}
+    for cat, lon, lat in pois:
+        if cat in by_cat:
+            by_cat[cat].append((lon, lat))
 
-    # residential buildings from PLUTO
-    lots = con.execute(f"""
-        SELECT TRY_CAST(latitude AS DOUBLE) lat, TRY_CAST(longitude AS DOUBLE) lon,
-               TRY_CAST(unitsres AS DOUBLE) units, address, bbl
-        FROM read_csv('{PLUTO_CSV}', ALL_VARCHAR=TRUE)
-        WHERE TRY_CAST(unitsres AS DOUBLE)>0 AND TRY_CAST(latitude AS DOUBLE) IS NOT NULL
-          AND borocode IN ('1','3','4')
-    """).df()
-    lots = lots[(lots.lat.between(40.4,41.0)) & (lots.lon.between(-74.3,-73.6))].reset_index(drop=True)
-    lots["address"] = lots["address"].fillna("").astype(str)
-    lot_nodes = ox.distance.nearest_nodes(G, X=lots.lon.tolist(), Y=lots.lat.tolist())
-    lni = np.array([idx[n] for n in lot_nodes])
-    lot_served = served[lni]                                 # (n_lots, n_cats)
+    node_m = _dijkstra_per_category(A, idx, N, by_cat, G, cap_m)
 
-    prev = lot_served.mean(axis=0)                           # per-category prevalence across buildings
-    expected = np.array([prev[i] >= EXPECTED for i in range(len(ALLCATS))])
-    expected_or_bar = expected.copy()
-    expected_or_bar[ALLCATS.index("bar")] = True             # user wants bars too
-    missing = expected_or_bar[None, :] & ~lot_served         # (expected + bar) but not reachable
-
-    print("building-level prevalence (share reachable):")
-    for i, c in enumerate(ALLCATS):
-        print(f"  {c:14} {prev[i]*100:4.0f}%  {'[expected]' if expected[i] else ''}")
-
-    has_gap = missing.any(axis=1)
-    print(f"\nresidential buildings: {len(lots):,}; with >=1 conspicuous gap: {has_gap.sum():,}")
-    # per-business building counts
-    for i, c in enumerate(ALLCATS):
-        n = int(missing[:, i].sum())
-        if n: print(f"  missing {c:14} {n:>7,} buildings")
-
-    # income per building from its own ACS hex (demand signal)
-    inc = dict(con.execute("SELECT h3_index, median_hh_income FROM analysis.hex_demographics WHERE acs_year=2023").fetchall())
-    import json
-    lm = lots[has_gap].reset_index(drop=True); mm = missing[has_gap]
-    pts = []
-    for r in range(len(lm)):
-        mask = 0
-        for i in range(len(ALLCATS)):
-            if mm[r, i]: mask |= (1 << i)
-        cell = h3.latlng_to_cell(float(lm.lat[r]), float(lm.lon[r]), 9)
-        income = int(inc.get(cell) or 0)
-        pts += [round(float(lm.lon[r]),5), round(float(lm.lat[r]),5), mask, int(lm.units[r]), income]
-    # compact flat array [lon,lat,mask,units,income]*n
-    (out_geojson.parent/"gap_buildings.json").write_text(json.dumps({"pts":pts,"n":len(lm),"stride":5},separators=(",",":")))
-    meta = {"cats":ALLCATS,"catLabels":[CATEGORIES[c].label for c in ALLCATS],
-            "expected":[bool(expected[i]) for i in range(len(ALLCATS))],
-            "prevalence":{ALLCATS[i]:round(float(prev[i]),3) for i in range(len(ALLCATS))},
-            "gapCounts":{ALLCATS[i]:int(missing[:,i].sum()) for i in range(len(ALLCATS)) if missing[:,i].sum()},
-            "nBuildings":int(len(lots)),"nGap":int(has_gap.sum())}
-    (out_geojson.parent/"buildings_meta.json").write_text(json.dumps(meta))
-    print(f"\nwrote {len(lm):,} gap-building points (compact, w/ income) -> webmap/gap_buildings.json")
+    addr_nodes = ox.distance.nearest_nodes(G, X=[a[1] for a in addresses], Y=[a[2] for a in addresses])
+    addr_nidx = np.array([idx[n] for n in addr_nodes])
+    return node_m[addr_nidx]
 
 
-if __name__ == "__main__":
-    run(pathlib.Path("webmap/gap_buildings.geojson"))
+def address_nearest_matrix(
+    con,
+    addresses_df: pd.DataFrame,
+    graph_path: pathlib.Path = GRAPH_PATH,
+    cache_dir: pathlib.Path = INTERIM_DIR,
+) -> tuple[np.ndarray, str, str]:
+    """(n_addresses, 15) network distance to the nearest canonical POI per
+    category (ALLCATS order) for every row of `addresses_df` (columns lon,
+    lat). Loads the walk graph once, computes (or loads from cache) the
+    per-NODE distance table, then just snaps + gathers for these addresses --
+    the 15 citywide Dijkstra passes run once per (graph_version, canonical
+    POI count), not once per call. Returns (matrix, graph_version, cache_key).
+    """
+    gver = graph_version(graph_path)
+    n_poi = con.execute(
+        "SELECT count(*) FROM staging.poi p JOIN analysis.poi_dedup d "
+        "ON d.poi_id = p.poi_id AND d.is_canonical"
+    ).fetchone()[0]
+    key = hashlib.sha256(f"{gver}:{n_poi}".encode()).hexdigest()[:16]
+    cache_dir = pathlib.Path(cache_dir)
+    cache_path = cache_dir / f"node_nearest_m_{key}.parquet"
+
+    with pathlib.Path(graph_path).open("rb") as fh:
+        G = pickle.load(fh)
+    G = _prune(G, MIN_COMPONENT)
+    A, idx = _to_csr(G)
+    N = A.shape[0]
+
+    cached = pd.read_parquet(cache_path) if cache_path.exists() else None
+    if cached is not None and len(cached) == N:
+        node_m = cached[[f"d_{c}" for c in ALLCATS]].to_numpy(dtype=np.float64)
+    else:
+        pois = con.execute(
+            """SELECT p.category, ST_X(p.geom), ST_Y(p.geom)
+               FROM staging.poi p JOIN analysis.poi_dedup d
+                 ON d.poi_id = p.poi_id AND d.is_canonical"""
+        ).fetchall()
+        by_cat: dict[str, list[tuple[float, float]]] = {c: [] for c in ALLCATS}
+        for cat, lon, lat in pois:
+            if cat in by_cat:
+                by_cat[cat].append((lon, lat))
+        node_m = _dijkstra_per_category(A, idx, N, by_cat, G, DIST_LIMIT)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame({f"d_{c}": node_m[:, i] for i, c in enumerate(ALLCATS)}).to_parquet(
+            cache_path, index=False
+        )
+
+    addr_nodes = ox.distance.nearest_nodes(G, X=addresses_df["lon"].tolist(), Y=addresses_df["lat"].tolist())
+    addr_nidx = np.array([idx[n] for n in addr_nodes])
+    return node_m[addr_nidx], gver, key
+
+
+# ------------------------------------------------------------ pure metrics
+
+def compute_gap_metrics(M: np.ndarray, reach: dict[str, float],
+                         window_m: float = WINDOW_M, min_present: int = MIN_PRESENT
+                         ) -> dict[str, np.ndarray]:
+    """Pure numpy classification from an (n_addresses, 15) nearest-metres
+    matrix (ALLCATS column order) and a complete {category: reach_m} dict.
+    Fails closed (mirrors loci.reach._check_reach_complete) if `reach` is
+    missing a category.
+
+    `eligible` = present_count (categories with nearest_m <= window_m) >=
+    min_present -- FIXED and reach-independent by construction (`reach`
+    never enters this computation). `ratio[c] = nearest_m[c] / reach[c]` is
+    always populated (informational, even for ineligible rows); `gap_score`
+    (row-max ratio), `lead_category` (argmax ratio, ties -> larger
+    nearest_m), `lead_excess_m` (nearest - reach at the lead) are NaN/None
+    for an ineligible row, and `n_missing` (count of ratio > 1) is 0 for one
+    -- out of scope, exactly like a hex failing gaps.py's window gate.
+    """
+    missing_cats = sorted(set(CATEGORIES) - set(reach))
+    if missing_cats:
+        raise ValueError(
+            f"reach table is missing {len(missing_cats)} of {len(CATEGORIES)} categories: "
+            f"{', '.join(missing_cats)}"
+        )
+    reach_arr = np.array([reach[c] for c in ALLCATS], dtype=np.float64)
+
+    present_count = (M <= window_m).sum(axis=1)
+    eligible = present_count >= min_present
+
+    ratio = M / reach_arr[None, :]
+    max_ratio = ratio.max(axis=1)
+    is_max = ratio == max_ratio[:, None]
+    # tie-break: among the tied max-ratio categories, the one with the
+    # LARGER raw nearest_m is the more conspicuous absence.
+    nearest_masked = np.where(is_max, M, -np.inf)
+    lead_idx = nearest_masked.argmax(axis=1)
+    lead_excess = M[np.arange(len(M)), lead_idx] - reach_arr[lead_idx]
+    n_missing_all = (ratio > 1.0).sum(axis=1)
+
+    gap_score = np.where(eligible, max_ratio, np.nan)
+    lead_excess_m = np.where(eligible, lead_excess, np.nan)
+    lead_category = np.array(
+        [ALLCATS[i] if e else None for i, e in zip(lead_idx, eligible)], dtype=object
+    )
+    n_missing = np.where(eligible, n_missing_all, 0)
+
+    return {
+        "present_count": present_count,
+        "eligible": eligible,
+        "ratio": ratio,
+        "gap_score": gap_score,
+        "lead_category": lead_category,
+        "lead_excess_m": lead_excess_m,
+        "n_missing": n_missing,
+    }
+
+
+def _cap_units(units, cap: float = UNITS_CAP) -> np.ndarray:
+    """D39: clip per-lot units for any unit-weighted ranking. Raw units are
+    kept separately -- this is never applied at the source."""
+    return np.minimum(np.asarray(units, dtype=np.float64), cap)
+
+
+def _cluster_gap_addresses(lon: np.ndarray, lat: np.ndarray, radius_m: float = CLUSTER_RADIUS_M
+                            ) -> np.ndarray:
+    """Single-linkage / DBSCAN-like clustering (eps=`radius_m`, min_samples=1)
+    over a local equirectangular projection: any two addresses within
+    `radius_m` of each other land in the same cluster (transitively). Returns
+    a 0-based cluster label per row. Callers group by lead_category (and
+    borough) FIRST -- a grocery-gap cluster and a bank-gap cluster covering
+    the same blocks are different investment opportunities, not one cluster.
+    """
+    from scipy.sparse import coo_matrix
+    from scipy.sparse.csgraph import connected_components
+    from scipy.spatial import cKDTree
+
+    n = len(lon)
+    if n == 0:
+        return np.array([], dtype=np.int64)
+    if n == 1:
+        return np.array([0], dtype=np.int64)
+
+    lat0 = float(np.mean(lat))
+    k = np.pi / 180.0 * 6371000.0
+    x = np.asarray(lon) * k * np.cos(np.radians(lat0))
+    y = np.asarray(lat) * k
+    xy = np.column_stack([x, y])
+
+    tree = cKDTree(xy)
+    pairs = tree.query_pairs(r=radius_m, output_type="ndarray")
+    if len(pairs):
+        rows = np.concatenate([pairs[:, 0], pairs[:, 1]])
+        cols = np.concatenate([pairs[:, 1], pairs[:, 0]])
+        data = np.ones(len(rows))
+    else:
+        rows = cols = data = np.array([])
+    graph = coo_matrix((data, (rows, cols)), shape=(n, n))
+    _, labels = connected_components(graph, directed=False)
+    return labels
+
+
+def _reach_hash(reach: dict[str, float]) -> str:
+    """Short, stable hash of the {category: reach_m} actually used for a
+    run, independent of dict insertion order -- same rationale as
+    model/gaps.py's `_reach_hash` (not imported from there: gaps.py is being
+    edited concurrently this session, so this module stays self-contained)."""
+    blob = json.dumps({c: reach[c] for c in sorted(reach)}, sort_keys=True)
+    return hashlib.sha256(blob.encode()).hexdigest()[:12]
+
+
+def _nan_to_none(arr: np.ndarray) -> list:
+    """float64 array with NaN -> a python list with NaN replaced by None, so
+    a DuckDB REAL column round-trips NULL rather than a stored NaN."""
+    out = []
+    for v in arr:
+        if v is None or (isinstance(v, float) and np.isnan(v)):
+            out.append(None)
+        else:
+            out.append(float(v))
+    return out
+
+
+# --------------------------------------------------------------- DB layer
+
+def compute_address_gaps(
+    con,
+    addresses_df: pd.DataFrame,
+    reach_source: str = "tiers",
+    graph_path: pathlib.Path = GRAPH_PATH,
+    cache_dir: pathlib.Path = INTERIM_DIR,
+) -> pd.DataFrame:
+    """Read-only: assembles the full analysis.address_gaps working table for
+    `addresses_df` (columns: address_id, bbl, lon, lat, units, borough -- see
+    sources/cities/nyc/addresses.py plus a `borough` column the caller adds).
+    Does not write anything. This is the `loci address-gaps --dry-run` path
+    and the shared computation `build_address_gaps` also uses before writing.
+    """
+    if "borough" not in addresses_df.columns:
+        raise ValueError("addresses_df must carry a 'borough' column (see the CLI)")
+
+    reach = load_reach(reach_source)
+    reach_hash_ = _reach_hash(reach)
+    M, gver, _key = address_nearest_matrix(con, addresses_df, graph_path=graph_path, cache_dir=cache_dir)
+    metrics = compute_gap_metrics(M, reach)
+
+    units = addresses_df["units"].to_numpy(dtype=np.float64)
+    units_capped = _cap_units(units)
+    lon_arr = addresses_df["lon"].to_numpy(dtype=np.float64)
+    lat_arr = addresses_df["lat"].to_numpy(dtype=np.float64)
+    boro_arr = addresses_df["borough"].to_numpy()
+    eligible = metrics["eligible"]
+    lead_category = metrics["lead_category"]
+    gap_score = metrics["gap_score"]
+
+    # ---- clustering: eligible, gap_score > 1, grouped by (borough, lead) ----
+    gap_mask = eligible & (np.nan_to_num(gap_score, nan=-1.0) > 1.0)
+    cluster_id = np.full(len(addresses_df), None, dtype=object)
+    gap_idx = np.flatnonzero(gap_mask)
+    if len(gap_idx):
+        keys = pd.DataFrame({"borough": boro_arr[gap_idx], "lead": lead_category[gap_idx]})
+        for (b, cat), sub in keys.groupby(["borough", "lead"]):
+            local_idx = gap_idx[sub.index.to_numpy()]
+            labels = _cluster_gap_addresses(lon_arr[local_idx], lat_arr[local_idx], CLUSTER_RADIUS_M)
+            cluster_id[local_idx] = [f"{b}:{cat}:{int(lab)}" for lab in labels]
+
+    # ---- h3 res-9 cell -> analysis.hex (borough, nta_code), same join
+    # convention as model/conveniences.py's build_address_convenience.
+    import h3
+
+    RES = 9
+    h3_index = [h3.latlng_to_cell(lat, lon, RES) for lat, lon in zip(lat_arr, lon_arr)]
+    # NOTE: dict() of the raw 3-column fetchall() rows would raise ("dictionary
+    # update sequence element #0 has length 3; 2 is required") -- build the
+    # {h3_index: (borough, nta_code)} map explicitly instead.
+    hex_lookup = {
+        h: (boro, nta)
+        for h, boro, nta in con.execute("SELECT h3_index, borough, nta_code FROM analysis.hex").fetchall()
+    }
+    names_path = pathlib.Path(graph_path).resolve().parents[1] / "interim" / "nta_names.json"
+    nta_names: dict[str, str] = {}
+    if names_path.exists():
+        nta_names = json.loads(names_path.read_text())
+    nta_code, neighborhood = [], []
+    for h in h3_index:
+        _b, code = hex_lookup.get(h, (None, None))
+        nta_code.append(code)
+        neighborhood.append(nta_names.get(code, code) if code else None)
+
+    data = {
+        "address_id": addresses_df["address_id"].to_numpy(),
+        "bbl": addresses_df["bbl"].to_numpy() if "bbl" in addresses_df.columns else [None] * len(addresses_df),
+        "lon": lon_arr,
+        "lat": lat_arr,
+        "units": units,
+        "units_capped": units_capped,
+        "nta_code": nta_code,
+        "neighborhood": neighborhood,
+        "borough": boro_arr,
+        "present_count": metrics["present_count"],
+        "eligible": eligible,
+        "gap_score": _nan_to_none(gap_score),
+        "lead_category": lead_category,
+        "lead_excess_m": _nan_to_none(metrics["lead_excess_m"]),
+        "n_missing": metrics["n_missing"],
+        "cluster_id": cluster_id,
+    }
+    ratio = metrics["ratio"]
+    for i, cat in enumerate(ALLCATS):
+        data[f"{cat}_nearest_m"] = M[:, i]
+        data[f"{cat}_ratio"] = ratio[:, i]
+    data["reach_source"] = reach_source
+    data["reach_hash"] = reach_hash_
+    data["graph_version"] = gver
+    data["run_at"] = datetime.datetime.now(datetime.timezone.utc)
+
+    return pd.DataFrame(data)
+
+
+def write_address_gaps(con, df: pd.DataFrame) -> int:
+    """Persist `df` (compute_address_gaps' output) to analysis.address_gaps,
+    replacing every borough present in `df` (delete-then-insert per borough,
+    same idiom as model/conveniences.py's build_address_convenience) -- a
+    single-borough rebuild never disturbs another borough's rows."""
+    for b in sorted(df["borough"].unique()):
+        con.execute("DELETE FROM analysis.address_gaps WHERE borough = ?", [b])
+    con.register("_ag", df)
+    try:
+        cols = ", ".join(df.columns)
+        con.execute(f"INSERT INTO analysis.address_gaps ({cols}) SELECT {cols} FROM _ag")
+    finally:
+        con.unregister("_ag")
+    return len(df)
+
+
+def build_address_gaps(
+    con,
+    addresses_df: pd.DataFrame,
+    reach_source: str = "tiers",
+    graph_path: pathlib.Path = GRAPH_PATH,
+    cache_dir: pathlib.Path = INTERIM_DIR,
+) -> tuple[int, pd.DataFrame]:
+    """compute_address_gaps + write_address_gaps. Returns (rows written, the
+    working DataFrame) so the CLI can print the same summary for the write
+    path as for --dry-run without recomputing."""
+    df = compute_address_gaps(con, addresses_df, reach_source=reach_source,
+                               graph_path=graph_path, cache_dir=cache_dir)
+    n = write_address_gaps(con, df)
+    return n, df
+
+
+# ------------------------------------------------------------- reporting
+
+def summarize_gap_run(df: pd.DataFrame) -> dict:
+    """Pure, DB-free summary from the address_gaps working DataFrame (the
+    same shape build_address_gaps writes) -- shared by --dry-run and the
+    post-write CLI summary, so both report the same numbers."""
+    n_addr = len(df)
+    n_units = float(df["units"].sum()) if n_addr else 0.0
+    elig = df["eligible"].astype(bool)
+    eligible_addr_share = float(elig.mean()) if n_addr else 0.0
+    eligible_unit_share = float(df.loc[elig, "units"].sum() / n_units) if n_units else 0.0
+
+    per_cat_gap_addr, per_cat_gap_units = {}, {}
+    for cat in ALLCATS:
+        gap_mask = elig & (df[f"{cat}_ratio"] > 1.0)
+        per_cat_gap_addr[cat] = int(gap_mask.sum())
+        per_cat_gap_units[cat] = float(df.loc[gap_mask, "units"].sum())
+
+    # "lead distribution" counts only addresses that actually HAVE a gap
+    # (n_missing > 0) -- an eligible, fully-served address still gets a
+    # lead_category (the argmax ratio, which can be <= 1), but it isn't a
+    # gap and shouldn't inflate this table (matches the per-category gap
+    # counts and cluster scoping above, and the D8 reference implementation).
+    has_gap = elig & (df["n_missing"] > 0)
+    lead_distribution = (
+        df.loc[has_gap & df["lead_category"].notna(), "lead_category"]
+        .value_counts()
+        .to_dict()
+    )
+
+    clustered = df.loc[df["cluster_id"].notna()]
+    if len(clustered):
+        clusters = (
+            clustered.groupby("cluster_id")
+            .agg(
+                units_capped=("units_capped", "sum"),
+                n_addresses=("units_capped", "size"),
+                borough=("borough", "first"),
+                lead_category=("lead_category", "first"),
+                median_lead_excess_m=("lead_excess_m", "median"),
+            )
+            .reset_index()
+            .sort_values("units_capped", ascending=False)
+        )
+        top_clusters = clusters.head(10).to_dict("records")
+    else:
+        top_clusters = []
+
+    return {
+        "n_addresses": n_addr,
+        "n_units": n_units,
+        "eligible_addr_share": eligible_addr_share,
+        "eligible_unit_share": eligible_unit_share,
+        "per_cat_gap_addr": per_cat_gap_addr,
+        "per_cat_gap_units": per_cat_gap_units,
+        "lead_distribution": lead_distribution,
+        "top_clusters": top_clusters,
+    }

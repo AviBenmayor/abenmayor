@@ -1,0 +1,49 @@
+# Per-category REACH: the network distance (metres) within which a category is
+# "expected" to be present, derived once from revealed spacing (QUESTIONS D6,
+# CHECKPOINT D33). Definition: reach(c) = the 80th percentile of the
+# hex-to-nearest-c network distance, taken over populated hexes (population >
+# 800, matching model/gaps.py's min_pop) — "the distance within which >=80% of
+# populated hexes already have one." The 0.80 quantile is carried over from the
+# old rule's `expected` prevalence bar so the two rules are comparable, but here
+# it sets a per-category DISTANCE once, not a per-hex ELIGIBILITY test re-run at
+# every window — that re-run is exactly what broke monotonicity (D33).
+#
+# Regenerate with `loci reach-table [--quantile 0.80] [--write]`. Source query:
+# src/loci/reach.py:compute_reach_table. Distances beyond the 30-minute cap
+# (2400 m) are right-censored at 2450 m by that query (hex_poi_distance holds no
+# pairs past 30 min) — tailor_repair is the one category where this matters
+# (~9% of populated hexes censored). A quantile q is exact whenever
+# q <= 1 - censored_share; with ~9% censored that holds up to about q=0.91, so
+# tailor's p80 of 1632 m IS exact, not a lower bound (only a quantile above
+# ~0.91 would be a lower bound here).
+#
+# CAVEAT (must be read before trusting these numbers, D6/D33): revealed spacing
+# reflects historical SUPPLY, not demand. A category the whole city
+# under-supplies looks like it "naturally" spaces wide and its gaps vanish under
+# this rule. Contrarian review of these values is required before they drive any
+# published claim.
+#
+# Computed 2026-09-04 from data/loci.duckdb (canonical deduped POIs, 3,436
+# populated hexes). category: reach_m.
+
+version: 1
+quantile: 0.80
+min_pop: 800.0
+computed_on: 2026-09-04
+
+reach_m:
+  restaurant: 275
+  nails_beauty: 345
+  grocery: 352
+  convenience: 400
+  hair_barber: 411
+  laundry: 478
+  childcare: 484
+  pharmacy: 509
+  clinic: 567
+  bar: 556
+  cafe_bakery: 430
+  hardware: 722
+  fitness: 601
+  bank: 750
+  tailor_repair: 1632
