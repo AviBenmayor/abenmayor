@@ -97,10 +97,10 @@ claim stands on.
 
 ### M9 — How do Loci's deduped POI counts compare with Census ZIP Business Patterns establishment counts, per category and ZIP?
 - **Status:** in-progress
-- **Prediction:** Ratios near 1 for employer-heavy categories (pharmacy, bank, grocery, hardware); above 1 for sole-proprietor-heavy categories (nails, barber, tailor) because CBP/ZBP counts only establishments with paid employees.
-- **Answered by:** `loci ingest-zbp` + `loci zbp-compare` → `analysis.zip_coverage_check` (built 2026-09-05, CBP 2023 vintage, NAICS 2017, 213 NYC ZIPs)
+- **Prediction:** —
+- **Answered by:** (not ticketed yet — Linear cleanup 2026-09-05 adds one) — CLI subcommands ingest-zbp and zbp-compare; table analysis.zip_coverage_check; CHECKPOINT D40
 - **Fails if:** ratios are far above 1 in categories that are NOT sole-proprietor-heavy — that would mean the POI feeds overcount supply (stale or duplicate records), which tightens every reach value and hides gaps.
-- **Current answer:** First run (2026-09-05, ZIPs with population ≥1,000; ratio = Loci POIs / ZBP establishments): median ratio by category — childcare 0.85, clinic 0.95, laundry 1.33, pharmacy 1.48, grocery 2.06, bank 2.17, convenience 2.31, hair_barber 2.79, restaurant 3.16, hardware 3.21, cafe_bakery 3.51, fitness 5.92, bar 6.00, nails_beauty 7.96. Share of ZIPs above 2× is 94–98% for restaurant, cafe_bakery, fitness, bar, nails. Pattern: the categories closest to 1 are the OSM/Overture-only ones (childcare, clinic, laundry, pharmacy); the largest overcounts are exactly the license-registry-anchored categories (DOHMH → restaurant/cafe, NYS DOS → hair/nails, SLA → bar) plus fitness. Consistent with D36 (DOHMH turnover duplication) and suggests SLA and NYS DOS anchors also carry closed or non-storefront licensees. Bank at 2.17 and hardware at 3.21 are not explained by the employer-only bias and point to POI duplication or ZIP assignment error. Caveats: POI→ZIP uses a majority-vote hex→ZIP crosswalk from PLUTO lots (no ZCTA polygons in the DB); ZIP population is summed dasymetric hex population; CBP excludes non-employers and noise-infuses cells from 2017 on; NAICS self-classification bleeds between adjacent formats (Meltzer & Schuetz). Next: (a) rerun per SOURCE (which feed drives each overcount), (b) ZCTA polygons for a proper ZIP join, (c) use `analysis.zip_category_establishments` size bands for D9 and establishments-per-resident for O6.
+- **Current answer:** Expectation (not a P1–P3 prediction): Ratios near 1 for employer-heavy categories (pharmacy, bank, grocery, hardware); above 1 for sole-proprietor-heavy categories (nails, barber, tailor) because CBP/ZBP counts only establishments with paid employees. First run (2026-09-05, ZIPs with population ≥1,000; ratio = Loci POIs / ZBP establishments): median ratio by category — childcare 0.85, clinic 0.95, laundry 1.33, pharmacy 1.48, grocery 2.06, bank 2.17, convenience 2.31, hair_barber 2.79, restaurant 3.16, hardware 3.21, cafe_bakery 3.51, fitness 5.92, bar 6.00, nails_beauty 7.96. Share of ZIPs above 2× is 94–98% for restaurant, cafe_bakery, fitness, bar, nails. Pattern: the categories closest to 1 are the OSM/Overture-only ones (childcare, clinic, laundry, pharmacy); the largest overcounts are exactly the license-registry-anchored categories (DOHMH → restaurant/cafe, NYS DOS → hair/nails, SLA → bar) plus fitness. Consistent with D36 (DOHMH turnover duplication) and suggests SLA and NYS DOS anchors also carry closed or non-storefront licensees. Bank at 2.17 and hardware at 3.21 are not explained by the employer-only bias and point to POI duplication or ZIP assignment error. Caveats: POI→ZIP uses a majority-vote hex→ZIP crosswalk from PLUTO lots (no ZCTA polygons in the DB); ZIP population is summed dasymetric hex population; CBP excludes non-employers and noise-infuses cells from 2017 on; NAICS self-classification bleeds between adjacent formats (Meltzer & Schuetz). Next: (a) rerun per SOURCE (which feed drives each overcount), (b) ZCTA polygons for a proper ZIP join, (c) use `analysis.zip_category_establishments` size bands for D9 and establishments-per-resident for O6.
 
 ### Tier D · Descriptive — what is where
 
@@ -183,10 +183,10 @@ claim stands on.
 
 ### D9 — Is a count/distance-based gap flag missing quality gaps that a size or diversity measure would catch?
 - **Status:** open
-- **Prediction:** Some hexes that pass the reach test for grocery are served only by small-format stores (bodega-scale), which Meltzer & Schuetz show is the actual low-income pattern.
+- **Prediction:** —
 - **Answered by:** (not ticketed) — needs an establishment-size proxy (employment band, floor area from PLUTO retail sqft, or chain identity) per POI
 - **Fails if:** size/diversity metrics are highly correlated with count-based presence (paper reports 0.70–0.90 correlation among density metrics but weak correlation to size/diversity — so expect this NOT to fail).
-- **Current answer:** — (Source: Meltzer & Schuetz 2012 Table 4 and the Herfindahl index over NAICS subsectors.)
+- **Current answer:** Expectation (not a P1–P3 prediction): Some hexes that pass the reach test for grocery are served only by small-format stores (bodega-scale), which Meltzer & Schuetz show is the actual low-income pattern. — (Source: Meltzer & Schuetz 2012 Table 4 and the Herfindahl index over NAICS subsectors.)
 
 ### Tier X · Explanatory — conditional structure, no temporal claim
 
@@ -227,10 +227,10 @@ claim stands on.
 
 ### X6 — Does race/ethnicity predict gap incidence net of income and density, and in which direction?
 - **Status:** open
-- **Prediction:** Per Meltzer & Schuetz, predominantly Black hexes show more gaps than income alone predicts; predominantly Hispanic hexes fewer (more small-format supply). Loci has NO race/ethnicity column today; needs an ACS B03002 ingest.
+- **Prediction:** —
 - **Answered by:** (not ticketed)
 - **Fails if:** gap incidence by race is fully explained by income_class + population density.
-- **Current answer:** — (Descriptive only; this is the "retail redlining" question. Investor lens: a gap that exists for supply-side reasons in a high-demand area is the strongest kind of opportunity; a gap that reflects thin demand is not. The demand_caveat flag is the first, crude version of that distinction.)
+- **Current answer:** Expectation (not a P1–P3 prediction): Per Meltzer & Schuetz, predominantly Black hexes show more gaps than income alone predicts; predominantly Hispanic hexes fewer (more small-format supply). Loci has NO race/ethnicity column today; needs an ACS B03002 ingest. — (Descriptive only; this is the "retail redlining" question. Investor lens: a gap that exists for supply-side reasons in a high-demand area is the strongest kind of opportunity; a gap that reflects thin demand is not. The demand_caveat flag is the first, crude version of that distinction.)
 
 ### Tier T · Predictive — temporal ordering, no identification claim
 
@@ -409,38 +409,38 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 
 ### H-L6 — What does Zukin et al. (2009) say about which retail categories signal gentrification, and does that contaminate the gap screen?
 - **Status:** open
-- **Unblocks:** Axis 2 (Rising) · D9
-- **Current answer:** — (Zukin, Trujillo, Frase, Jackson, Recuber & Walker, "New Retail Capital and Neighborhood Change: Boutiques and Gentrification in NYC", City & Community 8:47–64. Harlem/Williamsburg: gentrification arrives as independent boutique retail. Question for Loci: a cafe "gap" closing may be a trajectory signal, not a need being met — should discretionary-category arrivals feed rising.py rather than gaps?)
+- **Unblocks:** E7 · Maturity and 2033 Projection
+- **Current answer:** [was: Axis 2 (Rising) · D9] — (Zukin, Trujillo, Frase, Jackson, Recuber & Walker, "New Retail Capital and Neighborhood Change: Boutiques and Gentrification in NYC", City & Community 8:47–64. Harlem/Williamsburg: gentrification arrives as independent boutique retail. Question for Loci: a cafe "gap" closing may be a trajectory signal, not a need being met — should discretionary-category arrivals feed rising.py rather than gaps?)
 
 ### H-L7 — What covariates does Schuetz, Kolko & Meltzer (2010, 58 metros) find for retail density, and can they make the screen city-agnostic?
 - **Status:** open
-- **Unblocks:** D7
-- **Current answer:** — (SSRN 1681734. Density + with population density, − with distance to CBD and with owner-occupancy share; establishment size + with income for all types. Loci stores renter_share already; test it as a density-class covariate before ACS vehicle ownership.)
+- **Unblocks:** E8 · Second-City Feasibility
+- **Current answer:** [was: D7] — (SSRN 1681734. Density + with population density, − with distance to CBD and with owner-occupancy share; establishment size + with income for all types. Loci stores renter_share already; test it as a density-class covariate before ACS vehicle ownership.)
 
 ### H-L8 — Does Waldfogel (2008) "median consumer" logic mean "comparable areas" must be defined on composition, not income alone?
 - **Status:** open
-- **Unblocks:** X6 · D8
-- **Current answer:** — (J. Urban Econ. 63:567–582. Local private goods follow the locally dominant group's preferences. If true, a citywide reach per category is mis-specified for categories whose demand is composition-driven.)
+- **Unblocks:** E4 · Validation and Artifact
+- **Current answer:** [was: X6 · D8] — (J. Urban Econ. 63:567–582. Local private goods follow the locally dominant group's preferences. If true, a citywide reach per category is mis-specified for categories whose demand is composition-driven.)
 
 ### H-L9 — What does Zenk et al. (2005) establish about supermarket access by race net of poverty, and which access metric did they use?
 - **Status:** open
-- **Unblocks:** X6 · M-tier access metric choice
-- **Current answer:** — (Detroit tracts, GIS distance to nearest supermarket; segregation, not poverty alone, drives access. Precedent for a distance-based rather than count-based "missing".)
+- **Unblocks:** E4 · Validation and Artifact
+- **Current answer:** [was: X6 · M-tier access metric choice] — (Detroit tracts, GIS distance to nearest supermarket; segregation, not poverty alone, drives access. Precedent for a distance-based rather than count-based "missing".)
 
 ### H-L10 — Does Powell et al. (2007) national ZIP-level food-store availability by race/SES replicate Meltzer & Schuetz's NYC pattern, and is its establishment-count method close enough to Loci's to borrow?
 - **Status:** open
-- **Unblocks:** X6
-- **Current answer:** — (Preventive Medicine 44:189–195. National ZIP counts by store type; count-based, so a useful contrast with Zenk's distance-based access.)
+- **Unblocks:** E4 · Validation and Artifact
+- **Current answer:** [was: X6] — (Preventive Medicine 44:189–195. National ZIP counts by store type; count-based, so a useful contrast with Zenk's distance-based access.)
 
 ### H-L11 — Do Haltiwanger, Jarmin & Krizan (2010) give a usable displacement/complementarity estimate for the minimum-viable-catchment check?
 - **Status:** open
-- **Unblocks:** O6
-- **Current answer:** — (J. Urban Econ. 67:116–134, big-box entry vs mom-and-pop exit.)
+- **Unblocks:** E5 · Deferred
+- **Current answer:** [was: O6] — (J. Urban Econ. 67:116–134, big-box entry vs mom-and-pop exit.)
 
 ### H-L12 — Chapple & Jacobus (2009): where does gap-filling retail actually succeed, and does that argue for an income floor in Axis 1?
 - **Status:** open
-- **Unblocks:** Axis 1 (invest.py)
-- **Current answer:** — (Bay Area; revitalization gains concentrate in middle-income, not poorest, neighborhoods.)
+- **Unblocks:** E5 · Deferred
+- **Current answer:** [was: Axis 1 (invest.py)] — (Bay Area; revitalization gains concentrate in middle-income, not poorest, neighborhoods.)
 
 ### Data quirks
 
