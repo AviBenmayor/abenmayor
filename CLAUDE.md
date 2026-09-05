@@ -287,3 +287,17 @@ FEE_ADJUSTMENT = 1.0         # Arbitrage calculation fee factor
    - Arbitrage: Designed for scheduled runs (cron, Task Scheduler)
 
 7. **No Formal Build Process**: Both projects run directly from source without compilation.
+
+## Agent skills
+
+### Issue tracker
+
+Linear, workspace `avi-benmayor`, team Go To Market (`GTM`); one Linear Project per top-level directory, epics as Milestones. Not GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical labels, unchanged: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context: `CONTEXT-MAP.md` at the root indexes one `CONTEXT.md` per project directory; `CHECKPOINT.md` decision logs stand in for ADRs where they exist. See `docs/agents/domain.md`.

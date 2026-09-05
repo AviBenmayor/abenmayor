@@ -5,3 +5,6 @@ __pycache__/
 .venv/
 node_modules/
 .env
+
+# nested third-party checkout (own git repo)
+claude-beacon/
