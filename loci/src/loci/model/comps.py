@@ -25,7 +25,9 @@ Fallback ordering for the comp set behind (category, borough, neighborhood):
 
 Supportable rent, in order:
     1. `rent_source="listed"` -- median of the LISTED rent among the matched
-       comps, where any report one.
+       comps, where any report one. The CSV's `rent` field is the listing's
+       MONTHLY asking rent; it is annualized (x12) before use so it is on the
+       same annual basis as gross_revenue/cash_flow_sde everywhere below.
     2. `rent_source="cash_flow_before_rent_addback"` -- some listings
        separately break out "cash flow before rent" (a seller/broker add-back,
        `cash_flow_before_rent` in the CSV); implied rent is the median of
@@ -163,7 +165,10 @@ def comps_for(category: str, borough: str | None = None, neighborhood: str | Non
     n = len(comps)
     revenue = [r["gross_revenue"] for r in comps if r.get("gross_revenue") is not None]
     cashflow = [r["cash_flow_sde"] for r in comps if r.get("cash_flow_sde") is not None]
-    rents = [r["rent"] for r in comps if r.get("rent") is not None]
+    # CSV `rent` is the listing's monthly asking rent (benchmarks.yaml's collection
+    # notes: listings state "$X/mo rent"); annualize x12 here so rent_p50 and
+    # supportable_rent are on the same annual basis as gross_revenue/cash_flow_sde.
+    rents = [r["rent"] * 12 for r in comps if r.get("rent") is not None]
     addback_implied = [r["cash_flow_before_rent"] - r["cash_flow_sde"] for r in comps
                         if r.get("cash_flow_before_rent") is not None and r.get("cash_flow_sde") is not None]
     margins = [r["cash_flow_sde"] / r["gross_revenue"] for r in comps
