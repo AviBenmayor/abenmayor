@@ -634,6 +634,36 @@ hardware/fitness/clinic). New column n_local_canonical (canonical deduplicated, 
 python-dotenv (override=False) — previously GOOGLE_PLACES_KEY in .env was invisible and `--run`
 failed.
 
+**D42 — NAICS 2022 adopted as the category-taxonomy anchor via `src/loci/categories.yaml`.** *(2026-09-05)*
+The 15 category slugs (`src/loci/categories.py`) were ad hoc keys scattered across
+reach.yaml/conveniences.yaml/demand.yaml/benchmarks.yaml/spend.yaml, the OSM tag map, and
+NYC/NYS license-type maps, with no single place stating what each slug means in NAICS
+terms — the vocabulary every downstream comparison (ZBP/CBP, SBA, LODES, Meltzer & Schuetz)
+actually speaks. `categories.yaml` is now that pivot: one entry per slug with `naics_2022`,
+`naics_2017`, `label`, and each adapter's native tag (`osm`, `overture`, `dohmh`, `nys_dos`,
+`dcwp`, `nys_sla`). It does NOT classify individual POIs — no POI source publishes NAICS —
+it only anchors definitions. NAICS 2022 reference files (Structure, Descriptions, and both
+concordance directions) were fetched from census.gov/naics (direct file paths; the `/naics/`
+landing and search-style URLs are Cloudflare-blocked at 403) and reduced to
+`src/loci/naics/naics_2022.csv` (2,122 rows, 2–6 digit) so nothing needs to open an xlsx at
+runtime. `tests/test_categories_anchor.py` checks every slug in use is anchored, every
+naics_2022 code is real, and no two slugs share a 6-digit code.
+
+Two corrections the crosswalk surfaced, neither caught before because nothing previously
+joined these categories against a verified NAICS 2022 code:
+1. **The retail-tier 2017→2022 recode moved three of our codes**, not just the two the task
+   anticipated: convenience 445120→445131, pharmacy 446110→456110, **and** hardware
+   444130→444140 (all real, confirmed against the concordance file — `naics_2017` in
+   categories.yaml keeps the pre-recode codes for panel years before 2022).
+2. **`registry.yaml`'s `lodes_wac.naics` block was internally inconsistent**: it listed
+   4-digit codes as if LODES WAC published NAICS, but WAC only ever publishes 20 fixed
+   sector columns (CNS01–CNS20, e.g. CNS07 = all of Retail Trade 44-45) — no WAC column is
+   narrower than a full sector. The 4-digit codes there are aspirational targets, realizable
+   only from ZBP/CBP; the block is now annotated to say so explicitly (recoded to 2022,
+   pharmacy's prefix corrected 4461→4561) rather than silently implying a join that can't
+   happen.
+
+
 ### 2026-09-03 — Session 9: M1 corrected, Manhattan D3, validator fix
 - Google validation run: 2,970 calls, ledger 2,978/3,000 (`loci validate --categories
   hardware,fitness,clinic --per-decile 99 --run`; `--per-decile` raised from 20 to 99 because gap

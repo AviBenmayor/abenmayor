@@ -453,6 +453,7 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 
 ### H-M5 — How sensitive is the DNCI ranking to ε in the geometric mean?
 - **Status:** open
+- **Touched 2026-09-05 (D42, `src/loci/categories.yaml`):** the current per-slug Overture `categories.primary` lists are now recorded in one place (`sources.overture` per slug) alongside each slug's NAICS 2022 anchor, but lossiness/confidence per mapping is still not scored — this question stays open.
 - **Unblocks:** E2 · Access Engine
 - **Current answer:** — (ε = 0.01 is stated. Sweep 0.001–0.05 and confirm the bottom decile is stable.)
 

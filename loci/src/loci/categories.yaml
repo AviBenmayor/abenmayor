@@ -1,0 +1,277 @@
+# Loci category taxonomy anchor -- NAICS 2022.
+#
+# WHY NAICS: the outcome/context data this project runs against (Census ZBP/CBP
+# establishment counts, SBA loan data, LODES WAC job counts) and the academic
+# literature it leans on (Meltzer & Schuetz 2012, "Bodegas or Bagel Shops?")
+# ALL classify by NAICS. The POI presence sources (OSM, Overture, Foursquare,
+# NYC/NYS license rosters) do NOT carry NAICS at all -- they use their own free
+# taxonomies (OSM tags, Overture `categories.primary`, DOHMH cuisine text, NYS
+# license-type codes). Loci's 15 category slugs (src/loci/categories.py) are
+# the thing every adapter normalizes onto; this file is the PIVOT that anchors
+# what each slug MEANS in NAICS terms, so a claim like "grocery" can be
+# compared against ZBP/CBP grocery establishment counts or the Meltzer&Schuetz
+# grocery finding without re-deriving the mapping ad hoc each time.
+#
+# THIS FILE DOES NOT CLASSIFY INDIVIDUAL BUSINESSES. No POI source publishes
+# NAICS, so no POI record is ever tagged via this file -- adapters keep
+# classifying on their own native tags (osm key=value, Overture
+# categories.primary, DOHMH cuisine keywords, NYS/NYC license types), listed
+# below per slug so the ad hoc mapping lives in ONE place instead of scattered
+# across reach.yaml, conveniences.yaml, demand.yaml, benchmarks.yaml,
+# spend.yaml and six source adapters. Only src/loci/zbp_naics.yaml (Census
+# ZBP/CBP validation, NAICS 2017) and registry.yaml's lodes_wac entry actually
+# JOIN on a NAICS code; this file is their shared reference, not a new join
+# path.
+#
+# PROVENANCE: NAICS 2022 reference files fetched from census.gov/naics
+# 2026-09-05 (Cloudflare blocks the /naics/ landing page and search-style URLs
+# at the edge -- 403 on both plain curl and WebFetch -- but the direct file
+# paths below are NOT blocked):
+#   https://www.census.gov/naics/2022NAICS/2022_NAICS_Structure.xlsx
+#   https://www.census.gov/naics/2022NAICS/2022_NAICS_Descriptions.xlsx
+#   https://www.census.gov/naics/concordances/2017_to_2022_NAICS.xlsx
+#   https://www.census.gov/naics/concordances/2022_to_2017_NAICS.xlsx
+# Saved under src/loci/naics/ (this directory). Parsed with openpyxl (throwaway
+# script, NOT a project dependency -- run via
+# `uv run --with openpyxl python ...` if re-deriving) into
+# src/loci/naics/naics_2022.csv (code, title, level; 2,122 rows, 2-6 digit),
+# so nothing at runtime needs to open an xlsx file.
+#
+# naics_2017 codes below are carried over verbatim from src/loci/zbp_naics.yaml
+# (already verified live against the CBP API for NYC ZIPs, 2026-09-05) --
+# not re-derived here, to avoid two sources of truth for the same 2017 codes.
+# naics_2022 codes are those same codes run through the REAL
+# 2017_to_2022_NAICS.xlsx concordance (never guessed/recalled from memory;
+# every code below was grepped against naics_2022.csv by
+# tests/test_categories_anchor.py). The concordance surfaced three retail-tier
+# recodes nobody had caught: convenience 445120 -> 445131, pharmacy
+# 446110 -> 456110, hardware 444130 -> 444140. All other codes are unchanged
+# 2017 -> 2022.
+#
+# `sources:` lists the NATIVE tag each adapter actually keys on for this slug
+# (grepped from the adapters, not invented): `osm` (shop/amenity/leisure
+# key=value pairs, src/loci/sources/universal/osm_overpass.py),
+# `overture` (categories.primary slugs,
+# src/loci/sources/universal/overture_places.py -- restaurant additionally
+# catches anything matching the dynamic suffix rule `*_restaurant`), `dohmh`
+# (cuisine_description keyword classification, restaurant/cafe_bakery only,
+# src/loci/sources/cities/nyc/dohmh.py), `nys_dos` (license_type codes,
+# nails_beauty/hair_barber only, src/loci/sources/cities/nyc/nys_dos.py),
+# `dcwp` (business_category keyword match, laundry/pharmacy only,
+# src/loci/sources/cities/nyc/dcwp.py) and `nys_sla` (license description
+# values, bar only, src/loci/sources/cities/nyc/nys_sla.py). A key is present
+# only where a real mapping exists in the code; nothing here is invented.
+
+version: 1
+computed_on: 2026-09-05
+
+categories:
+
+  grocery:
+    label: "Grocery / supermarket"
+    naics_2022: ["445110"]
+    naics_2017: ["445110"]   # unchanged across the 2022 recode
+    sources:
+      osm: ["shop=supermarket", "shop=greengrocer", "shop=grocery"]
+      overture:
+        - grocery_store
+        - organic_grocery_store
+        - asian_grocery_store
+        - international_grocery_store
+        - mexican_grocery_store
+        - kosher_grocery_store
+        - indian_grocery_store
+        - korean_grocery_store
+        - japanese_grocery_store
+        - russian_grocery_store
+        - farmers_market
+
+  convenience:
+    label: "Bodega / convenience"
+    naics_2022: ["445131"]   # RECODE: was 445120 "Convenience Stores" under 2017;
+                             # 2022 NAICS splits 4451 into 44511 (grocery) and
+                             # 44513 (Convenience Retailers and Vending Machine
+                             # Operators) and 445131 "Convenience Retailers" is
+                             # the 2022 home.
+    naics_2017: ["445120"]
+    sources:
+      osm: ["shop=convenience"]
+      overture: [convenience_store]
+
+  pharmacy:
+    label: "Pharmacy"
+    naics_2022: ["456110"]   # RECODE: was 446110 "Pharmacies and Drug Stores"
+                             # under 2017; 2022 moved Health and Personal Care
+                             # Stores from sector 446 to 456 wholesale-recoded
+                             # subsector renumbering across NAICS 44-45.
+    naics_2017: ["446110"]
+    sources:
+      osm: ["amenity=pharmacy", "shop=chemist"]
+      overture: [pharmacy, drugstore]
+      dcwp: ["business_category ILIKE '%pharmac%'"]   # no-op on current DCWP
+                                                       # data; DCWP doesn't
+                                                       # license pharmacies.
+
+  laundry:
+    label: "Laundromat / dry cleaner"
+    naics_2022: ["812310", "812320"]
+    naics_2017: ["812310", "812320"]   # unchanged
+    sources:
+      osm: ["shop=laundry", "shop=dry_cleaning"]
+      overture: [laundromat, laundry_services, dry_cleaning]
+      dcwp:
+        - "business_category ILIKE '%laundr%' OR '%dry clean%' (excludes 'industrial' -- see dcwp.py docstring: DCWP's consumer Laundries category has zero active licenses, Industrial Laundry is B2B linen supply, not a walk-in laundromat)"
+
+  hair_barber:
+    label: "Hair / barber"
+    naics_2022: ["812111", "812112"]
+    naics_2017: ["812111", "812112"]   # unchanged; 812112 (Beauty Salons)
+                                       # bleeds with nails_beauty (812113) --
+                                       # see zbp_naics.yaml header caveat.
+    sources:
+      osm: ["shop=hairdresser"]
+      overture: [hair_salon, barber, hair_stylist, kids_hair_salon]
+      nys_dos: ["DOSBARSHOPOWNER", "DOSBARRENTER"]
+
+  nails_beauty:
+    label: "Nail / beauty"
+    naics_2022: ["812113"]
+    naics_2017: ["812113"]   # unchanged
+    sources:
+      osm: ["shop=beauty"]
+      overture:
+        - nail_salon
+        - beauty_salon
+        - spas
+        - day_spa
+        - health_spa
+        - eyelash_service
+        - eyebrow_service
+        - waxing
+      nys_dos: ["DOSAEBUSINESS", "DOSAERENTER"]
+
+  tailor_repair:
+    label: "Tailor / repair"
+    naics_2022: ["811430"]   # unchanged; deliberate undercount -- see
+                             # zbp_naics.yaml: true clothing tailors scatter
+                             # across 315990 (apparel mfg) and 812990 (other
+                             # personal services) with no clean NAICS home,
+                             # this is the closest single code (dominated in
+                             # NYC by shoe repair).
+    naics_2017: ["811430"]
+    sources:
+      osm: ["shop=tailor", "shop=shoe_repair", "shop=clothes_repair"]
+      overture: [gents_tailor, sewing_and_alterations, shoe_repair]
+
+  restaurant:
+    label: "Restaurant"
+    naics_2022: ["722511", "722513"]
+    naics_2017: ["722511", "722513"]   # unchanged
+    sources:
+      osm: ["amenity=restaurant", "amenity=fast_food"]
+      overture:
+        - restaurant
+        - fast_food_restaurant
+        # plus the dynamic suffix rule: any primary category ending in
+        # `_restaurant` (the ~150-value cuisine family, e.g.
+        # chinese_restaurant, pizza_restaurant) -- see overture_places.py
+        # _category_for().
+      dohmh: ["cuisine_description not matching CAFE_KEYWORDS (default branch of dohmh.py classify())"]
+
+  cafe_bakery:
+    label: "Cafe / bakery"
+    naics_2022: ["722515", "311811"]
+    naics_2017: ["722515", "311811"]   # unchanged; 311811 is a manufacturing-
+                                       # sector code (undercounts bakeries
+                                       # that are primarily cafe seating) --
+                                       # see zbp_naics.yaml.
+    sources:
+      osm: ["amenity=cafe", "shop=bakery"]
+      overture: [cafe, coffee_shop, bakery, hong_kong_style_cafe]
+      dohmh: ["cuisine_description matching CAFE_KEYWORDS: coffee, tea, bakery, donut, doughnut, dessert, juice, ice cream, bagel, cafe/café (dohmh.py CAFE_KEYWORDS)"]
+
+  bar:
+    label: "Bar / pub"
+    naics_2022: ["722410"]
+    naics_2017: ["722410"]   # unchanged
+    sources:
+      osm: ["amenity=bar", "amenity=pub"]
+      overture:
+        - bar
+        - cocktail_bar
+        - sports_bar
+        - wine_bar
+        - hookah_bar
+        - dive_bar
+        - beer_bar
+        - gay_bar
+        - hotel_bar
+        - whiskey_bar
+        - tiki_bar
+        - sake_bar
+        - piano_bar
+        - champagne_bar
+        - beer_garden
+        - pub
+        - gastropub
+        - irish_pub
+      nys_sla: ["Food & Beverage Business", "Summer Food & Beverage Business", "Club", "Cabaret", "Bottle Club"]
+      # DOHMH deliberately never emits `bar` (see dohmh.py docstring) --
+      # bars with a food-service license are undercounted here (H-D9).
+
+  childcare:
+    label: "Childcare"
+    naics_2022: ["624410"]
+    naics_2017: ["624410"]   # unchanged (title text-only tweak: "Child Day
+                             # Care Services" -> "Child Care Services")
+    sources:
+      osm: ["amenity=kindergarten", "amenity=childcare"]
+      overture: [child_care_and_day_care, day_care_preschool, preschool]
+
+  clinic:
+    label: "Clinic / urgent care"
+    naics_2022: ["621111", "621493"]
+    naics_2017: ["621111", "621493"]   # unchanged
+    sources:
+      osm: ["amenity=clinic", "amenity=doctors"]
+      overture: [urgent_care_clinic, walk_in_clinic, public_health_clinic, medical_center]
+
+  fitness:
+    label: "Fitness"
+    naics_2022: ["713940"]
+    naics_2017: ["713940"]   # unchanged
+    sources:
+      osm: ["leisure=fitness_centre"]
+      overture:
+        - gym
+        - fitness_trainer
+        - gymnastics_center
+        - boxing_gym
+        - gymnastics_club
+        - rock_climbing_gym
+        - aerial_fitness_center
+        - yoga_studio
+        - pilates_studio
+        - martial_arts_club
+
+  bank:
+    label: "Bank branch"
+    naics_2022: ["522110"]   # excludes credit unions (522130), out of scope --
+                             # note: overture's "bank_credit_union" primary
+                             # category maps to this slug too (see
+                             # overture_places.py), a real scope mismatch
+                             # against the NAICS definition, flagged not fixed.
+    naics_2017: ["522110"]
+    sources:
+      osm: ["amenity=bank"]
+      overture: [banks, bank_credit_union]
+
+  hardware:
+    label: "Hardware / home supply"
+    naics_2022: ["444140"]   # RECODE: was 444130 "Hardware Stores" under 2017;
+                             # 2022 renamed/renumbered to "Hardware Retailers"
+                             # under the 44-45 retail-sector recode.
+    naics_2017: ["444130"]
+    sources:
+      osm: ["shop=hardware", "shop=doityourself"]
+      overture: [hardware_store, home_improvement_store]

@@ -241,6 +241,49 @@ sources:
       Requesting ratings/hours reprices to Enterprise ($35/1k); reviews/photos to
       Enterprise+Atmosphere ($40/1k). Request ONLY id/name/location/types.
 
+  - id: census_zbp
+    name: Census ZIP Code Business Patterns (ZBP), via the County Business Patterns (CBP) API
+    tier: universal
+    role: validation
+    status: verified
+    url: https://www.census.gov/data/developers/data-sets/cbp-zbp/zbp-api.html
+    api: https://api.census.gov/data/2023/cbp
+    geography: zip
+    temporal: {start: 1994, end: 2023, grain: annual}
+    cost: {amount: 0, unit: total}
+    requires_key: CENSUS_API_KEY
+    bias: >
+      VALIDATION AND CALIBRATION ONLY -- must never feed the gap flag. ZIP is
+      far coarser than Loci's geography of record (residential address / hex).
+      Establishment counts by NAICS are SELF-CLASSIFIED by the business at
+      registration and bleed between adjacent formats (a bodega may file under
+      445120 convenience or 722513 limited-service restaurant), so category
+      boundaries in the crosswalk are soft (Meltzer & Schuetz 2012). Census
+      applies a noise-infusion disclosure-avoidance method to published ESTAB
+      counts from 2007 onward (methodology revised 2017) plus cell
+      suppression for very small cells -- a (zip, NAICS, size-band) cell
+      absent from the response is NOT evidence of zero establishments, it may
+      be suppressed.
+    notes: >
+      Verified 2026-09-05. The standalone `zbp` API dataset
+      (api.census.gov/data/{year}/zbp) serves only 1994-2018 ("Starting with
+      reference year 2019, ZIP Code Business Patterns data will be available
+      as part of the County Business Patterns (CBP) API" -- census.gov); from
+      2019 on, ZBP lives inside the CBP API (api.census.gov/data/{year}/cbp)
+      under `for=zipcode:<zip[,zip,...]>` geography. Confirmed working through
+      2023 (2024 not yet published as of verification date). Variables:
+      ESTAB (establishment count), EMPSZES/EMPSZES_LABEL (employment-size
+      band: 001 all, 210 <5, 220 5-9, 230 10-19, 241 20-49, 242 50-99, 251
+      100-249, 252 250-499, 254 500-999, 260 1000+), NAICS2017/NAICS2017_LABEL
+      (2017 NAICS, ALL levels 2-6 digit returned in one response -- filter to
+      6-digit for the finest level). `for=zipcode:*` works nationally with NO
+      state filter (`in=state:36` is REJECTED: "unknown/unsupported geography
+      hierarchy"); a comma-separated zipcode list IS accepted and is what the
+      adapter uses -- all 217 NYC PLUTO postcodes pull in one request (~137.5k
+      rows, ~14s, ~13.8MB). Gives establishments-per-resident by NAICS (a
+      revealed floor for QUESTIONS O6) and employment-size bands the
+      count-based DNCI cannot see (QUESTIONS D9, small-format vs supermarket).
+
   # ---------------------------------------------------------------- panel backbone
   - id: lodes_wac
     name: LEHD LODES Workplace Area Characteristics (LODES8)
@@ -255,15 +298,39 @@ sources:
     bias: >
       Counts JOBS, not establishments. Census noise infusion at block level.
       Excludes most self-employed. See CONTEXT.md 7.4.
-    naics:
-      "4451": grocery
-      "4461": pharmacy
-      "7224": bars
-      "7225": restaurants
-      "8121": personal care
-      "8123": laundry and dry cleaning
-      "4441": hardware and home supply
-      "6244": childcare
+    naics: >
+      ASPIRATIONAL, NOT REALIZABLE FROM THIS SOURCE (corrected 2026-09-05, see
+      src/loci/categories.yaml and CHECKPOINT decision log). LODES WAC does
+      NOT publish NAICS codes at all -- it publishes 20 fixed job-count
+      columns (CNS01-CNS20), one per NAICS SECTOR (2-digit or a fixed
+      2-digit range, e.g. CNS07 = Retail Trade = all of sectors 44-45, CNS18
+      = Accommodation and Food Services = all of sector 72). There is no WAC
+      column narrower than a full sector, so the 4-digit codes below can
+      never be pulled directly from WAC; they are recorded here only as the
+      TARGET granularity a category would need, realizable only from
+      Census ZBP/CBP (src/loci/sources/universal/census_zbp.py,
+      src/loci/zbp_naics.yaml), which does return NAICS down to 6-digit.
+      Recoded to NAICS 2022 (was 2017; only pharmacy's 4-digit prefix moved):
+        "4451": grocery and convenience (2022 merged what was a grocery-only
+                prefix in 2017; category-level split needs ZBP's 6-digit
+                445110 vs 445131, see categories.yaml)
+        "4561": pharmacy (RECODE -- was "4461" under 2017; NAICS 2022 moved
+                Health and Personal Care Retailers from sector-prefix 446 to
+                456)
+        "7224": bars
+        "7225": restaurants
+        "8121": personal care
+        "8123": laundry and dry cleaning
+        "4441": hardware and home supply (unchanged at 4-digit; the 6-digit
+                leaf under it moved 444130 -> 444140, see categories.yaml)
+        "6244": childcare
+      Corresponding WAC sector column for each: 4451/4561/4441 -> CNS07
+      (Retail Trade), 7224/7225 -> CNS18 (Accommodation and Food Services),
+      8121/8123 -> CNS19 (Other Services, except Public Administration),
+      6244 -> CNS16 (Health Care and Social Assistance) -- WAC cannot
+      distinguish grocery from pharmacy from hardware, or bars from
+      restaurants, or personal care from laundry: all collapse to the same
+      column.
     open_question: >
       Verify LODES8 uses 2020 TIGER blocks across all vintages (avoids a
       2010/2020 crosswalk). CONTEXT.md 9, item 5.
