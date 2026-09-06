@@ -11,7 +11,7 @@
     loci address-gaps [--borough ALL] [--reach tiers|p80] [--limit 0] [--dry-run]
     loci ingest --source overture_places --city nyc [--dry-run]
     loci ingest-zbp [--year 2023] [--dry-run]           (validation only)
-    loci zbp-compare [--year]                            (read-only)
+    loci zbp-compare [--year] [--by-source]              (read-only, writes analysis.zip_coverage_by_source)
     loci grid   --city nyc --resolution 9
     loci score  [--limit-min 30]
     loci model  --t0 2013 --t1 2023
@@ -232,6 +232,9 @@ def ingest_zbp(
 @app.command(name="zbp-compare")
 def zbp_compare(
     year: int = typer.Option(None, help="Vintage to compare against; defaults to the latest ingested."),
+    by_source: bool = typer.Option(False, "--by-source",
+                                    help="Also build analysis.zip_coverage_by_source and print the "
+                                         "per-category x per-source overcount attribution (QUESTIONS.md M9)."),
 ) -> None:
     """Compare Loci's deduped POI counts to ZBP establishment counts, per
     category and NYC ZIP (VALIDATION ONLY -- see registry.yaml `census_zbp`)."""
@@ -239,7 +242,7 @@ def zbp_compare(
 
     con = locidb.connect()
     locidb.init_schema(con)
-    run_comparison(con, year=year, console=console)
+    run_comparison(con, year=year, console=console, by_source=by_source)
 
 
 @app.command()

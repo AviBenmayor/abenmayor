@@ -106,6 +106,130 @@ def _population_by_zip(con, crosswalk: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _poi_counts_by_zip_category_source(con, crosswalk: pd.DataFrame) -> pd.DataFrame:
+    """Canonical POI count per (zipcode, category, source), plus how many of
+    those canonical POIs sit in a dedup cluster with only ONE distinct
+    source_id among ALL its members (canonical or not) -- a record no other
+    feed corroborates. `source` is the canonical row's own source_id, which
+    is always the cluster's highest-ranked member per score/dedup.py
+    source_rank() (analysis.poi_dedup.is_canonical is defined that way)."""
+    con.register("_hex_zip_xwalk3", crosswalk)
+    try:
+        df = con.execute("""
+            WITH canonical AS (
+                SELECT p.poi_id, p.category, p.source_id, d.cluster_id,
+                       h3_h3_to_string(h3_latlng_to_cell(ST_Y(p.geom), ST_X(p.geom), 9)) AS h3_index
+                FROM staging.poi p
+                JOIN analysis.poi_dedup d ON d.poi_id = p.poi_id
+                WHERE d.is_canonical
+            ),
+            cluster_sources AS (
+                -- distinct source_id count across EVERY member of the cluster,
+                -- not just the canonical row -- this is what "corroborated by
+                -- another feed" means.
+                SELECT d.cluster_id, count(DISTINCT p.source_id) AS n_sources
+                FROM analysis.poi_dedup d
+                JOIN staging.poi p ON p.poi_id = d.poi_id
+                GROUP BY 1
+            )
+            SELECT x.zipcode, c.category, c.source_id AS source,
+                   count(*) AS poi_count,
+                   sum(CASE WHEN cs.n_sources = 1 THEN 1 ELSE 0 END) AS poi_count_single_source
+            FROM canonical c
+            JOIN _hex_zip_xwalk3 x ON x.h3_index = c.h3_index
+            JOIN cluster_sources cs ON cs.cluster_id = c.cluster_id
+            GROUP BY 1, 2, 3
+        """).df()
+    finally:
+        con.unregister("_hex_zip_xwalk3")
+    return df
+
+
+def build_coverage_by_source(con, year: int | None = None) -> int:
+    """Build (or rebuild) analysis.zip_coverage_by_source for `year`. Reuses
+    analysis.zip_coverage_check (built/rebuilt first) as the already-filtered
+    (population >= 1,000, ZBP not suppressed) whitelist of (zipcode, category)
+    pairs, then attributes each one's poi_count across sources. Returns the
+    row count written."""
+    n_base = build_coverage_check(con, year)
+    used_year = con.execute("SELECT max(year) FROM analysis.zip_coverage_check").fetchone()[0]
+
+    crosswalk = _hex_zip_crosswalk(con)
+    poi_src = _poi_counts_by_zip_category_source(con, crosswalk)
+
+    base = con.execute(
+        "SELECT zipcode, category, zbp_estab FROM analysis.zip_coverage_check WHERE year = ?",
+        [used_year],
+    ).df()
+    # inner join: a (zipcode, category) with poi_count 0 in the base table has
+    # no source rows to attribute, and correctly contributes none here.
+    merged = base.merge(poi_src, on=["zipcode", "category"], how="inner")
+    merged["ratio"] = merged["poi_count"] / merged["zbp_estab"].replace(0, pd.NA)
+
+    out = merged[["zipcode", "category", "source", "poi_count",
+                  "poi_count_single_source", "zbp_estab", "ratio"]].copy()
+    out.insert(0, "year", used_year)
+
+    con.execute("DELETE FROM analysis.zip_coverage_by_source WHERE year = ?", [used_year])
+    con.register("_zcbs", out)
+    try:
+        con.execute("""
+            INSERT INTO analysis.zip_coverage_by_source
+                (year, zipcode, category, source, poi_count, poi_count_single_source, zbp_estab, ratio)
+            SELECT year, zipcode, category, source, poi_count, poi_count_single_source, zbp_estab, ratio
+            FROM _zcbs
+        """)
+    finally:
+        con.unregister("_zcbs")
+    del n_base
+    return len(out)
+
+
+def print_by_source_report(con, year: int | None = None, console=None) -> pd.DataFrame:
+    """Print, per category: total Loci POIs vs ZBP, then per source: POI
+    count, share of the category's POIs, share that are single-source, and
+    the ratio that would remain if that source's SINGLE-SOURCE records were
+    dropped -- (category_total_poi - that_source's_single_source_poi) /
+    category_total_zbp. Returns the analysis.zip_coverage_by_source DataFrame
+    for `year` (or the latest year, if not given)."""
+    build_coverage_by_source(con, year)
+    used_year = con.execute("SELECT max(year) FROM analysis.zip_coverage_by_source").fetchone()[0]
+    df = con.execute(
+        "SELECT * FROM analysis.zip_coverage_by_source WHERE year = ?", [used_year]
+    ).df()
+    base = con.execute(
+        "SELECT * FROM analysis.zip_coverage_check WHERE year = ?", [used_year]
+    ).df()
+
+    def emit(line: str) -> None:
+        if console is not None:
+            console.print(line)
+        else:
+            print(line)
+
+    emit(f"analysis.zip_coverage_by_source: {len(df)} rows (year={used_year})")
+    for cat, cat_base in base.groupby("category"):
+        total_poi = int(cat_base["poi_count"].sum())
+        total_zbp = int(cat_base["zbp_estab"].sum())
+        overall_ratio = total_poi / total_zbp if total_zbp else float("nan")
+        emit(f"\n{cat}: total_poi={total_poi}  total_zbp={total_zbp}  ratio={overall_ratio:.2f}")
+        emit(f"  {'source':32} {'poi':>7} {'share':>7} {'single-src':>11} "
+             f"{'ratio_if_dropped':>16}")
+        cat_src = df[df["category"] == cat]
+        by_source = cat_src.groupby("source").agg(
+            poi_count=("poi_count", "sum"),
+            single_source=("poi_count_single_source", "sum"),
+        ).reset_index().sort_values("poi_count", ascending=False)
+        for _, row in by_source.iterrows():
+            share = row["poi_count"] / total_poi if total_poi else float("nan")
+            single_share = row["single_source"] / row["poi_count"] if row["poi_count"] else float("nan")
+            ratio_dropped = (total_poi - row["single_source"]) / total_zbp if total_zbp else float("nan")
+            emit(f"  {row['source']:32} {int(row['poi_count']):>7} {share:>7.0%} "
+                 f"{single_share:>11.0%} {ratio_dropped:>16.2f}")
+
+    return df
+
+
 def build_coverage_check(con, year: int | None = None) -> int:
     """Build analysis.zip_coverage_check for `year` (the ZBP vintage; defaults
     to the latest ingested). Applies the population >= 1,000 and
@@ -153,10 +277,12 @@ def build_coverage_check(con, year: int | None = None) -> int:
     return len(out)
 
 
-def run_comparison(con, year: int | None = None, console=None) -> pd.DataFrame:
+def run_comparison(con, year: int | None = None, console=None, by_source: bool = False) -> pd.DataFrame:
     """Build (or rebuild) analysis.zip_coverage_check and print the per-
     category summary + the top-5 undercovered ZIPs for hardware/fitness/clinic.
-    Returns the underlying DataFrame for programmatic use (e.g. tests)."""
+    With by_source=True, also build analysis.zip_coverage_by_source and print
+    the per-category x per-source attribution report (returns THAT DataFrame
+    instead). Returns the underlying DataFrame for programmatic use (e.g. tests)."""
     n = build_coverage_check(con, year)
     used_year = con.execute("SELECT max(year) FROM analysis.zip_coverage_check").fetchone()[0]
     df = con.execute("SELECT * FROM analysis.zip_coverage_check WHERE year = ?", [used_year]).df()
@@ -189,5 +315,9 @@ def run_comparison(con, year: int | None = None, console=None) -> pd.DataFrame:
         for _, row in g.head(5).iterrows():
             emit(f"  {row['zipcode']}  poi={int(row['poi_count']):>3}  "
                  f"zbp={int(row['zbp_estab']):>4}  ratio={row['ratio']:.2f}")
+
+    if by_source:
+        emit("")
+        return print_by_source_report(con, used_year, console=console)
 
     return df

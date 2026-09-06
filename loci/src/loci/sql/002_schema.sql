@@ -421,3 +421,33 @@ CREATE TABLE IF NOT EXISTS analysis.zip_coverage_check (
     ratio     DOUBLE,
     PRIMARY KEY (year, zipcode, category)
 );
+
+-- Per-SOURCE rollup of the row above (`loci zbp-compare --by-source`,
+-- QUESTIONS.md M9 follow-up): which feed's canonical POIs drive each
+-- category's overcount vs ZBP. `source` is the canonical POI's own
+-- source_id -- analysis.poi_dedup.is_canonical always marks the cluster's
+-- highest-ranked member per score/dedup.py source_rank(), so "the canonical
+-- record's source" and "the highest-ranked member source" are the same
+-- thing here; there is no separate member-source list to choose between.
+-- poi_count_single_source counts canonical POIs whose ENTIRE dedup cluster
+-- (every member row, not just the canonical one) draws from exactly one
+-- distinct source_id -- a record no other feed corroborates. Built by
+-- inner-joining onto analysis.zip_coverage_check's already-filtered
+-- (year, zipcode, category) rows, so summing poi_count over source for a
+-- given (year, zipcode, category) reproduces zip_coverage_check.poi_count
+-- exactly, and a (zipcode, category) with poi_count 0 in the base table
+-- contributes no rows here (nothing to attribute). Same population >= 1,000
+-- and suppressed-cell exclusions as zip_coverage_check. VALIDATION ONLY --
+-- same caveats as zip_coverage_check; never feeds analysis.hex_gaps or
+-- analysis.hex_gaps_reach.
+CREATE TABLE IF NOT EXISTS analysis.zip_coverage_by_source (
+    year                    SMALLINT NOT NULL,
+    zipcode                 VARCHAR  NOT NULL,
+    category                VARCHAR  NOT NULL,
+    source                  VARCHAR  NOT NULL,
+    poi_count               INTEGER  NOT NULL,
+    poi_count_single_source INTEGER  NOT NULL,
+    zbp_estab               INTEGER,
+    ratio                   DOUBLE,
+    PRIMARY KEY (year, zipcode, category, source)
+);
