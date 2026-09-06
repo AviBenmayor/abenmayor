@@ -276,31 +276,11 @@
     },
     {
       "Title": "Staten Island leverage check",
-      "Description": "CONTEXT.md open question #3. Low-density and car-oriented; may act as high-leverage points in the supply model. Include, but check Cook's distance and report results with and without.",
+      "Description": "CONTEXT.md open question #3. Low-density and car-oriented; may act as high-leverage points in the supply model. Include, but check Cook's distance and report results with and without.\n\nCANCELED 2026-09-05 (CHECKPOINT D38, Linear GTM-25): hex geography retired; this is SI leverage on the hex supply model, which belongs to the abandoned E3 causal/residual program \u2014 no address-level equivalent.",
       "Status": "Backlog",
       "Priority": 4,
       "Estimate": 2,
       "Labels": "model,ingest",
-      "Project": "Loci",
-      "Milestone": "E1 \u00b7 Ingest and Grid"
-    },
-    {
-      "Title": "Fitness anchor source for the true coverage hole",
-      "Description": "QUESTIONS.md M7. The 2026-09-03 Google validation split (CHECKPOINT D29) found fitness gaps are only PARTLY a geometry artifact: after removing hexes where loci's canonical layer already had a business inside the 800m network radius but outside the validator's straight-line circle, a real true-coverage-hole rate of ~21% [95% CI 10\u201337] remains. Fitness has no anchor today \u2014 OSM/Overture/Foursquare are all general-purpose POI sources with the same undercount bias the project exists to correct for, and none is a near-census the way DOHMH is for food or SNAP is for grocery.\n\nCandidates to evaluate: a NYS business registry cut for fitness/gym SIC/NAICS codes, DOHMH (if it licenses any fitness-adjacent facility), or state gym/health-club licensing (many states require health-club registration for contract-law reasons \u2014 verify whether NY does and whether the file is bulk-accessible). Without an anchor, the fitness gap count cannot be tightened past the current wide interval.",
-      "Status": "Backlog",
-      "Priority": 2,
-      "Estimate": 3,
-      "Labels": "ingest",
-      "Project": "Loci",
-      "Milestone": "E1 \u00b7 Ingest and Grid"
-    },
-    {
-      "Title": "Re-anchor clinic to licensed urgent care",
-      "Description": "CHECKPOINT D30. The clinic gap is currently unfalsifiable by construction: `sources/universal/foursquare_places.py` deliberately excludes solo doctor's offices from the clinic category (to avoid quintupling it, per the E1 Foursquare ticket), but Google's `doctor` type includes every one of them and saturates at the API cap (median 20 results/hex) \u2014 so ANY clinic gap will show 0% true-hole rate whether or not a real gap exists, because the comparison source and loci's category never agree on what counts.\n\nFix: re-anchor clinic to licensed URGENT CARE only (NYS Article 28 facility licensing, or the DOHMH health-facility list if it carries the right granularity), which is a real, narrower, externally-verifiable category that a general practitioner's office does not satisfy. Until this lands, clinic stays excluded from headline gap claims (D30) \u2014 this ticket is what unblocks re-including it.",
-      "Status": "Backlog",
-      "Priority": 3,
-      "Estimate": 3,
-      "Labels": "ingest",
       "Project": "Loci",
       "Milestone": "E1 \u00b7 Ingest and Grid"
     },
@@ -371,6 +351,36 @@
       "Priority": 1,
       "Estimate": 5,
       "Labels": "score",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Contrarian review of demand.yaml assumed rows and the 0.80 income cutoff",
+      "Description": "CHECKPOINT D37: demand.yaml classifies each of the 15 categories as necessity/discretionary to annotate (never filter) the gap screen with a demand_caveat. Only 7 of 15 rows are paper-backed (Meltzer & Schuetz 2012); the other 8 (hardware, bank, clinic, tailor_repair, nails_beauty, hair_barber, laundry, childcare) are owner priors marked evidence:assumed, and the 0.80-of-citywide-mean-income cutoff defining income_class=low is a judgment call carried over from the paper's ZIP-level analysis without re-validation at address level.\n\nD37 requires this review before the annotation ships: demand_caveat stays a table column, NOT rendered on the map, until it passes. Scope: stress-test each assumed row, check whether the 0.80 cutoff produces sensible splits on the address-level income distribution, and check robustness under the paper's own battery (exclude Manhattan, exclude tiny units, alternate cutoffs).\n\nPushed to Linear 2026-09-05 as GTM-109.",
+      "Status": "Backlog",
+      "Priority": 2,
+      "Estimate": 3,
+      "Labels": "validation,rigor",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Port demand_caveat annotation to the address-level gap screen",
+      "Description": "CHECKPOINT D37 built demand_caveat on the hex screen (gaps.py); D38/D39 moved the geography of record to the residential address (model/address_gaps.py), which does not yet carry the annotation.\n\nScope: port median_hh_income, renter_share, income_class, demand_caveat and caveated_missing onto analysis.address_gaps rows using the same necessity/discretionary classification and 0.80-cutoff rule, and re-run the D37 set-equality test at address level. Gated the same way as the hex version: computed but not rendered until the sibling contrarian-review ticket (GTM-109) passes.\n\nNo separate 'address-level reach screen' ticket was found in Linear as of 2026-09-05 (D44 already shipped address_gaps.py on the reach rule citywide), so this is filed without a blocked-by link.\n\nPushed to Linear 2026-09-05 as GTM-110.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 3,
+      "Labels": "model",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Feed ZBP size bands into D9 and establishments-per-resident into O6",
+      "Description": "QUESTIONS D9 asks whether a count/distance gap flag misses quality gaps a size/diversity measure would catch; QUESTIONS O6 needs a category-specific minimum-viable-catchment population. D40 already built the data both need and it sits unused: analysis.zip_category_establishments carries CBP size bands per category per ZIP, and analysis.zip_establishments plus dasymetric ZIP population give establishments-per-resident directly.\n\nScope: (1) join size-band shares into D9 as a first size/diversity proxy alongside the existing Herfindahl approach; (2) compute establishments-per-resident by category and feed it into O6's minimum-viable-catchment estimate. Low priority \u2014 inputs to open research questions, not blocking any shipped deliverable.\n\nPushed to Linear 2026-09-05 as GTM-111.",
+      "Status": "Backlog",
+      "Priority": 4,
+      "Estimate": 2,
+      "Labels": "validation",
       "Project": "Loci",
       "Milestone": "E2 \u00b7 Access Engine"
     },
@@ -456,7 +466,7 @@
     },
     {
       "Title": "Quantify pre-2020 LODES allocation bias",
-      "Description": "Discovered while resolving the LODES vintage check.\n\nLODES8 puts every year on 2020 blocks, but historical years got there by ALLOCATION, not observation: when a 2010 block splits, each job is assigned to a child block at random with probability proportional to AREA share. Census: 'the allocation is a statistical process and may not result in a distribution of jobs that exactly matches the areal distribution.'\n\nArea-proportional is a poor assumption in NYC \u2014 a block splitting into a park half and a commercial half spreads jobs by area, putting employment in the park.\n\nThis is BIAS, not noise: the error concentrates where blocks were split, blocks split where development happened, and development is the outcome variable.\n\nSize the exposure, test whether H3 res-9 aggregation actually absorbs it, and if not restrict the strongest claims to 2020+ observed data. CONTEXT.md threat 7.4(b).",
+      "Description": "Discovered while resolving the LODES vintage check.\n\nLODES8 puts every year on 2020 blocks, but historical years got there by ALLOCATION, not observation: when a 2010 block splits, each job is assigned to a child block at random with probability proportional to AREA share. Census: 'the allocation is a statistical process and may not result in a distribution of jobs that exactly matches the areal distribution.'\n\nArea-proportional is a poor assumption in NYC \u2014 a block splitting into a park half and a commercial half spreads jobs by area, putting employment in the park.\n\nThis is BIAS, not noise: the error concentrates where blocks were split, blocks split where development happened, and development is the outcome variable.\n\nSize the exposure, test whether H3 res-9 aggregation actually absorbs it, and if not restrict the strongest claims to 2020+ observed data. CONTEXT.md threat 7.4(b).\n\nCANCELED 2026-09-05 (CHECKPOINT D38, Linear GTM-63): hex geography retired; sizes bias in the pre-2020 LODES panel built for the E3 causal/growth chain, which already ran and returned its rejected result \u2014 no address-level equivalent.",
       "Status": "Backlog",
       "Priority": 2,
       "Estimate": 5,
@@ -466,7 +476,7 @@
     },
     {
       "Title": "Validate LODES 2023 against establishment counts",
-      "Description": "Correlate the 2023 LODES cross-section against 2023 DOHMH/DCWP establishment counts per hex. Report the correlation.\n\nThis is what licenses the jobs\u2192establishments proxy. Without it the whole panel rests on an unexamined assumption.",
+      "Description": "Correlate the 2023 LODES cross-section against 2023 DOHMH/DCWP establishment counts per hex. Report the correlation.\n\nThis is what licenses the jobs\u2192establishments proxy. Without it the whole panel rests on an unexamined assumption.\n\nCANCELED 2026-09-05 (CHECKPOINT D38, Linear GTM-38): hex geography retired; validates the LODES panel for the abandoned E3 causal chain \u2014 D40's ZBP comparison now serves this role directly.",
       "Status": "Backlog",
       "Priority": 2,
       "Estimate": 3,
@@ -476,7 +486,7 @@
     },
     {
       "Title": "Assemble outcome variables",
-      "Description": "\u0394log population, \u0394log households (ACS); \u0394log ZORI (Zillow, ZIP\u2192hex); permitted residential units (DOB/HPD).\n\nZIP\u2192hex crosswalk by population weighting \u2014 CONTEXT.md open question #4. Label rent as the weakest of the four outcomes in the memo and mean it.",
+      "Description": "\u0394log population, \u0394log households (ACS); \u0394log ZORI (Zillow, ZIP\u2192hex); permitted residential units (DOB/HPD).\n\nZIP\u2192hex crosswalk by population weighting \u2014 CONTEXT.md open question #4. Label rent as the weakest of the four outcomes in the memo and mean it.\n\nCANCELED 2026-09-05 (CHECKPOINT D38, Linear GTM-39): hex geography retired; these outcomes fed the E3 growth regression (GTM-40), which already ran and returned the rejected null \u2014 no address-level equivalent.",
       "Status": "Backlog",
       "Priority": 2,
       "Estimate": 5,
@@ -516,7 +526,7 @@
     },
     {
       "Title": "MAUP sweep at res 8 and res 10",
-      "Description": "Re-run the whole chain at two other resolutions; report coefficient stability. If conclusions flip with grid size, say so plainly (threat \u00a77.3).",
+      "Description": "Re-run the whole chain at two other resolutions; report coefficient stability. If conclusions flip with grid size, say so plainly (threat \u00a77.3).\n\nCANCELED 2026-09-05 (CHECKPOINT D38, Linear GTM-43): hex geography retired; a hex-resolution MAUP re-gridding sweep has no address-level analogue.",
       "Status": "Backlog",
       "Priority": 2,
       "Estimate": 3,
@@ -526,7 +536,7 @@
     },
     {
       "Title": "Tier-weight sensitivity analysis",
-      "Description": "Tier weights (0.40/0.20/0.25/0.15) are judgment, not derived. Sweep plausible alternatives and report whether the top-20 list is stable under reweighting. CONTEXT.md open question #1.",
+      "Description": "Tier weights (0.40/0.20/0.25/0.15) are judgment, not derived. Sweep plausible alternatives and report whether the top-20 list is stable under reweighting. CONTEXT.md open question #1.\n\nCANCELED 2026-09-05 (CHECKPOINT D38, Linear GTM-44): hex geography retired; sweeps hex DNCI/supply-model tier weights feeding the abandoned E3 residual \u2014 no address-level equivalent.",
       "Status": "Backlog",
       "Priority": 3,
       "Estimate": 3,
@@ -556,7 +566,7 @@
     },
     {
       "Title": "Residual convergence test",
-      "Description": "QUESTIONS.md T5 \u2014 does the gap close on its own?\n\nOver 2002\u20132023, do hexes with a negative residual at t converge toward their peers by t+k (retail employment growth regressed on the lagged residual, borough FE)?\n\nWhy it matters: if the market already corrects undersupply, the opportunity is TIMING, not location \u2014 a different product and a different memo. Cheap once the LODES panel exists; pull forward if W3 has slack, otherwise it slides to Phase 5.",
+      "Description": "QUESTIONS.md T5 \u2014 does the gap close on its own?\n\nOver 2002\u20132023, do hexes with a negative residual at t converge toward their peers by t+k (retail employment growth regressed on the lagged residual, borough FE)?\n\nWhy it matters: if the market already corrects undersupply, the opportunity is TIMING, not location \u2014 a different product and a different memo. Cheap once the LODES panel exists; pull forward if W3 has slack, otherwise it slides to Phase 5.\n\nCANCELED 2026-09-05 (CHECKPOINT D38, Linear GTM-64): hex geography retired; belongs to the closed E3 causal program \u2014 no address-level equivalent.",
       "Status": "Backlog",
       "Priority": 4,
       "Estimate": 3,
@@ -566,7 +576,7 @@
     },
     {
       "Title": "Retail lead/lag timing test",
-      "Description": "QUESTIONS.md T6 \u2014 does retail lead or lag rooftops?\n\nCross-correlate annual per-hex changes in LODES retail employment with changes in population at leads and lags of 1\u20135 years.\n\nWhy it matters: 'retail follows rooftops' is the assumption the whole residual design rests on (D1). This is the one place it gets tested rather than asserted.\n\nCAVEATS to state: ACS 5-year smoothing limits timing resolution to roughly half-decades; LODES counts jobs, not storefronts (M2).",
+      "Description": "QUESTIONS.md T6 \u2014 does retail lead or lag rooftops?\n\nCross-correlate annual per-hex changes in LODES retail employment with changes in population at leads and lags of 1\u20135 years.\n\nWhy it matters: 'retail follows rooftops' is the assumption the whole residual design rests on (D1). This is the one place it gets tested rather than asserted.\n\nCAVEATS to state: ACS 5-year smoothing limits timing resolution to roughly half-decades; LODES counts jobs, not storefronts (M2).\n\nCANCELED 2026-09-05 (CHECKPOINT D38, Linear GTM-65): hex geography retired; tests the D1 assumption underlying the abandoned hex residual design \u2014 no address-level equivalent.",
       "Status": "Backlog",
       "Priority": 4,
       "Estimate": 3,
@@ -576,7 +586,7 @@
     },
     {
       "Title": "SHIP W3: empirical result + top-20",
-      "Description": "Week-3 exit criterion.",
+      "Description": "Week-3 exit criterion.\n\nCANCELED 2026-09-05 (CHECKPOINT D38, Linear GTM-46): hex geography retired; ships the E3 hex residual coefficient and top-20, retained only as honest negative science, not the product. The address-level ranked list is a separate, already-shipped deliverable (D44).",
       "Status": "Backlog",
       "Priority": 2,
       "Estimate": 2,
@@ -595,8 +605,8 @@
       "Milestone": "E4 \u00b7 Validation and Artifact"
     },
     {
-      "Title": "Run Google Places ground-truth enumeration",
-      "Description": "Enumerate ground truth for the sampled hexes. Fields: id/name/location/types ONLY \u2014 anything more reprices the SKU.\n\nEnforce the call budget in code. Populate analysis.coverage_validation.",
+      "Title": "Run Google Places ground-truth enumeration on sampled gap addresses",
+      "Description": "Enumerate ground truth for a stratified sample of gap addresses/clusters from analysis.address_gaps (stratify by income_class and borough per QUESTIONS M1/D37). Fields: id/name/location/types ONLY \u2014 anything more reprices the SKU.\n\nEnforce the call budget in code. Populate analysis.coverage_validation keyed to addresses/clusters, not hexes.\n\nReframed 2026-09-05 per CHECKPOINT D38 (address-level geography). Linear GTM-48.",
       "Status": "Backlog",
       "Priority": 1,
       "Estimate": 5,
@@ -605,8 +615,8 @@
       "Milestone": "E4 \u00b7 Validation and Artifact"
     },
     {
-      "Title": "DOHMH-anchored undercount calibration",
-      "Description": "Within the food tier the true count is effectively known (DOHMH is a near-census). Measure OSM/Overture discrepancy vs DOHMH per hex, then use that curve to estimate expected undercount in the other tiers where no census exists.\n\nThis is the strongest available mitigation and it costs nothing extra.",
+      "Title": "DOHMH-anchored undercount calibration (address level)",
+      "Description": "Within the food tier the true count is effectively known (DOHMH is a near-census). Measure OSM/Overture discrepancy vs DOHMH per address (or address cluster), then use that curve to estimate expected undercount in the other tiers where no census exists.\n\nThis is the strongest available mitigation and it costs nothing extra.\n\nReframed 2026-09-05 per CHECKPOINT D38 (address-level geography). Linear GTM-49.",
       "Status": "Backlog",
       "Priority": 1,
       "Estimate": 5,
@@ -616,7 +626,7 @@
     },
     {
       "Title": "Coverage-bias chart",
-      "Description": "Undercount rate by income decile. NOT an appendix item.\n\nIf the finding survives this chart, the chart is the most persuasive artifact in the set. If it doesn't, this chart is how the project learns that honestly rather than shipping a bias as a finding.",
+      "Description": "Undercount rate by income decile, computed over addresses (income_class/median_hh_income already carried per address per D37). NOT an appendix item.\n\nIf the finding survives this chart, the chart is the most persuasive artifact in the set. If it doesn't, this chart is how the project learns that honestly rather than shipping a bias as a finding.\n\nReframed 2026-09-05 per CHECKPOINT D38 (address-level geography). Linear GTM-50.",
       "Status": "Backlog",
       "Priority": 1,
       "Estimate": 2,
@@ -626,10 +636,40 @@
     },
     {
       "Title": "Google type-map audit per category",
-      "Description": "QUESTIONS.md M6, CHECKPOINT D29. The 2026-09-03 Google validation run showed raw survival rates (hardware 58%, fitness 29%, clinic 0%) were mostly measuring how much WIDER or NARROWER Google's included type is than loci's category definition, not measuring coverage \u2014 a cheap verification that would have de-risked the whole $-budgeted run if done first.\n\nKnown so far, by inspection only: hardware NARROWER (Google's hardware_store type excludes home_improvement_store, so 58% survival is an upper bound on the true hole, not the hole itself); fitness WIDER (gym/fitness_center sweeps in hotel/building gyms loci's bundle excludes); clinic MAXIMALLY wider (Google's doctor type includes every solo physician practice, which loci deliberately excludes \u2014 see the clinic re-anchor ticket).\n\nFor each of the 15 daily-needs categories (not just the three already sampled), enumerate the exact Google includedTypes used and compare against loci's category definition (registry.yaml + each adapter's category map) \u2014 narrower, wider, or aligned. Any survival rate for a category not yet audited this way should be treated as uninterpretable. Urgent: this is the cheap check that determines whether every future Google validation dollar buys a real answer.",
+      "Description": "QUESTIONS.md M6, CHECKPOINT D29. The 2026-09-03 Google validation run showed raw survival rates (hardware 58%, fitness 29%, clinic 0%) were mostly measuring how much WIDER or NARROWER Google's included type is than loci's category definition, not measuring coverage \u2014 a cheap verification that would have de-risked the whole $-budgeted run if done first.\n\nKnown so far, by inspection only: hardware NARROWER (Google's hardware_store type excludes home_improvement_store, so 58% survival is an upper bound on the true hole, not the hole itself); fitness WIDER (gym/fitness_center sweeps in hotel/building gyms loci's bundle excludes); clinic MAXIMALLY wider (Google's doctor type includes every solo physician practice, which loci deliberately excludes \u2014 see the clinic re-anchor ticket).\n\nFor each of the 15 daily-needs categories (not just the three already sampled), enumerate the exact Google includedTypes used and compare against loci's category definition (registry.yaml + each adapter's category map) \u2014 narrower, wider, or aligned. Any survival rate for a category not yet audited this way should be treated as uninterpretable. Urgent: this is the cheap check that determines whether every future Google validation dollar buys a real answer.\n\nPushed to Linear 2026-09-05 as GTM-105 (High priority).",
       "Status": "Backlog",
       "Priority": 1,
       "Estimate": 3,
+      "Labels": "validation,critical",
+      "Project": "Loci",
+      "Milestone": "E4 \u00b7 Validation and Artifact"
+    },
+    {
+      "Title": "Fitness anchor source for the ~20% true coverage hole",
+      "Description": "QUESTIONS.md M7. D29 found a real ~21% [95% CI 10\u201337] true-coverage-hole rate for fitness after removing the geometry artifact (loci's canonical layer already had a business inside the 800m network radius but outside the validator's straight-line circle). Fitness has no anchor today \u2014 OSM/Overture/Foursquare are all general-purpose POI sources carrying the same undercount bias the project exists to correct for, and none is a near-census the way DOHMH is for food or SNAP is for grocery. D37 already flags fitness as the category most weakened by the demand_caveat (42% of window-rule fitness gaps sit in low-income hexes where gyms plausibly follow income, not supply gaps).\n\nCandidates to evaluate: a NYS business registry cut for fitness/gym SIC/NAICS codes, DOHMH (if it licenses any fitness-adjacent facility), or state gym/health-club contract-law registration (verify whether NY requires it and whether the file is bulk-accessible).\n\nMoved from E1 to E4 and pushed to Linear 2026-09-05 as GTM-106.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 3,
+      "Labels": "validation,ingest",
+      "Project": "Loci",
+      "Milestone": "E4 \u00b7 Validation and Artifact"
+    },
+    {
+      "Title": "Clinic re-anchor to licensed urgent care",
+      "Description": "CHECKPOINT D30. The clinic gap is currently unfalsifiable by construction: `sources/universal/foursquare_places.py` deliberately excludes solo doctor's offices from the clinic category, but Google's `doctor` type includes every one of them and saturates at the API cap (median 20 results/hex) \u2014 so ANY clinic gap will show 0% true-hole rate whether or not a real gap exists.\n\nFix: re-anchor clinic to licensed URGENT CARE only (NYS Article 28 facility licensing, or the DOHMH health-facility list). Until this lands, clinic stays excluded from headline gap claims (D30) \u2014 this ticket is what unblocks re-including it.\n\nMoved from E1 to E4 and pushed to Linear 2026-09-05 as GTM-107.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 3,
+      "Labels": "validation,ingest",
+      "Project": "Loci",
+      "Milestone": "E4 \u00b7 Validation and Artifact"
+    },
+    {
+      "Title": "ZBP per-source overcount attribution",
+      "Description": "CHECKPOINT D40 / QUESTIONS M9. Loci POI counts exceed ZBP establishment counts by a median 2-8x in most categories, concentrated in license-registry-anchored categories (restaurant 3.2x, cafe 3.5x, hair 2.8x, nails 8.0x, bar 6.0x) plus fitness 5.9x, while OSM/Overture-only categories sit near 1 (childcare 0.85, clinic 0.95, laundry 1.3, pharmacy 1.5). Every revealed-spacing reach value in a suspect category is biased tight because it is computed against an inflated denominator.\n\nScope: (1) rerun `loci zbp-compare` split by source (DOHMH / NYS DOS / NYS SLA / OSM / Overture) to attribute which feed drives each category's overcount; (2) decide whether SLA and NYS DOS anchors need an active-license filter like DOHMH's; (3) add ZCTA polygons for a proper POI\u2192ZIP join, replacing the current majority-vote hex\u2192ZIP crosswalk. High priority: conditions the D41 reach calibration in the affected categories.\n\nPushed to Linear 2026-09-05 as GTM-108.",
+      "Status": "Backlog",
+      "Priority": 2,
+      "Estimate": 5,
       "Labels": "validation,critical",
       "Project": "Loci",
       "Milestone": "E4 \u00b7 Validation and Artifact"
@@ -646,7 +686,7 @@
     },
     {
       "Title": "PMTiles export + MapLibre map",
-      "Description": "H3 choropleth, static hosting, no server. Layer toggle between DNCI (sequential) and residual (DIVERGING \u2014 zero is a real midpoint, not an arbitrary one).\n\nLoad the `dataviz` skill before writing chart code.",
+      "Description": "H3 choropleth, static hosting, no server. Layer toggle between DNCI (sequential) and residual (DIVERGING \u2014 zero is a real midpoint, not an arbitrary one).\n\nLoad the `dataviz` skill before writing chart code.\n\nCANCELED 2026-09-05 (CHECKPOINT D38, Linear GTM-51): hex geography retired; PMTiles tiles the H3 grid by construction \u2014 no address-level equivalent.",
       "Status": "Backlog",
       "Priority": 2,
       "Estimate": 5,
@@ -656,7 +696,7 @@
     },
     {
       "Title": "Bivariate transit \u00d7 residual map",
-      "Description": "3\u00d73 bivariate palette. This is the map that states the thesis in one image: where transit-rich and underserved overlap.",
+      "Description": "3\u00d73 bivariate palette. This is the map that states the thesis in one image: where transit-rich and underserved overlap.\n\nCANCELED 2026-09-05 (CHECKPOINT D38, Linear GTM-52): hex geography retired; maps the abandoned E3 hex residual against transit, and D37 separately found transit must NOT be used as an expected-supply covariate.",
       "Status": "Backlog",
       "Priority": 2,
       "Estimate": 3,
@@ -665,8 +705,8 @@
       "Milestone": "E4 \u00b7 Validation and Artifact"
     },
     {
-      "Title": "Per-category radar small multiples",
-      "Description": "15-spoke radar per top-20 hex. Answers 'what specifically is missing here \u2014 grocery, or salons?' Turns a score into an actionable observation.",
+      "Title": "Per-category radar small multiples for top gap clusters",
+      "Description": "15-spoke radar per top address-level gap cluster (analysis.address_gaps clustering, D44). Answers 'what specifically is missing here \u2014 grocery, or salons?' Turns a score into an actionable observation.\n\nReframed 2026-09-05 per CHECKPOINT D38 (address-level geography). Linear GTM-53.",
       "Status": "Backlog",
       "Priority": 3,
       "Estimate": 3,
@@ -676,7 +716,7 @@
     },
     {
       "Title": "Scatter: residual@t0 vs growth t0\u2192t1",
-      "Description": "Fitted line + CI, borough-colored. The visual statement of P2.",
+      "Description": "Fitted line + CI, borough-colored. The visual statement of P2.\n\nCANCELED 2026-09-05 (CHECKPOINT D38, Linear GTM-54): hex geography retired; visual statement of P2, the causal growth thesis already empirically REJECTED \u2014 no address-level equivalent.",
       "Status": "Backlog",
       "Priority": 2,
       "Estimate": 2,
@@ -686,7 +726,7 @@
     },
     {
       "Title": "4\u20136 neighborhood evidence cards",
-      "Description": "Narrative + inset map per selected hex cluster. Does the mechanism look real on the ground? This is what converts a coefficient into something a reader believes.",
+      "Description": "Narrative + inset map per selected address-level gap cluster (analysis.address_gaps clustering, D44). Does the mechanism look real on the ground? This is what converts a score into something a reader believes.\n\nReframed 2026-09-05 per CHECKPOINT D38 (address-level geography). Linear GTM-55.",
       "Status": "Backlog",
       "Priority": 2,
       "Estimate": 5,
@@ -906,7 +946,7 @@
     },
     {
       "Title": "Bridge to the product: forward-looking demand for Axes 1 & 3",
-      "Description": "Close the loop WITHOUT reviving D1. Take the projected 2033 demand surface (population/income/education by scenario) and re-score the Axis-1 investability gaps and Axis-3 premium sites against it, so a site that is marginal on today's demand but sits in a neighborhood projected to mature by ~2030 becomes visible as a forward bet.\n\nGuardrail, stated in code and memo: retail is the DEPENDENT variable of the projection (projected rooftops/income drive projected demand), never the predictor of growth. The moment a retail gap is used to predict neighborhood growth, this has become the rejected thesis again.",
+      "Description": "Close the loop WITHOUT reviving D1. Take the projected 2033 demand surface (population/income/education by scenario) and re-score the Axis-1 investability leads (from analysis.address_gaps, address-level per D38) and Axis-3 premium sites against it, so an address that is marginal on today's demand but sits in a neighborhood projected to mature by ~2030 becomes visible as a forward bet.\n\nGuardrail, stated in code and memo: retail is the DEPENDENT variable of the projection (projected rooftops/income drive projected demand), never the predictor of growth. The moment a retail gap is used to predict neighborhood growth, this has become the rejected thesis again.\n\nReframed 2026-09-05 per CHECKPOINT D38 (address-level geography). Linear GTM-83.",
       "Status": "Backlog",
       "Priority": 3,
       "Estimate": 5,
@@ -946,9 +986,19 @@
     },
     {
       "Title": "Verify the universal layer actually runs outside NYC",
-      "Description": "Per the CLAUDE.md habit 'verify before committing to a dependency': prove the universal core runs on a non-NYC bbox BEFORE designing the multi-city screen around the claim that it does. Pull a small Overture + OSM + OSMnx-walk-graph extract for one foreign bbox (a few km\u00b2 of central London or Paris) and confirm: the Overture category map still resolves, the walk graph builds, and the H3 grid clips. Record which of the 15 daily-needs categories lose their anchor once DOHMH/SNAP/SLA/DCWP are gone \u2014 that gap IS the coverage warning the second city ships with (see the E5 second-city ticket). Cheap, and it de-risks the whole milestone.",
+      "Description": "Per the CLAUDE.md habit 'verify before committing to a dependency': prove the universal core runs on a non-NYC bbox BEFORE designing the multi-city screen around the claim that it does. Pull a small Overture + OSM + OSMnx-walk-graph extract for one foreign bbox (a few km\u00b2 of central London or Paris) and confirm: the Overture category map still resolves, the walk graph builds, and the H3 grid clips. Record which of the 15 daily-needs categories lose their anchor once DOHMH/SNAP/SLA/DCWP are gone \u2014 that gap IS the coverage warning the second city ships with (see the E5 second-city ticket). Cheap, and it de-risks the whole milestone.\n\nDONE 2026-09-05 (CHECKPOINT D45, Linear GTM-89) \u2014 verified on a central London bbox with real Overture/Overpass/OSMnx calls. PASS: category mapping, dedup, walk graph (all ran unmodified). PASS-with-monkeypatch: Overture/Overpass adapters (BBOX/CACHE_PATH are module constants). NOT RUNNABLE: grid/build.py hard-requires nyc_nta2020.geojson + EPSG:2263. Anchor loss: 7 of 15 categories (restaurant, cafe_bakery, bar, hair_barber, nails_beauty, grocery, convenience) lose their near-census anchor outside NYC. Verdict: partially universal, fixes are constant-level not logic-level \u2014 see the follow-up ticket below.",
       "Status": "Backlog",
       "Priority": 2,
+      "Estimate": 3,
+      "Labels": "infra",
+      "Project": "Loci",
+      "Milestone": "E8 \u00b7 Second-City Feasibility"
+    },
+    {
+      "Title": "Parameterize the universal layer by city (GTM-89 findings)",
+      "Description": "GTM-89's second-city dry run found the universal layer is universal in LOGIC but NYC-hardcoded in CONSTANTS. None of the findings are algorithmic blockers \u2014 they are places an NYC default was written as a module constant instead of a parameter.\n\nChecklist (from GTM-89, CHECKPOINT D45): sources/universal/overture_places.py BBOX/CACHE_PATH \u2192 constructor args; sources/universal/osm_overpass.py BBOX \u2192 constructor arg; sources/universal/foursquare_places.py same; grid/build.py build_grid(con, boundary_path, proj_epsg, res) with NYC defaults gated behind city='nyc'; grid/build.py borough/nta_code \u2192 generic region_label/subregion_code so model/conveniences.py and model/address_gaps.py stop requiring NYC vocabulary; score/dedup.py source_rank() takes an injectable per-city anchor map.\n\nParked 2026-09-05 \u2014 owner decision: NYC focus for the foreseeable future (CHECKPOINT D46). Do not schedule.\n\nPushed to Linear 2026-09-05 as GTM-104 (Low priority, not blocking).",
+      "Status": "Backlog",
+      "Priority": 4,
       "Estimate": 3,
       "Labels": "infra",
       "Project": "Loci",

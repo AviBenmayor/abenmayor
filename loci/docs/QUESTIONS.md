@@ -42,7 +42,7 @@ claim stands on.
 ### M1 — Is the measured retail gap real, or a POI-coverage artifact?
 - **Status:** in-progress
 - **Prediction:** P3
-- **Answered by:** `Design stratified coverage validation sample` · `Run Google Places ground-truth enumeration` · `DOHMH-anchored undercount calibration` · `Coverage-bias chart` · `USDA SNAP retailer adapter (ANCHOR for grocery/convenience)`
+- **Answered by:** `Design stratified coverage validation sample` · `Run Google Places ground-truth enumeration on sampled gap addresses` · `DOHMH-anchored undercount calibration (address level)` · `Coverage-bias chart` · `USDA SNAP retailer adapter (ANCHOR for grocery/convenience)`
 - **Fails if:** the undercount rate by income decile is materially higher in hexes flagged as underserved than in their well-served peers.
 - **Current answer:** Partly, and badly, for at least one category. 2026-09-02: adding the SNAP near-census cut bodega/convenience gap hexes from **166 to 16** — 90% of that gap type was an OSM/Overture coverage hole, not a missing business. Hardware, fitness and clinic gaps (the current top three) still rest on OSM/Overture only; the Google sample (`loci validate`) is aimed at those next. **2026-09-03 (CHECKPOINT D29/D30):** the raw Google survival rates (hardware 58%, fitness 29%, clinic 0%) turned out to measure the Google type map, not coverage — split each result into geometry-artifact vs true coverage hole. Corrected true-hole rates: hardware 5% [2–12] (not disproven — Google's type is an upper bound), fitness 21% [10–37] (real hole, needs an anchor, M7), clinic 0% [0–15] but unfalsifiable by construction (loci excludes doctor's offices, Google doesn't) — clinic dropped from headline claims pending a re-anchor to licensed urgent care (D30).
 
@@ -84,7 +84,7 @@ claim stands on.
 ### M7 — What anchor source would establish a true fitness coverage hole?
 - **Status:** open
 - **Prediction:** —
-- **Answered by:** `Fitness anchor source for the true coverage hole`
+- **Answered by:** `Fitness anchor source for the ~20% true coverage hole`
 - **Fails if:** n/a — measurement/sourcing question. Needed because D29 found a real ~21% [10–37] true-coverage-hole rate for fitness after removing geometry artifacts, and OSM/Overture/Foursquare are the only sources feeding that category today — none is a near-census the way DOHMH is for food or SNAP is for grocery.
 - **Current answer:** Open. Candidates to evaluate: NYS business registry, DOHMH (if it licenses fitness facilities), state gym/health-club licensing. None yet verified for NYC coverage or access.
 
@@ -114,7 +114,7 @@ claim stands on.
 ### D2 — Which category drives the gap?
 - **Status:** open
 - **Prediction:** —
-- **Answered by:** `DNCI: weighted geometric mean + unit tests` · `Per-category radar small multiples`
+- **Answered by:** `DNCI: weighted geometric mean + unit tests` · `Per-category radar small multiples for top gap clusters`
 - **Fails if:** n/a — descriptive. The question: in low-DNCI hexes, is the missing piece essentials (grocery, pharmacy, laundry) or food & gathering, and does gap composition cluster into recognisable types? Changes what an "opportunity" means.
 - **Current answer:** —
 
