@@ -1144,7 +1144,7 @@ Ran in parallel with the session-7 work; it did not touch the model, the map, or
 3. Contrarian review of `demand.yaml` — the eight `assumed` rows (esp. hardware/bank/clinic as necessity, tailor/nails as discretionary) and the 0.80 cutoff; until it passes, `demand_caveat` stays a table column and is NOT rendered on the map.
 4. Re-export webmap JSON with income_class/demand_caveat once (3) passes, and re-tabulate the banner's top-gap-type counts at 726 hexes.
 5. Confirm the conveniences write path: `loci conveniences --borough MN --limit 200` (non-dry) — run started 2026-09-05, result in Session 10 log.
-6. Filter the DOHMH adapter to active establishments and reconcile score/dedup.py MATCH_METERS
+6. Extend the DOHMH adapter to fetch inspection/grade dates (and nys_dos.py the license_expiration_date) into attrs, THEN filter to active establishments (D36; D47 found no date field is fetched today, so staleness cannot be measured yet) and reconcile score/dedup.py MATCH_METERS
    (40 m) with its docstring (25 m) — D36. Re-run dedup and the reach table afterwards.
 7. Google type-map audit per category (QUESTIONS M6) — required before any further validation
    run is interpretable.
