@@ -952,6 +952,13 @@ Why: `loci zbp-compare --by-source` (GTM-108) split M9's ratios by the canonical
   clustering, CLI and tests.
 - Owner asked what the free market dictates in complete Manhattan areas; answered (D43, docs/market_reach_manhattan.md): every category's p80 is 14–59% of the adopted reach; density-class reach (D7) is the follow-up.
 - Address screen ported and run citywide (D44): 767k addresses scored into analysis.address_gaps; tailor/laundry dominate leads; lead-viability rule is next. 93/94 tests.
+- Comps collection (owner-approved browser session, human pace, BizQuest): 59 listings across 14
+  categories (restaurant 8, laundry 6, cafe/grocery/convenience/pharmacy 5 each, bar/hair/fitness/
+  childcare 4, nails/hardware 3, clinic 2, tailor 1, bank 0 — branches are not sold there). Fill rates:
+  gross_revenue 70%, rent 59%, sqft 58%, cash_flow_sde 14% (hidden behind sign-in on most listings).
+  Two agents stalled on browser tool calls; the second run added 10 rows. Log:
+  data/benchmarks/collection_log_2026-09-05.md. Only restaurant meets benchmarks.yaml's >=8-row bar;
+  the cash-flow-based rent tiers in comps.py will mostly fall through to the occupancy-ratio fallback.
 
 ### 2026-09-05 — Session 12: NAICS 2022 adopted as the category anchor (D42)
 
