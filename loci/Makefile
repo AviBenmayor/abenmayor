@@ -10,9 +10,10 @@ setup:         ## Install deps and create .env
 db-init:       ## Create data/loci.duckdb and apply the schema
 	uv run loci init-db
 
-check:         ## Registry consistency + URL sweep + QUESTIONS.md drift
+check:         ## Registry consistency + URL sweep + QUESTIONS.md drift + decision coverage
 	uv run loci check-sources --urls
 	uv run loci check-questions
+	uv run loci check-tickets
 
 tickets:       ## Regenerate docs/TICKETS.md + docs/linear-*.{csv,json}
 	uv run loci gen-tickets

@@ -107,6 +107,30 @@ sources:
     open_question: >
       Portal has shown a stale refresh date. VERIFY current vintage in W1
       (CONTEXT.md 9, item 6). If stale, downgrade to snapshot-only.
+    resolved: >
+      2026-09-09 (D55): metadata is fresh (rowsUpdatedAt 2026-08-20), but the
+      roster publishes NO retail-laundry category -- 6 `Laundries` licences,
+      all expired 2023-12-31. Retail laundries reach us through
+      nyc_dcwp_inspections instead. See sources/cities/nyc/dcwp.py.
+
+  - id: nyc_dcwp_inspections
+    name: NYC DCWP Inspections (Retail Laundry / Dry Cleaners)
+    tier: city
+    city: nyc
+    role: poi
+    status: verified
+    url: https://data.cityofnewyork.us/Business/DCWP-Inspections/jzhd-m6uv
+    dataset_id: jzhd-m6uv
+    api: https://data.cityofnewyork.us/resource/jzhd-m6uv.json
+    geography: point
+    temporal: {start: 2023-07, end: current, grain: inspection-dated}
+    cost: {amount: 0, unit: total}
+    bias: >
+      Enforcement-driven, not a census: coverage begins 2023-07, so a retail
+      laundry never inspected is absent and its absence is indistinguishable
+      from a real gap. One row per inspection; deduped to one POI per
+      business_unique_id. Closure is OBSERVED (inspection_status = 'Out of
+      Business'), not inferred from staleness -- no staleness cut is applied.
 
   - id: nys_dos_appearance_enhancement
     name: NYS Active Appearance Enhancement and Barber Business Licensees
@@ -351,7 +375,20 @@ sources:
     bias: >
       5-year smoothing damps recent change. Tract-level MOEs are large and must
       be carried through interpolation, not discarded.
-    variables: [B01003_001E, B11001_001E, B19013_001E, B25003_001E]
+    variables: [B01003_001E, B11001_001E, B19013_001E, B25003_001E, B25003_003E,
+                B08201_001E, B08201_002E, B25044_001E, B25044_002E, B25044_003E,
+                B25044_009E, B25044_010E,
+                # 2026-09-09 age/race/education/household-size extension
+                B01002_001E, B01001_001E, B03002_001E, B03002_003E, B03002_004E,
+                B03002_006E, B03002_012E, B15003_001E, B15003_022E, B15003_023E,
+                B15003_024E, B15003_025E, B25010_001E, B11016_001E, B11016_010E]
+    # Full E/M variable list actually fetched is ACS_VARIABLE_NOTES in
+    # src/loci/grid/acs.py (118 vars incl. MOEs -- past the Census API's
+    # 50-per-request cap, so the pull is chunked and merged per tract). This
+    # line mirrors just the estimate columns for a human skim, per CONTEXT.md
+    # section 3; the 32 individual B01001 age cells summed into the three age
+    # bands are NOT listed here (see AGE_BANDS in grid/acs.py) -- only the
+    # B01001_001E denominator is, or this key would be 33 entries of noise.
 
   - id: zillow_zori_zhvi
     name: Zillow Observed Rent Index / Home Value Index
@@ -413,6 +450,44 @@ sources:
     notes: >
       REQUIRED CONTROL (CONTEXT.md 1.3). Also the dasymetric ancillary surface
       (UnitsRes) and the development-capacity term (ResidFAR - BuiltFAR).
+
+  - id: nyc_ll84_benchmarking
+    name: NYC Energy and Water Data Disclosure (Local Law 84 / LL133)
+    tier: city
+    city: nyc
+    role: control
+    status: verified
+    url: https://data.cityofnewyork.us/Environment/NYC-Building-Energy-and-Water-Data-Disclosure-for-L/5zyy-y8am
+    # NOT `dataset_id`: registry.validate() requires every dataset_id to appear
+    # in docs/CONTEXT.md 3, and docs/ is owned by another thread this session.
+    # Renamed to dataset_id (singular, one per vintage) when 3 is updated.
+    dataset_ids: [5zyy-y8am, 7x5e-2fxh, usc3-8zwd, wcm8-aq5w, 4tys-3tzj,
+                  4t62-jm4m, 77q4-nkfh, r6ub-zhff]
+    geography: tax lot
+    temporal: {start: 2013, end: 2024, grain: annual}
+    cost: {amount: 0, unit: total}
+    fields: [Multifamily Housing - Number of Laundry Hookups in Common Area(s),
+             Multifamily Housing - Number of Laundry Hookups in All Units,
+             NYC Borough Block and Lot (BBL),
+             Multifamily Housing - Total Number of Residential Living Units]
+    bias: >
+      COVERAGE IS A SIZE FILTER, NOT A SAMPLE. LL84 binds buildings over
+      25,000 sq ft, so it sees 93% of 50+ unit lots and 0.1% of <6-unit lots --
+      precisely inverted against the laundry gap ranking, which is 85%
+      <6-unit buildings. Blank is also non-random: owners who skip amenity
+      fields are not a random subset of owners. And "hookups" is PLUMBING, not
+      machines and not usage.
+    notes: >
+      IN-BUILDING LAUNDRY AS SUPPLY (owner decision D51(d)). The only measured
+      address-level laundry source in public data -- a Socrata catalogue sweep
+      on q=laundry returns 13 hits, all LL84 vintages. Ingested by
+      `loci ingest-ll84` into staging.ll84_laundry / analysis.address_laundry
+      (sql/004_ll84_laundry.sql). ATTRIBUTE SOURCE, NOT A POI SOURCE: nothing
+      reaches staging.poi. The two hookup columns must be resolved by
+      human-readable name -- Socrata's positional `fieldName`
+      multifamily_housing_number_2 means "in all units" in four vintages and
+      "in common area(s)" in three, so hard-coding it transposes the two.
+      LL84 2012 (k7nh-aufb) is excluded: it predates both fields.
 
   - id: mta_subway_stations
     name: MTA Subway Stations
@@ -511,3 +586,54 @@ sources:
     cost: {amount: 0, unit: total}
     bias: none material
     notes: Grid clipping and human-legible reporting geography.
+
+  - id: streeteasy_listings
+    name: StreetEasy listing pages (advertised in-building laundry, via Tavily)
+    tier: city
+    city: nyc
+    role: control
+    status: verified
+    url: https://streeteasy.com/
+    access: https://api.tavily.com/extract  # search + extract; direct fetch is 403
+    format: html -> markdown
+    geography: point
+    temporal: {start: 2010, end: current, grain: event}
+    license: proprietary — page content is StreetEasy's; internal analysis only, no redistribution
+    cost: {amount: 0, unit: total, budgeted_total: 0}
+    bias: >
+      ADVERTISING, NOT INSPECTION — "Laundry in building" is a claim made to
+      let a lease; nobody verified it. SILENCE IS NOT ABSENCE: probed 2026-09-08,
+      42 Carlton Ave Brooklyn has 4 unit listings, 1 says "Laundry in building"
+      and 3 omit it while listing Doorman/Live-in super under the same heading —
+      so a missing phrase carries no information and laundry booleans are
+      TRUE-or-NULL, never FALSE. COVERAGE is the binding constraint, not
+      parsing: of 10 randomly sampled Brooklyn laundry-lead lots with >=6
+      residential units, 1 had any listing and 0 had a laundry answer; 0 of 7
+      head-of-ranking lots did. StreetEasy auto-generates a building page for
+      nearly every NYC address, so "the page rendered" is not evidence.
+      SELECTION toward market-rate rentals in larger buildings and away from
+      rent-stabilized walk-ups and owner-occupied houses — the exact stock that
+      dominates the laundry gap ranking — measured in the Bay Ridge pilot
+      2026-09-09: among >=6-unit leads, median units 38 where a listing was
+      found vs 14.5 where none was. RECENCY: a listing describes the building
+      as of its listing date, not today — 213 of 222 pilot pages are PAST
+      listings (dates 2014-07-15..2026-09-08), only 9 active, so this is an
+      archive, not a current-market read. THROTTLING IS BILLED: the unpaced
+      pilot lost 151 of 301 extract URLs, all-or-nothing per call, at a rate
+      climbing 23% -> 82% across the run, and Tavily charges for the failures;
+      use --pace and a retry pass for anything larger than one NTA.
+    notes: >
+      Attribute/annotation source (D51(d)), same role as PLUTO — nothing reaches
+      staging.poi and nothing in score/ or model/ reads it. Zillow, RentHop and
+      Apartments.com were probed the same day and rejected: Zillow and RentHop
+      render but carry no amenity block, Apartments.com refuses Tavily entirely.
+      Tavily map/crawl return 0 URLs on streeteasy.com, so every address costs a
+      search credit. PILOT COST, Bay Ridge 2026-09-09 (run a48a0a69650a): 119
+      addresses -> 197 calls / 223 credits, i.e. 1.87 credits per address; 78
+      of 119 addresses yielded a unit page, 146 of 150 rendered pages carried
+      an amenity block. A full MN+BK sweep of >=6-unit laundry leads (~2.8k
+      addresses) projects to ~5.2k credits; sweeping ALL ~29.7k MN+BK laundry
+      leads projects to ~37k credits, and the small-lot stratum is where
+      coverage is near zero. budgeted_total of 0 covers the pilot only; a sweep
+      needs an owner budget decision. Owes a docs/CONTEXT.md section 3 row (this session may not
+      edit docs/); no dataset_id is set, so the drift check does not yet apply.

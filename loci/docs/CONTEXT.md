@@ -2,7 +2,7 @@
 
 **Status:** charter / pre-implementation
 **Created:** 2026-09-01
-**Scope:** New York City, five boroughs
+**Scope:** New York City — Manhattan and Brooklyn first (dense, walking-dominant; D48, 2026-09-08). Other boroughs and driving-dominant areas are a later expansion; the data foundation covers all five boroughs but the screen and its calibration target MN+BK.
 **Owner:** Avi Benmayor
 
 Loci measures how completely the *daily-needs bundle* of small businesses is reachable on
@@ -168,6 +168,7 @@ Costs verified 2026-09-01; SNAP and SLA sources verified 2026-09-02. Machine-rea
 | **NYS DOS Appearance Enhancement & Barber** `y3u4-jbgh` | address | **active only** | periodic | **$0** | **Survivorship-biased** — closed salons absent entirely. Snapshot enrichment only, never panel input |
 | **USDA SNAP Retailer Locator** — ArcGIS feature service | point | current | snapshot | **$0** | **Near-census of stores that accept SNAP** — anchor for grocery/convenience (tier 1). Misses non-SNAP stores, which skews *toward* affluent areas, the opposite of OSM's bias. Verified 2026-09-02 |
 | **NYS Liquor Authority Active Licenses** `9s3h-dpkz` | point (98.5% georef.) | current | snapshot | **$0** | **Anchor for bars.** Companion inactive file `6dg3-2z7i` makes closures recoverable. License descriptions don't say "bar"; mapped conservatively (QUESTIONS.md H-D9). Verified 2026-09-02 |
+| **NYC DCWP Inspections** (Retail Laundry / Dry Cleaners) `jzhd-m6uv` | point | 2023-07– | daily | **$0** | **Anchor for laundry** (the only retail-laundry category; DCWP licences are all industrial). Enforcement-driven, so never-inspected establishments are indistinguishable from real gaps. One row per inspection; deduped to one POI per business. Verified 2026-09-09 |
 | *Planned:* **NYC DOHMH Child Care Center Inspections** `dsg6-ifza` | address | rolling | — | **$0** | Near-census of childcare by the restaurant-inspection logic. 3,014 centers. Build after the W2 map |
 | *Planned:* **FDIC BankFind locations** | point | annual 1994– | — | **$0** | Census of bank branches; closures dated. Tier 4, low priority |
 | *Planned:* **NYS registered pharmacies** | address | current | — | **$0** | Bulk access **unverified** — lookup site only. Check data.ny.gov before ticketing |
@@ -212,6 +213,8 @@ deferred to Phase 5.
 | *Planned:* **MTA Bus GTFS stops** | Transit access beyond the subway — matters most in outer-borough hexes | **$0** |
 | **NYC NTAs / Community Districts** | Human-legible reporting geography | **$0** |
 | **NYC shoreline / borough boundaries** | Grid clipping | **$0** |
+| **NYC Local Law 84 benchmarking data** — Energy and Water Disclosure `[5zyy-y8am, 7x5e-2fxh, usc3-8zwd, wcm8-aq5w, 4tys-3tzj, 4t62-jm4m, 77q4-nkfh, r6ub-zhff]` (annual 2013–2024) | In-building laundry supply (hookups in common area and units). Size-filtered: ≥25k sq ft buildings only. Blank non-random (owner non-response) and "hookups" is plumbing, not machines | **$0** |
+| **StreetEasy listing pages** — advertised in-building laundry via Tavily | In-building laundry annotation source. Advertising, not inspection; silence is not absence. Size-selected toward larger rentals and away from stabilized/owner-occupied; archival (213/222 Bay Ridge pilot pages dated 2014–2026). Tavily-extracted | **$0** (pilot) / **~$294** (full MN+BK sweep) |
 
 ### 3.5 Budget
 
