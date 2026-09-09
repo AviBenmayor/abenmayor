@@ -69,12 +69,19 @@ def con():
               "is_canonical BOOLEAN, category VARCHAR)")
     c.execute("CREATE TABLE analysis.hex (h3_index VARCHAR, borough VARCHAR, nta_code VARCHAR)")
     cols = ", ".join(f"{cat}_ratio FLOAT, {cat}_nearest_m FLOAT" for cat in wx.ALLCATS)
+    # supply_set/supply_hash are native columns on the real analysis.address
+    # (sql/002_schema.sql) as of D58, not an ALTER 006 bolts onto address_gaps
+    # -- address_gaps is a VIEW now, and ALTER TABLE against a view errors.
+    # This fixture's own mini address_gaps stands in for that view, so it
+    # declares them directly.
     c.execute(f"""CREATE TABLE analysis.address_gaps (
         address_id VARCHAR, lon DOUBLE, lat DOUBLE, borough VARCHAR,
-        units_capped FLOAT, neighborhood VARCHAR, eligible BOOLEAN, {cols})""")
+        units_capped FLOAT, nta_code VARCHAR, neighborhood VARCHAR,
+        eligible BOOLEAN, gap_score FLOAT, lead_category VARCHAR,
+        supply_set VARCHAR, supply_hash VARCHAR, {cols})""")
     # The REAL supply-set definitions, not a restatement of them: 006 also
-    # creates analysis.category_anchor and adds address_gaps.supply_set /
-    # supply_hash, which is where the provenance check reads from.
+    # creates analysis.category_anchor, which is where the corroboration
+    # check reads from.
     for name in ("003_supply_sets.sql", "006_principled_supply.sql"):
         c.execute((db.SQL_DIR / name).read_text())
     for code, (lon, lat) in PLACES.items():
@@ -131,14 +138,24 @@ def _add_dohmh(con, poi_id, cluster, boro, canonical=False, cat="restaurant",
                     "active_basis": basis})
 
 
-def _add_gap(con, address_id, boro, cat="laundry", ratio=2.0, eligible=True):
+def _add_gap(con, address_id, boro, cat="laundry", ratio=2.0, eligible=True,
+             extra=(), units=10.0, score=1.5):
+    """One address row. `cat` (plus anything in `extra`) is beyond reach at
+    `ratio`; every other category sits at 0.5, comfortably inside it.
+
+    `extra` exists for the all-opportunities layers, which are about the
+    address's whole missing LIST rather than one category at a time.
+    """
     # Columns are named, not positional: sql/006 ALTERs supply_set/supply_hash
     # onto this table, and a positional INSERT would break every time a
     # migration adds a column.
-    ratios = {c: (ratio if c == cat else 0.5) for c in wx.ALLCATS}
+    missing = {cat, *extra}
+    ratios = {c: (ratio if c in missing else 0.5) for c in wx.ALLCATS}
     lon, lat = PLACES[boro]
-    cols = ["address_id", "lon", "lat", "borough", "units_capped", "neighborhood", "eligible"]
-    vals = [address_id, lon, lat, boro, 10.0, "Somewhere", eligible]
+    cols = ["address_id", "lon", "lat", "borough", "units_capped", "nta_code",
+            "neighborhood", "eligible", "gap_score", "lead_category"]
+    vals = [address_id, lon, lat, boro, units, boro + "0001",
+            "Somewhere in " + boro, eligible, score, cat]
     for c in wx.ALLCATS:
         cols += [f"{c}_ratio", f"{c}_nearest_m"]
         vals += [ratios[c], 100.0]
@@ -214,16 +231,20 @@ def test_write_emits_one_file_per_category_per_layer(con, tmp_path):
     """One gaps file and one pois file per category, plus exactly two
     non-category files: meta.json and the alcohol overlay. The overlay is
     counted here on purpose -- it is a STANDALONE layer, so if it ever became a
-    16th category this count would move and the test would say so."""
+    16th category this count would move and the test would say so.
+
+    The all-opportunities files are counted the same way: one per NTA THAT HAS
+    A GAP ADDRESS, plus one index. An NTA file for a neighborhood with nothing
+    missing is a file the picker would offer and the map could not draw."""
     _add_poi(con, "a", "overture_places", 1, "MN")
     _add_gap(con, "addr_mn", "MN")
     written = wx.write(wx.collect(con, ["MN", "BK"]), tmp_path)
 
-    # gaps + pois, then meta.json and alcohol.json.
+    # gaps + pois, then meta.json and alcohol.json, then one NTA + its index.
     assert set(written) == (
         {f"gaps/{c}.json" for c in wx.ALLCATS}
         | {f"pois/{c}.json" for c in wx.ALLCATS}
-        | {"meta.json", "alcohol.json"})
+        | {"meta.json", "alcohol.json", "nta/MN0001.json", "nta/index.json"})
     import json
     meta = json.loads((tmp_path / "meta.json").read_text())
     assert meta["boroughs"] == ["MN", "BK"]
@@ -546,3 +567,125 @@ def test_meta_carries_the_supply_set_and_hash(con, tmp_path):
     meta = json.loads((tmp_path / "meta.json").read_text())
     assert "SUPPLY-SET MISMATCH" in meta["supply"]["warning"]
     assert meta["poiCounts"]["laundry"]["MN"]["all"] == 2     # ghost counted again
+
+
+# ------------------------------------------------- all opportunities (by NTA)
+#
+# The mode answers "what is missing HERE", so the two things that can go wrong
+# quietly are both about the SET of addresses in a neighborhood: an index whose
+# counts do not match the table the map is drawn from (the sidebar would print
+# a number the map cannot show), and a file that carries an address with
+# nothing missing or an ineligible one (a "gap" the model never found).
+
+
+def _nta(con, boroughs=("MN", "BK"), supply_set="principled"):
+    return wx.collect_nta(con, list(boroughs), supply_set, "deadbeef1234")
+
+
+def test_nta_index_counts_match_a_direct_query(con):
+    """Per-category gap counts in the index must equal counting the table
+    directly, for every NTA and every category. Two NTAs here because a
+    single-NTA fixture would pass with a bug that ignores the grouping."""
+    # MN: three addresses, two missing laundry (one of them also bar), one
+    # missing only pharmacy. BK: two, both missing bar.
+    _add_gap(con, "mn1", "MN", cat="laundry")
+    _add_gap(con, "mn2", "MN", cat="laundry", extra=("bar",))
+    _add_gap(con, "mn3", "MN", cat="pharmacy")
+    _add_gap(con, "bk1", "BK", cat="bar")
+    _add_gap(con, "bk2", "BK", cat="bar")
+    layers = _nta(con)
+    index = wx.nta_index(layers, ["MN", "BK"], "principled", "deadbeef1234")
+    rows = {r["nta"]: r for r in index["ntas"]}
+    assert set(rows) == {"MN0001", "BK0001"}
+
+    for code, row in rows.items():
+        boro = code[:2]
+        assert row["n"] == con.execute(
+            "SELECT count(*) FROM analysis.address_gaps "
+            "WHERE eligible AND nta_code = ?", [code]).fetchone()[0]
+        for cat in wx.ALLCATS:
+            direct = con.execute(
+                f"SELECT count(*) FROM analysis.address_gaps "
+                f"WHERE eligible AND nta_code = ? AND {cat}_ratio > 1",
+                [code]).fetchone()[0]
+            assert row["gapCounts"][cat] == direct, (code, cat)
+        assert row["boro"] == boro
+    # Sorted biggest-first: the picker shows the neighborhoods worth opening.
+    assert [r["nta"] for r in index["ntas"]] == ["MN0001", "BK0001"]
+
+
+def test_nta_file_holds_only_eligible_addresses_that_miss_something(con):
+    """Three ways an address must NOT reach a neighborhood file: ineligible,
+    nothing over its reach tier, and (the adversarial one) a NULL ratio, which
+    is unmeasured rather than missing -- treating it as a gap would invent an
+    opportunity out of a hole in the data."""
+    _add_gap(con, "keep", "MN", cat="laundry", ratio=2.0)
+    _add_gap(con, "ineligible", "MN", cat="laundry", ratio=2.0, eligible=False)
+    _add_gap(con, "nothing_missing", "MN", cat="laundry", ratio=0.9)
+    _add_gap(con, "unmeasured", "MN", cat="laundry", ratio=2.0)
+    con.execute("UPDATE analysis.address_gaps SET laundry_ratio = NULL "
+                "WHERE address_id = 'unmeasured'")
+    layer = _nta(con)["MN0001"]
+    assert layer["ids"] == ["keep"]
+    assert layer["n"] == 1
+
+
+def test_nta_missing_list_is_walkable_and_worst_first(con):
+    """`miss` is one flat array with no offsets: point j consumes the next
+    pts[j*6+5] pairs. If n_missing and the list ever disagree every popup after
+    the first is wrong, so the walk is the test."""
+    _add_gap(con, "a", "MN", cat="laundry", ratio=2.5, extra=("bar",))
+    _add_gap(con, "b", "MN", cat="pharmacy", ratio=1.4)
+    layer = _nta(con)["MN0001"]
+    st, cur, seen = layer["stride"], 0, {}
+    for j, aid in enumerate(layer["ids"]):
+        n = layer["pts"][j * st + 5]
+        pairs = [(wx.ALLCATS[layer["miss"][cur + 2 * k]], layer["miss"][cur + 2 * k + 1])
+                 for k in range(n)]
+        cur += 2 * n
+        seen[aid] = pairs
+        assert [r for _, r in pairs] == sorted((r for _, r in pairs), reverse=True)
+    assert cur == len(layer["miss"])
+    assert dict(seen["a"]) == {"laundry": 2.5, "bar": 2.5}
+    assert seen["b"] == [("pharmacy", 1.4)]
+
+
+def test_nta_carries_the_supply_provenance(con):
+    """Same rows, same supply set: a neighborhood view that could not say what
+    supply it was measured against is the one place on this map D52 would not
+    reach. The POI block is filtered by the same predicate, so an excluded
+    record ships flagged rather than deleted."""
+    _anchor(con, "laundry")
+    _add_gap(con, "a", "MN", cat="laundry")
+    _add_poi(con, "kept", "overture_places", 1, "MN")
+    _add_poi(con, "kept2", "nyc_dohmh_restaurants", 1, "MN",   # corroborates it
+             canonical=False)
+    _add_poi(con, "dropped", "overture_places", 2, "MN")       # lone aggregator
+    layer = _nta(con)["MN0001"]
+    assert layer["supplySet"] == "principled"
+    assert layer["supplyHash"] == "deadbeef1234"
+    pois = layer["pois"]
+    # Two canonical points; the lone aggregator record is exported flagged
+    # out of the set (D52), never deleted, so nSet is 1 of 2.
+    assert pois["n"] == 2 and pois["nSet"] == 1
+    corr = {pois["pts"][i * 5 + 3] for i in range(pois["n"]) if pois["pts"][i * 5 + 4]}
+    assert corr == {1}                       # the kept point is attested twice
+
+
+def test_nta_meta_and_index_agree_with_the_files(con, tmp_path):
+    """meta.json advertises the mode; the index must describe files that exist
+    and count what they hold."""
+    _add_gap(con, "mn1", "MN", cat="laundry", units=12.0)
+    _add_gap(con, "bk1", "BK", cat="bar", units=4.0)
+    bundle = wx.collect(con, ["MN", "BK"])
+    wx.write(bundle, tmp_path)
+    meta = json.loads((tmp_path / "meta.json").read_text())
+    assert meta["nta"] == {"available": True, "dir": "nta", "n": 2, "addresses": 2}
+    # The picker turns a typed name into a file name via `nta`.
+    assert {n["nta"] for n in meta["neighborhoods"]} == {"MN0001", "BK0001"}
+    index = json.loads((tmp_path / "nta" / "index.json").read_text())
+    for row in index["ntas"]:
+        layer = json.loads((tmp_path / "nta" / f"{row['nta']}.json").read_text())
+        assert layer["n"] == row["n"] == len(layer["ids"])
+        assert layer["gapCounts"] == row["gapCounts"]
+        assert layer["units"] == row["units"]

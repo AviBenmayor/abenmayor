@@ -82,6 +82,17 @@ category file would double-count supply. The table it reads
 `loci ingest-alcohol` writes an empty layer and says so, rather than failing
 the whole export.
 
+ALL OPPORTUNITIES, ONE NEIGHBORHOOD (owner request 2026-09-09). A FOURTH set
+of files, `nta/<nta_code>.json` plus `nta/index.json`, answers the inverse of
+the question above: not "where is laundry missing" but "what is missing HERE".
+One file per NTA holds every eligible address in it that is beyond reach of at
+least one category, with the whole missing list per address, and its own
+known-location block for all fifteen categories. It is a PRESENTATION layer
+over the same `analysis.address_gaps` rows -- same `ratio > 1` test, same
+supply set, same provenance -- scoped to a neighborhood because 177k MN+BK
+addresses drawn at once is not a question anyone asked. See the block above
+`NTA_DIR` for the packing.
+
 BOROUGH. `analysis.address_gaps.borough` carries two-letter codes ("MN");
 `analysis.hex.borough` carries full names ("Manhattan"). POIs have no borough
 column at all, so they are labelled the same way the address layer labels
@@ -496,6 +507,196 @@ def collect_alcohol(con, boroughs: list[str]) -> dict:
     return layer
 
 
+# --------------------------------------------------- all opportunities (NTA)
+#
+# THE OWNER'S QUESTION (2026-09-09): "when I zoom in on one neighborhood, can
+# we show all the opportunities?" The fifteen per-category files answer "where
+# is business X missing"; nobody can answer "what is missing HERE" by clicking
+# through fifteen of them and holding the union in their head.
+#
+# So: one file per NTA carrying every eligible address in it that is missing at
+# least one category, with the whole missing LIST per address. This is a
+# PRESENTATION layer over exactly the same `analysis.address_gaps` rows the
+# per-category files read -- no new score, no new threshold. `ratio > 1` is
+# still the model's own definition of missing (D41), and an address that
+# appears in `gaps/laundry.json` appears in its NTA file with `laundry` in its
+# missing list, always.
+#
+# SCOPED BY NTA, NEVER CITYWIDE. 177k MN+BK addresses are missing something;
+# drawing them all at once is neither a map nor a question. The mode requires a
+# neighborhood, and the browser fetches exactly one file.
+#
+# PACKING. `pts` is stride 6 (lon, lat, capped units, lead-category index,
+# gap_score, n_missing) and the missing lists ride in ONE flat `miss` array of
+# (category index, ratio) pairs, walked with a running cursor: point j consumes
+# the next `pts[j*6+5]` pairs. No offsets array, because `n_missing` already
+# is the offset table -- and `n_missing` here is `len(missing)`, DERIVED rather
+# than read from the column of the same name, so the number that walks the
+# array and the number in the popup cannot disagree.
+#
+# KNOWN LOCATIONS RIDE ALONG. In this mode the map wants all fifteen
+# categories' supply, and fetching fifteen POI files (10 MB) to draw the ~1%
+# of them inside one NTA would be absurd. Each NTA file carries its own POI
+# block instead, read through `analysis.poi_supply` under the SAME supply set
+# and carrying the same corroborated / in-set flags, so the D47 and D52
+# distinctions survive into this view rather than being flattened to "a dot".
+
+NTA_DIR = "nta"
+RATIO_DP = 2      # "2.14x" -- more precision than that is not a map fact
+SCORE_DP = 3
+
+
+def _nta_gap_sql(boroughs: list[str]) -> tuple[str, list]:
+    """Every eligible address in `boroughs` with its fifteen ratios. The
+    missing LIST is assembled in Python rather than by an UNPIVOT: one pass
+    over 267k rows beats fifteen self-joins, and the same `ratio > 1` test then
+    lives in exactly one place for both the count and the payload."""
+    ph = ", ".join("?" for _ in boroughs)
+    ratios = ", ".join(f"{c}_ratio" for c in ALLCATS)
+    sql = f"""
+        SELECT nta_code, neighborhood, borough, address_id,
+               round(lon, {COORD_DP}) AS lon, round(lat, {COORD_DP}) AS lat,
+               units_capped, gap_score, lead_category, {ratios}
+        FROM analysis.address_gaps
+        WHERE eligible AND borough IN ({ph}) AND nta_code IS NOT NULL
+        ORDER BY nta_code, address_id
+    """
+    return sql, list(boroughs)
+
+
+def _nta_poi_sql(boroughs: list[str],
+                 supply_set: str = DEFAULT_SUPPLY_SET) -> tuple[str, list]:
+    """Known locations grouped by NTA, all fifteen categories at once.
+
+    Deliberately thinner than `_poi_sql`: no DOHMH detail, no source bitmask --
+    only whether the record is corroborated (2+ distinct sources, D47) and
+    whether the supply set kept it (D52). This layer is context for a gap, not
+    the restaurant inspector, and the extra columns would triple the file.
+    """
+    pred = supply_predicate(supply_set)
+    names = [BOROUGH_NAMES[b] for b in boroughs]
+    ph = ", ".join("?" for _ in names)
+    sql = f"""
+        WITH src AS (
+            SELECT d.cluster_id, count(DISTINCT p.source_id) AS n_src
+            FROM analysis.poi_dedup d
+            JOIN staging.poi p ON p.poi_id = d.poi_id
+            GROUP BY 1
+        )
+        SELECT h.nta_code,
+               v.category,
+               v.name,
+               round(ST_X(v.geom), {COORD_DP}) AS lon,
+               round(ST_Y(v.geom), {COORD_DP}) AS lat,
+               s.n_src >= 2 AS corroborated,
+               v.{pred} AS in_set
+        FROM analysis.poi_supply v
+        JOIN src s ON s.cluster_id = v.cluster_id
+        JOIN analysis.hex h
+          ON h.h3_index = h3_latlng_to_cell_string(ST_Y(v.geom), ST_X(v.geom), {H3_RES})
+        WHERE h.borough IN ({ph})
+          AND h.nta_code IS NOT NULL
+          AND v.category IN ({", ".join("?" for _ in ALLCATS)})
+        ORDER BY h.nta_code, v.category, v.poi_id
+    """
+    return sql, names + ALLCATS
+
+
+def missing_list(ratios) -> list[tuple[int, float]]:
+    """(category index, ratio) for every category beyond its reach tier, worst
+    first. A NULL ratio is NOT missing -- it is unmeasured, and inventing a gap
+    out of a null is exactly the "data gap wearing a costume" this project
+    exists to avoid."""
+    out = [(i, float(r)) for i, r in enumerate(ratios) if r is not None and r > 1]
+    out.sort(key=lambda kv: (-kv[1], kv[0]))
+    return out
+
+
+def pack_nta(gap_rows, poi_rows, supply_set: str = DEFAULT_SUPPLY_SET,
+             supply_hash: str | None = None) -> dict[str, dict]:
+    """rows -> {nta_code: layer}. Only NTAs with at least one gap address get a
+    layer: an "all opportunities" file for a neighborhood with no opportunity
+    is a file the picker must never offer. POI rows for such an NTA are
+    dropped with it."""
+    out: dict[str, dict] = {}
+    for row in gap_rows:
+        code, name, boro, address_id, lon, lat, units, score, lead = row[:9]
+        if lon is None or lat is None:
+            continue
+        missing = missing_list(row[9:])
+        if not missing:
+            continue
+        layer = out.get(code)
+        if layer is None:
+            layer = out[code] = {
+                "nta": code, "name": name, "boro": boro,
+                "supplySet": supply_set, "supplyHash": supply_hash,
+                "stride": 6, "pts": [], "ids": [], "miss": [],
+                "gapCounts": {c: 0 for c in ALLCATS},
+                "bounds": [lon, lat, lon, lat], "units": 0,
+                "pois": {"stride": 5, "pts": [], "names": [], "n": 0, "nSet": 0},
+            }
+        u = round(float(units or 0))
+        layer["pts"].extend([lon, lat, u,
+                             ALLCATS.index(lead) if lead in CATEGORIES else -1,
+                             round(float(score or 0), SCORE_DP), len(missing)])
+        layer["ids"].append(address_id)
+        layer["units"] += u
+        for i, ratio in missing:
+            layer["miss"].extend([i, round(ratio, RATIO_DP)])
+            layer["gapCounts"][ALLCATS[i]] += 1
+        b = layer["bounds"]
+        layer["bounds"] = [min(b[0], lon), min(b[1], lat), max(b[2], lon), max(b[3], lat)]
+
+    for code, cat, name, lon, lat, corroborated, in_set in poi_rows:
+        layer = out.get(code)
+        if layer is None or lon is None or lat is None or cat not in CATEGORIES:
+            continue
+        p = layer["pois"]
+        p["pts"].extend([lon, lat, ALLCATS.index(cat),
+                         int(bool(corroborated)), int(bool(in_set))])
+        p["names"].append(name or "")
+
+    for layer in out.values():
+        layer["n"] = len(layer["ids"])
+        p = layer["pois"]
+        p["n"] = len(p["names"])
+        p["nSet"] = sum(p["pts"][4::5])
+        # A centre for the sidebar label; the bbox is what the map flies to.
+        pts = layer["pts"]
+        layer["center"] = [round(sum(pts[0::6]) / layer["n"], COORD_DP),
+                           round(sum(pts[1::6]) / layer["n"], COORD_DP)]
+    return out
+
+
+def nta_index(layers: dict[str, dict], boroughs: list[str],
+              supply_set: str, supply_hash: str | None) -> dict:
+    """The small file the sidebar reads: one row per neighborhood with its
+    address count, its per-category gap counts and its bounds, sorted by size.
+    It exists so the picker can show "Canarsie — 9,939 addresses" without
+    fetching a 500 kB NTA file to count them."""
+    rows = [{"nta": code, "name": L["name"], "boro": L["boro"], "n": L["n"],
+             "units": L["units"], "pois": L["pois"]["n"], "nSet": L["pois"]["nSet"],
+             "gapCounts": L["gapCounts"], "bounds": L["bounds"], "center": L["center"]}
+            for code, L in layers.items()]
+    rows.sort(key=lambda r: (-r["n"], r["nta"]))
+    return {"boroughs": boroughs, "cats": ALLCATS,
+            "catLabels": [CATEGORIES[c].label for c in ALLCATS],
+            "supplySet": supply_set, "supplyHash": supply_hash,
+            "n": sum(r["n"] for r in rows), "ntas": rows}
+
+
+def collect_nta(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
+                supply_hash: str | None = None) -> dict[str, dict]:
+    """Read the all-opportunities layers. Pure read, same two tables the
+    per-category layers come from."""
+    gsql, gparams = _nta_gap_sql(boroughs)
+    psql, pparams = _nta_poi_sql(boroughs, supply_set)
+    return pack_nta(con.execute(gsql, gparams).fetchall(),
+                    con.execute(psql, pparams).fetchall(),
+                    supply_set, supply_hash)
+
+
 # ------------------------------------------------------------------- export
 
 def gap_provenance(con, boroughs: list[str]) -> dict:
@@ -583,10 +784,15 @@ def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET) -> d
     # separate boundary file -- a neighborhood the export cannot show is a
     # neighborhood the picker must not offer.
     ph = ", ".join("?" for _ in boroughs)
+    # `nta` rides along so the all-opportunities mode can turn a name the user
+    # typed into the file it has to fetch. min() rather than any_value() only
+    # for determinism -- name and NTA code are 1:1 across MN+BK.
     nbhd = [
-        {"name": n, "boro": b, "bounds": [round(v, COORD_DP) for v in (x0, y0, x1, y1)]}
-        for n, b, x0, y0, x1, y1 in con.execute(
-            f"""SELECT neighborhood, borough, min(lon), min(lat), max(lon), max(lat)
+        {"name": n, "boro": b, "nta": nta,
+         "bounds": [round(v, COORD_DP) for v in (x0, y0, x1, y1)]}
+        for n, b, nta, x0, y0, x1, y1 in con.execute(
+            f"""SELECT neighborhood, borough, min(nta_code),
+                       min(lon), min(lat), max(lon), max(lat)
                 FROM analysis.address_gaps
                 WHERE borough IN ({ph}) AND neighborhood IS NOT NULL
                 GROUP BY 1, 2 ORDER BY 1""", list(boroughs)).fetchall()
@@ -600,9 +806,15 @@ def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET) -> d
             min(cur[0], x0), min(cur[1], y0), max(cur[2], x1), max(cur[3], y1)]
 
     prov = gap_provenance(con, boroughs)
+    # The all-opportunities layers carry the SAME supply provenance as the
+    # per-category ones -- they are the same rows, sliced by neighborhood
+    # instead of by category, and a view that could not say what supply it was
+    # measured against would be the one place on this map D52 did not reach.
+    nta = collect_nta(con, boroughs, supply_set, prov.get("supply_hash"))
     return {"boroughs": boroughs, "sources": sources, "detailCats": dcats,
             "pois": poi_layers, "gaps": gap_layers, "neighborhoods": nbhd,
             "boroBounds": boro_bounds, "alcohol": collect_alcohol(con, boroughs),
+            "nta": nta,
             "supplySet": supply_set, "supplyProvenance": prov,
             "supplyWarning": supply_warning(supply_set, prov)}
 
@@ -680,6 +892,19 @@ def write(bundle: dict, out_dir: pathlib.Path) -> dict[str, int]:
     alcohol = bundle.get("alcohol") or empty_alcohol(bundle["boroughs"])
     _dump("alcohol.json", alcohol)
 
+    # One file per neighborhood plus a small index. Both are fetched only when
+    # the all-opportunities mode is entered, so the single-business view costs
+    # exactly what it did before this existed.
+    nta_layers = bundle.get("nta") or {}
+    if nta_layers:
+        (out_dir / NTA_DIR).mkdir(parents=True, exist_ok=True)
+        for code in sorted(nta_layers):
+            _dump(f"{NTA_DIR}/{code}.json", nta_layers[code])
+        _dump(f"{NTA_DIR}/index.json",
+              nta_index(nta_layers, bundle["boroughs"],
+                        bundle.get("supplySet", DEFAULT_SUPPLY_SET),
+                        (bundle.get("supplyProvenance") or {}).get("supply_hash")))
+
     meta = {
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "boroughs": bundle["boroughs"],
@@ -716,6 +941,13 @@ def write(bundle: dict, out_dir: pathlib.Path) -> dict[str, int]:
                     "n": alcohol["n"]},
         "neighborhoods": bundle["neighborhoods"],
         "boroBounds": bundle["boroBounds"],
+        # The all-opportunities mode. `available` false means this export
+        # wrote no per-NTA files, and the UI hides the mode rather than
+        # offering a button that 404s.
+        "nta": {"available": bool(nta_layers),
+                "dir": NTA_DIR,
+                "n": len(nta_layers),
+                "addresses": sum(L["n"] for L in nta_layers.values())},
     }
     _dump("meta.json", meta)
     return written

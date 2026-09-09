@@ -44,6 +44,22 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
 .alc input{accent-color:var(--ink);width:13px;height:13px;flex:none}
 .alc .k{width:16px;display:flex;justify-content:center;flex:none}
 .alc .n{margin-left:auto;font-family:"IBM Plex Mono";font-size:11px;color:var(--muted)}
+/* All-opportunities mode (owner request 2026-09-09). Its own selector row
+   above the fifteen categories, because it is a MODE, not a 16th business:
+   picking it changes what the map is about, not which colour it is. */
+.mode{margin-bottom:6px;padding-bottom:6px;border-bottom:1px dashed var(--line)}
+.mode .opt{font-weight:600}
+.mode .opt[aria-pressed=true]{background:var(--ink);color:#fff}
+.mode .opt[aria-pressed=true] .n{color:#cfc9bd}
+.mode .sw{border-radius:3px;background:linear-gradient(135deg,#1f9aa1 0 33%,#a8443c 33% 66%,#c69a1e 66% 100%)}
+.here{margin-top:8px;font-size:12px;color:var(--ink2);line-height:1.45}
+.here b{color:var(--ink)}
+.here .clr{margin-left:6px;border:0;background:transparent;color:var(--accent);font:inherit;font-size:11.5px;text-decoration:underline;cursor:pointer;padding:0}
+.legend .row.pick{cursor:pointer;border-radius:6px;padding:2px 4px;margin:0 -4px}
+.legend .row.pick:hover{background:var(--bg)}
+.legend .row.pick[aria-pressed=true]{background:var(--bg);font-weight:600;color:var(--ink)}
+.legend .row.dim{opacity:.42}
+.prompt{padding:14px;font-size:12.5px;color:var(--ink2);line-height:1.5}
 .mapwrap{position:relative;flex:1;min-width:0}#map{position:absolute;inset:0}
 .banner{position:absolute;top:12px;left:12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:8px 12px;display:flex;align-items:center;gap:9px;z-index:1;max-width:72%}
 .banner .sw{width:13px;height:13px;border-radius:50%;flex:none}.banner b{font-size:13px}.banner .bsub{color:var(--muted);font-size:11.5px;margin-top:1px}
@@ -75,14 +91,17 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
   <p class="sub" id="supBadge"></p></header>
 <main>
   <aside class="side">
-    <div class="sec"><h2>Business</h2><div id="opts"></div></div>
+    <div class="sec"><h2>Business</h2><div id="mode"></div><div id="opts"></div></div>
+    <div class="sec" id="hereSec" hidden><h2>All opportunities <span class="hint">one neighborhood</span></h2>
+      <div class="here" id="here"></div></div>
     <div class="sec" id="cuiSec" hidden><h2>Cuisine <span class="hint">known locations only</span></h2>
       <select id="cuiSel"></select>
       <label class="chk"><input type="checkbox" id="actTog"> Active only (health dept.)</label>
       <div class="fine" id="cuiFine"></div>
     </div>
     <div class="sec"><h2>Borough</h2><div class="seg" id="boros"></div></div>
-    <div class="sec"><h2>Jump to neighborhood</h2><input list="ntal" id="ntaIn" placeholder="e.g. Bushwick"><datalist id="ntal"></datalist></div>
+    <div class="sec"><h2>Jump to neighborhood</h2><input list="ntal" id="ntaIn" placeholder="e.g. Bushwick"><datalist id="ntal"></datalist>
+      <div class="fine" id="ntaFine"></div></div>
     <div class="sec"><h2>Layers</h2>
       <div class="legend" id="legend"></div>
       <label class="chk"><input type="checkbox" id="poiTog" checked> Show known locations</label>
@@ -294,6 +313,181 @@ function alcHTML(p,full){
     (full?`<div class="pmi">SLA licence ${esc(ALC.ids[j])}</div>`:'');
 }
 
+// ---- All opportunities, one neighborhood (owner request 2026-09-09) --------
+// "When I zoom in on one neighborhood, can we show all the opportunities?"
+//
+// This is a MODE, not a 16th business, so it sits in the SAME selector as the
+// fifteen categories rather than beside the neighborhood picker: the map draws
+// one thing at a time, and a separate toggle would invent a meaningless state
+// ("laundry AND all opportunities"). Picking it changes what the map is about;
+// picking a category changes which colour it is.
+//
+// It is SCOPED TO ONE NTA and refuses to draw without one. 177k MN+BK
+// addresses are missing something; all of them at once is a smear, not a
+// question. Data comes from data/nta/<nta_code>.json — the same
+// analysis.address_gaps rows the per-category files carry, sliced by
+// neighborhood instead of by category, with the same supply set and hash.
+//
+// It does NOT follow the viewport. An NTA is picked deliberately, from the
+// picker or a click, and panning never swaps the dataset under the cursor:
+// the index does carry bounding boxes, but bboxes of adjacent NTAs overlap,
+// so "the NTA you are looking at" is a guess — and a wrong guess here silently
+// re-labels every dot on screen.
+const ALL_MODE='__all__';
+const EMPTY={type:'FeatureCollection',features:[]};
+let NTAIDX=null, NTA=null, ntaSel=null, hiCat=null;
+const NTA_CACHE={};
+const allMode=()=>biz===ALL_MODE;
+// Muted, so a known location recedes behind fifteen colours of gap. In the
+// single-business view POIs are INK because the gap layer is one colour and
+// can afford the contrast; here the colour budget is spent on the categories.
+const ALL_POI='#6f695e';
+function ntaRow(code){return NTAIDX?NTAIDX.ntas.find(r=>r.nta===code):null;}
+function ntaBoro(code){const r=ntaRow(code);return r&&r.boro;}
+// The borough selector applies to this mode too. Every address in an NTA
+// shares its borough, so the filter is all-or-nothing — and when it hides the
+// selected neighborhood the sidebar says so instead of drawing an empty map.
+const ntaVisible=()=>!!ntaSel&&(boroSel==='ALL'||ntaBoro(ntaSel)===boroSel);
+async function loadNtaIndex(){
+  if(NTAIDX) return NTAIDX;
+  try{ NTAIDX=await fetch(`data/${META.nta.dir}/index.json`).then(r=>r.json()); }
+  catch(e){ NTAIDX=null; }
+  return NTAIDX;
+}
+async function loadNta(code){
+  if(NTA_CACHE[code]){NTA=NTA_CACHE[code];return NTA;}
+  let d=null;
+  try{ d=await fetch(`data/${META.nta.dir}/${code}.json`).then(r=>r.json()); }
+  catch(e){ d=null; }
+  if(d){
+    // One flat `miss` array, no offsets in the file: point j consumes the next
+    // pts[j*6+5] pairs. The cursor is walked ONCE here so every popup is an
+    // O(1) slice rather than a re-walk from the start.
+    const st=d.stride, off=[]; let cur=0;
+    for(let j=0;j<d.n;j++){off.push(cur);cur+=2*d.pts[j*st+5];}
+    d.off=off;
+    NTA_CACHE[code]=d;
+  }
+  NTA=d; return d;
+}
+// Every category this address is beyond reach of, worst first, as the export
+// sorted it: [[category, ratio], ...].
+function missingOf(j){
+  if(!NTA) return [];
+  const n=NTA.pts[j*NTA.stride+5], o=NTA.off[j], out=[];
+  for(let k=0;k<n;k++) out.push([META.cats[NTA.miss[o+2*k]],NTA.miss[o+2*k+1]]);
+  return out;
+}
+const missesCat=(j,cat)=>missingOf(j).some(m=>m[0]===cat);
+function allGapFC(){
+  if(!NTA||!ntaVisible()) return EMPTY;
+  const f=[],p=NTA.pts,st=NTA.stride;
+  for(let i=0;i<p.length;i+=st){ const j=i/st;
+    const lead=p[i+3]>=0?META.cats[p[i+3]]:null;
+    // `hi` is baked into the feature rather than filtered in the style: the
+    // legend highlights addresses MISSING that category, which is not the same
+    // set as those whose LEAD is it, and MapLibre expressions cannot read a
+    // per-feature list.
+    f.push({type:'Feature',geometry:{type:'Point',coordinates:[p[i],p[i+1]]},
+      properties:{u:p[i+2],lead:lead||'',gs:p[i+4],nm:p[i+5],j:j,
+        hi:hiCat?(missesCat(j,hiCat)?1:0):1}}); }
+  return {type:'FeatureCollection',features:f};
+}
+function allPoiFC(){
+  if(!NTA||!ntaVisible()||!showPois) return EMPTY;
+  const P=NTA.pois,f=[],p=P.pts,st=P.stride;
+  for(let i=0;i<p.length;i+=st){ const j=i/st, corr=p[i+3], inSet=p[i+4];
+    if(!inSet&&!showExcluded) continue;
+    if(inSet&&!corr&&!showSingle) continue;
+    if(hiCat&&META.cats[p[i+2]]!==hiCat) continue;
+    f.push({type:'Feature',geometry:{type:'Point',coordinates:[p[i],p[i+1]]},
+      properties:{c:corr,s:inSet,cat:META.cats[p[i+2]],nm:P.names[j]}}); }
+  return {type:'FeatureCollection',features:f};
+}
+function leadColor(){const e=['match',['get','lead']];
+  META.cats.forEach(c=>{e.push(c,META.colors[c]);}); e.push('#8f8879'); return e;}
+// Sized LIGHTLY by units — enough that a 200-home building reads bigger than a
+// 2-family house, not so much that the map becomes a units cartogram. The
+// question is still "what is missing here", not "where are the big buildings".
+const ALL_RADIUS=['interpolate',['linear'],['zoom'],
+  11,['interpolate',['linear'],['get','u'],0,1.3,20,2.0,80,2.9,300,3.8],
+  14,['interpolate',['linear'],['get','u'],0,2.6,20,3.9,80,5.4,300,7.0],
+  17,['interpolate',['linear'],['get','u'],0,4.4,20,6.2,80,8.4,300,11]];
+function catLabel(c){const i=META.cats.indexOf(c);return i<0?c:META.catLabels[i];}
+const homes=u=>`${(+u).toLocaleString()} home${+u===1?'':'s'}`;
+function missHTML(j){
+  return missingOf(j).map(([c,r])=>
+    `<span class="src" style="background:${META.colors[c]}22;color:${META.colors[c]}">`+
+    `${esc(catLabel(c))} ${(+r).toFixed(1)}×</span>`).join('');
+}
+function selectNta(code,fly){
+  ntaSel=code||null; hiCat=null;
+  const n=ntaSel&&META.neighborhoods.find(x=>x.nta===ntaSel);
+  if(fly&&n) map.fitBounds([[n.bounds[0],n.bounds[1]],[n.bounds[2],n.bounds[3]]],
+    {padding:50,duration:800,maxZoom:16});
+  if(!allMode()) {renderHere();return Promise.resolve();}
+  const ld=document.getElementById('loading');
+  if(!ntaSel){NTA=null;refresh();renderHere();return Promise.resolve();}
+  ld.hidden=false; ld.textContent='Loading '+(n?n.name:ntaSel)+'…';
+  return loadNta(ntaSel).then(()=>{refresh();renderHere();ld.hidden=true;});
+}
+// The sidebar panel that names the neighborhood on screen and, when none is
+// picked, says so — this mode must never look like an empty map.
+function renderHere(){
+  const sec=document.getElementById('hereSec'), el=document.getElementById('here');
+  sec.hidden=!allMode(); if(!allMode()) return;
+  if(!ntaSel){
+    el.innerHTML='<span style="color:var(--muted)">Pick a neighborhood in '+
+      '<b>Jump to neighborhood</b> below to see everything missing in it. '+
+      'This mode draws one neighborhood at a time — all of Manhattan and '+
+      'Brooklyn at once is 177,078 addresses and no question.</span>';
+    return;
+  }
+  const r=ntaRow(ntaSel), n=META.neighborhoods.find(x=>x.nta===ntaSel);
+  const nm=(n&&n.name)||ntaSel;
+  if(!ntaVisible()){
+    el.innerHTML=`<b>${esc(nm)}</b> is in ${esc(META.boroughNames[ntaBoro(ntaSel)]||'')} — `+
+      `the borough filter above is set to <b>${esc(META.boroughNames[boroSel]||boroSel)}</b>, `+
+      `so nothing is drawn. <button class="clr" id="hereClr">clear neighborhood</button>`;
+  }else{
+    el.innerHTML=`<b>${esc(nm)}</b> · ${esc(META.boroughNames[r?r.boro:''] ||'')}<br>`+
+      `${(r?r.n:0).toLocaleString()} addresses missing something · `+
+      `${(r?r.units:0).toLocaleString()} homes · ${(r?r.nSet:0).toLocaleString()} known locations`+
+      `<button class="clr" id="hereClr">clear</button>`;
+  }
+  const b=document.getElementById('hereClr');
+  if(b) b.onclick=()=>{document.getElementById('ntaIn').value='';selectNta(null,false);};
+}
+// The legend IS the per-category breakdown in this mode: every category with a
+// gap in this neighborhood, biggest first, and clicking one highlights the
+// addresses missing it WITHOUT leaving the mode — the point is to see one
+// category in the context of the other fourteen, not to switch to it.
+function allLegend(){
+  const el=document.getElementById('legend');
+  if(!ntaSel||!NTA||!ntaVisible()){
+    el.innerHTML='<div class="fine">No neighborhood selected.</div>'; return;}
+  const r=ntaRow(ntaSel)||{gapCounts:NTA.gapCounts};
+  const rows=META.cats.map(c=>[c,r.gapCounts[c]||0]).filter(kv=>kv[1]>0)
+    .sort((a,b)=>b[1]-a[1]);
+  el.innerHTML=rows.map(([c,n])=>
+    `<div class="row pick${hiCat&&hiCat!==c?' dim':''}" data-hi="${esc(c)}" `+
+    `aria-pressed="${hiCat===c}" title="Highlight addresses missing ${esc(catLabel(c))}">`+
+    `<span class="k"><svg width="14" height="14"><circle cx="7" cy="7" r="6" fill="${META.colors[c]}" opacity=".85" stroke="#fff"></circle></svg></span>`+
+    `<span>${esc(catLabel(c))}</span><span class="n">${n.toLocaleString()}</span></div>`).join('')+
+    `<div class="row"><span class="k"><svg width="14" height="14"><circle cx="7" cy="7" r="3.2" fill="${ALL_POI}"></circle></svg></span>`+
+    `<span>Known location (any category)</span><span class="n">${(NTA.pois.nSet||0).toLocaleString()}</span></div>`+
+    `<div class="fine">Dot colour is the <b>lead</b> gap — the category this address is furthest beyond `+
+    `its reach tier. The counts above are addresses missing that category at all, so they sum to more `+
+    `than the ${(NTA.n||0).toLocaleString()} addresses drawn. `+
+    (hiCat?`Showing <b>${esc(catLabel(hiCat))}</b> — click it again to show all.`
+          :`Click a row to highlight just that category.`)+`</div>`;
+  el.querySelectorAll('[data-hi]').forEach(x=>{x.onclick=()=>{
+    hiCat=hiCat===x.dataset.hi?null:x.dataset.hi;
+    map.getSource('allgap').setData(allGapFC());
+    map.getSource('allpoi').setData(allPoiFC());
+    allLegend(); updateBanner();};});
+}
+
 // ---- DOHMH detail (restaurant / cafe_bakery only) -------------------------
 // The export packs detail as dictionary-encoded parallel arrays indexed by
 // point (src/loci/viz/webmap_export.py); -1 always means "not recorded".
@@ -373,6 +567,29 @@ map.on('load',async()=>{
       'icon-size':['interpolate',['linear'],['zoom'],10,0.5,13,0.72,17,1.0]},
     paint:{'icon-opacity':0.8}});
 
+  // All-opportunities layers. Their OWN source, deliberately: the single
+  // business view keeps its clustered `gap` source untouched, so nothing about
+  // the existing map moves, and this source is unclustered because a cluster
+  // bubble would swallow the one thing the mode exists to show — which
+  // category each address is short of.
+  map.addSource('allgap',{type:'geojson',data:EMPTY});
+  map.addSource('allpoi',{type:'geojson',data:EMPTY});
+  map.addLayer({id:'allpoi',type:'circle',source:'allpoi',filter:['==',['get','s'],1],
+    paint:{'circle-radius':['interpolate',['linear'],['zoom'],11,1.7,14,2.6,17,4.6],
+      'circle-color':['case',['==',['get','c'],1],ALL_POI,'#fffdf9'],
+      'circle-opacity':0.8,
+      'circle-stroke-width':['case',['==',['get','c'],1],0.6,1.1],
+      'circle-stroke-color':ALL_POI,'circle-stroke-opacity':0.75}});
+  map.addLayer({id:'allpoix',type:'symbol',source:'allpoi',filter:['==',['get','s'],0],
+    layout:{'icon-image':EXC_IMG,'icon-allow-overlap':true,'icon-ignore-placement':true,
+      'icon-size':['interpolate',['linear'],['zoom'],11,0.42,14,0.6,17,0.82]},
+    paint:{'icon-opacity':0.7}});
+  map.addLayer({id:'allpt',type:'circle',source:'allgap',
+    paint:{'circle-color':leadColor(),'circle-radius':ALL_RADIUS,
+      'circle-opacity':['case',['==',['get','hi'],1],0.88,0.10],
+      'circle-stroke-width':['case',['==',['get','hi'],1],0.7,0],
+      'circle-stroke-color':'#fff','circle-stroke-opacity':0.85}});
+
   // Alcohol overlay: registered up front and left EMPTY until the toggle is
   // switched on, so the draw order is fixed -- it always sits above the gap and
   // known-location dots, and turning it on never reshuffles the map. One image
@@ -438,6 +655,38 @@ map.on('load',async()=>{
         `dense enough to have listed it. The gaps on this map were measured WITHOUT it.</div>`+
         `<div class="pmi">${esc(p.id)}</div>`).addTo(map);});
 
+  // One popup, every missing category. This is the whole answer to "what is
+  // missing here" for one address, so it lists the LOT — ratio and all — not
+  // just the lead.
+  map.on('click','allpt',e=>{const p=e.features[0].properties, j=+p.j;
+    const miss=missingOf(j);
+    new maplibregl.Popup({closeButton:false,maxWidth:'290px'}).setLngLat(e.lngLat)
+      .setHTML(`<div class="pnb">${homes(p.u)} · ${miss.length} missing</div>`+
+        `<div class="ppop">lead gap: <b>${esc(catLabel(p.lead)||'—')}</b> · gap score ${(+p.gs).toFixed(2)}</div>`+
+        `<div style="margin-top:5px">${missHTML(j)}</div>`+
+        `<div class="pmi">× is distance to the nearest one ÷ this category's reach tier</div>`+
+        `<div class="pmi">bbl ${esc(NTA.ids[j])}</div>`).addTo(map);});
+  map.on('mouseenter','allpt',e=>{map.getCanvas().style.cursor='pointer';
+    const p=e.features[0].properties;
+    clTip.setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(`<div class="pnb">${(+p.nm)} missing · ${homes(p.u)}</div>`+
+        `<div class="ppop">lead gap ${esc(catLabel(p.lead)||'—')}</div>`).addTo(map);});
+  map.on('mouseleave','allpt',()=>{map.getCanvas().style.cursor='';clTip.remove();});
+  map.on('mouseenter','allpoi',e=>{map.getCanvas().style.cursor='pointer';
+    const p=e.features[0].properties;
+    poiTip.setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(`<div class="pnb">${esc(p.nm)||'(unnamed)'}</div>`+
+        `<div class="ppop">${esc(catLabel(p.cat))}</div>`+
+        `<div class="pmi">${p.c?'corroborated':'single source'}</div>`).addTo(map);});
+  map.on('mouseleave','allpoi',()=>{map.getCanvas().style.cursor='';poiTip.remove();});
+  map.on('mouseenter','allpoix',e=>{map.getCanvas().style.cursor='pointer';
+    const p=e.features[0].properties;
+    poiTip.setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(`<div class="pnb">${esc(p.nm)||'(unnamed)'}</div>`+
+        `<div class="ppop">${esc(catLabel(p.cat))} — excluded from supply</div>`+
+        `<div class="pmi">single aggregator record, no licence</div>`).addTo(map);});
+  map.on('mouseleave','allpoix',()=>{map.getCanvas().style.cursor='';poiTip.remove();});
+
   map.on('mouseenter','alc',e=>{map.getCanvas().style.cursor='pointer';
     alcTip.setLngLat(e.features[0].geometry.coordinates)
       .setHTML(alcHTML(e.features[0].properties,false)).addTo(map);});
@@ -478,6 +727,18 @@ function humanBasis(b){if(!b) return 'basis not recorded';
 
 function refresh(){
   syncCuisineUI();          // must precede poiFC(): it fills cuiTop
+  // The two modes never draw at once. Whichever is off gets an empty source
+  // rather than a hidden layer, so no stale geometry can survive a switch.
+  if(allMode()){
+    map.getSource('gap').setData(EMPTY);
+    map.getSource('poi').setData(EMPTY);
+    map.getSource('allgap').setData(allGapFC());
+    map.getSource('allpoi').setData(allPoiFC());
+    updateBanner(); allLegend(); refreshAlc();
+    return;
+  }
+  map.getSource('allgap').setData(EMPTY);
+  map.getSource('allpoi').setData(EMPTY);
   map.getSource('gap').setData(gapFC());
   const pf=poiFC();
   map.getSource('poi').setData(pf);
@@ -490,6 +751,7 @@ function refresh(){
 }
 function sumOver(obj,pick){let n=0;META.boroughs.forEach(b=>{if(boroSel==='ALL'||b===boroSel)n+=pick(obj[b]);});return n;}
 function updateBanner(shown){
+  if(allMode()) return allBanner();
   const g=sumOver(META.gapCounts[biz],v=>v), p=sumOver(META.poiCounts[biz],v=>v.all);
   const where=boroSel==='ALL'?'Manhattan & Brooklyn':META.boroughNames[boroSel];
   // When a known-location filter is on, say so in the banner — an unqualified
@@ -501,6 +763,33 @@ function updateBanner(shown){
   document.getElementById('banner').innerHTML=
     `<span class="sw" style="background:${lc()}"></span><div><b>${label()}${esc(cui)}${activeOnly&&det()?' · active only':''}</b>`+
     `<div class="bsub">${g.toLocaleString()} gap addresses · ${poiTxt} · ${where} · reach ${META.reach_m[biz]} m</div></div>`;
+}
+// The mode's banner says the neighborhood, not the business — and when no
+// neighborhood is picked it says THAT, so the empty map is never mistaken for
+// "nothing is missing here".
+function allBanner(){
+  const el=document.getElementById('banner');
+  if(!ntaSel||!NTA){
+    el.innerHTML='<span class="sw" style="background:var(--muted)"></span>'+
+      '<div><b>All opportunities</b><div class="bsub">Pick a neighborhood to draw it</div></div>';
+    return;
+  }
+  const n=META.neighborhoods.find(x=>x.nta===ntaSel), r=ntaRow(ntaSel)||{};
+  const nm=(n&&n.name)||ntaSel;
+  if(!ntaVisible()){
+    el.innerHTML='<span class="sw" style="background:var(--muted)"></span>'+
+      `<div><b>${esc(nm)}</b><div class="bsub">hidden by the `+
+      `${esc(META.boroughNames[boroSel]||boroSel)} borough filter</div></div>`;
+    return;
+  }
+  const shown=hiCat?(r.gapCounts?r.gapCounts[hiCat]:0):NTA.n;
+  el.innerHTML='<span class="sw" style="background:linear-gradient(135deg,#1f9aa1 0 33%,#a8443c 33% 66%,#c69a1e 66% 100%)"></span>'+
+    `<div><b>All opportunities · ${esc(nm)}${hiCat?' · '+esc(catLabel(hiCat)):''}</b>`+
+    `<div class="bsub">${(shown||0).toLocaleString()}`+
+    (hiCat?` of ${(NTA.n||0).toLocaleString()} addresses missing ${esc(catLabel(hiCat))}`
+          :` addresses missing at least one of ${META.cats.length}`)+
+    ` · ${(NTA.pois.nSet||0).toLocaleString()} known locations · `+
+    `${esc(META.boroughNames[r.boro]||'')}</div></div>`;
 }
 // THREE marks, three meanings, and the legend has to name all three or the
 // grey crosses read as a fourth kind of dot: filled = corroborated supply,
@@ -577,6 +866,7 @@ function syncCuisineUI(){
     `<b>These two filters change known locations only — gap addresses are model output and never move.</b>`;
 }
 function buildUI(){
+  buildModeUI();
   const opts=document.getElementById('opts');
   const order=META.cats.slice().sort((a,b)=>
     sumOver(META.gapCounts[b],v=>v)-sumOver(META.gapCounts[a],v=>v));
@@ -590,9 +880,8 @@ function buildUI(){
       if(biz===c) return;
       const ld=document.getElementById('loading'); ld.hidden=false; ld.textContent='Loading '+
         META.catLabels[META.cats.indexOf(c)].toLowerCase()+'…';
-      biz=c; cuiSel='ALL'; await loadCat(c);   // cuisines are per-category
-      [...opts.children].forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.cat===biz)));
-      refresh(); ld.hidden=true;
+      await loadCat(c);                        // cuisines are per-category
+      setMode(c); ld.hidden=true;
     };
     opts.appendChild(b);
   });
@@ -602,17 +891,23 @@ function buildUI(){
     x.setAttribute('aria-pressed',String(code===boroSel));
     x.onclick=()=>{boroSel=code;
       [...bel.children].forEach(y=>y.setAttribute('aria-pressed',String(y.dataset.b===boroSel)));
-      updateCounts(); refresh();
+      updateCounts(); refresh(); renderHere();
       const bb=code==='ALL'?allBounds():META.boroBounds[code];
       if(bb) map.fitBounds([[bb[0],bb[1]],[bb[2],bb[3]]],{padding:30,duration:700});};
     bel.appendChild(x);});
   const dl=document.getElementById('ntal');
   META.neighborhoods.forEach(n=>{const o=document.createElement('option');
     o.value=n.name;o.label=n.boro;dl.appendChild(o);});
+  // Unchanged for the fifteen categories: picking a neighborhood still just
+  // flies there. In all-opportunities mode the same pick also SELECTS it,
+  // which is what loads the file — one control, two jobs, no new widget.
   document.getElementById('ntaIn').addEventListener('change',e=>{
-    const n=META.neighborhoods.find(x=>x.name===e.target.value); if(!n) return;
-    map.fitBounds([[n.bounds[0],n.bounds[1]],[n.bounds[2],n.bounds[3]]],
-      {padding:50,duration:800,maxZoom:16});});
+    const n=META.neighborhoods.find(x=>x.name===e.target.value);
+    if(!n){ if(allMode()&&!e.target.value) selectNta(null,false); return; }
+    selectNta(n.nta,true);});
+  // The same three toggles drive both modes' known-location layers: they mean
+  // exactly the same thing here (D47 corroboration, D52 exclusion), and a
+  // second set of checkboxes would let the two views disagree about supply.
   document.getElementById('poiTog').onchange=e=>{showPois=e.target.checked;
     document.getElementById('soloTog').disabled=!showPois;
     document.getElementById('excTog').disabled=!showPois; refresh();};
@@ -628,6 +923,47 @@ function buildUI(){
   document.getElementById('cuiSel').onchange=e=>{cuiSel=e.target.value;refresh();};
   document.getElementById('actTog').onchange=e=>{activeOnly=e.target.checked;refresh();};
   buildAlcUI();
+}
+// The mode lives at the TOP of the business list and above a divider: it is
+// the same kind of choice (what does the map draw?) with a different kind of
+// answer (all fifteen, here). Hidden entirely when the export wrote no per-NTA
+// files, rather than offered as a button that 404s.
+function buildModeUI(){
+  const el=document.getElementById('mode');
+  if(!META.nta||!META.nta.available){el.hidden=true;return;}
+  el.className='mode';
+  const b=document.createElement('button');
+  b.className='opt'; b.id='allBtn'; b.setAttribute('aria-pressed','false');
+  b.innerHTML='<span class="sw"></span><span>All opportunities</span>'+
+    `<span class="n">${META.nta.n} nbhds</span>`;
+  b.onclick=async()=>{
+    if(allMode()){ setMode(META.cats[0]); return; }
+    const ld=document.getElementById('loading');
+    ld.hidden=false; ld.textContent='Loading neighborhoods…';
+    await loadNtaIndex(); ld.hidden=true;
+    if(!NTAIDX){ document.getElementById('here').textContent=
+      'Could not load data/nta/index.json.'; return; }
+    setMode(ALL_MODE);
+    if(ntaSel) await selectNta(ntaSel,false);
+  };
+  el.appendChild(b);
+  document.getElementById('ntaFine').innerHTML=
+    'In <b>All opportunities</b> this also picks which neighborhood is drawn. '+
+    'The map never switches neighborhoods on its own when you pan — an NTA is '+
+    'chosen, not guessed from the viewport.';
+}
+// One place decides which mode is on, so the two selectors can never both look
+// pressed. `syncMode` also parks the per-category-only controls.
+function setMode(next){
+  if(biz===next) return;
+  biz=next; hiCat=null; cuiSel='ALL';
+  const ab=document.getElementById('allBtn');   // absent when the export wrote no NTA files
+  if(ab) ab.setAttribute('aria-pressed',String(allMode()));
+  [...document.getElementById('opts').children].forEach(x=>
+    x.setAttribute('aria-pressed',String(x.dataset.cat===biz)));
+  document.getElementById('valBtn').disabled=allMode();
+  document.getElementById('valOut').hidden=true;
+  renderHere(); refresh();
 }
 // The overlay's section is hidden entirely when the export carries no alcohol
 // block, and shown-but-disabled when `loci ingest-alcohol` has not run -- an
