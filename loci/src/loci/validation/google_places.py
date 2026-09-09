@@ -3,12 +3,32 @@
 Every call is counted in a persisted ledger; when the ledger reaches
 LOCI_GOOGLE_CALL_BUDGET the client refuses, and it refuses outright when the
 budget is unset. Field mask is the minimum that still tells us what a result is
-and where it sits: id, location, types. Adding displayName/rating/hours reprices
-the SKU (see GTM-11), so do not widen it casually.
+and where it sits: id, location, types, primaryType. primaryType sits in the
+same Basic Data SKU as types (GTM-11), so adding it does not reprice the call.
+Adding displayName/rating/hours would reprice the SKU, so do not widen it
+casually beyond that.
 
-Result cap: Nearby Search returns at most 20 places per call. For the coverage
-check that is enough — we compare presence/undercount per category, not
-absolute counts in dense food hexes (QUESTIONS.md H-D3).
+Primary-type filtering (GTM-105 finding A): the request uses
+`includedPrimaryTypes`, not `includedTypes`. `includedTypes`/`excludedTypes`
+match a place's full, multi-label `types` array; only
+`includedPrimaryTypes`/`excludedPrimaryTypes` match the single `primaryType`.
+Loci's own categories are single-label per place (see osm_overpass.py,
+overture_places.py::_category_for), so matching Google on ANY type
+double-counts a place across every category one of its secondary types
+happens to hit (a bakery-cafe under both `restaurant` and `cafe_bakery`, a
+bodega under both `grocery` and `convenience`, etc.). Filtering on the primary
+type only is what makes the two sides comparable.
+
+Result cap: Nearby Search (New) returns at most 20 places per call and has NO
+nextPageToken — unlike Text Search, there is no way to page past it. A count
+of exactly 20 is therefore right-censored, not necessarily the true count.
+`nearby_count` reports this via `NearbyResult.at_cap` so callers can exclude
+censored rows from any mean/ratio/undercount statistic (GTM-105 finding C);
+it does NOT hold merely for "Google found nothing" presence checks.
+
+Search radius: see RADIUS_M below -- derived from reach_tiers.yaml's
+`validation` block (network threshold / measured circuity), not hardcoded
+(QUESTIONS M8, CHECKPOINT D53).
 """
 from __future__ import annotations
 
@@ -16,31 +36,108 @@ import datetime as dt
 import json
 import os
 import pathlib
+from dataclasses import dataclass, field
 
 import requests
 
+from loci.reach import validation_radius_m
+
 ENDPOINT = "https://places.googleapis.com/v1/places:searchNearby"
-FIELD_MASK = "places.id,places.location,places.types"
+FIELD_MASK = "places.id,places.location,places.types,places.primaryType"
+MAX_RESULT_COUNT = 20  # Nearby Search (New) hard cap; no pagination exists.
 LEDGER_PATH = pathlib.Path("data/interim/google_calls.json")
 
-# Loci category -> Google Places (New) Table A types. Mirrors webmap/server.js.
+# Straight-line search radius, in metres. DERIVED, never hardcoded: the
+# `validation` block of src/loci/reach_tiers.yaml carries the gap screen's
+# 800 m NETWORK threshold and NYC's measured circuity (1.233, from
+# analysis.hex_poi_distance), and radius = round(threshold / circuity).
+# QUESTIONS M8 / CHECKPOINT D53; GTM-105 audit finding D. Nearby Search takes a
+# circular locationRestriction and nothing else, so the validator cannot be
+# made network-shaped -- the best available fix is to pick the disc that most
+# nearly matches the network catchment. Rows written before this change used
+# 800 m and are recorded as such in analysis.coverage_validation.radius_m.
+RADIUS_M: int = validation_radius_m()
+
+# Loci category -> Google Places (New) Table A types. Mirrors webmap/server.js
+# (see tests/test_google_types_drift.py).
+#
+# Owner-approved mapping fixes per the 2026-09-08 GTM-105 audit's ranked item
+# 4 (docstring history: the original lists were catalogue-based guesses;
+# these are corrected against Table A and loci's NAICS anchors):
+#   - nails_beauty dropped `beauty_salon` (NAICS 812112, hair_barber's anchor
+#     -- the same salon was being double counted under both categories).
+#   - hair_barber gained `hair_care` (broad-primary salons) and `beauty_salon`.
+#   - cafe_bakery gained donut/bagel/ice-cream/juice/dessert/tea shops --
+#     Google's own taxonomy was narrower than DOHMH's CAFE_KEYWORDS, which
+#     biased toward "Google found nothing -> gap survives" (the dangerous
+#     direction).
+#   - fitness gained yoga_studio/sports_club (both 713940, loci's own anchor).
+#   - restaurant gained fast_food_restaurant/meal_takeaway/bar_and_grill plus
+#     the Table A cuisine-specific `*_restaurant` family (mirrors Overture's
+#     suffix rule); stays well under the 50-type includedPrimaryTypes cap
+#     (finding E) -- see test_no_category_exceeds_primary_types_cap.
+#   - bar gained wine_bar/night_club and explicitly excludes `bar_and_grill`
+#     (NAICS 722511, restaurant's anchor, not 722410).
+#   - clinic REMOVED entirely: `doctor` is every solo physician's office (also
+#     secondary on hospitals) and `medical_lab` is NAICS 621511, outside both
+#     of clinic's anchor codes (621111, 621493) -- confirms D30. Callers must
+#     not KeyError on a category with no mapping; see sample.run()'s filter
+#     and test_sample.py::test_run_skips_categories_with_no_google_mapping.
+#
+# tailor_repair (`tailor` only) is NOT fixed by this pass and is not usable
+# for headline claims: Table A has no `shoe_repair` type, and `tailor`
+# (clothing alteration, ~811490/812320) is near-disjoint from the 811430
+# anchor (Footwear & Leather Goods Repair). Kept only because nothing better
+# exists in Table A.
 GOOGLE_TYPES: dict[str, list[str]] = {
     "grocery": ["grocery_store", "supermarket"],
     "convenience": ["convenience_store"],
     "pharmacy": ["pharmacy", "drugstore"],
     "laundry": ["laundry"],
-    "hair_barber": ["hair_salon", "barber_shop"],
-    "nails_beauty": ["nail_salon", "beauty_salon"],
+    "hair_barber": ["hair_salon", "barber_shop", "hair_care", "beauty_salon"],
+    "nails_beauty": ["nail_salon"],
     "tailor_repair": ["tailor"],
-    "restaurant": ["restaurant"],
-    "cafe_bakery": ["cafe", "bakery", "coffee_shop"],
-    "bar": ["bar", "pub"],
+    "restaurant": [
+        "restaurant", "fast_food_restaurant", "meal_takeaway", "bar_and_grill",
+        "american_restaurant", "chinese_restaurant", "italian_restaurant", "japanese_restaurant",
+        "mexican_restaurant", "indian_restaurant", "thai_restaurant", "korean_restaurant",
+        "vietnamese_restaurant", "greek_restaurant", "french_restaurant", "spanish_restaurant",
+        "turkish_restaurant", "lebanese_restaurant", "middle_eastern_restaurant",
+        "mediterranean_restaurant", "brazilian_restaurant", "ramen_restaurant", "sushi_restaurant",
+        "pizza_restaurant", "seafood_restaurant", "steak_house", "hamburger_restaurant",
+        "sandwich_shop", "vegan_restaurant", "vegetarian_restaurant", "breakfast_restaurant",
+        "brunch_restaurant", "barbecue_restaurant", "indonesian_restaurant", "african_restaurant",
+        "afghani_restaurant", "asian_restaurant",
+        # confident-but-not-explicitly-requested Table A additions:
+        "buffet_restaurant", "fine_dining_restaurant",
+    ],
+    "cafe_bakery": ["cafe", "coffee_shop", "bakery", "donut_shop", "bagel_shop", "ice_cream_shop",
+                    "juice_shop", "dessert_shop", "tea_house"],
+    "bar": ["bar", "pub", "wine_bar", "night_club"],
     "childcare": ["child_care_agency", "preschool"],
-    "clinic": ["doctor", "medical_lab"],
-    "fitness": ["gym", "fitness_center"],
+    "fitness": ["gym", "fitness_center", "yoga_studio", "sports_club"],
     "bank": ["bank"],
     "hardware": ["hardware_store"],
 }
+
+
+@dataclass
+class NearbyResult:
+    """Structured result of one Nearby Search (New) call.
+
+    count   — number of places returned (<= MAX_RESULT_COUNT).
+    at_cap  — True when count == MAX_RESULT_COUNT. There is no
+              nextPageToken on this endpoint, so a capped count is
+              right-censored: the true count could be higher. Exclude
+              at_cap rows from any mean/ratio/undercount statistic
+              (GTM-105 finding C).
+    places  — (primaryType, types) per returned place, read off fields
+               already in FIELD_MASK at no extra API cost (finding G).
+               primaryType is None if Google omitted it for a place.
+    """
+    count: int
+    at_cap: bool
+    places: list[tuple[str | None, list[str]]] = field(default_factory=list)
 
 
 class BudgetExhausted(RuntimeError):
@@ -87,16 +184,33 @@ class GooglePlacesClient:
         self._save()
 
     # ---- API ------------------------------------------------------------------
-    def nearby_count(self, lat: float, lon: float, category: str, radius_m: int = 800) -> int:
-        """Number of places of `category` within `radius_m` (capped at 20 by the API)."""
+    def nearby_count(self, lat: float, lon: float, category: str,
+                     radius_m: int = RADIUS_M) -> NearbyResult:
+        """Places of `category` within `radius_m`, primary-type-matched (see module docstring).
+
+        `radius_m` defaults to the circuity-corrected RADIUS_M above, not to
+        the pre-D53 circle: the caller must record the radius it used
+        alongside the count, because a count is only interpretable against
+        the circle it was taken in.
+
+        Returns a NearbyResult: count (<= 20, the API's hard cap), at_cap
+        (True iff count == 20, meaning the true count may be higher and is
+        right-censored), and the per-place (primaryType, types) pairs.
+        """
         types = GOOGLE_TYPES[category]
         if not self.api_key:
             raise RuntimeError("GOOGLE_PLACES_KEY is not set.")
         self._charge()   # charge BEFORE the request so a crash can't under-count
-        body = {"includedTypes": types, "maxResultCount": 20,
+        body = {"includedPrimaryTypes": types, "maxResultCount": MAX_RESULT_COUNT,
                 "locationRestriction": {"circle": {"center": {"latitude": lat, "longitude": lon},
                                                    "radius": radius_m}}}
         resp = self.session.post(ENDPOINT, json=body, timeout=30,
                                  headers={"X-Goog-Api-Key": self.api_key, "X-Goog-FieldMask": FIELD_MASK})
         resp.raise_for_status()
-        return len(resp.json().get("places", []))
+        places = resp.json().get("places", [])
+        count = len(places)
+        return NearbyResult(
+            count=count,
+            at_cap=count >= MAX_RESULT_COUNT,
+            places=[(p.get("primaryType"), p.get("types", [])) for p in places],
+        )

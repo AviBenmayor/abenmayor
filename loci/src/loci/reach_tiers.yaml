@@ -31,6 +31,64 @@ drafted_on: 2026-09-05
 candidate_tiers_m: [400, 800, 1200]
 note_600m: "No source reviewed named 600 m specifically for any category."
 
+# ---------------------------------------------------------------------------
+# VALIDATION GEOMETRY (QUESTIONS M8, CHECKPOINT D53; GTM-105 audit finding D).
+#
+# The Google Places coverage validator (src/loci/validation/sample.py) is a
+# Nearby Search with a CIRCULAR locationRestriction, so its geometry is a
+# straight-line disc and cannot be made network-shaped: Google will not accept
+# a walk-network catchment, and analysis.hex_poi_distance holds only loci's own
+# POIs, so it cannot re-measure Google's returns either. Comparing loci's
+# network-thresholded set against Google's disc is what produced D29's
+# GEOMETRY-artifact branch (a business Google found AND loci already had, just
+# outside the validator's straight-line radius). The fix is to keep BOTH sides
+# a disc and choose the disc radius that best approximates the screen's
+# network threshold -- i.e. divide the network threshold by NYC's measured
+# circuity.
+#
+#   radius_m = round(network_threshold_m / circuity)   -- derived in code,
+#   never hardcoded: loci.reach.load_validation_geometry / validation_radius_m.
+#   src/loci/validation/sample.py RADIUS_M and google_places.nearby_count's
+#   default radius both read it; every row written to
+#   analysis.coverage_validation records the radius it was measured at, so
+#   800 m rows and circuity-corrected rows stay distinguishable.
+validation:
+  network_threshold_m: 800
+  circuity: 1.233
+  derived_radius_m: 649        # pinned expectation; tests/test_validation_radius.py
+                               # fails if this and the derivation disagree.
+  measured_on: 2026-09-08
+  circuity_basis: measured
+  circuity_source: >
+    Measured on loci's own data, not assumed from the literature. Read-only
+    query over analysis.hex_poi_distance (16.2M hex-POI pairs on the NYC
+    pedestrian graph) joined to analysis.hex.centroid and staging.poi.geom:
+    for the 949,334 pairs whose NETWORK distance falls in the 700-900 m band
+    (the neighbourhood of the 800 m threshold, so the ratio is estimated where
+    it is actually applied), circuity = network_m / straight_line_m has
+    median 1.2332 (IQR 1.122-1.348). Restricted to the validation universe
+    (populated hexes, ACS 2023 population > 800) the median is 1.2341.
+    By borough: Brooklyn 1.226, Manhattan 1.232, Queens 1.233, Bronx 1.248,
+    Staten Island 1.279 -- a citywide constant is used because the four dense
+    boroughs sit within 1% of each other and Staten Island (3.4% of pairs,
+    +3.7%) is barely represented in the income-stratified validation sample.
+    The value sits inside the 1.25-1.30 range the literature gives for
+    gridded US cities, at its low end, as a dense-grid city should.
+    Cross-check: the median straight-line distance among pairs at network
+    780-820 m is 648.8 m, which is 800 / 1.2332 to the metre.
+  fit_note: >
+    A disc can only approximate the network-800 set. Sweeping the radius over
+    the same pairs (recall = share of the network<=800 set inside the disc;
+    precision = share of the disc inside the network<=800 set): 600 m
+    0.825/0.928, 640 m 0.893/0.881, 660 m 0.919/0.853, 800 m 0.992/0.629.
+    649 m sits at the balance point, where the two errors are both ~12% and
+    offsetting. The status quo (800 m straight-line) is the bottom row: 37%
+    of what the validator counted lay beyond the reach the screen actually
+    uses, one-sided and toward "loci looks under-covered" -- exactly D29's
+    geometry artifact. Shrinking the disc also cuts its area to 66% of the
+    800 m disc, which reduces the 20-result API cap censoring that GTM-105
+    finding C flagged (finding D: one change, two problems).
+
 categories:
 
   grocery:

@@ -1,11 +1,29 @@
 const http=require('http'),https=require('https'),fs=require('fs'),path=require('path'),zlib=require('zlib');
 const port=process.env.PORT||8080, dir=__dirname, GKEY=process.env.GOOGLE_PLACES_KEY||'';
 const T={'.html':'text/html','.json':'application/json','.js':'text/javascript','.css':'text/css','.png':'image/png','.svg':'image/svg+xml'};
-// category -> Google Places (New) Table A types
+// category -> Google Places (New) Table A types. Mirrors google_places.py's
+// GOOGLE_TYPES (source of truth; see tests/test_google_types_drift.py, GTM-105
+// finding F). GTM-105 2026-09-08 audit, ranked item 4, owner-approved: clinic
+// removed entirely (doctor/medical_lab measure a different universe than the
+// 621111/621493 anchor -- GT[cat] being undefined already resolves to
+// {error:'unavailable'} above, so no code change needed for the missing key).
+// tailor_repair kept as `tailor` only -- not usable for headline claims,
+// nothing better exists in Table A.
 const GT={grocery:['grocery_store','supermarket'],convenience:['convenience_store'],pharmacy:['pharmacy','drugstore'],
-  laundry:['laundry'],hair_barber:['hair_salon','barber_shop'],nails_beauty:['nail_salon','beauty_salon'],
-  restaurant:['restaurant'],cafe_bakery:['cafe','bakery','coffee_shop'],bar:['bar','pub'],
-  childcare:['child_care_agency'],clinic:['doctor'],fitness:['gym'],bank:['bank'],hardware:['hardware_store'],tailor_repair:['tailor']};
+  laundry:['laundry'],hair_barber:['hair_salon','barber_shop','hair_care','beauty_salon'],nails_beauty:['nail_salon'],
+  restaurant:['restaurant','fast_food_restaurant','meal_takeaway','bar_and_grill',
+    'american_restaurant','chinese_restaurant','italian_restaurant','japanese_restaurant',
+    'mexican_restaurant','indian_restaurant','thai_restaurant','korean_restaurant',
+    'vietnamese_restaurant','greek_restaurant','french_restaurant','spanish_restaurant',
+    'turkish_restaurant','lebanese_restaurant','middle_eastern_restaurant',
+    'mediterranean_restaurant','brazilian_restaurant','ramen_restaurant','sushi_restaurant',
+    'pizza_restaurant','seafood_restaurant','steak_house','hamburger_restaurant',
+    'sandwich_shop','vegan_restaurant','vegetarian_restaurant','breakfast_restaurant',
+    'brunch_restaurant','barbecue_restaurant','indonesian_restaurant','african_restaurant',
+    'afghani_restaurant','asian_restaurant','buffet_restaurant','fine_dining_restaurant'],
+  cafe_bakery:['cafe','coffee_shop','bakery','donut_shop','bagel_shop','ice_cream_shop','juice_shop','dessert_shop','tea_house'],
+  bar:['bar','pub','wine_bar','night_club'],
+  childcare:['child_care_agency','preschool'],fitness:['gym','fitness_center','yoga_studio','sports_club'],bank:['bank'],hardware:['hardware_store'],tailor_repair:['tailor']};
 // Spend guard for a PUBLIC url. Two layers:
 //  1. hard total cap per process: GOOGLE_CLICK_BUDGET calls, default 0 = per-click validation OFF.
 //     The coverage check now runs as a capped, stratified batch (`loci validate`), not per click.
@@ -14,10 +32,19 @@ const CLICK_BUDGET=parseInt(process.env.GOOGLE_CLICK_BUDGET||'0',10); let clicks
 let tok=30, last=Date.now();
 function allow(){if(!(CLICK_BUDGET>0)||clicks>=CLICK_BUDGET)return false;const now=Date.now();tok=Math.min(30,tok+(now-last)/1000*0.5);last=now;if(tok>=1){tok-=1;clicks+=1;return true;}return false;}
 
+// includedPrimaryTypes, not includedTypes: loci is single-label per place, so
+// matching on the full multi-label `types` array double counts a place across
+// every category one of its secondary types happens to hit (GTM-105 finding A).
+// Radius: the screen's 800 m NETWORK threshold / measured NYC circuity (D53) —
+// read from src/loci/reach_tiers.yaml `validation.derived_radius_m` so the map's
+// check uses the same disc as `loci validate` (tests/test_validation_radius.py).
+const RADIUS_M=(()=>{try{const y=fs.readFileSync(path.join(__dirname,'..','src','loci','reach_tiers.yaml'),'utf8');
+  const m=y.match(/^\s*derived_radius_m:\s*(\d+)/m); if(m)return parseInt(m[1],10);}catch(e){}
+  throw new Error('reach_tiers.yaml validation.derived_radius_m not found');})();
 function googleNearby(lat,lng,cat){return new Promise((resolve)=>{
   const types=GT[cat]; if(!types||!GKEY)return resolve({error:'unavailable'});
-  const body=JSON.stringify({includedTypes:types,maxResultCount:20,
-    locationRestriction:{circle:{center:{latitude:lat,longitude:lng},radius:800}}});
+  const body=JSON.stringify({includedPrimaryTypes:types,maxResultCount:20,
+    locationRestriction:{circle:{center:{latitude:lat,longitude:lng},radius:RADIUS_M}}});
   const req=https.request({hostname:'places.googleapis.com',path:'/v1/places:searchNearby',method:'POST',
     headers:{'Content-Type':'application/json','X-Goog-Api-Key':GKEY,'X-Goog-FieldMask':'places.displayName,places.location'}},
     r=>{let d='';r.on('data',c=>d+=c);r.on('end',()=>{try{const j=JSON.parse(d);const places=j.places||[];

@@ -1,102 +1,235 @@
-# Income elasticity of demand, per category (docs/CHECKPOINT.md, demand-caveat
-# ticket). Source: Meltzer & Schuetz (2012), "Bodegas or Bagel Shops? Neighborhood
-# Retail at the Intersection of Race and Poverty," Economic Development Quarterly
-# 26(1):73-94 (NYC ZIP-level, ZIP Business Patterns 1998-2007).
+# Demand-side annotation of the gap screen: which categories are plausibly
+# DEMAND-following in low-income areas, and what counts as "low income".
 #
-# Their finding: low-income NYC neighborhoods (household income < 80% of the
-# citywide mean -- `low_income_cutoff` below) are NOT under-supplied on
-# establishment counts for necessity categories -- groceries had HIGHER
-# establishments/land in low-income ZIPs (0.051 vs 0.036, Table 6), drugstores
-# showed only a small income gap -- but food service (restaurants, cafes), gyms
-# (0.29 vs 1.04 per ZIP, Tables 5-7), and other discretionary retail
-# disproportionately locate in higher-income areas.
+# ============================================================================
+# WHAT CHANGED (GTM-109 contrarian review, 2026-09-08)
+# ============================================================================
+# This file used to hand-code a binary `income_elasticity: necessity |
+# discretionary` per category -- seven rows read off Meltzer & Schuetz (2012),
+# EIGHT rows owner priors marked `evidence: assumed`. The contrarian review
+# killed that construction on its own terms:
+#
+#   `src/loci/spend.yaml` ALREADY assigns every one of the 15 categories a
+#   CONTINUOUS `income_elasticity` in [0,1] sourced from BLS Consumer
+#   Expenditure Survey Table 1101 (national, 2024) and Table 3004 (Northeastern
+#   MSAs, 2023-2024) -- real workbooks in `data/raw/bls/`. The two files
+#   disagreed, and NO cut point on the CEX scale reproduced the hand-coded
+#   binary: hair_barber and tailor_repair share elasticity 0.30 and had
+#   OPPOSITE classes; nails_beauty and grocery share 0.35 and had opposite
+#   classes. The binary was therefore not a function of the parameter it
+#   claimed to encode -- it was a free variable wearing a citation.
+#
+# So this file no longer stores a class. It stores the RULE, and
+# `loci.demand.load_demand()` derives each category's class from spend.yaml at
+# load time. One number, one source, no per-category judgment left.
+#
+# WHY 0.35 IS THE CUT POINT (this is the whole evidentiary claim):
+# cutting at CEX elasticity > 0.35 -> discretionary reproduces ALL SEVEN
+# paper-backed rows EXACTLY --
+#     necessity      grocery 0.35, convenience 0.20, pharmacy 0.10
+#     discretionary  restaurant 0.45, cafe_bakery 0.40, bar 0.50, fitness 0.40
+# -- a genuine 7/7 out-of-sample reproduction of Meltzer & Schuetz's own
+# necessity/discretionary split from a file built for an unrelated purpose
+# (the fair-value spend engine). `tests/test_demand_caveat.py` pins that 7/7
+# check and a drift check that every category in categories.yaml still has a
+# spend.yaml elasticity. It also assigns all eight former owner priors to
+# NECESSITY, which is the conservative direction: fewer gaps get caveated away.
+#
+# ============================================================================
+# WHAT THIS FILE IS FOR
+# ============================================================================
+# Meltzer & Schuetz (2012) find that low-income NYC neighborhoods (household
+# income < 80% of the citywide MEAN -- `low_income_cutoff` below) are NOT
+# under-supplied on establishment counts for necessity categories (groceries
+# were MORE numerous per acre in low-income ZIPs, 0.051 vs 0.036, Table 6;
+# drugstores showed only a small gap) but that food service, gyms (0.29 vs 1.04
+# per ZIP, Tables 5-7) and other discretionary retail disproportionately locate
+# in higher-income areas.
 #
 # Consequence for the gap screen: a missing DISCRETIONARY category in a
-# low-income hex is plausibly demand-following (the paper's own finding), not a
-# conspicuous supply gap, while a missing NECESSITY category there is a real
-# gap either way. This file ANNOTATES gaps.py output with that context; it does
-# not change which hexes are gaps or which (hex, category) pairs are missing
-# (see model/gaps.py docstring and tests/test_demand_caveat.py part (c)).
+# confidently-low-income hex is plausibly demand-following, not a conspicuous
+# supply gap. This file ANNOTATES `model/gaps.py` output with that context. It
+# does NOT change which hexes are gaps or which (hex, category) pairs are
+# missing, and it must never feed a rank or a score -- see the module docstring
+# of model/gaps.py and tests/test_demand_caveat.py parts (c)/(d).
 #
-# `evidence: paper` rows are read directly off the tables cited above.
-# `evidence: assumed` rows are OWNER PRIORS -- a reasonable extrapolation of the
-# same necessity/discretionary logic to categories the paper doesn't cover --
-# and are AWAITING CONTRARIAN REVIEW. Do not treat an `assumed` row as having
-# the same evidentiary weight as a `paper` row in any downstream claim.
+# X6 ALWAYS TRAVELS WITH THE CAVEAT: the same paper finds race predicts retail
+# NET of income, so an income-only annotation can launder under-provision as
+# "no demand". Every emitted caveat carries that disclaimer text
+# (`loci.demand.X6_DISCLAIMER`); do not strip it downstream.
 
-low_income_cutoff: 0.80   # share of the citywide population-weighted mean
-                          # household income; mirrors the paper's own cutoff.
+# ---------------------------------------------------------------------------
+# The rule
+# ---------------------------------------------------------------------------
+
+# spend.yaml `income_elasticity` STRICTLY GREATER than this -> discretionary;
+# at or below -> necessity. See the 7/7 reproduction argument above.
+cutoff_elasticity: 0.35
+
+# Share of the citywide MEAN household income below which a hex counts as
+# low-income. Mirrors the paper's own cutoff. The denominator is the ACS
+# aggregate-household-income / households mean over the five NYC counties
+# (B19025_001E / B11001_001E), NOT a population-weighted mean of tract MEDIANS
+# -- the review found the old denominator was a mean-of-medians ($88,154),
+# which is not the paper's quantity and made the screen materially stricter
+# than the paper's. See `loci.grid.acs.load_citywide_mean_hh_income`.
+low_income_cutoff: 0.80
+
+elasticity_source: >
+  src/loci/spend.yaml `income_elasticity`, per category. Underlying source: BLS
+  Consumer Expenditure Survey Table 1101 (income quintiles before taxes,
+  national, 2024) and Table 3004 (Northeastern MSAs, 2023-2024 two-year
+  average); raw workbooks in data/raw/bls/. Cutting that scale at 0.35
+  reproduces 7/7 of the rows Meltzer & Schuetz classify directly.
 
 source: >
   Meltzer, R. and Schuetz, J. (2012). "Bodegas or Bagel Shops? Neighborhood
   Retail at the Intersection of Race and Poverty." Economic Development
   Quarterly 26(1):73-94.
 
+# ---------------------------------------------------------------------------
+# Per-category ANNOTATION METADATA ONLY -- no class is stored here.
+# ---------------------------------------------------------------------------
+# `evidence`:
+#   paper -- Meltzer & Schuetz classify this category directly; the citation is
+#            kept, and the derived CEX class agrees with it (that is the 7/7).
+#   cex   -- not covered by the paper; the class is DERIVED from spend.yaml's
+#            BLS CEX elasticity by the `cutoff_elasticity` rule above. These
+#            eight rows were `evidence: assumed` owner priors before GTM-109.
+# `annotate: false` -- excluded from the caveat annotation entirely, whatever
+#   its derived class. Only clinic; see its note.
 categories:
+
   # --- Tier 1: necessities ---
   grocery:
-    income_elasticity: necessity
     evidence: paper
-    note: "Table 6 -- groceries/land HIGHER in low-income ZIPs (0.051 vs 0.036)."
+    note: >
+      Table 6 -- groceries per acre HIGHER in low-income ZIPs (0.051 vs 0.036).
+      CEX 0.35 -> necessity, agreeing with the paper (1 of the 7/7).
   convenience:
-    income_elasticity: necessity
     evidence: paper
-    note: "Table 6, grouped with grocery/food retail -- no income undersupply found."
+    note: >
+      Table 6, grouped with grocery/food retail -- no income undersupply found.
+      CEX 0.20 -> necessity, agreeing with the paper (2 of the 7/7).
   pharmacy:
-    income_elasticity: necessity
     evidence: paper
-    note: "Table 6 -- drugstores show only a small income gap."
+    note: >
+      Table 6 -- drugstores show only a small income gap. CEX 0.10 ->
+      necessity, agreeing with the paper (3 of the 7/7).
   laundry:
-    income_elasticity: necessity
-    evidence: assumed
-    note: "Not covered by the paper. Owner prior: a daily-needs necessity like grocery/pharmacy. Awaiting contrarian review."
+    evidence: cex
+    note: >
+      Not covered by the paper. CEX 0.15 (second-lowest of the 15) ->
+      necessity. Survived review on the elasticity alone. Note the review's
+      caveat that laundry's observed low-income supply ratio (0.60) partly
+      reflects in-home and informal provision, which is a supply/measurement
+      fact, not evidence about demand.
 
   # --- Tier 2: personal services ---
   hair_barber:
-    income_elasticity: necessity
-    evidence: assumed
-    note: "Not covered by the paper. Owner prior: routine personal-care necessity, unlike discretionary food/fitness. Awaiting contrarian review."
+    evidence: cex
+    note: >
+      Not covered by the paper. CEX 0.30 -> necessity.
   nails_beauty:
-    income_elasticity: discretionary
-    evidence: assumed
-    note: "Not covered by the paper. Owner prior: closer to discretionary personal spending than to routine necessity. Awaiting contrarian review."
+    evidence: cex
+    note: >
+      Not covered by the paper. WAS an owner prior of `discretionary`; the CEX
+      elasticity is 0.35, IDENTICAL to grocery, so the rule makes it a
+      necessity and the prior is dropped (review §5). Largest single flip on
+      the reach rule after tailor_repair (147 pairs). Separately, D40/M9 shows
+      the NYS DOS anchor OVERCOUNTS nails 7.96x, so nails gaps are near
+      impossible and this row is close to inert either way.
   tailor_repair:
-    income_elasticity: discretionary
-    evidence: assumed
-    note: "Not covered by the paper. Owner prior: occasional-use, income-sensitive service. Awaiting contrarian review."
+    evidence: cex
+    note: >
+      Not covered by the paper. WAS an owner prior of `discretionary`; the CEX
+      elasticity is 0.30, IDENTICAL to hair_barber, which the same prior called
+      a necessity. The rule makes it a necessity and the prior is dropped
+      (review §5). Largest single contributor to the reach rule's caveat
+      footprint under the old classification (189 pairs), and D44 reports the
+      ADDRESS-level ranking is dominated by tailor_repair and laundry -- so
+      this row would have caveated the top of the published list the moment
+      GTM-110 ported the annotation.
 
   # --- Tier 3: food & gathering ---
   restaurant:
-    income_elasticity: discretionary
     evidence: paper
-    note: "Tables 5-7 -- food service disproportionately locates in higher-income areas."
+    note: >
+      Tables 5-7 -- food service disproportionately locates in higher-income
+      areas. CEX 0.45 -> discretionary, agreeing with the paper (4 of the 7/7).
   cafe_bakery:
-    income_elasticity: discretionary
     evidence: paper
-    note: "Tables 5-7 -- grouped with food service/discretionary retail."
+    note: >
+      Tables 5-7 -- grouped with food service/discretionary retail. CEX 0.40 ->
+      discretionary, agreeing with the paper (5 of the 7/7).
   bar:
-    income_elasticity: discretionary
     evidence: paper
-    note: "Tables 5-7 -- grouped with food service/discretionary retail."
+    note: >
+      Tables 5-7 -- grouped with food service/discretionary retail. CEX 0.50
+      (the highest of the 15) -> discretionary, agreeing with the paper
+      (6 of the 7/7).
 
   # --- Tier 4: civic & wellness ---
   childcare:
-    income_elasticity: necessity
-    evidence: assumed
-    note: "Not covered by the paper. Owner prior: a working-family necessity, not discretionary spending. Awaiting contrarian review."
+    evidence: cex
+    note: >
+      Not covered by the paper. CEX 0.30 -> necessity, and the class holds, BUT
+      INCOME IS THE WRONG DEMAND DRIVER FOR THIS CATEGORY: childcare demand is
+      driven by the count of children under 5 and by labor-force participation
+      among their parents, not by household income. A household with no young
+      children has ~zero demand at any income; a low-income household with two
+      under-5s and two working parents has high demand. Loci carries neither
+      variable today (would need ACS B01001 age bands and B23008/B23025). The
+      derived class is correct and the category is never caveated (necessity),
+      so nothing downstream is wrong -- but do not cite this row as evidence
+      that childcare demand tracks income, and if the annotation is ever
+      extended to necessity categories, childcare needs its own driver first.
   clinic:
-    income_elasticity: necessity
-    evidence: assumed
-    note: "Not covered by the paper. Owner prior: healthcare access is a necessity. Awaiting contrarian review."
+    evidence: cex
+    annotate: false
+    note: >
+      EXCLUDED FROM THE ANNOTATION ENTIRELY (review §5), not merely classified.
+      CHECKPOINT D30 already excludes clinic from headline claims pending
+      re-anchoring, because the category's coverage is not trusted. Attaching a
+      demand-side annotation to a category whose SUPPLY layer is known to be
+      unreliable asserts a confidence the data does not support: the annotation
+      would be a statement about the relationship between income and a POI
+      count that Loci does not yet believe. Its CEX elasticity (0.10) would
+      derive `necessity`, so excluding it changes no count today -- the
+      exclusion is here so that a later coverage fix, or a later extension of
+      the caveat to necessity categories, cannot silently start annotating a
+      category D30 excludes. Also structurally: clinic revenue is insurance
+      reimbursement, not household budget (spend.yaml T5), so a
+      household-income elasticity is the wrong instrument for it anyway.
   fitness:
-    income_elasticity: discretionary
     evidence: paper
-    note: "Tables 5-7 -- gyms per ZIP 0.29 (low-income) vs 1.04 (higher-income), the paper's sharpest gap."
+    note: >
+      Tables 5-7 -- gyms per ZIP 0.29 (low-income) vs 1.04 (higher-income), the
+      paper's sharpest gap. CEX 0.40 -> discretionary, agreeing with the paper
+      (7 of the 7/7).
   bank:
-    income_elasticity: necessity
-    evidence: assumed
-    note: "Not covered by the paper. Owner prior: financial-services access is a necessity, especially given bank-desert literature. Awaiting contrarian review."
+    evidence: cex
+    note: >
+      Not covered by the paper. CEX 0.10 (tied lowest) -> necessity. The class
+      is unchanged from the old owner prior, but ITS JUSTIFICATION IS REPLACED:
+      the previous note argued from the bank-desert literature, which is a
+      SUPPLY-SIDE argument ("branches are absent from poor neighborhoods")
+      dressed up in a demand-elasticity field. Branch siting follows deposit
+      balances, so a bank desert is a supply fact and says nothing about
+      household demand for banking. The row now rests only on the CEX
+      elasticity. Flipping this row alone would have MORE THAN DOUBLED the
+      window screen's caveat footprint (+103 pairs on a base of 91), which is
+      why the justification had to be made load-bearing rather than rhetorical.
   hardware:
-    income_elasticity: necessity
-    evidence: assumed
-    note: "Not covered by the paper. Owner prior: home-maintenance necessity, not discretionary spending. Awaiting contrarian review."
+    evidence: cex
+    note: >
+      Not covered by the paper. CEX 0.35, IDENTICAL to grocery -> necessity.
+      LOAD-BEARING ROW: hardware is the window screen's #1 published gap type
+      (237 hexes in the banner). This single row gates 83 window pairs -- if it
+      were discretionary the window screen's caveat footprint would jump 91 ->
+      174 (+91%) and the headline category would read "plausibly
+      demand-following". It is not an incidental classification; treat any
+      future change to hardware's spend.yaml elasticity as a change to the
+      published screen. (spend.yaml itself flags hardware's annual_spend as a
+      placeholder because no CEX line isolates hardware-store spend; the
+      ELASTICITY, not the spend level, is what this file consumes.)

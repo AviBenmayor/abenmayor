@@ -33,31 +33,58 @@ shrank its eligible universe ~22% versus the window rule; the two rules must
 agree on the population they are screening even when they disagree on what
 "missing" means within it.
 
-**Demand-side annotation (CHECKPOINT demand-caveat ticket; Meltzer & Schuetz
-2012, `loci.demand`):** every gap row also carries `median_hh_income`,
-`renter_share`, `income_class` ('low'/'mid_high'/None) and `demand_caveat` --
-context, never a filter. A missing DISCRETIONARY category (restaurant,
-cafe_bakery, bar, fitness per the paper; a few more by owner assumption -- see
-`demand.yaml`) in a `income_class='low'` hex is plausibly demand-following
-(the paper finds discretionary retail disproportionately locates in
-higher-income areas even though necessity retail does not undersupply
-low-income areas), not a conspicuous supply gap, so `demand_caveat=True` flags
-it. Both rules pick `lead` preferring a NON-caveated missing category (ties
-keep each rule's existing ordering: highest prevalence for window, smallest
-reach for reach) -- only when EVERY missing category at a hex is caveated does
-`lead` fall back to one of them. `caveated_missing` lists every caveated
-category among `missing_expected`, not just the lead. This changes which
-category is reported as `lead`, but never the set of gap hexes or the set of
-(hex, category) missing pairs -- see tests/test_demand_caveat.py part (c).
+**Demand-side annotation (Meltzer & Schuetz 2012, `loci.demand`; rebuilt by
+the GTM-109 contrarian review):** every gap row carries `median_hh_income`,
+`renter_share`, `income_class`, `income_ratio`, `income_ratio_moe`,
+`income_indeterminate`, `demand_caveat`, `caveated_missing` and
+`demand_caveat_text`. All of it is CONTEXT, never a filter and never an input
+to a rank or a score.
+
+A missing DISCRETIONARY category in a confidently-low-income hex is plausibly
+demand-following (the paper finds discretionary retail disproportionately
+locates in higher-income areas even though necessity retail does not
+undersupply low-income areas). Three things GTM-109 changed:
+
+1. **The class is derived, not declared.** `loci.demand` computes
+   necessity/discretionary from `spend.yaml`'s BLS CEX `income_elasticity` at a
+   0.35 cut, which reproduces 7/7 of the paper's own rows. The eight former
+   owner priors are gone; nails_beauty and tailor_repair flipped to necessity.
+   clinic is excluded from the annotation entirely (CHECKPOINT D30).
+
+2. **The denominator is the citywide MEAN household income** (ACS
+   B19025/B11001, household-weighted, `loci.grid.acs`), not the
+   population-weighted mean of tract medians this module used to compute.
+
+3. **The statement is continuous and MOE-aware.** `income_ratio` is the hex's
+   income as a share of that citywide mean; `income_ratio_moe` propagates the
+   ACS MOE; `income_indeterminate` marks the ~55% of gap hexes whose income
+   sits within one MOE of the cutoff and therefore CANNOT be classified better
+   than a coin flip. A caveat is only asserted -- `demand_caveat_text` emitted,
+   `caveated_missing` populated -- when the hex is CONFIDENTLY below the
+   cutoff (`ratio + moe < cutoff`). Every emitted text carries the X6
+   disclaimer (`loci.demand.X6_DISCLAIMER`).
+
+`income_class` is retained as the point-estimate label for existing consumers
+(and GTM-110's address port), but nothing keys off it alone: read it together
+with `income_indeterminate`.
+
+Both rules pick `lead` preferring a NON-caveated missing category (ties keep
+each rule's existing ordering: highest prevalence for window, smallest reach
+for reach) -- only when EVERY missing category at a hex is caveated does
+`lead` fall back to one of them. That preference now uses the CONFIDENT caveat
+set, so a coin-flip income classification can no longer move which category a
+hex reports. The annotation never changes the set of gap hexes or the set of
+(hex, category) missing pairs -- see tests/test_demand_caveat.py parts (c)/(d).
 """
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import math
 
 from loci.categories import CATEGORIES
-from loci.demand import load_demand, load_low_income_cutoff
+from loci.demand import X6_DISCLAIMER, caveat_categories, load_demand, load_low_income_cutoff
 from loci.reach import load_reach, load_reach_meta
 
 ALLCATS = list(CATEGORIES)
@@ -93,34 +120,139 @@ def _gate(presence: dict[str, tuple[float, set[str]]], min_present: int
     return {h: v for h, v in presence.items() if len(v[1]) >= min_present}
 
 
-def _income_context(con) -> tuple[float | None, dict[str, tuple[float | None, float | None, str | None]]]:
-    """Demand-caveat inputs (CHECKPOINT demand-caveat ticket): the citywide
-    population-weighted mean household income (over hexes with population > 0
-    and non-null income, acs_year=2023 -- same vintage the rest of gaps.py
-    uses) and, per hex, (median_hh_income, renter_share, income_class).
-    `income_class` is 'low' if median_hh_income < `low_income_cutoff` (from
-    demand.yaml) times that citywide mean, else 'mid_high'; None wherever
-    median_hh_income is NULL for the hex or the citywide mean itself is
-    unavailable. Read-only context for annotation -- never used to gate which
-    hexes are eligible or which categories are missing."""
+@dataclasses.dataclass(frozen=True)
+class IncomeContext:
+    """Per-hex demand-side context. Purely additive annotation: nothing in this
+    dataclass may gate eligibility, membership in the missing set, or any rank
+    or score (tests/test_demand_caveat.py parts (c)/(d))."""
+    median_hh_income: float | None
+    renter_share: float | None
+    income_class: str | None          # 'low' | 'mid_high' | None -- POINT estimate
+    income_ratio: float | None        # median_hh_income / citywide mean
+    income_ratio_moe: float | None    # 90%-confidence MOE on that ratio
+    income_indeterminate: bool | None # cutoff sits within one MOE of the ratio
+    confidently_low: bool             # ratio + moe < cutoff; the only caveat trigger
+
+
+_NO_INCOME = IncomeContext(None, None, None, None, None, None, False)
+
+
+def _citywide_income() -> tuple[float | None, float | None]:
+    """(mean, MOE) of citywide household income, from
+    `loci.grid.acs.load_citywide_mean_hh_income` (ACS B19025/B11001 over the
+    five NYC counties, cached under data/interim/).
+
+    Factored out as its own function so tests can pin it -- the value is a
+    live ACS quantity behind a gitignored cache, and no unit test should depend
+    on the network or on a machine's cache state. See tests/conftest.py."""
+    from loci.grid.acs import load_citywide_mean_hh_income
+    rec = load_citywide_mean_hh_income()
+    return rec["mean_hh_income"], rec["mean_hh_income_moe"]
+
+
+def _ratio_moe(x: float, x_moe: float | None, y: float, y_moe: float | None) -> float | None:
+    """Standard ACS derived-RATIO margin of error (ACS General Handbook,
+    "Calculating Margins of Error for Derived Ratios")::
+
+        R = X / Y
+        MOE(R) ~= (1 / Y) * sqrt( MOE(X)^2 + R^2 * MOE(Y)^2 )
+
+    Here X is the hex's `median_hh_income` (MOE from
+    `hex_demographics.median_hh_income_moe`, itself propagated onto the grid by
+    `grid/acs.py`) and Y is the citywide mean household income (MOE from the
+    county-level B19025/B11001 aggregates). Both inputs are published at 90%
+    confidence, the Census convention, so the result is a 90% MOE too.
+
+    Two stated approximations. (1) The formula is the RATIO form -- the terms
+    ADD -- not the PROPORTION form, where X is a subset of Y and the second
+    term is subtracted; a hex's median income is not a subset of a citywide
+    mean. (2) It assumes X and Y independent. The hex contributes on the order
+    of 1e-4 of the citywide aggregate, so the induced correlation is
+    negligible; Y's own MOE is under 1% of Y regardless and the numerator term
+    dominates by two orders of magnitude.
+
+    Returns None if either MOE is unknown -- the caller must then treat the
+    ratio as unclassifiable rather than as exact (fail closed).
+    """
+    if x_moe is None or y in (None, 0):
+        return None
+    r = x / y
+    ym = y_moe or 0.0
+    return math.sqrt(x_moe ** 2 + (r ** 2) * (ym ** 2)) / y
+
+
+def _income_context(con, citywide: tuple[float | None, float | None] | None = None
+                    ) -> tuple[float | None, dict[str, IncomeContext]]:
+    """Demand-caveat inputs. Returns the citywide MEAN household income and, per
+    hex, an `IncomeContext`.
+
+    The denominator is the ACS citywide MEAN household income
+    (`_citywide_income`), household-weighted -- Meltzer & Schuetz's own
+    quantity. Before GTM-109 this function computed
+    `sum(population * median_hh_income) / sum(population)` over hexes instead,
+    which is a POPULATION-weighted mean of tract MEDIANS ($88,154 vs the true
+    mean's $127,894). Three defects in one line: a mean-of-medians is not a
+    mean in a right-skewed distribution, people are the wrong weight when the
+    unit is the household, and the result was compared against a median. The
+    net effect was a cutoff ~28% too low, i.e. a materially stricter and
+    smaller "low income" population than the paper's.
+
+    `income_class` is the POINT-estimate label ('low' if the hex's income is
+    below `low_income_cutoff` x the citywide mean, else 'mid_high'; None if
+    either side is unknown). `confidently_low` is the stricter test that
+    actually drives the caveat: the ratio PLUS its MOE must still sit below the
+    cutoff. `income_indeterminate` marks hexes whose income is within one MOE
+    of the cutoff in either direction -- for those, `income_class` is a coin
+    flip and must not be read on its own. A hex whose MOE is unknown gets
+    `income_ratio_moe=None`, `income_indeterminate=None` and
+    `confidently_low=False`: no MOE, no assertion.
+
+    Read-only context -- never used to gate which hexes are eligible or which
+    categories are missing.
+    """
     cutoff = load_low_income_cutoff()
-    citywide_mean = con.execute("""
-        SELECT sum(population * median_hh_income) / sum(population)
-        FROM analysis.hex_demographics
-        WHERE acs_year = 2023 AND population > 0 AND median_hh_income IS NOT NULL
-    """).fetchone()[0]
+    citywide_mean, citywide_moe = citywide if citywide is not None else _citywide_income()
     rows = con.execute("""
-        SELECT h3_index, median_hh_income, renter_share
+        SELECT h3_index, median_hh_income, median_hh_income_moe, renter_share
         FROM analysis.hex_demographics WHERE acs_year = 2023
     """).fetchall()
-    income_threshold = cutoff * citywide_mean if citywide_mean is not None else None
-    ctx = {}
-    for h, income, renter in rows:
-        if income is None or income_threshold is None:
-            ctx[h] = (income, renter, None)
-        else:
-            ctx[h] = (income, renter, "low" if income < income_threshold else "mid_high")
+
+    ctx: dict[str, IncomeContext] = {}
+    for h, income, income_moe, renter in rows:
+        if income is None or citywide_mean in (None, 0):
+            ctx[h] = dataclasses.replace(_NO_INCOME, median_hh_income=income,
+                                         renter_share=renter)
+            continue
+        ratio = income / citywide_mean
+        moe = _ratio_moe(income, income_moe, citywide_mean, citywide_moe)
+        ctx[h] = IncomeContext(
+            median_hh_income=income,
+            renter_share=renter,
+            income_class="low" if ratio < cutoff else "mid_high",
+            income_ratio=ratio,
+            income_ratio_moe=moe,
+            income_indeterminate=None if moe is None else abs(ratio - cutoff) <= moe,
+            confidently_low=False if moe is None else (ratio + moe) < cutoff,
+        )
     return citywide_mean, ctx
+
+
+def _caveat_text(ic: IncomeContext, caveated: list[str], demand: dict[str, dict]) -> str | None:
+    """The worded, continuous caveat -- emitted ONLY when the hex is
+    confidently below the cutoff and at least one missing category is
+    caveat-eligible. Replaces the old boolean badge, which more than half of
+    gap hexes could not support (GTM-109 §2).
+
+    Always ends with `loci.demand.X6_DISCLAIMER`: the same paper finds race
+    predicts retail net of income, so an income-only annotation shown without
+    that sentence can launder under-provision as "absent demand". Do not render
+    the ratio without the disclaimer."""
+    if not caveated or not ic.confidently_low or ic.income_ratio is None:
+        return None
+    pts = "" if ic.income_ratio_moe is None else f" (±{ic.income_ratio_moe * 100:.0f} pts)"
+    cats = ", ".join(f"{c} {demand[c]['elasticity']:.2f}" for c in caveated)
+    return (f"household income {ic.income_ratio * 100:.0f}% of citywide mean{pts}; "
+            f"category income elasticity (BLS CEX): {cats}. {X6_DISCLAIMER}")
 
 
 def _pick_lead(missing: list[str], caveated: set[str], key) -> str:
@@ -188,7 +320,8 @@ def compute_gaps(con, threshold: int = 10, min_present: int = 12,
     n = len(presence) or 1
     prevalence = {c: sum(1 for _, pr in presence.values() if c in pr) / n for c in ALLCATS}
 
-    discretionary = {c for c, e in load_demand().items() if e["income_elasticity"] == "discretionary"}
+    demand = load_demand()
+    eligible_for_caveat = caveat_categories()
     _citywide_mean, income_ctx = _income_context(con)
 
     out = []
@@ -196,20 +329,24 @@ def compute_gaps(con, threshold: int = 10, min_present: int = 12,
         missing = [c for c in ALLCATS if c not in pr and prevalence[c] >= expected]
         if not missing:
             continue
-        income, renter, income_class = income_ctx.get(h, (None, None, None))
-        caveated = {c for c in missing if c in discretionary and income_class == "low"}
+        ic = income_ctx.get(h, _NO_INCOME)
+        caveated = {c for c in missing if c in eligible_for_caveat and ic.confidently_low}
         lead = _pick_lead(missing, caveated, key=lambda cands: max(cands, key=lambda c: prevalence[c]))
         caveated_missing = [c for c in missing if c in caveated]
         # NOTE: `missing_expected` (the joined `missing` string) stays the LAST
         # element of the row tuple -- tests/test_gaps_monotonicity.py's
         # `_missing_set` helper unpacks rows as `h, *_rest, missing` and
         # depends on that position, and it must stay untouched (spec: keep
-        # its existing tests passing). `build_gaps` maps every column by
-        # NAME (not position) into the DB, so this ordering is free to differ
-        # from the tables' physical column order.
+        # its existing tests passing). New GTM-109 columns are appended just
+        # BEFORE it, so the historical indices 6..10 also stay put.
+        # `build_gaps` maps every column by NAME (not position) into the DB,
+        # so this ordering is free to differ from the tables' physical order.
         out.append((h, threshold, pop, len(pr), lead, prevalence[lead],
-                    income, renter, income_class, lead in caveated,
-                    ",".join(caveated_missing), ",".join(missing)))
+                    ic.median_hh_income, ic.renter_share, ic.income_class, lead in caveated,
+                    ",".join(caveated_missing),
+                    ic.income_ratio, ic.income_ratio_moe, ic.income_indeterminate,
+                    _caveat_text(ic, caveated_missing, demand),
+                    ",".join(missing)))
     return out, prevalence
 
 
@@ -267,7 +404,8 @@ def _compute_gaps_reach(con, threshold: int, min_present: int, min_pop: float,
     for h, cat, d in dist_rows:
         dist_by_hex.setdefault(h, {})[cat] = d
 
-    discretionary = {c for c, e in load_demand().items() if e["income_elasticity"] == "discretionary"}
+    demand = load_demand()
+    eligible_for_caveat = caveat_categories()
     _citywide_mean, income_ctx = _income_context(con)
 
     out = []
@@ -281,8 +419,8 @@ def _compute_gaps_reach(con, threshold: int, min_present: int, min_pop: float,
         missing = [c for c in ALLCATS if c not in present]
         if not missing:
             continue
-        income, renter, income_class = income_ctx.get(h, (None, None, None))
-        caveated = {c for c in missing if c in discretionary and income_class == "low"}
+        ic = income_ctx.get(h, _NO_INCOME)
+        caveated = {c for c in missing if c in eligible_for_caveat and ic.confidently_low}
         # "Lead" = the missing category with the SMALLEST reach — the one
         # areas like this are expected to have closest, so its absence is
         # the most conspicuous (mirrors the window rule's "most-expected") --
@@ -292,55 +430,30 @@ def _compute_gaps_reach(con, threshold: int, min_present: int, min_pop: float,
         # `missing_expected` stays LAST -- see the matching note in
         # `compute_gaps`'s window branch.
         out.append((h, 0, pop, len(present), lead, reach[lead],
-                    income, renter, income_class, lead in caveated,
-                    ",".join(caveated_missing), ",".join(missing)))
+                    ic.median_hh_income, ic.renter_share, ic.income_class, lead in caveated,
+                    ",".join(caveated_missing),
+                    ic.income_ratio, ic.income_ratio_moe, ic.income_indeterminate,
+                    _caveat_text(ic, caveated_missing, demand),
+                    ",".join(missing)))
     return out
 
 
-def build_gaps(con, threshold: int = 10, min_present: int = 12,
-               expected: float = 0.80, min_pop: float = 800.0,
-               rule: str = "window", reach: dict[str, float] | None = None) -> tuple[int, dict]:
-    """Writes the gap screen. `rule="window"` (default) writes to
-    `analysis.hex_gaps`, unchanged, so nothing downstream (the webmap export,
-    the ranking) is affected by this change. `rule="reach"` writes to the
-    separate `analysis.hex_gaps_reach` table instead of touching hex_gaps —
-    the two rules are never mixed in one table — and records the reach
-    provenance (quantile, min_pop, hash) used for that run."""
-    out, aux = compute_gaps(con, threshold, min_present, expected, min_pop,
-                            rule=rule, reach=reach)
-    import pandas as pd
-    # Row-tuple order (see compute_gaps/_compute_gaps_reach) puts
-    # `missing_expected` LAST so tests/test_gaps_monotonicity.py's
-    # `_missing_set` helper (which unpacks `h, *_rest, missing = row`) keeps
-    # working untouched. That is NOT the physical column order of either
-    # table (missing_expected sits right after lead_prevalence/lead_reach_m
-    # there, with the demand columns appended after it by ALTER TABLE), so
-    # both INSERTs below map every column by NAME, never `SELECT *`.
-    demand_cols = ["median_hh_income", "renter_share", "income_class",
-                   "demand_caveat", "caveated_missing"]
-    if rule == "window":
-        con.execute("DELETE FROM analysis.hex_gaps WHERE threshold_min = ?", [threshold])
-        df = pd.DataFrame(out, columns=["h3_index", "threshold_min", "population",
-                                        "present_count", "lead_missing", "lead_prevalence",
-                                        *demand_cols, "missing_expected"])
-        con.register("_g", df)
-        cols = ["h3_index", "threshold_min", "population", "present_count",
-                "lead_missing", "lead_prevalence", "missing_expected", *demand_cols]
-        con.execute(f"""INSERT INTO analysis.hex_gaps ({", ".join(cols)})
-                       SELECT {", ".join(cols)} FROM _g""")
-        con.unregister("_g")
-    else:
-        con.execute("DELETE FROM analysis.hex_gaps_reach")
-        df = pd.DataFrame(out, columns=["h3_index", "threshold_min", "population",
-                                        "present_count", "lead_missing", "lead_reach_m",
-                                        *demand_cols, "missing_expected"])
-        df["reach_quantile"] = aux.get("reach_quantile")
-        df["reach_min_pop"] = aux.get("reach_min_pop")
-        df["reach_hash"] = aux.get("reach_hash")
-        con.register("_g", df)
-        cols = ["h3_index", "population", "present_count", "lead_missing", "lead_reach_m",
-                "missing_expected", *demand_cols, "reach_quantile", "reach_min_pop", "reach_hash"]
-        con.execute(f"""INSERT INTO analysis.hex_gaps_reach ({", ".join(cols)})
-                       SELECT {", ".join(cols)} FROM _g""")
-        con.unregister("_g")
-    return len(df), aux
+# ---------------------------------------------------------------------------
+# RETIRED UNDER D38 (2026-09-09). `build_gaps` -- the writer that persisted
+# this screen to analysis.hex_gaps / analysis.hex_gaps_reach -- is DELETED, and
+# so are both tables. D38 made the residential address the unit of analysis;
+# model/address_gaps.py is the screen, and nothing on that path ever read
+# either hex table. Keeping a writer for a table the deliverable does not read
+# only invites a future session to re-run it and believe the output.
+#
+# What is deliberately KEPT in this module, and why:
+#   * `compute_gaps` / `_compute_gaps_reach` / `_eligible_universe` -- the
+#     monotonicity acceptance battery (tests/test_gaps_monotonicity.py) is the
+#     evidence for D33/D34/D39 (the window rule violates monotonicity, the
+#     reach rule does not). That evidence has to stay runnable.
+#   * `_ratio_moe` / `_caveat_text` -- tests/test_demand_caveat.py pins them
+#     character-for-character against loci.demand's shared implementations,
+#     which is what stops the address annotation (D57) and this frozen hex
+#     annotation from drifting into two different sentences.
+# Both are PURE: they take a connection and return rows. Neither writes.
+# ---------------------------------------------------------------------------

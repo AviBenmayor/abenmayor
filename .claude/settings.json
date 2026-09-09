@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"$(git rev-parse --show-toplevel 2>/dev/null)/loci\"; [ -f \"$d/docs/CHECKPOINT.md\" ] || exit 0; git -C \"$d\" diff --quiet -- docs/CHECKPOINT.md src/loci/tickets.py 2>/dev/null && exit 0; cd \"$d\" && uv run --quiet loci check-tickets --hook",
+            "timeout": 30,
+            "statusMessage": "loci: checking every decision has a Linear ticket"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git commit*)",
+            "command": "d=\"$(git rev-parse --show-toplevel 2>/dev/null)/loci\"; [ -f \"$d/docs/CHECKPOINT.md\" ] || exit 0; cd \"$d\" && uv run --quiet loci check-tickets >/dev/null 2>&1 || { echo 'loci check-tickets failed: every CHECKPOINT decision needs a Linear ticket (or a tickets.RULINGS entry) before committing. Run: cd loci && uv run loci check-tickets' >&2; exit 2; }",
+            "timeout": 30,
+            "statusMessage": "loci: ticket coverage gate before commit"
+          }
+        ]
+      }
+    ]
+  }
+}

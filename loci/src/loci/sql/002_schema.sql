@@ -61,6 +61,81 @@ CREATE TABLE IF NOT EXISTS analysis.hex_demographics (
     PRIMARY KEY (h3_index, acs_year)
 );
 
+-- D54 (GTM-78 D7 pre-test, session 13): renter_share was the only ACS field
+-- carried without a propagated MOE (B25003_001M/_003M were never fetched),
+-- and the D7 density-class pre-test on renter_share came back negative --
+-- it proxies population density (rho=0.62 citywide, 0.09 within Manhattan),
+-- not travel mode. This adds the ACS vehicle-ownership measures (B08201
+-- household-level zero-vehicle share; B25044 tenure-split cross-check) that
+-- the pre-test recommended, plus the missing renter_share MOE. See
+-- src/loci/grid/acs.py::build_acs for the tract->hex propagation and the
+-- ACS-handbook proportion-MOE formula.
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS renter_share_moe FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS zero_vehicle_hh_share FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS zero_vehicle_hh_share_moe FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS zero_vehicle_owner_share FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS zero_vehicle_owner_share_moe FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS zero_vehicle_renter_share FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS zero_vehicle_renter_share_moe FLOAT;
+
+-- 2026-09-09 AGE / RACE / EDUCATION / HOUSEHOLD-SIZE extension (owner request).
+-- Four demographic groups the grid never carried, every one of them MOE-carried
+-- like the D54 block above, and every one of them joined onto the ADDRESS output
+-- (analysis.address_gaps) rather than stopping at the hex grid -- a column that
+-- lands only here is not delivered.
+--   * median_age            B01002_001. INTENSIVE: unit-share-weighted mean of
+--                           tract medians, the same approximation (and the same
+--                           caveat -- a mean of medians is not a median) that
+--                           median_hh_income above already carries.
+--   * under_18/18_34/65_plus_share  B01001 (sex by age), male + female cells
+--                           summed per band over the table's OWN total
+--                           B01001_001. 35-64 is intentionally absent: it is
+--                           1 - (the three) and a fourth column would read as
+--                           independent when it is not.
+--   * white_nh/black_nh/asian_nh/hispanic_share  B03002 _003/_004/_006 (not
+--                           Hispanic, single race) and _012 (Hispanic, any
+--                           race) over _001. They sum to <= 1; the remainder is
+--                           the small non-Hispanic AIAN/NHPI/other/multiracial
+--                           categories, not carried.
+--   * college_share         B15003 (_022+_023+_024+_025)/_001 -- bachelor's and
+--                           above over the population 25 AND OVER, which is the
+--                           table's own universe. Associate's (_021) excluded,
+--                           matching model/momentum.py's existing use of B15003.
+--   * avg_hh_size           B25010_001. INTENSIVE, same treatment as median_age.
+--   * one_person_hh_share   B11016 _010/_001. _010 is the only 1-person cell in
+--                           the table (a family household is 2+ by definition);
+--                           the denominator is ALL households, not nonfamily.
+-- Cell indices verified against api.census.gov/data/2023/acs/acs5/variables.json
+-- on 2026-09-09; src/loci/grid/acs.py::build_acs additionally cross-checks
+-- B01001_001E against B01003_001E per tract and RAISES on a material mismatch.
+-- CAVEAT THE DATABASE CANNOT ENFORCE (same as D54): a proportion MOE on a hex
+-- with a near-zero apportioned denominator can exceed 1. Anything that sorts or
+-- filters on a *_moe column must also gate on a minimum apportioned denominator
+-- (population for the age/race/education shares, households for the
+-- one-person-household share).
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS median_age FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS median_age_moe FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS avg_hh_size FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS avg_hh_size_moe FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS under_18_share FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS under_18_share_moe FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS age_18_34_share FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS age_18_34_share_moe FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS age_65_plus_share FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS age_65_plus_share_moe FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS white_nh_share FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS white_nh_share_moe FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS black_nh_share FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS black_nh_share_moe FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS asian_nh_share FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS asian_nh_share_moe FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS hispanic_share FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS hispanic_share_moe FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS college_share FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS college_share_moe FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS one_person_hh_share FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS one_person_hh_share_moe FLOAT;
+
 -- Controls: zoning capacity, transit access, development headroom.
 CREATE TABLE IF NOT EXISTS analysis.hex_controls (
     h3_index           VARCHAR PRIMARY KEY REFERENCES analysis.hex(h3_index),
@@ -134,17 +209,46 @@ CREATE TABLE IF NOT EXISTS analysis.hex_outcomes (
 
 -- Ground-truth enumeration for the coverage-bias test (CONTEXT.md 7.1 / P3).
 -- This table is the evidence for the prediction most likely to kill the project.
+--
+-- TWO FRAMES LIVE HERE AND MUST NEVER BE POOLED (CHECKPOINT D38 / D58):
+--   * h3_index IS NOT NULL  -> the PRE-D38 HEX frame: 2,970 rows sampled at
+--     hex centroids on 2026-09-02/03, every one measured at the legacy
+--     straight-line disc (radius_m NULL, i.e. 800 m). Frozen; kept for the
+--     D29 hardware/fitness/clinic split, usable only against each other.
+--   * address_id IS NOT NULL (h3_index NULL) -> the ADDRESS frame (GTM-48):
+--     residential PLUTO lots drawn from analysis.address_gaps, MN+BK (D48),
+--     stratified income-decile × missing-this-category, measured at the
+--     lot's own lon/lat and the D53 circuity-corrected radius.
+-- The unit, the geometry and the radius all differ, so any statistic that
+-- mixes the two frames is meaningless -- always filter on one of them.
+--
+-- There is deliberately NO primary key: the hex-era PRIMARY KEY
+-- (h3_index, category) made h3_index implicitly NOT NULL, which physically
+-- forbids an address row, and DuckDB has no ALTER TABLE DROP CONSTRAINT.
+-- loci.validation.sample.ensure_address_frame() migrates a database still
+-- carrying that key (rename -> re-apply this file -> copy rows back), and
+-- sample.run() maintains uniqueness itself by deleting the row's own key
+-- (h3_index+category, or address_id+category) before inserting.
 CREATE TABLE IF NOT EXISTS analysis.coverage_validation (
-    h3_index       VARCHAR REFERENCES analysis.hex(h3_index),
+    h3_index       VARCHAR REFERENCES analysis.hex(h3_index),  -- pre-D38 hex frame only; NULL on address rows
     category       VARCHAR NOT NULL,
     income_decile  SMALLINT NOT NULL CHECK (income_decile BETWEEN 1 AND 10),
     n_ground_truth INTEGER NOT NULL,   -- Google Places enumeration
     n_overture     INTEGER NOT NULL,
     n_osm          INTEGER NOT NULL,
     n_city_source  INTEGER,            -- DOHMH/DCWP where the category has one
-    sampled_on     DATE NOT NULL,
-    PRIMARY KEY (h3_index, category)
+    sampled_on     DATE NOT NULL
 );
+
+-- GTM-48 / CHECKPOINT D58: the address frame. address_id is the sampled
+-- residential lot (analysis.address_gaps.address_id, which is the BBL), and
+-- borough is carried beside it because address_gaps is keyed
+-- (borough, address_id) and because the MN/BK contrast (D48, QUESTIONS M1)
+-- is read straight off this table. Both are nullable: every pre-D38 hex row
+-- reads NULL, and a row with a NULL address_id is a hex-frame row, not an
+-- address row missing its id.
+ALTER TABLE analysis.coverage_validation ADD COLUMN IF NOT EXISTS address_id VARCHAR;
+ALTER TABLE analysis.coverage_validation ADD COLUMN IF NOT EXISTS borough    VARCHAR;
 
 -- n_overture/n_osm/n_city_source above are read straight off staging.poi (raw,
 -- un-deduped) and, before this fix, only ever unpacked two of the three+ source
@@ -157,6 +261,34 @@ CREATE TABLE IF NOT EXISTS analysis.coverage_validation (
 -- same straight-line RADIUS_M used for n_ground_truth. Nullable so historical
 -- rows read NULL until `loci validate --recount-local` backfills them.
 ALTER TABLE analysis.coverage_validation ADD COLUMN IF NOT EXISTS n_local_canonical INTEGER;
+
+-- GTM-105 findings B/C/G. n_ground_truth_at_cap: Nearby Search (New) caps
+-- maxResultCount at 20 with no nextPageToken, so n_ground_truth == 20 is
+-- right-censored, not necessarily the true count. Nullable BOOLEAN: existing
+-- rows read NULL ("cap status unknown/not recorded") rather than a
+-- misleading default of false; only rows written after this change carry a
+-- real true/false. ground_truth_types: per-call histogram of the Google
+-- primaryType field (JSON object, primaryType -> count), read off fields
+-- already in the field mask at zero extra API spend. Stored as VARCHAR
+-- (DuckDB JSON text), same nullable/backward-compat rule -- existing rows
+-- read NULL until a future re-run backfills them; nothing here re-spends the
+-- Google budget.
+ALTER TABLE analysis.coverage_validation ADD COLUMN IF NOT EXISTS n_ground_truth_at_cap BOOLEAN;
+ALTER TABLE analysis.coverage_validation ADD COLUMN IF NOT EXISTS ground_truth_types VARCHAR;
+
+-- QUESTIONS M8 / CHECKPOINT D53 (GTM-105 finding D). radius_m: the
+-- straight-line radius, in metres, that BOTH sides of this row were measured
+-- at -- the Google Nearby Search circle and the local counts. A count is
+-- meaningless without it, and the value changed: rows written before D53 used
+-- 800 m straight-line, which was the gap screen's 800 m NETWORK threshold
+-- misapplied as a straight-line radius, so the validator's disc reached ~1.23x
+-- further than the screen it was validating (D29's GEOMETRY-artifact branch).
+-- Runs after D53 use the circuity-corrected radius derived in
+-- loci.reach.validation_radius_m from src/loci/reach_tiers.yaml. Nullable:
+-- existing rows read NULL, meaning "not recorded, historically 800 m"; only
+-- rows written after this change carry a real radius. Never pool NULL rows
+-- with non-NULL rows in a count statistic.
+ALTER TABLE analysis.coverage_validation ADD COLUMN IF NOT EXISTS radius_m INTEGER;
 
 -- Cross-source entity resolution (GTM-20). Maps each staging.poi row to a
 -- cluster of duplicates across sources; is_canonical marks the one kept for
@@ -191,11 +323,13 @@ CREATE TABLE IF NOT EXISTS analysis.hex_gaps (
 -- columns (tests/test_demand_caveat.py part (c)). median_hh_income/renter_share
 -- come from analysis.hex_demographics at the same acs_year the rest of the gap
 -- screen uses (2023). income_class is 'low' if median_hh_income < the
--- demand.yaml `low_income_cutoff` times the citywide population-weighted mean
--- household income (over hexes with population > 0), else 'mid_high'; NULL if
--- income is NULL. demand_caveat flags the LEAD missing category (model/gaps.py
--- prefers a non-caveated category for lead; falls back only if every missing
--- category is caveated) as discretionary in a low-income hex -- per the paper,
+-- demand.yaml `low_income_cutoff` times the citywide MEAN household income (ACS
+-- B19025/B11001, household-weighted -- see the GTM-109 note below, which
+-- replaced the old population-weighted mean of tract MEDIANS), else
+-- 'mid_high'; NULL if income is NULL. demand_caveat flags the LEAD missing
+-- category (model/gaps.py prefers a non-caveated category for lead; falls back
+-- only if every missing category is caveated) as discretionary in a
+-- CONFIDENTLY low-income hex -- per the paper,
 -- plausibly demand-following rather than a conspicuous supply gap.
 -- caveated_missing lists every caveated category among missing_expected, not
 -- just the lead.
@@ -204,6 +338,37 @@ ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS renter_share REAL;
 ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS income_class VARCHAR;
 ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS demand_caveat BOOLEAN;
 ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS caveated_missing VARCHAR;
+
+-- GTM-109 (contrarian review of the demand annotation). Three defects were
+-- fixed and the annotation was made continuous:
+--   (1) the necessity/discretionary class is now DERIVED from spend.yaml's BLS
+--       CEX income_elasticity at a 0.35 cut (reproduces 7/7 of the paper's own
+--       rows); the eight owner priors are gone and clinic is excluded outright
+--       (D30). See src/loci/demand.yaml.
+--   (2) income_class's denominator is now the citywide MEAN household income
+--       (ACS B19025_001E / B11001_001E over the five NYC counties,
+--       household-weighted -- the paper's own quantity), NOT the
+--       population-weighted mean of tract MEDIANS this screen used before.
+--   (3) the binary badge is superseded by a continuous, MOE-aware statement,
+--       because ~55% of gap hexes sit within one ACS MOE of the cutoff:
+--       income_ratio      = median_hh_income / citywide mean household income
+--       income_ratio_moe  = 90% MOE on that ratio (ACS derived-ratio
+--                           approximation; see model/gaps._ratio_moe)
+--       income_indeterminate = TRUE where the cutoff is within one MOE of the
+--                           ratio -- income_class is a coin flip there and must
+--                           NOT be read on its own
+--       demand_caveat_text = the worded caveat, populated ONLY where the hex is
+--                           CONFIDENTLY below the cutoff (ratio + moe < cutoff)
+--                           and at least one missing category is caveat-eligible.
+--                           It always carries the X6 disclaimer; never render
+--                           the ratio without it.
+-- caveated_missing/demand_caveat now also key off that confident test, so a
+-- coin-flip income classification cannot move lead_missing. Nothing here may
+-- filter, sort, rank or score (tests/test_demand_caveat.py parts (c)/(d)).
+ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS income_ratio REAL;
+ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS income_ratio_moe REAL;
+ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS income_indeterminate BOOLEAN;
+ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS demand_caveat_text VARCHAR;
 
 -- Same screen, REACH-based rule (QUESTIONS D6, CHECKPOINT D33): each category
 -- gets a fixed reach distance (src/loci/reach.yaml) instead of one shared walk
@@ -240,6 +405,37 @@ ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS renter_share REAL;
 ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS income_class VARCHAR;
 ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS demand_caveat BOOLEAN;
 ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS caveated_missing VARCHAR;
+
+-- GTM-109 (contrarian review of the demand annotation). Three defects were
+-- fixed and the annotation was made continuous:
+--   (1) the necessity/discretionary class is now DERIVED from spend.yaml's BLS
+--       CEX income_elasticity at a 0.35 cut (reproduces 7/7 of the paper's own
+--       rows); the eight owner priors are gone and clinic is excluded outright
+--       (D30). See src/loci/demand.yaml.
+--   (2) income_class's denominator is now the citywide MEAN household income
+--       (ACS B19025_001E / B11001_001E over the five NYC counties,
+--       household-weighted -- the paper's own quantity), NOT the
+--       population-weighted mean of tract MEDIANS this screen used before.
+--   (3) the binary badge is superseded by a continuous, MOE-aware statement,
+--       because ~55% of gap hexes sit within one ACS MOE of the cutoff:
+--       income_ratio      = median_hh_income / citywide mean household income
+--       income_ratio_moe  = 90% MOE on that ratio (ACS derived-ratio
+--                           approximation; see model/gaps._ratio_moe)
+--       income_indeterminate = TRUE where the cutoff is within one MOE of the
+--                           ratio -- income_class is a coin flip there and must
+--                           NOT be read on its own
+--       demand_caveat_text = the worded caveat, populated ONLY where the hex is
+--                           CONFIDENTLY below the cutoff (ratio + moe < cutoff)
+--                           and at least one missing category is caveat-eligible.
+--                           It always carries the X6 disclaimer; never render
+--                           the ratio without it.
+-- caveated_missing/demand_caveat now also key off that confident test, so a
+-- coin-flip income classification cannot move lead_missing. Nothing here may
+-- filter, sort, rank or score (tests/test_demand_caveat.py parts (c)/(d)).
+ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS income_ratio REAL;
+ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS income_ratio_moe REAL;
+ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS income_indeterminate BOOLEAN;
+ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS demand_caveat_text VARCHAR;
 
 -- Address-level convenience check (docs/CHECKPOINT.md D-conveniences): for
 -- every residential address, per-category network distance to the nearest
@@ -450,4 +646,147 @@ CREATE TABLE IF NOT EXISTS analysis.zip_coverage_by_source (
     zbp_estab               INTEGER,
     ratio                   DOUBLE,
     PRIMARY KEY (year, zipcode, category, source)
+);
+
+-- Address-level ACS demographics (D38/D56): under D38 the unit of analysis
+-- is the residential address, not the hex, so the demographic carrier for
+-- the address screen must also be address-grained. This table REPLACES
+-- analysis.hex_demographics as that carrier -- hex_demographics is FROZEN
+-- HISTORY (D38: no new features read from hex_* tables) and is left as-is
+-- for anything that still needs the old hex-level panel.
+--
+-- One row per address_id (the universe sources/cities/nyc/addresses.py
+-- writes, unioned across all five boroughs -- 767,337 residential PLUTO
+-- lots as of 2026-09-09), keyed by (address_id, acs_year). Unlike
+-- hex_demographics, these values are NOT apportioned: a PLUTO tax lot sits
+-- in exactly one 2020 census tract (tract_geoid), so every field below is
+-- that tract's own ACS 2023 5-year E/M cell, taken directly. Tract
+-- assignment is a BBL lookup against PLUTO's own `bct2020` column, not a
+-- spatial join -- see model/address_demographics.py's module docstring for
+-- the coverage measurement (99.9992% of addresses get a tract; the rest get
+-- NULL demographics here, never dropped from the table).
+-- median_hh_income (B19013), renter_share (B25003, ACS-handbook proportion
+-- MOE via grid/acs.py's `_moe_proportion`), zero_vehicle_hh_share (B08201,
+-- the primary vehicle-ownership measure), and zero_vehicle_owner_share /
+-- zero_vehicle_renter_share (B25044, tenure-split cross-check) all carry
+-- their MOE, per CONTEXT.md's rule that ACS margins of error are propagated,
+-- never discarded. population/households (B01003/B11001) are carried for
+-- reference alongside their MOEs.
+--
+-- CAVEAT the schema cannot enforce: population/households are the tract's
+-- FULL count, repeated on every address in that tract (a lookup, not an
+-- apportionment) -- summing them across addresses is an N-times overcount.
+-- Rates (median_hh_income, renter_share, zero_vehicle_*_share) are safe to
+-- read per-address since they are the tract's rate/median verbatim. For an
+-- apportioned population total at some aggregate, use
+-- analysis.hex_demographics instead.
+CREATE TABLE IF NOT EXISTS analysis.address_demographics (
+    address_id                    VARCHAR NOT NULL,
+    bbl                            VARCHAR,
+    tract_geoid                   VARCHAR,    -- 2020 census tract GEOID; NULL if unassigned
+    acs_year                      SMALLINT NOT NULL,
+    population                    FLOAT, population_moe                FLOAT,
+    households                    FLOAT, households_moe                FLOAT,
+    median_hh_income               FLOAT, median_hh_income_moe          FLOAT,
+    renter_share                  FLOAT, renter_share_moe               FLOAT,
+    zero_vehicle_hh_share          FLOAT, zero_vehicle_hh_share_moe      FLOAT,
+    zero_vehicle_owner_share       FLOAT, zero_vehicle_owner_share_moe   FLOAT,
+    zero_vehicle_renter_share      FLOAT, zero_vehicle_renter_share_moe  FLOAT,
+    PRIMARY KEY (address_id, acs_year)
+);
+
+-- ==========================================================================
+-- GTM-110 region (address-level demand annotation). Appended by the GTM-110
+-- session; keep edits inside this delimited block.
+-- ==========================================================================
+
+-- Address-level DEMAND ANNOTATION -- the D49 annotation at the D38 grain.
+-- This is the ONLY live copy of that annotation: the hex version
+-- (analysis.hex_gaps / hex_gaps_reach's income_ratio / income_ratio_moe /
+-- income_indeterminate / demand_caveat / demand_caveat_text columns above) is
+-- FROZEN HISTORY under D38, which made the residential address, not the hex,
+-- the unit of analysis.
+--
+-- NOT a filter, by construction (D48: the output is graded, never filtered).
+-- This is a SIBLING table keyed by address_id; model/address_demand.py opens
+-- analysis.address_gaps read-only and has no write path to it, so nothing
+-- here can change gap_score, lead_category, n_missing, or membership in the
+-- missing set. tests/test_address_demand.py pins that both ways.
+--
+-- GRAIN: one row per (address_id, category, run key), the run key being
+-- (reach_hash, supply_hash) copied from the address_gaps run this row
+-- annotates -- those two hashes are what decide what "missing" and "nearest"
+-- mean (D41 reach table; D52 supply set), so an annotation row detached from
+-- them is uninterpretable. address_gaps itself keeps only the latest run per
+-- borough, so a run key here that no longer appears there is stale history:
+-- always join on (address_id, reach_hash, supply_hash), never on address_id
+-- alone.
+--
+-- WHICH ROWS: every category whose address-level `ratio` > 1.0 -- the
+-- CONTINUOUS reading of "missing" from D39/D41 (nearest business beyond that
+-- category's reach), not a binary gap flag -- plus the address's
+-- `lead_category`, always. Lead rows are the only ones that can carry
+-- ratio <= 1 (an eligible address with no gap at all still gets its headline
+-- category annotated); they are flagged `is_lead`.
+--
+-- THE CAVEAT IS MOE-GATED AND CONTINUOUS (D49). ACS median-income MOE runs
+-- ~27% of the estimate, and more than half of gap units sit within one MOE of
+-- the 0.80 line, so the old binary low-income badge was retired as a coin
+-- flip wearing a label. What is stored instead:
+--    income_ratio         = the address's TRACT median household income
+--                           (analysis.address_demographics, B19013, taken
+--                           directly -- a PLUTO lot is in exactly one tract)
+--                           divided by the citywide MEAN household income
+--                           (B19025/B11001, household-weighted -- Meltzer &
+--                           Schuetz's own denominator, NOT a mean of medians)
+--                           NOTE: the tract-direct value from
+--                           analysis.address_demographics, NOT
+--                           analysis.address_gaps.median_hh_income, which
+--                           migration 008 added as the HEX-interpolated
+--                           number (tract -> hex by unit share, then hex ->
+--                           address by containment). Least-modelled input wins
+--                           for a caveat that names a household income.
+--    income_ratio_moe     = ACS derived-RATIO MOE (loci.demand.ratio_moe);
+--                           NULL when the input MOE is unknown
+--    income_indeterminate = TRUE where the cutoff sits within one MOE of the
+--                           ratio -- the classification is a coin flip there
+--                           and must NOT be read on its own
+--    demand_caveat        = TRUE only when the category is discretionary AND
+--                           annotatable AND the address is CONFIDENTLY below
+--                           the line (income_ratio + income_ratio_moe < 0.80).
+--                           Unknown MOE => FALSE: no MOE, no assertion.
+--    demand_caveat_text   = the worded caveat, populated only where
+--                           demand_caveat is TRUE.
+-- demand_class is DERIVED from spend.yaml's BLS CEX income elasticity at
+-- demand.yaml's 0.35 cut (D49/GTM-109), never hand-coded; `elasticity` is the
+-- CEX number the class came from, carried so a reader can see the derivation.
+-- Clinic rows exist but can never be caveated (D30: loci's clinic layer
+-- excludes doctors' offices and no source reproduces that exclusion).
+--
+-- RENDERERS MUST NOT TRUNCATE demand_caveat_text. The QUESTIONS-X6
+-- disclaimer is the TAIL of the string, and it is the sentence that keeps the
+-- annotation from laundering under-provision as absent demand (the same paper
+-- finds race predicts retail NET of income). Clipping the string keeps the
+-- income claim and drops the warning -- exactly backwards.
+CREATE TABLE IF NOT EXISTS analysis.address_demand (
+    address_id           VARCHAR NOT NULL,
+    bbl                  VARCHAR,
+    borough              VARCHAR NOT NULL,
+    category             VARCHAR NOT NULL,
+    is_lead              BOOLEAN NOT NULL,   -- this is the address's lead_category
+    eligible             BOOLEAN NOT NULL,   -- address_gaps' walkability gate, carried for scope
+    ratio                REAL,               -- nearest_m / reach_m, from address_gaps
+    nearest_m            REAL,               -- censored at the 30-minute network cap
+    demand_class         VARCHAR NOT NULL CHECK (demand_class IN ('necessity', 'discretionary')),
+    elasticity           REAL,               -- spend.yaml BLS CEX income elasticity
+    income_ratio         REAL,               -- tract median hh income / citywide MEAN
+    income_ratio_moe     REAL,               -- NULL when the ACS MOE is unknown
+    income_indeterminate BOOLEAN,            -- cutoff within one MOE; do not read the class alone
+    demand_caveat        BOOLEAN NOT NULL,   -- the MOE-confident test; never a filter
+    demand_caveat_text   VARCHAR,            -- render UNTRUNCATED (X6 disclaimer is the tail)
+    acs_year             SMALLINT NOT NULL,
+    reach_hash           VARCHAR NOT NULL,   -- run key, from analysis.address_gaps
+    supply_hash          VARCHAR NOT NULL,   -- run key, from analysis.address_gaps
+    run_at               TIMESTAMP NOT NULL,
+    PRIMARY KEY (address_id, category, reach_hash, supply_hash)
 );

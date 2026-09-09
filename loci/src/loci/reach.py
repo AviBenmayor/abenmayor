@@ -78,6 +78,45 @@ def load_reach_meta() -> dict:
     }
 
 
+def load_validation_geometry() -> dict:
+    """Geometry of the Google Places coverage validator (QUESTIONS M8, D53).
+
+    Lives in reach_tiers.yaml next to the walk thresholds it is derived from,
+    because it IS one of those thresholds re-expressed: the validator's Nearby
+    Search takes a circular locationRestriction, so it can only ever measure a
+    straight-line disc, while the gap screen thresholds on NETWORK distance.
+    The disc radius is therefore the network threshold divided by NYC's
+    measured circuity -- never a hardcoded metre count here.
+
+    Returns the yaml block plus `radius_m`, the derived straight-line radius.
+    Raises if the yaml's pinned `derived_radius_m` disagrees with the
+    derivation, so an edit to one number without the other fails loudly
+    instead of silently changing what future runs measure.
+    """
+    doc = yaml.safe_load(REACH_TIERS_PATH.read_text())
+    v = doc.get("validation")
+    if not v:
+        raise ValueError(f"{REACH_TIERS_PATH.name} has no `validation:` block")
+    network_m = float(v["network_threshold_m"])
+    circuity = float(v["circuity"])
+    if circuity < 1.0:
+        raise ValueError(f"circuity must be >= 1.0 (network >= straight line); got {circuity}")
+    radius_m = int(round(network_m / circuity))
+    pinned = v.get("derived_radius_m")
+    if pinned is not None and int(pinned) != radius_m:
+        raise ValueError(
+            f"{REACH_TIERS_PATH.name} validation block is inconsistent: "
+            f"derived_radius_m={pinned} but round({network_m} / {circuity}) = {radius_m}"
+        )
+    return {**v, "network_threshold_m": network_m, "circuity": circuity, "radius_m": radius_m}
+
+
+def validation_radius_m() -> int:
+    """The straight-line radius (m) the Google validator must use. Derived from
+    reach_tiers.yaml's `validation` block; see load_validation_geometry."""
+    return load_validation_geometry()["radius_m"]
+
+
 def compute_reach_table(con, quantile: float = 0.80, min_pop: float = 800.0) -> list[tuple]:
     """Recompute the reach table from the live DB. Read-only.
 
