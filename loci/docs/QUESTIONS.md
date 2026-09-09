@@ -44,7 +44,7 @@ claim stands on.
 - **Prediction:** P3
 - **Answered by:** `Design stratified coverage validation sample` · `Run Google Places ground-truth enumeration on sampled gap addresses` · `DOHMH-anchored undercount calibration (address level)` · `Coverage-bias chart` · `USDA SNAP retailer adapter (ANCHOR for grocery/convenience)`
 - **Fails if:** the undercount rate by income decile is materially higher in hexes flagged as underserved than in their well-served peers.
-- **Current answer:** Partly, and badly, for at least one category. 2026-09-02: adding the SNAP near-census cut bodega/convenience gap hexes from **166 to 16** — 90% of that gap type was an OSM/Overture coverage hole, not a missing business. Hardware, fitness and clinic gaps (the current top three) still rest on OSM/Overture only; the Google sample (`loci validate`) is aimed at those next. **2026-09-03 (CHECKPOINT D29/D30):** the raw Google survival rates (hardware 58%, fitness 29%, clinic 0%) turned out to measure the Google type map, not coverage — split each result into geometry-artifact vs true coverage hole. Corrected true-hole rates: hardware 5% [2–12] (not disproven — Google's type is an upper bound), fitness 21% [10–37] (real hole, needs an anchor, M7), clinic 0% [0–15] but unfalsifiable by construction (loci excludes doctor's offices, Google doesn't) — clinic dropped from headline claims pending a re-anchor to licensed urgent care (D30).
+- **Current answer:** Partly, and badly, for at least one category. 2026-09-02: adding the SNAP near-census cut bodega/convenience gap hexes from **166 to 16** — 90% of that gap type was an OSM/Overture coverage hole, not a missing business. Hardware, fitness and clinic gaps (the current top three) still rest on OSM/Overture only; the Google sample (`loci validate`) is aimed at those next. **2026-09-03 (CHECKPOINT D29/D30):** the raw Google survival rates (hardware 58%, fitness 29%, clinic 0%) turned out to measure the Google type map, not coverage — split each result into geometry-artifact vs true coverage hole. Corrected true-hole rates: hardware 5% [2–12] (not disproven — Google's type is an upper bound), fitness 21% [10–37] (real hole, needs an anchor, M7), clinic 0% [0–15] but unfalsifiable by construction (loci excludes doctor's offices, Google doesn't) — clinic dropped from headline claims pending a re-anchor to licensed urgent care (D30). 2026-09-09 (D58): the validator's sampling frame is now gap ADDRESSES stratified income decile × missing/present per category, both sides measured at the lot's point at 649 m; the 2,970 hex-frame rows are frozen and never pooled. GTM-48 still needs a budget approval to run.
 
 ### M2 — How well do LODES *jobs* proxy *establishments*?
 - **Status:** open
@@ -79,7 +79,7 @@ claim stands on.
 - **Prediction:** —
 - **Answered by:** `Google type-map audit per category`
 - **Fails if:** n/a — measurement. But any Google-validation survival rate is uninterpretable until this is aligned; D29 already found hardware narrower (excludes home_improvement_store) and fitness wider (gym/fitness_center sweeps in hotel/building gyms loci excludes) by inspection, not by a systematic audit.
-- **Current answer:** Known so far (2026-09-03, CHECKPOINT D29): hardware narrower, fitness wider, clinic maximally wider (`doctor` includes every solo physician practice, which loci's `foursquare_places.py` deliberately excludes). Not yet audited category-by-category for the other 12 categories.
+- **Current answer:** Answered 2026-09-08 (GTM-105, D50). Both, per category: wider for restaurant/bar/grocery/convenience/hair/nails (any-type matching, now fixed to primary type), narrower for cafe_bakery (Google lacked donut/bagel/ice-cream/juice/dessert/tea that loci's own DOHMH keywords include) and fitness (missing yoga/sports_club). Structural: the 20-result cap right-censored counts (clinic 87.6% of sampled hexes, fitness 15.3%, hardware 0%), so D29's clinic and fitness numbers are not usable; hardware's survive. clinic and tailor_repair have no Google equivalent. Type histograms are now persisted per call, so the next run answers this empirically. Remaining open here: none — follow-ups are M8 (radius) and the anchor contradictions logged in CHECKPOINT next action 7.
 
 ### M7 — What anchor source would establish a true fitness coverage hole?
 - **Status:** open
@@ -93,7 +93,7 @@ claim stands on.
 - **Prediction:** —
 - **Answered by:** `Validator: network distance or circuity correction`
 - **Fails if:** n/a — measurement. D29's GEOMETRY-artifact category exists precisely because the validator's straight-line radius and the screen's network-distance threshold disagree; a circuity correction or a direct network-distance comparison would remove the need to split results after the fact.
-- **Current answer:** Open. Candidate approaches: reuse `analysis.hex_poi_distance` (already network-based) instead of a straight-line radius at validation time, or apply a circuity correction (~1.25–1.3 in NYC, so an 800m network threshold ≈ 620–640m straight-line).
+- **Current answer:** Answered 2026-09-08 (D53): circuity correction, not network re-measurement — Google Nearby Search only accepts a disc, so the fix is to make loci's disc match the network-800 set. Circuity measured on analysis.hex_poi_distance at 1.233 (borough spread 1.226–1.279; the four dense boroughs within 1%), giving 649 m; radius is config in reach_tiers.yaml, derived in code, stamped per row, and never pooled across radii. Closed.
 
 ### M9 — How do Loci's deduped POI counts compare with Census ZIP Business Patterns establishment counts, per category and ZIP?
 - **Status:** in-progress
@@ -102,6 +102,20 @@ claim stands on.
 - **Fails if:** ratios are far above 1 in categories that are NOT sole-proprietor-heavy — that would mean the POI feeds overcount supply (stale or duplicate records), which tightens every reach value and hides gaps.
 - **Current answer:** Expectation (not a P1–P3 prediction): Ratios near 1 for employer-heavy categories (pharmacy, bank, grocery, hardware); above 1 for sole-proprietor-heavy categories (nails, barber, tailor) because CBP/ZBP counts only establishments with paid employees. First run (2026-09-05, ZIPs with population ≥1,000; ratio = Loci POIs / ZBP establishments): median ratio by category — childcare 0.85, clinic 0.95, laundry 1.33, pharmacy 1.48, grocery 2.06, bank 2.17, convenience 2.31, hair_barber 2.79, restaurant 3.16, hardware 3.21, cafe_bakery 3.51, fitness 5.92, bar 6.00, nails_beauty 7.96. Share of ZIPs above 2× is 94–98% for restaurant, cafe_bakery, fitness, bar, nails. Pattern: the categories closest to 1 are the OSM/Overture-only ones (childcare, clinic, laundry, pharmacy); the largest overcounts are exactly the license-registry-anchored categories (DOHMH → restaurant/cafe, NYS DOS → hair/nails, SLA → bar) plus fitness. Consistent with D36 (DOHMH turnover duplication) and suggests SLA and NYS DOS anchors also carry closed or non-storefront licensees. Bank at 2.17 and hardware at 3.21 are not explained by the employer-only bias and point to POI duplication or ZIP assignment error. Caveats: POI→ZIP uses a majority-vote hex→ZIP crosswalk from PLUTO lots (no ZCTA polygons in the DB); ZIP population is summed dasymetric hex population; CBP excludes non-employers and noise-infuses cells from 2017 on; NAICS self-classification bleeds between adjacent formats (Meltzer & Schuetz). Next: (a) rerun per SOURCE (which feed drives each overcount), (b) ZCTA polygons for a proper ZIP join, (c) use `analysis.zip_category_establishments` size bands for D9 and establishments-per-resident for O6.
  UPDATE (per-source run, CHECKPOINT D47): the overcount is mostly uncorroborated single-source records — dropping them gives restaurant 1.09, cafe 1.12, hardware 0.86, hair 0.65, but bar 1.54, fitness 1.74, nails 1.77 remain; fitness and hardware have NO license anchor (Overture+Foursquare only), so the "license-anchored" framing above applies to restaurant/cafe/hair/nails/bar only. Staleness untestable for DOHMH and DOS because the adapters do not fetch date fields; SLA 0% expired. Residual hypothesis: dedup misses (registry name vs storefront name).
+
+### M10 — Which MN+BK addresses have laundry in the basement or in unit, and from what source?
+- **Status:** in-progress
+- **Answered by:** (not ticketed) — loci ingest-ll84, loci ingest-listings pilot, DCWP laundry anchor (D55, owner request 2026-09-08)
+- **Why it matters:** An address with in-building laundry does not experience a laundromat gap, so the laundry category's supply is under-counted wherever such buildings cluster; laundry currently owns the top of the ratio ranking.
+- **Current answer:** None; research agent probing DOB certificates of occupancy, DOB job filings, HPD registrations, and listing-site amenity data.
+
+### M11 — What is the co-location structure of the 15 categories net of density, and how should 'expected presence given neighbors' enter the grade?
+- **Status:** answered
+- **Answered by:** (not ticketed) — scratchpad colocation.md, coloc_*.csv, session 13 (2026-09-08)
+- **Tag:** *method / grading*
+- **Why it matters:** Each category's grade needs to account for which neighbors' presence should be predictive of this one. Partial correlations sorted by R² inform which categories are supply-independent (stand-alone risk) vs demand-dependent (predictable from peers).
+- **Current answer:** Manhattan is saturated (8/15 categories at 100% presence), structure is identified off Brooklyn; hair↔nails partial r 0.65; food block (restaurant/cafe/bodega/bar); hardware↔grocery 0.50; bank↔tailor pair alone; laundry↔bodega/cafe; zero significant negative pairs. The five categories with most absences (laundry, bar, tailor, bank, bodega) are worst-predicted (pseudo-R² 0.18–0.39) — their absence is not conspicuous given neighbors; hardware (R² 0.53) and cafe (0.39) best-conditioned. Use as a grade input (expected presence), not a finder; re-run once the supply set is settled.
+
 ### Tier D · Descriptive — what is where
 
 ### D1 — How complete is the daily-needs bundle within a 10-minute walk across NYC, and how is completeness distributed?
@@ -187,6 +201,38 @@ claim stands on.
 - **Answered by:** (not ticketed) — needs an establishment-size proxy (employment band, floor area from PLUTO retail sqft, or chain identity) per POI
 - **Fails if:** size/diversity metrics are highly correlated with count-based presence (paper reports 0.70–0.90 correlation among density metrics but weak correlation to size/diversity — so expect this NOT to fail).
 - **Current answer:** Expectation (not a P1–P3 prediction): Some hexes that pass the reach test for grocery are served only by small-format stores (bodega-scale), which Meltzer & Schuetz show is the actual low-income pattern. — (Source: Meltzer & Schuetz 2012 Table 4 and the Herfindahl index over NAICS subsectors.)
+
+### D10 — Is a max nearest/reach ratio comparable across categories with different reaches, and what does a graded recommendation look like?
+- **Status:** open
+- **Answered by:** (not ticketed) — session-13 grade proposal and contrarian review (scratchpad grade_proposal.md, grade_contrarian.md; D48/D51, 2026-09-08)
+- **Why it matters:** The ranking sorts every address by its single worst ratio across 15 categories. The category with the tightest reach (laundry, 320 m) mechanically produces the largest ratios, so it owns the top of any ranking regardless of whether its gaps matter most. A grade needs to combine the ratio with absolute excess meters (D44 candidate b, sound as an input) and residential density, and to define the band above which the recommendation is "act, at a fair price."
+- **Current answer:** None. Session-13 description on MN+BK and a data-scientist proposal are in progress; contrarian to attack whatever the proposal picks.
+
+### D11 — Which supply set is real: all POIs, corroborated-only (≥2 sources), or active-licensed?
+- **Status:** in-progress
+- **Answered by:** (not ticketed yet) — D52 supply-set principle: loci anchor-coverage, loci zbp-compare --supply-sets, view analysis.poi_supply (2026-09-08)
+- **Why it matters:** The contrarian's re-run showed the act band moves 6× and rank-correlates at 0.19 between the all-POI and corroborated-only sets; nothing else in the grade matters until this is settled.
+- **Current answer:** None; D36/D47 plumbing in progress (fetch DOHMH/NYS DOS date fields, active-establishment filter).
+
+### D12 — Where does absent supply reflect revealed demand rather than a gap (bars in Midwood/Borough Park), and what non-income demand control catches it?
+- **Status:** open
+- **Answered by:** (not ticketed) — needs a non-income demand control before discretionary categories are published (D51, 2026-09-08)
+- **Why it matters:** The largest cell in the drafted grade's act band is ~9,800 bar gaps in high-income south-central Brooklyn where the income caveat is silent; publishing it would repeat the D1 error.
+- **Current answer:** None; candidates to probe are religious-institution density, SLA license application counts, and household composition from ACS.
+
+### D13 — Which additional daily-needs categories belong in the screen, in what order, and which are too discretionary or too car-dependent to include?
+- **Status:** open
+- **Answered by:** (not ticketed in Linear yet) — milestone E10 Category Expansion generated 2026-09-09 via loci gen-tickets, pending owner review (D55)
+- **Tag:** *scope / categories*
+- **Why it matters:** The 15 categories were chosen before the address screen existed; the co-location regression shows hair↔nails behave as one amenity, while liquor stores, dentists, vets, shipping, specialty food and dollar stores are absent from the list yet common on walkable blocks. Expanding the bundle affects the gap prevalence thresholds and resets every supply-set validation.
+- **Current answer:** Planning agent's proposal (scratchpad category_expansion_plan.md) and tickets under a new milestone, pending owner review.
+
+### D14 — Does nails_beauty's DOS registry anchor over-count (≈3× ZBP), and what is the right supply set for a category whose anchor itself is inflated?
+- **Status:** open
+- **Answered by:** (not ticketed) — D59 caveat; candidates: tighten booth-renter radius, exclude non-salon appearance-enhancement licence types, or cap anchor coverage at ZBP parity
+- **Tag:** *data / supply*
+- **Why it matters:** anchor qualifies for the wrong reason; PRINCIPLED nails still 3.74× ZBP, flagged OVER; what to do about it?
+- **Current answer:** None.
 
 ### Tier X · Explanatory — conditional structure, no temporal claim
 
@@ -368,7 +414,8 @@ questions here — a smaller remaining gap.
 - **Prediction:** —
 - **Answered by:** owner decision with investor-agent review (as O6–O8 already require)
 - **Fails if:** n/a — governance. Found 2026-09-05: model/comps.py + benchmarks.yaml + tests/test_comps.py (O7/O8 comps; zero real listings, listing sites 403, one failing test); model/conveniences.py + conveniences.yaml + sources/cities/nyc/addresses.py (address-level owner-set-norm check citing a nonexistent CHECKPOINT decision); spend.yaml (fair-value parameters for an `analysis.site_fairvalue` model that does not exist in this tree). All build toward O6–O8 without the review those entries require. Until decided: no further work, no tickets.
-- **Current answer:** Owner directed 2026-09-05 that all streams be picked back up. Conveniences: wired as `loci conveniences` with tests. Spend: grounded in real BLS tables (CHECKPOINT Session 10) but no model reads it and the cited fair-value spec/model do not exist. Comps: still no real listings (BizQuest detail pages 403); manual export or an approved browser session needed.
+- **Current answer:** Owner directed 2026-09-05 that all streams be picked back up. Conveniences: wired as `loci conveniences` with tests. Spend: grounded in real BLS tables (CHECKPOINT Session 10) but no model reads it and the cited fair-value spec/model do not exist. Comps: 59 BizQuest NYC listings via owner-approved human-paced browser session (commit fe59eb2); fill rates thin with cash_flow_sde ~14% (hidden behind sign-in on most listings), and only restaurant meets benchmarks.yaml's ≥8-row bar for fair-value modeling; scripted fetches remain 403.
+- **Demand annotation (2026-09-08, D49):** contrarian review found the eight `assumed` rows contradicted spend.yaml's BLS CEX elasticities and the 0.80 cutoff used the wrong denominator; both fixed, annotation now continuous and MOE-gated. See CHECKPOINT D49. Open follow-ups: GTM-110 port; renderers must not truncate `demand_caveat_text`; `hex_gaps_reach` had drifted from reach.yaml and was rebuilt (1,966 hexes / 5,053 pairs); checked 2026-09-08 — no published number cited the stale table (all citations are dated log entries D34/D37; the address screen reads reach_tiers.yaml), so nothing re-tabulated.
 
 ---
 
@@ -415,7 +462,7 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 ### H-L7 — What covariates does Schuetz, Kolko & Meltzer (2010, 58 metros) find for retail density, and can they make the screen city-agnostic?
 - **Status:** open
 - **Unblocks:** E8 · Second-City Feasibility
-- **Current answer:** [was: D7] — (SSRN 1681734. Density + with population density, − with distance to CBD and with owner-occupancy share; establishment size + with income for all types. Loci stores renter_share already; test it as a density-class covariate before ACS vehicle ownership.)
+- **Current answer:** [was: D7] — (SSRN 1681734. Density + with population density, − with distance to CBD and with owner-occupancy share; establishment size + with income for all types. Loci stores renter_share already; test it as a density-class covariate before ACS vehicle ownership.) 2026-09-08 (D54): tested within MN+BK — replicates citywide, dissolves under a density control (partials 0.02–0.16, sign flips in Manhattan); renter_share is a density proxy, not a mode variable. Closed for the D7 purpose; keep as a demand covariate.
 
 ### H-L8 — Does Waldfogel (2008) "median consumer" logic mean "comparable areas" must be defined on composition, not income alone?
 - **Status:** open

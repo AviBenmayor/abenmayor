@@ -111,7 +111,8 @@ def validate() -> tuple[list[str], list[str]]:
     for p in sorted(PREDICTIONS - claimed):
         errors.append(f"prediction {p} is not claimed by any question")
 
-    for epic, title, _prio, _est, labels, _desc in T:
+    # A 7th element (the Linear state) is optional — slice, do not unpack.
+    for epic, title, _prio, _est, labels, _desc in (t[:6] for t in T):
         if epic in LOAD_BEARING_EPICS and title not in cited:
             if set(map_labels(labels).split(",")) & LOAD_BEARING_LABELS:
                 warnings.append(f"load-bearing ticket not behind any question: {title!r} ({epic})")
