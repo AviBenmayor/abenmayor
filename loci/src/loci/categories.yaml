@@ -121,6 +121,11 @@ categories:
       overture: [laundromat, laundry_services, dry_cleaning]
       dcwp:
         - "business_category ILIKE '%laundr%' OR '%dry clean%' (excludes 'industrial' -- see dcwp.py docstring: DCWP's consumer Laundries category has zero active licenses, Industrial Laundry is B2B linen supply, not a walk-in laundromat)"
+      # D55: the licence roster publishes no retail-laundry category at all, so
+      # the ANCHOR is the DCWP inspections feed (jzhd-m6uv), matched on an
+      # exact, frozen set of business_category values -- an unseen laundry-like
+      # value RAISES rather than being dropped (dcwp.KNOWN_LAUNDRY_CATEGORIES).
+      dcwp_inspections: ["Retail Laundry", "Dry Cleaners - 230"]
 
   hair_barber:
     label: "Hair / barber"

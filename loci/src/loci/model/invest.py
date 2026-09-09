@@ -27,6 +27,7 @@ import numpy as np
 
 from loci import db as locidb
 from loci.grid.pluto import PLUTO_CSV
+from loci.score.supply import DEFAULT_SUPPLY_SET, canonical_poi_sql
 
 CITY_MED_INC = 94_649.0  # 3-borough ACS 2023 median, for a spending-power anchor
 RING_INNER_M, RING_OUTER_M = 800.0, 1600.0
@@ -102,10 +103,13 @@ def run() -> None:
     # --- competition ring: canonical POIs per category ---
     poi_by_cat: dict[str, list] = {}
     for cat in ECON:
-        rows = con.execute("""
-            SELECT ST_Y(p.geom), ST_X(p.geom) FROM staging.poi p
-            JOIN analysis.poi_dedup d ON p.poi_id=d.poi_id
-            WHERE d.is_canonical AND p.category=?""", [cat]).fetchall()
+        # Competition ring reads analysis.poi_supply (D52), not a private
+        # is_canonical join: a competitor the screen does not count as supply
+        # must not count as competition either, or the two halves of the index
+        # would disagree about which businesses exist.
+        rows = con.execute(
+            canonical_poi_sql(DEFAULT_SUPPLY_SET, "ST_Y(s.geom), ST_X(s.geom)")
+            + " AND s.category = ?", [cat]).fetchall()
         poi_by_cat[cat] = rows
 
     for c in clusters:

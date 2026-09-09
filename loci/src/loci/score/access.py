@@ -20,6 +20,7 @@ import scipy.sparse as sp
 from scipy.sparse.csgraph import dijkstra
 
 from loci import db as locidb
+from loci.score.supply import DEFAULT_SUPPLY_SET, canonical_poi_sql
 from loci.score.walkgraph import OUT as GRAPH_PATH
 
 THRESHOLDS = {5: 400.0, 10: 800.0, 15: 1200.0}  # walk-minutes -> metres @ 80 m/min
@@ -107,17 +108,21 @@ def compute_access(G, hexes, pois, min_component: int = MIN_COMPONENT):
     return [(h, cat, tmin, n, 1.0) for (h, cat, tmin), n in counts.items()]
 
 
-def build_access(con, graph_path: pathlib.Path = GRAPH_PATH, limit: float = DIST_LIMIT) -> int:
+def build_access(con, graph_path: pathlib.Path = GRAPH_PATH, limit: float = DIST_LIMIT,
+                 supply_set: str = DEFAULT_SUPPLY_SET) -> int:
     """Persist analysis.hex_poi_distance (every pair within `limit` m), then derive
-    analysis.hex_access from it in SQL. Returns the number of hex_access rows."""
+    analysis.hex_access from it in SQL. Returns the number of hex_access rows.
+
+    `supply_set` (D52, score/supply.py) selects WHICH canonical POIs count as
+    supply; "all" reproduces the pre-D52 behaviour exactly. The distance maths
+    is untouched -- this only changes the set of points Dijkstra sources from.
+    """
     import pandas as pd
     with pathlib.Path(graph_path).open("rb") as fh:
         G = pickle.load(fh)
     hexes = con.execute("SELECT h3_index, ST_X(centroid), ST_Y(centroid) FROM analysis.hex").fetchall()
-    pois = con.execute(
-        """SELECT p.poi_id, p.category, ST_X(p.geom), ST_Y(p.geom)
-           FROM staging.poi p JOIN analysis.poi_dedup d
-             ON d.poi_id = p.poi_id AND d.is_canonical""").fetchall()
+    pois = con.execute(canonical_poi_sql(
+        supply_set, "s.poi_id, s.category, ST_X(s.geom), ST_Y(s.geom)")).fetchall()
     con.execute("DELETE FROM analysis.hex_poi_distance")
     n_pairs = 0
     for rows in compute_distances(G, hexes, pois, limit=limit):

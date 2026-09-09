@@ -61,9 +61,16 @@ class SourceAdapter(abc.ABC):
     def normalize(self, rows: Iterable[dict]) -> Iterator[POIRecord]:
         """Map raw records onto POIRecords. Drop what doesn't belong."""
 
-    def load(self, con, *, limit: int | None = None, dry_run: bool = False) -> list[POIRecord]:
-        """fetch → normalize → replace this source's rows in staging.poi.
-        Idempotent: deletes prior rows for source_id before inserting."""
+    def load(self, con, *, limit: int | None = None, dry_run: bool = False,
+             table: str = "staging.poi") -> list[POIRecord]:
+        """fetch → normalize → replace this source's rows in `table`.
+        Idempotent: deletes prior rows for source_id before inserting.
+
+        `table` exists so an adapter can be staged into a holding table with
+        the identical schema (e.g. staging.poi_dcwp_pending) and promoted in a
+        separate, reviewable step, instead of writing into staging.poi while
+        the dedup pipeline is reading it. It is a code-supplied identifier,
+        never user input."""
         records = list(self.normalize(self.fetch(limit=limit)))
         if dry_run:
             return records
@@ -80,11 +87,11 @@ class SourceAdapter(abc.ABC):
             "confidence": r.confidence, "attrs": json.dumps(r.attrs or {}),
         } for r in records])
 
-        con.execute("DELETE FROM staging.poi WHERE source_id = ?", [self.source_id])
+        con.execute(f"DELETE FROM {table} WHERE source_id = ?", [self.source_id])
         if len(df):
             con.register("_stg_df", df)
-            con.execute("""
-                INSERT INTO staging.poi
+            con.execute(f"""
+                INSERT INTO {table}
                     (poi_id, source_id, source_record_id, category, tier, name, geom,
                      observed_on, opened_on, closed_on, confidence, attrs)
                 SELECT poi_id, source_id, source_record_id, category, tier, name,

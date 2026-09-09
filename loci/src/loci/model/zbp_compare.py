@@ -43,7 +43,77 @@ RES = 9
 LOW_POP_CUTOFF = 1_000
 UNDERCOVER_RATIO = 0.5
 OVERCOUNT_RATIO = 2.0
+
+#: Band the PRINCIPLED set's category-level POI/ZBP ratio must sit inside for
+#: the screen to be trusted on that category. Outside it, a "gap" is at least
+#: as likely to be a coverage artefact as a real absence: below 0.5 the supply
+#: is thin enough that ordinary businesses are missing, above 2.5 something is
+#: being counted more than once (booth renters, franchise chains registered per
+#: outlet, NAICS bleed between adjacent categories). These are REPORTING flags
+#: -- nothing is filtered on them; the screen still runs and the caveat travels
+#: with the number.
+PRINCIPLED_UNDER = 0.5
+PRINCIPLED_OVER = 2.5
+
+#: The sets anyone may actually SCREEN on -- score/supply.SUPPLY_SETS, in
+#: nesting order (CORROBORATED subset of PRINCIPLED subset of ALL). The
+#: registry_anchored / active variants in SUPPLY_SETS below are measurement
+#: aids and are deliberately absent from the comparison table.
+SCREENING_SETS = ("all", "principled", "corroborated")
 FLAGGED_CATEGORIES = ("hardware", "fitness", "clinic")   # M1 validation flagged these
+
+#: Supply sets, as columns on analysis.poi_supply (sql/003_supply_sets.sql).
+#: Selecting one changes only WHICH canonical POIs are counted on the Loci
+#: side; the ZBP side, the population cutoff and the crosswalk are identical
+#: across sets, so the ratios are comparable by construction.
+#: The three D52 sets (all / principled / corroborated) come from
+#: score/supply.SUPPLY_SETS so there is ONE definition of what each name means;
+#: the two ACTIVE variants are validation-only slices that live here alone.
+SUPPLY_SETS = {
+    "all": "in_all",
+    "principled": "in_principled",
+    "corroborated": "is_corroborated",
+    # not a supply set anyone should screen on -- the anchor-coverage
+    # NUMERATOR (score/supply.measure_anchor_coverage), exposed here so it is
+    # computed by the same crosswalk and filters as its ZBP denominator.
+    "registry_anchored": "has_registry_member",
+    "active": "is_active",
+    "active_corroborated": "is_active_corroborated",
+}
+
+
+def _supply_predicate(supply_set: str) -> str:
+    try:
+        return SUPPLY_SETS[supply_set]
+    except KeyError:
+        raise ValueError(
+            f"unknown supply set {supply_set!r}; expected one of "
+            f"{', '.join(sorted(SUPPLY_SETS))}"
+        ) from None
+
+
+def _zip_boroughs(con, crosswalk: pd.DataFrame) -> pd.DataFrame:
+    """(zipcode -> borough) by majority vote over the crosswalk's hexes.
+
+    Assigning the BOROUGH TO THE WHOLE ZIP, rather than filtering POIs by
+    borough, is the only join that keeps the ratio honest: zbp_estab is a
+    whole-ZIP count from the Census and cannot be split, so filtering only the
+    Loci side of a borough-straddling ZIP would invent an undercount. A ZIP
+    that straddles a borough line is therefore counted entirely in its majority
+    borough or not at all."""
+    con.register("_hex_zip_xwalk4", crosswalk)
+    try:
+        df = con.execute("""
+            SELECT x.zipcode, h.borough, count(*) AS n
+            FROM analysis.hex h
+            JOIN _hex_zip_xwalk4 x ON x.h3_index = h.h3_index
+            WHERE h.borough IS NOT NULL
+            GROUP BY 1, 2
+        """).df()
+    finally:
+        con.unregister("_hex_zip_xwalk4")
+    return (df.sort_values("n", ascending=False)
+              .drop_duplicates("zipcode")[["zipcode", "borough"]])
 
 
 def _hex_zip_crosswalk(con, pluto_csv=PLUTO_CSV) -> pd.DataFrame:
@@ -66,17 +136,20 @@ def _hex_zip_crosswalk(con, pluto_csv=PLUTO_CSV) -> pd.DataFrame:
     return majority[["h3_index", "zipcode"]]
 
 
-def _poi_counts_by_zip_category(con, crosswalk: pd.DataFrame) -> pd.DataFrame:
-    """Canonical POI count per (zipcode, category), via the hex crosswalk."""
+def _poi_counts_by_zip_category(con, crosswalk: pd.DataFrame,
+                                supply_set: str = "all") -> pd.DataFrame:
+    """Canonical POI count per (zipcode, category), via the hex crosswalk.
+    `supply_set` selects a boolean column on analysis.poi_supply; "all"
+    reproduces the pre-D47 behaviour exactly (in_all is TRUE on every row)."""
+    pred = _supply_predicate(supply_set)
     con.register("_hex_zip_xwalk", crosswalk)
     try:
-        df = con.execute("""
+        df = con.execute(f"""
             WITH canonical AS (
-                SELECT p.poi_id, p.category,
-                       h3_h3_to_string(h3_latlng_to_cell(ST_Y(p.geom), ST_X(p.geom), 9)) AS h3_index
-                FROM staging.poi p
-                JOIN analysis.poi_dedup d ON d.poi_id = p.poi_id
-                WHERE d.is_canonical
+                SELECT s.poi_id, s.category,
+                       h3_h3_to_string(h3_latlng_to_cell(ST_Y(s.geom), ST_X(s.geom), 9)) AS h3_index
+                FROM analysis.poi_supply s
+                WHERE s.{pred}
             )
             SELECT x.zipcode, c.category, count(*) AS poi_count
             FROM canonical c
@@ -230,19 +303,31 @@ def print_by_source_report(con, year: int | None = None, console=None) -> pd.Dat
     return df
 
 
-def build_coverage_check(con, year: int | None = None) -> int:
+def build_coverage_check(con, year: int | None = None, *,
+                         supply_set: str = "all",
+                         boroughs: tuple[str, ...] | None = None,
+                         write: bool = True) -> int:
     """Build analysis.zip_coverage_check for `year` (the ZBP vintage; defaults
     to the latest ingested). Applies the population >= 1,000 and
     "ZBP row present" (not-suppressed) exclusions AT WRITE TIME, so the table
     itself is already the clean comparison set. Returns the row count written.
+
+    `supply_set` (sql/003_supply_sets.sql) and `boroughs` narrow the Loci side
+    for the D47 supply-set comparison. **They are only ever computed, never
+    persisted** -- `write` is forced FALSE for any non-default combination, so
+    analysis.zip_coverage_check keeps meaning exactly what its schema comment
+    says (all canonical POIs, citywide). A per-set variant written into that
+    table would be indistinguishable from the canonical one downstream.
     """
+    if supply_set != "all" or boroughs:
+        write = False
     if year is None:
         year = con.execute("SELECT max(year) FROM analysis.zip_category_establishments").fetchone()[0]
         if year is None:
             raise RuntimeError("analysis.zip_category_establishments is empty -- run `loci ingest-zbp` first.")
 
     crosswalk = _hex_zip_crosswalk(con)
-    poi = _poi_counts_by_zip_category(con, crosswalk)
+    poi = _poi_counts_by_zip_category(con, crosswalk, supply_set)
     pop = _population_by_zip(con, crosswalk)
 
     zbp = con.execute(
@@ -254,6 +339,10 @@ def build_coverage_check(con, year: int | None = None) -> int:
         poi, on=["zipcode", "category"], how="left"
     )
     merged["poi_count"] = merged["poi_count"].fillna(0).astype(int)
+    if boroughs:
+        bor = _zip_boroughs(con, crosswalk)
+        keep = set(bor[bor["borough"].isin(boroughs)]["zipcode"])
+        merged = merged[merged["zipcode"].isin(keep)].copy()
     merged = merged[merged["population"].fillna(0) >= LOW_POP_CUTOFF].copy()
     # "ZBP estab suppressed" for our purposes: no estab_total in the response
     # for this (zip, category) -- see census_zbp.py's suppression note.
@@ -264,6 +353,15 @@ def build_coverage_check(con, year: int | None = None) -> int:
         columns={"estab_total": "zbp_estab"}
     )
     out.insert(0, "year", year)
+
+    if not write:
+        # Hand the caller the frame without touching the persisted table.
+        con.register("_zcc_scratch", out)
+        try:
+            con.execute("CREATE OR REPLACE TEMP TABLE _zcc_last AS SELECT * FROM _zcc_scratch")
+        finally:
+            con.unregister("_zcc_scratch")
+        return len(out)
 
     con.execute("DELETE FROM analysis.zip_coverage_check WHERE year = ?", [year])
     con.register("_zcc", out)
@@ -277,15 +375,45 @@ def build_coverage_check(con, year: int | None = None) -> int:
     return len(out)
 
 
-def run_comparison(con, year: int | None = None, console=None, by_source: bool = False) -> pd.DataFrame:
+def supply_set_table(con, year: int | None = None, *,
+                     boroughs: tuple[str, ...] | None = None,
+                     sets: tuple[str, ...] = tuple(SUPPLY_SETS)) -> pd.DataFrame:
+    """category x supply_set -> (poi_count, zbp_estab, ratio), summed over the
+    comparable ZIPs. The ZBP side is IDENTICAL across sets by construction (the
+    same population and suppression filters run before the supply predicate is
+    applied), so differences in `ratio` are attributable to the supply set
+    alone. Writes nothing."""
+    rows = []
+    for s in sets:
+        build_coverage_check(con, year, supply_set=s, boroughs=boroughs, write=False)
+        df = con.execute("SELECT * FROM _zcc_last").df()
+        g = df.groupby("category").agg(poi_count=("poi_count", "sum"),
+                                       zbp_estab=("zbp_estab", "sum"),
+                                       n_zips=("zipcode", "nunique")).reset_index()
+        g["supply_set"] = s
+        rows.append(g)
+    out = pd.concat(rows, ignore_index=True)
+    out["ratio"] = out["poi_count"] / out["zbp_estab"].replace(0, pd.NA)
+    return out[["category", "supply_set", "poi_count", "zbp_estab", "ratio", "n_zips"]]
+
+
+def run_comparison(con, year: int | None = None, console=None, by_source: bool = False,
+                   supply_set: str = "all", boroughs: tuple[str, ...] | None = None,
+                   supply_sets: bool = False) -> pd.DataFrame:
     """Build (or rebuild) analysis.zip_coverage_check and print the per-
     category summary + the top-5 undercovered ZIPs for hardware/fitness/clinic.
     With by_source=True, also build analysis.zip_coverage_by_source and print
     the per-category x per-source attribution report (returns THAT DataFrame
     instead). Returns the underlying DataFrame for programmatic use (e.g. tests)."""
-    n = build_coverage_check(con, year)
-    used_year = con.execute("SELECT max(year) FROM analysis.zip_coverage_check").fetchone()[0]
-    df = con.execute("SELECT * FROM analysis.zip_coverage_check WHERE year = ?", [used_year]).df()
+    persisted = supply_set == "all" and not boroughs
+    n = build_coverage_check(con, year, supply_set=supply_set, boroughs=boroughs)
+    if persisted:
+        used_year = con.execute("SELECT max(year) FROM analysis.zip_coverage_check").fetchone()[0]
+        df = con.execute("SELECT * FROM analysis.zip_coverage_check WHERE year = ?",
+                         [used_year]).df()
+    else:
+        df = con.execute("SELECT * FROM _zcc_last").df()
+        used_year = int(df["year"].iloc[0]) if len(df) else year
 
     def emit(line: str) -> None:
         if console is not None:
@@ -293,7 +421,9 @@ def run_comparison(con, year: int | None = None, console=None, by_source: bool =
         else:
             print(line)
 
-    emit(f"analysis.zip_coverage_check: {n} rows (year={used_year})")
+    scope = f"supply_set={supply_set}" + (f" boroughs={'+'.join(boroughs)}" if boroughs else "")
+    emit(f"zip coverage check: {n} rows (year={used_year}, {scope}"
+         f"{'' if persisted else ', NOT persisted'})")
     emit(f"{'category':14} {'n_zips':>7} {'median':>8} {'IQR':>16} {'<0.5':>8} {'>2.0':>8}")
     for cat, g in df.groupby("category"):
         r = g["ratio"].dropna()
@@ -316,8 +446,67 @@ def run_comparison(con, year: int | None = None, console=None, by_source: bool =
             emit(f"  {row['zipcode']}  poi={int(row['poi_count']):>3}  "
                  f"zbp={int(row['zbp_estab']):>4}  ratio={row['ratio']:.2f}")
 
+    if supply_sets:
+        emit("")
+        tbl = supply_set_table(con, used_year, boroughs=boroughs, sets=SCREENING_SETS)
+        emit(f"{'category':14} {'all':>8} {'principled':>11} {'corrob':>8}   "
+             f"{'r_all':>6} {'r_prin':>7} {'r_corr':>7}  {'zbp':>6}  flag")
+        wide = tbl.pivot(index="category", columns="supply_set",
+                         values=["poi_count", "ratio"])
+        zbp = tbl.groupby("category")["zbp_estab"].max()
+        flagged = []
+        for cat in sorted(wide.index):
+            rp = wide.loc[cat, ("ratio", "principled")]
+            # PRINCIPLED is the set the screen runs on, so it is the only one
+            # whose distance from the Census count is a finding rather than a
+            # diagnostic. 0.5 / 2.5 are the bands D47 used, widened on the top
+            # side because ZBP's NAICS grain is known to under-split the
+            # personal-services and food categories.
+            flag = ("UNDER" if rp < PRINCIPLED_UNDER
+                    else "OVER" if rp > PRINCIPLED_OVER else "")
+            if flag:
+                flagged.append((cat, flag, rp))
+            emit(f"{cat:14} "
+                 f"{int(wide.loc[cat, ('poi_count', 'all')]):>8} "
+                 f"{int(wide.loc[cat, ('poi_count', 'principled')]):>11} "
+                 f"{int(wide.loc[cat, ('poi_count', 'corroborated')]):>8}   "
+                 f"{wide.loc[cat, ('ratio', 'all')]:>6.2f} "
+                 f"{rp:>7.2f} "
+                 f"{wide.loc[cat, ('ratio', 'corroborated')]:>7.2f}  "
+                 f"{int(zbp[cat]):>6}  {flag}")
+        # NESTING IS A PROPERTY, NOT A HOPE: assert it on the real numbers so a
+        # future edit to the view cannot quietly make PRINCIPLED stricter than
+        # CORROBORATED (which would delete supply instead of relaxing a filter).
+        bad = [c for c in wide.index
+               if not (wide.loc[c, ("poi_count", "corroborated")]
+                       <= wide.loc[c, ("poi_count", "principled")]
+                       <= wide.loc[c, ("poi_count", "all")])]
+        if bad:
+            raise RuntimeError(
+                "supply-set nesting violated (CORROBORATED <= PRINCIPLED <= ALL) "
+                f"for: {', '.join(sorted(bad))} -- sql/006_principled_supply.sql")
+        emit(f"\nnesting CORROBORATED <= PRINCIPLED <= ALL holds for all "
+             f"{len(wide)} categories.")
+        if flagged:
+            emit(f"flagged (PRINCIPLED/ZBP outside [{PRINCIPLED_UNDER}, "
+                 f"{PRINCIPLED_OVER}]):")
+            for cat, flag, rp in flagged:
+                emit(f"  {cat:14} {flag:5} ratio={rp:.2f}")
+        else:
+            emit("no category outside the PRINCIPLED/ZBP band.")
+        return tbl
+
     if by_source:
         emit("")
+        # --by-source persists analysis.zip_coverage_by_source, which is only
+        # defined for the canonical citywide all-POI set.
+        if not persisted:
+            raise ValueError(
+                "--by-source is defined only for the default supply set and citywide "
+                "scope (it writes analysis.zip_coverage_by_source, whose schema comment "
+                "says 'all canonical POIs'). Drop --supply-set/--borough, or use "
+                "--supply-sets for the comparison table."
+            )
         return print_by_source_report(con, used_year, console=console)
 
     return df

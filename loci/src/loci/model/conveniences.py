@@ -37,6 +37,7 @@ from scipy.sparse.csgraph import dijkstra
 
 from loci.categories import CATEGORIES
 from loci.score.access import DIST_LIMIT, MIN_COMPONENT, _prune, _to_csr
+from loci.score.supply import DEFAULT_SUPPLY_SET, canonical_poi_sql
 from loci.score.walkgraph import OUT as GRAPH_PATH
 
 PKG = pathlib.Path(__file__).resolve().parents[1]  # src/loci
@@ -140,6 +141,7 @@ def build_address_convenience(
     borough: str,
     graph_path: pathlib.Path = GRAPH_PATH,
     conveniences_path: pathlib.Path = CONVENIENCES_PATH,
+    supply_set: str = DEFAULT_SUPPLY_SET,
 ) -> int:
     """Persist analysis.address_convenience for `addresses_df` (columns:
     address_id, bbl, lon, lat, units, address -- see
@@ -157,11 +159,7 @@ def build_address_convenience(
     with pathlib.Path(graph_path).open("rb") as fh:
         G = pickle.load(fh)
 
-    pois = con.execute(
-        """SELECT p.category, ST_X(p.geom), ST_Y(p.geom)
-           FROM staging.poi p JOIN analysis.poi_dedup d
-             ON d.poi_id = p.poi_id AND d.is_canonical"""
-    ).fetchall()
+    pois = con.execute(canonical_poi_sql(supply_set)).fetchall()
 
     addr_tuples = list(zip(addresses_df["address_id"], addresses_df["lon"], addresses_df["lat"]))
     results = compute_address_convenience(G, addr_tuples, pois, conveniences)
@@ -243,6 +241,7 @@ def convenience_summary(
     addresses_df,
     graph_path: pathlib.Path = GRAPH_PATH,
     conveniences_path: pathlib.Path = CONVENIENCES_PATH,
+    supply_set: str = DEFAULT_SUPPLY_SET,
 ) -> dict:
     """Run compute_address_convenience for `addresses_df` and summarize --
     no DB write, no hex/NTA join, no provenance columns. This is the
@@ -251,11 +250,7 @@ def convenience_summary(
     conveniences = load_conveniences(conveniences_path)
     with pathlib.Path(graph_path).open("rb") as fh:
         G = pickle.load(fh)
-    pois = con.execute(
-        """SELECT p.category, ST_X(p.geom), ST_Y(p.geom)
-           FROM staging.poi p JOIN analysis.poi_dedup d
-             ON d.poi_id = p.poi_id AND d.is_canonical"""
-    ).fetchall()
+    pois = con.execute(canonical_poi_sql(supply_set)).fetchall()
     addr_tuples = list(zip(addresses_df["address_id"], addresses_df["lon"], addresses_df["lat"]))
     results = compute_address_convenience(G, addr_tuples, pois, conveniences)
     return summarize_results(results, addresses_df)

@@ -25,6 +25,7 @@ import osmnx as ox
 from scipy.sparse.csgraph import dijkstra
 
 from loci.score.access import GRAPH_PATH, MIN_COMPONENT, _to_csr
+from loci.score.supply import DEFAULT_SUPPLY_SET, canonical_poi_sql
 
 BATCH = 100
 WALK_M_PER_MIN = 80.0
@@ -44,13 +45,17 @@ def _graph():
     return G, A, idx
 
 
-def _canonical_pois(con, core_only: bool):
-    core = ("AND ST_Y(p.geom) BETWEEN 40.49 AND 40.92 AND ST_X(p.geom) BETWEEN -74.26 AND -73.70"
+def _canonical_pois(con, core_only: bool, supply_set: str = DEFAULT_SUPPLY_SET):
+    """Supply points for the spacing diagnostic, read through analysis.poi_supply
+    (D52) rather than a private is_canonical join, so this measures the SAME
+    population the screen counts. `core_only` clips to the NYC core bbox; the
+    coordinates are EPSG:4326 degrees (DuckDB GEOMETRY carries no SRID) and all
+    distance maths downstream is on the walk graph, in metres."""
+    core = ("AND ST_Y(s.geom) BETWEEN 40.49 AND 40.92 AND ST_X(s.geom) BETWEEN -74.26 AND -73.70"
             if core_only else "")
-    return con.execute(f"""
-        SELECT p.category, ST_X(p.geom), ST_Y(p.geom) FROM staging.poi p
-        JOIN analysis.poi_dedup d ON d.poi_id = p.poi_id AND d.is_canonical
-        WHERE 1=1 {core}""").fetchall()
+    return con.execute(
+        canonical_poi_sql(supply_set) + f" {core}"
+    ).fetchall()
 
 
 def _snap(G, idx, lons, lats):
@@ -97,18 +102,13 @@ def same_type_spacing(con, core_only: bool = True, walk_m: float = 800.0,
     return sorted(out, key=lambda r: r[4])
 
 
-def gap_to_nearest(con, threshold: int = 10, core_only: bool = True, limit_m: float = 2400.0,
-                   graph=None) -> list[tuple]:
-    """(lead_missing, gaps, min, median, p90, n_beyond_1500m, n_beyond_limit) — network metres
-    from the gap hex to the nearest canonical business of its lead-missing category, read
-    straight from analysis.hex_poi_distance (pairs beyond its 30-minute reach count as > limit)."""
-    rows = con.execute("""
-        WITH nd AS (
-          SELECT g.lead_missing,
-                 (SELECT min(d.network_m) FROM analysis.hex_poi_distance d
-                   WHERE d.h3_index = g.h3_index AND d.category = g.lead_missing) AS m
-          FROM analysis.hex_gaps g WHERE g.threshold_min = ?)
-        SELECT lead_missing, count(*), min(coalesce(m, ?)), median(coalesce(m, ?)),
-               quantile_cont(coalesce(m, ?), 0.9), sum((coalesce(m, ?) > 1500)::int), sum((m IS NULL)::int)
-        FROM nd GROUP BY 1 ORDER BY 2 DESC""", [threshold, limit_m + 1, limit_m + 1, limit_m + 1, limit_m + 1]).fetchall()
-    return [(r[0], r[1], float(r[2]), float(r[3]), float(r[4]), int(r[5]), int(r[6])) for r in rows]
+# ---------------------------------------------------------------------------
+# RETIRED UNDER D38 (2026-09-09). `gap_to_nearest` read analysis.hex_gaps to
+# report how far each gap HEX sat from its lead-missing business. The address
+# screen answers the same question better and without the table: the distance
+# is `<lead_category>_nearest_m` on analysis.address_gaps, and the excess over
+# reach is `lead_excess_m` -- per address, not per 0.1 km2 cell.
+# `same_type_spacing` above is untouched: it reads staging.poi only, is the
+# revealed-spacing evidence behind D35/D41's reach tiers, and has nothing to do
+# with the hex screen.
+# ---------------------------------------------------------------------------

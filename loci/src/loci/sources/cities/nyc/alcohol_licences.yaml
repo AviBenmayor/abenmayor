@@ -1,0 +1,122 @@
+# NYS Liquor Authority licence-type vocabulary -> alcohol-overlay classification.
+#
+# Scope: this file is for the ALCOHOL OVERLAY only (owner decision 2026-09-08),
+# a standalone map layer of every active SLA licence. It is NOT the bar
+# category. `nys_sla.py`'s BAR_DESCRIPTIONS set still decides what enters
+# staging.poi as a `bar`, and nothing here changes that.
+#
+# Key = the `description` field of dataset 9s3h-dpkz, lowercased and stripped.
+# The feed carries the same description under several `class` codes and in
+# several capitalisations ("Legitimate theatre" / "Legitimate Theatre"), so the
+# lowercased description -- not the class code -- is the join key.
+#
+# Coverage: every one of the 55 distinct NYC descriptions in the live feed on
+# 2026-09-08 (24,780 NYC rows) is listed. `tests/test_alcohol_licences.py`
+# fails if the feed grows a description this file does not name -- an unseen
+# type is labelled `unknown` at ingest, never silently dropped.
+#
+# Classifications:
+#   on_premises          consumption at the licensed premises is the point of
+#                        the licence (restaurants, bars, clubs, hotels, venues)
+#   off_premises_liquor  package sales of liquor/wine to take away
+#   off_premises_beer    package sales of beer/cider only (grocery, drug store)
+#   other                real licences that are not a public-facing drinking or
+#                        buying storefront: wholesalers, importers, producers,
+#                        and conveyances
+#   unknown              the licence type genuinely does not say which
+
+version: 2026-09-08
+dataset_id: 9s3h-dpkz
+
+labels:
+  on_premises: On-premises
+  off_premises_liquor: Off-premises — liquor / wine store
+  off_premises_beer: Off-premises — beer (grocery, drug store)
+  other: Other (wholesale, producer, conveyance)
+  unknown: Unclassified
+
+descriptions:
+  # ---------------------------------------------------------- on-premises
+  restaurant: on_premises
+  summer restaurant: on_premises
+  food & beverage business: on_premises
+  summer food & beverage business: on_premises
+  winter food & beverage business: on_premises
+  restaurant brewer: on_premises          # brewpub: brews and pours on site
+  # "Additional bar" is a RIDER on an existing premises (a second bar inside a
+  # hotel, theatre or stadium), not an independent venue. The overlay draws
+  # every active licence, so it is kept and classified on-premises -- but two
+  # dots at one address can be one building. staging.poi still drops these.
+  additional bar: on_premises
+  additional bar- ball park, race track, etc: on_premises
+  additional bar- legitimate theater: on_premises
+  additional bar-seasonal: on_premises
+  club: on_premises
+  bottle club: on_premises
+  cabaret: on_premises
+  night club: on_premises
+  hotel: on_premises
+  catering establishment: on_premises
+  summer catering establishment: on_premises
+  # AMBIGUOUS NAME, deliberate call: "off premises caterer" means the caterer
+  # serves at an event site away from its own address. It is not package
+  # retail, so it is on-premises-style service, not off_premises_*.
+  off premises caterer establishment: on_premises
+  legitimate theatre: on_premises
+  concert hall: on_premises
+  athletic/sporting event/expositions/large gathering venue: on_premises
+  summer athletic/sporting event/expositions/large gathering venue: on_premises
+  outdoor athletic fields and stadiums: on_premises
+  golf venue: on_premises
+  summer - tavern miscellaneous: on_premises
+
+  # -------------------------------------------------- off-premises: liquor
+  liquor store: off_premises_liquor
+  wine store: off_premises_liquor
+
+  # ---------------------------------------------------- off-premises: beer
+  # NY grocery and drug stores may sell beer and cider only -- never spirits or
+  # wine -- which is why these are a separate class from liquor/wine stores.
+  grocery store: off_premises_beer
+  drug store: off_premises_beer
+
+  # ---------------------------------------------------------------- other
+  # Trade tier: sells to licensees, not to the public.
+  wholesale wine: other
+  wholesale liquor: other
+  wholesale beer: other
+  wholesale beer (retail): other        # "(retail)" is a wholesaler sub-class
+  wholesaler's temporary: other
+  manufacturer's temporary: other
+  importer: other
+  brand owner: other
+  # Producers. AMBIGUOUS: NY farm and micro manufacturer licences allow an
+  # on-site tasting room by right, so some of these ARE places you can drink.
+  # The licence class does not say which, and inventing an on-premises dot for
+  # a warehouse would be worse than under-calling it, so they stay `other`.
+  brewer: other
+  micro-brewer: other
+  micro-brewer 3 year: other
+  farm brewer: other
+  farm cidery: other
+  cider producer: other
+  winery: other
+  custom winemaker's center: other
+  distiller class a: other
+  distiller class a-1 (micro-distiller): other
+  distiller class b-1 (micro-rectifier): other
+  distiller class d (farm distiller): other
+  combined craft status: other          # a producer holding several craft classes
+  # Conveyances: consumption happens aboard, but the georeference is a dock,
+  # gate or terminal, not a storefront a resident can walk to.
+  vessel: other
+  summer vessel: other
+  aircraft: other
+  railroad car: other
+
+  # -------------------------------------------------------------- unknown
+  # A temporary retail permit issued while a retail application is pending. The
+  # feed does not say which retail class is pending, so it may be an
+  # off-premises store OR an on-premises restaurant. 929 NYC rows -- large
+  # enough that guessing would visibly bias either class.
+  temporary retail: unknown

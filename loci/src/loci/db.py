@@ -32,8 +32,13 @@ def connect(path: pathlib.Path | str | None = None,
 
 
 def init_schema(con: duckdb.DuckDBPyConnection) -> None:
-    """Apply loci/sql/002_schema.sql. Idempotent."""
-    con.execute((SQL_DIR / "002_schema.sql").read_text())
+    """Apply every migration from 002 onward, in numeric filename order.
+    Idempotent (each file is CREATE ... IF NOT EXISTS / CREATE OR REPLACE).
+    001 is the per-connection extension bootstrap and is applied by connect()."""
+    for path in sorted(SQL_DIR.glob("*.sql")):
+        if path.name.startswith("001_"):
+            continue
+        con.execute(path.read_text())
 
 
 # DuckDB's ST_Distance_Sphere reads POINT(x, y) as (LATITUDE, LONGITUDE); our geometry

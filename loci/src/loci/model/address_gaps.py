@@ -36,6 +36,18 @@ The new rule, at address grain:
     the action signal is a CLUSTER of addresses missing the same business,
     not any one address on its own.
 
+NO DEMOGRAPHICS HERE (D56, 2026-09-09). An earlier version of this module
+copied all 36 analysis.hex_demographics measure columns onto every address row
+by CONTAINING res-9 hex. That is removed: analysis.address_demographics is the
+single canonical address-grain demographic carrier and takes each value
+DIRECTLY from the lot's own 2020 census tract (a BBL lookup on PLUTO's
+bct2020), so it is strictly less modelled than a tract -> hex apportionment
+followed by a hex -> address containment step. Two median_hh_income values for
+one address, differing, was the concrete harm. `h3_index` is still computed and
+persisted -- it is the borough/NTA join key and lets an address be rolled back
+up to the grid -- but nothing demographic rides on it. Join
+analysis.address_demographics on address_id.
+
 Reuses the conveniences engine's METHOD (model/conveniences.py's
 `compute_address_convenience`: one multi-source Dijkstra per category via
 score/access.py's `_prune`/`_to_csr`, 15 passes total, independent of address
@@ -46,7 +58,8 @@ tens of millions of short-lived dicts for data that is one (n, 15) float
 array. `address_nearest_matrix` is the shared entry point: it caches the
 per-NODE distance matrix (every pruned graph node's nearest-category
 distance) as parquet under `data/interim/`, keyed by (graph_version,
-canonical POI count) -- independent of which addresses are queried, so a
+supply_set, supply_hash, POI count) -- independent of which addresses are
+queried, so a
 `--borough MN` smoke run and a later `--borough ALL` run share one cache file
 instead of repeating 15 citywide Dijkstra passes.
 """
@@ -67,6 +80,7 @@ from loci.categories import CATEGORIES
 from loci.model.conveniences import ALLCATS, graph_version
 from loci.reach import load_reach
 from loci.score.access import DIST_LIMIT, MIN_COMPONENT, _prune, _to_csr
+from loci.score.supply import DEFAULT_SUPPLY_SET, canonical_poi_sql, supply_hash
 from loci.score.walkgraph import OUT as GRAPH_PATH
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -135,6 +149,7 @@ def address_nearest_matrix(
     addresses_df: pd.DataFrame,
     graph_path: pathlib.Path = GRAPH_PATH,
     cache_dir: pathlib.Path = INTERIM_DIR,
+    supply_set: str = DEFAULT_SUPPLY_SET,
 ) -> tuple[np.ndarray, str, str]:
     """(n_addresses, 15) network distance to the nearest canonical POI per
     category (ALLCATS order) for every row of `addresses_df` (columns lon,
@@ -144,11 +159,17 @@ def address_nearest_matrix(
     POI count), not once per call. Returns (matrix, graph_version, cache_key).
     """
     gver = graph_version(graph_path)
+    # Cache key must fold in the SUPPLY SET, not just the POI count: two sets
+    # can coincidentally have the same cardinality per category while pointing
+    # at different storefronts, and serving one run's distance matrix to the
+    # other would be a silent, invisible error. supply_hash() folds in the set
+    # name, the dedup radii, the qualifying-anchor set and the per-category
+    # counts, so any of those changing invalidates the cache.
+    shash = supply_hash(con, supply_set)
     n_poi = con.execute(
-        "SELECT count(*) FROM staging.poi p JOIN analysis.poi_dedup d "
-        "ON d.poi_id = p.poi_id AND d.is_canonical"
+        f"SELECT count(*) FROM ({canonical_poi_sql(supply_set, 's.poi_id')})"
     ).fetchone()[0]
-    key = hashlib.sha256(f"{gver}:{n_poi}".encode()).hexdigest()[:16]
+    key = hashlib.sha256(f"{gver}:{supply_set}:{shash}:{n_poi}".encode()).hexdigest()[:16]
     cache_dir = pathlib.Path(cache_dir)
     cache_path = cache_dir / f"node_nearest_m_{key}.parquet"
 
@@ -162,11 +183,7 @@ def address_nearest_matrix(
     if cached is not None and len(cached) == N:
         node_m = cached[[f"d_{c}" for c in ALLCATS]].to_numpy(dtype=np.float64)
     else:
-        pois = con.execute(
-            """SELECT p.category, ST_X(p.geom), ST_Y(p.geom)
-               FROM staging.poi p JOIN analysis.poi_dedup d
-                 ON d.poi_id = p.poi_id AND d.is_canonical"""
-        ).fetchall()
+        pois = con.execute(canonical_poi_sql(supply_set)).fetchall()
         by_cat: dict[str, list[tuple[float, float]]] = {c: [] for c in ALLCATS}
         for cat, lon, lat in pois:
             if cat in by_cat:
@@ -313,6 +330,7 @@ def compute_address_gaps(
     reach_source: str = "tiers",
     graph_path: pathlib.Path = GRAPH_PATH,
     cache_dir: pathlib.Path = INTERIM_DIR,
+    supply_set: str = DEFAULT_SUPPLY_SET,
 ) -> pd.DataFrame:
     """Read-only: assembles the full analysis.address_gaps working table for
     `addresses_df` (columns: address_id, bbl, lon, lat, units, borough -- see
@@ -325,7 +343,9 @@ def compute_address_gaps(
 
     reach = load_reach(reach_source)
     reach_hash_ = _reach_hash(reach)
-    M, gver, _key = address_nearest_matrix(con, addresses_df, graph_path=graph_path, cache_dir=cache_dir)
+    supply_hash_ = supply_hash(con, supply_set)
+    M, gver, _key = address_nearest_matrix(con, addresses_df, graph_path=graph_path,
+                                           cache_dir=cache_dir, supply_set=supply_set)
     metrics = compute_gap_metrics(M, reach)
 
     units = addresses_df["units"].to_numpy(dtype=np.float64)
@@ -378,6 +398,7 @@ def compute_address_gaps(
         "lat": lat_arr,
         "units": units,
         "units_capped": units_capped,
+        "h3_index": h3_index,
         "nta_code": nta_code,
         "neighborhood": neighborhood,
         "borough": boro_arr,
@@ -396,6 +417,12 @@ def compute_address_gaps(
     data["reach_source"] = reach_source
     data["reach_hash"] = reach_hash_
     data["graph_version"] = gver
+    # D52 provenance: WHICH POIs counted as supply, and a hash of everything
+    # that decided that (set name, dedup radii, qualifying anchors, per-category
+    # counts). Same rationale as reach_hash -- two runs differing only in supply
+    # are otherwise indistinguishable once written, and the difference is large.
+    data["supply_set"] = supply_set
+    data["supply_hash"] = supply_hash_
     data["run_at"] = datetime.datetime.now(datetime.timezone.utc)
 
     return pd.DataFrame(data)
@@ -423,12 +450,14 @@ def build_address_gaps(
     reach_source: str = "tiers",
     graph_path: pathlib.Path = GRAPH_PATH,
     cache_dir: pathlib.Path = INTERIM_DIR,
+    supply_set: str = DEFAULT_SUPPLY_SET,
 ) -> tuple[int, pd.DataFrame]:
     """compute_address_gaps + write_address_gaps. Returns (rows written, the
     working DataFrame) so the CLI can print the same summary for the write
     path as for --dry-run without recomputing."""
     df = compute_address_gaps(con, addresses_df, reach_source=reach_source,
-                               graph_path=graph_path, cache_dir=cache_dir)
+                               graph_path=graph_path, cache_dir=cache_dir,
+                               supply_set=supply_set)
     n = write_address_gaps(con, df)
     return n, df
 

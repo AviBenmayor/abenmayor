@@ -1,6 +1,6 @@
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>The Missing Business — NYC</title>
+<title>The Missing Business — Manhattan & Brooklyn</title>
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,94 +11,660 @@
 body{font-family:"Public Sans",system-ui,sans-serif;color:var(--ink);background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
 header{padding:11px 18px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;z-index:2}
 h1{font-family:"Archivo";font-weight:800;font-size:18px;letter-spacing:-.02em;margin:0}
-.sub{color:var(--ink2);font-size:12.5px;max-width:56ch;line-height:1.4;margin:0}
+.sub{color:var(--ink2);font-size:12.5px;max-width:62ch;line-height:1.4;margin:0}
 main{flex:1;min-height:0;display:flex}
-.side{width:264px;background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;flex:none}
+.side{width:272px;background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;flex:none}
 .sec{padding:12px 14px;border-bottom:1px solid var(--line)}
 h2{font-size:10px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;font-weight:600}
 .opt{display:flex;align-items:center;gap:9px;width:100%;border:0;background:transparent;color:var(--ink);font:inherit;font-size:12.5px;text-align:left;padding:6px 8px;border-radius:8px;cursor:pointer}
 .opt:hover{background:var(--bg)}.opt[aria-pressed=true]{background:var(--bg);font-weight:600}
 .opt .sw{width:11px;height:11px;border-radius:50%;flex:none}.opt .n{margin-left:auto;font-family:"IBM Plex Mono";font-size:11px;color:var(--muted)}
-.boros{display:flex;flex-wrap:wrap;gap:5px}
-.boros button{border:1px solid var(--line);background:var(--bg);color:var(--ink2);font:inherit;font-size:12px;font-weight:600;padding:5px 9px;border-radius:7px;cursor:pointer}
-.boros button:hover{border-color:var(--accent)}
-input[list]{width:100%;font:inherit;font-size:13px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.seg{display:flex;gap:5px}
+.seg button{flex:1;border:1px solid var(--line);background:var(--bg);color:var(--ink2);font:inherit;font-size:12px;font-weight:600;padding:6px 4px;border-radius:7px;cursor:pointer}
+.seg button:hover{border-color:var(--accent)}
+.seg button[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:#fff}
+input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.hint{text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted);font-size:10px}
+.fine{font-size:11px;color:var(--muted);line-height:1.45;margin-top:2px}
+.grade{display:inline-block;min-width:17px;text-align:center;padding:1px 5px;margin-right:5px;border-radius:4px;font-weight:700;font-size:11px;color:#fff;background:#948d80}
+.grade.A{background:#2f7d5c}.grade.B{background:#c69a1e}.grade.C{background:#b5541f}
+.dead{color:#b5541f;font-weight:600}
+.legend{display:flex;flex-direction:column;gap:7px;font-size:12px;color:var(--ink2)}
+.legend .row{display:flex;align-items:center;gap:9px}
+.legend .k{width:16px;display:flex;justify-content:center;flex:none}
+.legend .n{margin-left:auto;font-family:"IBM Plex Mono";font-size:11px;color:var(--muted)}
+.chk{display:flex;align-items:center;gap:8px;font-size:12.5px;cursor:pointer;padding:6px 0}
+.chk input{accent-color:var(--ink);width:14px;height:14px}
+/* Alcohol overlay (owner decision 2026-09-08). Its own colour family and its
+   own SHAPES: the overlay must never be mistaken for a category dot, and the
+   gap/known-location marks already own "circle". */
+.alc{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.alc label{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);cursor:pointer;padding:3px 0}
+.alc label.off{opacity:.45;cursor:default}
+.alc input{accent-color:var(--ink);width:13px;height:13px;flex:none}
+.alc .k{width:16px;display:flex;justify-content:center;flex:none}
+.alc .n{margin-left:auto;font-family:"IBM Plex Mono";font-size:11px;color:var(--muted)}
 .mapwrap{position:relative;flex:1;min-width:0}#map{position:absolute;inset:0}
 .banner{position:absolute;top:12px;left:12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:8px 12px;display:flex;align-items:center;gap:9px;z-index:1;max-width:72%}
 .banner .sw{width:13px;height:13px;border-radius:50%;flex:none}.banner b{font-size:13px}.banner .bsub{color:var(--muted);font-size:11.5px;margin-top:1px}
 .note{padding:12px 14px;font-size:11.5px;color:var(--ink2);line-height:1.5}
+.note b{color:var(--ink)}
 .maplibregl-popup-content{font-family:"Public Sans";border-radius:10px;padding:9px 12px;box-shadow:var(--shadow)}
 .pnb{font-weight:700;font-size:12.5px}.ppop{color:#57524a;font-size:11.5px;margin-top:1px}
 .pmi{margin-top:6px;font-size:10px;color:#948d80;text-transform:uppercase;letter-spacing:.06em}
-.biz{display:inline-block;margin:3px 4px 0 0;padding:2px 7px;border-radius:5px;font-size:11px;font-weight:600;color:#fff}
+.src{display:inline-block;margin:3px 4px 0 0;padding:2px 7px;border-radius:5px;font-size:10.5px;font-weight:600;background:#efece5;color:#57524a;font-family:"IBM Plex Mono"}
+.warn{margin-top:6px;font-size:11px;color:#b5541f;font-weight:600}
 .valbtn{position:absolute;top:12px;right:56px;z-index:2;background:var(--ink);color:#fff;border:0;border-radius:9px;padding:9px 13px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;box-shadow:var(--shadow)}
 .valbtn:hover{opacity:.92}.valbtn:disabled{opacity:.5;cursor:default}
 .valout{position:absolute;top:52px;right:12px;z-index:2;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);padding:11px 13px;font-size:12.5px;max-width:300px;line-height:1.5}
 .valout .tag{font-weight:700}.valout .real{color:#2f7d5c}.valout .hole{color:#b5541f}
-.loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px;z-index:3}
+.loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px;z-index:3;background:rgba(243,240,234,.7)}
+/* .loading sets display:flex, which outranks the UA [hidden] rule — the
+   overlay would never go away without this. */
+.loading[hidden]{display:none}
+/* Supply-set provenance (D52). A map whose gap layer and known-location layer
+   came from different supply sets is not a validation surface, so when the
+   export says they disagree the page has to say so on its own face — not only
+   in a terminal nobody kept. */
+.supok{font-family:"IBM Plex Mono";font-size:11px;color:var(--muted)}
+.supbad{background:#fdece9;border:1px solid #e8b3a8;color:#8c2f18;border-radius:8px;
+        padding:7px 10px;font-size:11.5px;line-height:1.45;max-width:70ch}
 </style></head><body>
 <header><h1>The Missing Business</h1>
-  <p class="sub">Every residential building in Manhattan, Brooklyn & Queens, and the daily-needs business it lacks within a 10-minute walk. Where same-gap buildings cluster, that's the opening.</p></header>
+  <p class="sub">Every residential address in Manhattan &amp; Brooklyn that cannot reach a daily-needs business inside its walk tier — shown against <b>the same known locations the model measured those gaps against</b>, so a model-driven gap can be checked against the map by eye.</p>
+  <p class="sub" id="supBadge"></p></header>
 <main>
   <aside class="side">
-    <div class="sec"><h2>Buildings missing…</h2><div id="opts"></div></div>
-    <div class="sec"><h2>Jump to borough</h2><div class="boros" id="boros"></div></div>
-    <div class="sec"><h2>Jump to neighborhood</h2><input list="ntal" id="ntaIn" placeholder="e.g. Williamsburg"><datalist id="ntal"></datalist></div>
-    <div class="note">A building has a “gap” only when it lacks a business ≥80% of buildings can reach — so it’s a conspicuous hole, not a rarity. Zoom in and clusters break into individual addresses.</div>
+    <div class="sec"><h2>Business</h2><div id="opts"></div></div>
+    <div class="sec" id="cuiSec" hidden><h2>Cuisine <span class="hint">known locations only</span></h2>
+      <select id="cuiSel"></select>
+      <label class="chk"><input type="checkbox" id="actTog"> Active only (health dept.)</label>
+      <div class="fine" id="cuiFine"></div>
+    </div>
+    <div class="sec"><h2>Borough</h2><div class="seg" id="boros"></div></div>
+    <div class="sec"><h2>Jump to neighborhood</h2><input list="ntal" id="ntaIn" placeholder="e.g. Bushwick"><datalist id="ntal"></datalist></div>
+    <div class="sec"><h2>Layers</h2>
+      <div class="legend" id="legend"></div>
+      <label class="chk"><input type="checkbox" id="poiTog" checked> Show known locations</label>
+      <label class="chk"><input type="checkbox" id="soloTog" checked> Include single-source records</label>
+      <label class="chk"><input type="checkbox" id="excTog"> Show excluded records</label>
+      <div class="fine" id="supFine"></div>
+    </div>
+    <div class="sec" id="alcSec" hidden>
+      <h2>Alcohol licences <span class="hint">overlay</span></h2>
+      <label class="chk"><input type="checkbox" id="alcTog"> Show alcohol licences</label>
+      <div class="alc" id="alcLegend"></div>
+      <div class="fine" id="alcFine"></div>
+    </div>
+    <div class="note">A <b>gap address</b> is an eligible address (12+ of 15 categories within 800&nbsp;m) whose walking distance to this business exceeds its reach tier. A <b>known location</b> is one deduplicated business record that the supply set counts. <b>Single-source</b> records are attested by only one dataset — CHECKPOINT&nbsp;D47 found they inflate apparent supply, so a gap that closes only because of a hollow dot is not yet confirmed. <b>Excluded</b> records (D52) are lone aggregator listings in a category whose licence registry is dense enough to have listed them: the gap model does not count them, and neither does the count above. For a category with no registry anchor loaded nothing is excluded — loading the anchor is the fix, not filtering.</div>
   </aside>
-  <div class="mapwrap"><div id="map"></div><div class="banner" id="banner">Loading…</div><button id="valBtn" class="valbtn">✓ Check this view against Google</button><div id="valOut" class="valout" hidden></div><div class="loading" id="loading">Loading buildings…</div></div>
+  <div class="mapwrap"><div id="map"></div><div class="banner" id="banner">Loading…</div><button id="valBtn" class="valbtn">✓ Check this view against Google</button><div id="valOut" class="valout" hidden></div><div class="loading" id="loading">Loading…</div></div>
 </main>
 <script>
-let META,NAV,FALL,biz='laundry';
+const INK='#1c1a16';
+let META, biz='laundry', boroSel='ALL', showPois=true, showSingle=true;
+// ---- Supply set (D52) -----------------------------------------------------
+// The gap layer was measured against ONE supply set, recorded in
+// analysis.address_gaps.supply_set and echoed into meta.supply. The known
+// locations drawn here are that same set, so "is this gap real?" can be
+// answered by eye without comparing two different universes.
+//
+// EXCLUDED points -- under `principled`, a lone aggregator record in a
+// category whose registry is dense enough to veto it -- ship in the same file
+// flagged in_set = 0 and are drawn as grey crosses. They are OFF by default,
+// deliberately: the default view has to be the view the model saw, or the map
+// re-creates the exact confusion it was built to remove. The legend still
+// shows their COUNT whether or not they are drawn, so the exclusion is never
+// invisible -- one click makes it inspectable.
+let showExcluded=false;
+// ---- Alcohol overlay ------------------------------------------------------
+// A STANDALONE layer (owner decision 2026-09-08), not a 16th category: it is
+// never read by gapFC() or poiFC(), the business selector never touches it,
+// and switching it on cannot change a single gap or known-location dot. It
+// does honour the borough selector, because every layer on this map must.
+// Data: data/alcohol.json, written by `loci export-webmap` from
+// staging.alcohol_licences (loci ingest-alcohol). Fetched lazily -- a viewer
+// who never opens the overlay never downloads it.
+let showAlc=false, ALC=null, alcOn=new Set(), alcLoading=false;
+const ALC_STYLE={
+  on_premises:        {shape:'triangle', color:'#6f3fb0'},
+  off_premises_liquor:{shape:'square',   color:'#c2185b'},
+  off_premises_beer:  {shape:'diamond',  color:'#0f8a8a'},
+  other:              {shape:'ring',     color:'#7d7566'},
+  unknown:            {shape:'ring',     color:'#b09a55'},
+};
+const ALC_FALLBACK={shape:'ring', color:'#7d7566'};
+// A class the export invents but this file has not styled still gets drawn --
+// an unmapped licence type must be a visible mark with an honest label, never
+// a silently absent dot. Mirrors pack_alcohol()'s own unknown-not-dropped rule.
+const alcStyle=cls=>ALC_STYLE[cls]||ALC_FALLBACK;
+const alcImg=cls=>'alc-icon-'+cls;
+const alcTip=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:12});
+// Cuisine + active filters are KNOWN-LOCATION filters only. They are read
+// exclusively by poiFC(); gapFC() never sees them. The gap layer is model
+// output (analysis.address_gaps) and must not be reinterpreted client-side --
+// hiding a Thai restaurant cannot open a gap that the model did not find.
+let cuiSel='ALL', activeOnly=false, cuiTop=new Set();
+// Sentinels for the two synthetic dropdown rows. They ride in an <option
+// value> and come back through e.target.value, so they must be plain text
+// that no real cuisine can collide with -- DOHMH's vocabulary is title-case
+// words and slashes ("Coffee/Tea", "Latin American"), never underscores.
+const CUI_NONE='__none__', CUI_OTHER='__other__', TOP_CUISINES=25;
+const CACHE={gaps:{},pois:{}};
 const clTip=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:12});
-const COL={hardware:"#b5541f",convenience:"#2f7d5c",clinic:"#3d6fb4",fitness:"#c69a1e",childcare:"#9350a6",laundry:"#1f9aa1",pharmacy:"#cc4b63",hair_barber:"#6d8b3a",cafe_bakery:"#8a6d4b",grocery:"#417a2f",nails_beauty:"#b3689a",bar:"#7a5cc0",bank:"#4a7a8c",tailor_repair:"#996a3a"};
-const map=new maplibregl.Map({container:'map',style:'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',center:[-73.92,40.71],zoom:10.7,attributionControl:{compact:true}});
+const poiTip=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:10});
+function allBounds(){const bs=Object.values(META.boroBounds); if(!bs.length) return null;
+  return bs.reduce((a,b)=>[Math.min(a[0],b[0]),Math.min(a[1],b[1]),Math.max(a[2],b[2]),Math.max(a[3],b[3])]);}
+
+const map=new maplibregl.Map({container:'map',style:'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+  center:[-73.96,40.71],zoom:11.0,attributionControl:{compact:true}});
 map.addControl(new maplibregl.NavigationControl({showCompass:false}),'bottom-right');
-const lc=()=>COL[biz]||'#b5541f', bi=()=>META.cats.indexOf(biz);
-function subset(){const bit=1<<bi();return {type:'FeatureCollection',features:FALL.filter(f=>(f.properties.m&bit)!==0)};}
+
+const lc=()=>META.colors[biz]||'#b5541f';
+const label=()=>META.catLabels[META.cats.indexOf(biz)];
+const boroKeep=i=>boroSel==='ALL'||META.boroughs[i]===boroSel;
+
+// Both layers are packed as flat numeric arrays (stride 4) plus parallel
+// name/id arrays -- see src/loci/viz/webmap_export.py. Unpack into GeoJSON
+// once per (category, borough, filter) change.
+function gapFC(){
+  const L=CACHE.gaps[biz]; if(!L) return {type:'FeatureCollection',features:[]};
+  const f=[],p=L.pts;
+  for(let i=0;i<p.length;i+=4){ if(!boroKeep(p[i+2])) continue;
+    f.push({type:'Feature',geometry:{type:'Point',coordinates:[p[i],p[i+1]]},
+      properties:{u:p[i+3],id:L.ids[i/4]}}); }
+  return {type:'FeatureCollection',features:f};
+}
+function poiFC(){
+  const L=CACHE.pois[biz]; if(!L||!showPois) return {type:'FeatureCollection',features:[]};
+  const f=[],p=L.pts,d=det(),st=L.stride||5;
+  for(let i=0;i<p.length;i+=st){ if(!boroKeep(p[i+2])) continue;
+    const j=i/st, mask=p[i+3], ns=popcount(mask), corr=ns>=2?1:0;
+    // s: 1 = in the supply set the gaps were measured against, 0 = excluded.
+    const inSet=p[i+4]?1:0;
+    if(!inSet&&!showExcluded) continue;
+    // The corroboration toggle is a filter on SUPPLY, so it never touches the
+    // excluded class -- those are already outside the supply set.
+    if(inSet&&!corr&&!showSingle) continue;
+    if(d&&!keepDetail(d,j)) continue;
+    f.push({type:'Feature',geometry:{type:'Point',coordinates:[p[i],p[i+1]]},
+      properties:{c:corr,m:mask,s:inSet,nm:L.names[j],id:L.ids[j],j:d?j:-1}}); }
+  return {type:'FeatureCollection',features:f};
+}
+
+// ---- Alcohol overlay ------------------------------------------------------
+// Packed like the other layers: flat stride-4 numbers (lon, lat, class index,
+// borough index) plus parallel arrays, with description and expiry
+// dictionary-encoded. See pack_alcohol() in src/loci/viz/webmap_export.py.
+function alcFC(){
+  if(!ALC||!showAlc) return {type:'FeatureCollection',features:[]};
+  const f=[],p=ALC.pts;
+  for(let i=0;i<p.length;i+=4){
+    const cls=ALC.classes[p[i+2]];
+    if(!alcOn.has(cls)) continue;
+    if(!boroKeep(p[i+3])) continue;      // the overlay obeys the borough selector
+    f.push({type:'Feature',geometry:{type:'Point',coordinates:[p[i],p[i+1]]},
+      properties:{cls:cls,img:alcImg(cls),j:i/4}});
+  }
+  return {type:'FeatureCollection',features:f};
+}
+function alcVal(key,j){const v=ALC.vocab[key],i=ALC[key][j];return i<0?null:v[i];}
+function alcCount(cls){
+  const c=META.alcohol&&META.alcohol.counts&&META.alcohol.counts[cls]; if(!c) return 0;
+  let n=0; META.boroughs.forEach(b=>{if(boroSel==='ALL'||b===boroSel)n+=c[b]||0;}); return n;
+}
+// Distinct SHAPES, drawn to a canvas at 2x and registered as map images --
+// colour alone would collide with the 15 category colours, and the map has to
+// stay readable when a violet "bar" gap sits under a violet on-premises mark.
+function alcIcon(shape,color){
+  const s=22,c=document.createElement('canvas');c.width=c.height=s;
+  const g=c.getContext('2d'),m=s/2,r=7.5;
+  g.lineJoin='round';g.strokeStyle='#fffdf9';g.lineWidth=2;g.fillStyle=color;
+  const path=()=>{g.beginPath();
+    if(shape==='triangle'){g.moveTo(m,m-r);g.lineTo(m+r*0.92,m+r*0.72);g.lineTo(m-r*0.92,m+r*0.72);g.closePath();}
+    else if(shape==='square'){const h=r*0.78;g.rect(m-h,m-h,2*h,2*h);}
+    else if(shape==='diamond'){g.moveTo(m,m-r);g.lineTo(m+r*0.82,m);g.lineTo(m,m+r);g.lineTo(m-r*0.82,m);g.closePath();}
+    else {g.arc(m,m,r*0.62,0,2*Math.PI);}
+    };
+  path();
+  if(shape==='ring'){g.strokeStyle=color;g.lineWidth=2;g.stroke();}
+  else {g.stroke();g.fill();}
+  return g.getImageData(0,0,s,s);
+}
+// The excluded mark (D52). Grey, thin, and a cross rather than a dot: it has
+// to be findable when you go looking for it and ignorable when you are not.
+const EXC_IMG='poi-excluded', EXC_COLOR='#8f8879';
+function excIcon(){
+  const s=22,c=document.createElement('canvas');c.width=c.height=s;
+  const g=c.getContext('2d'),m=s/2,r=4.6;
+  g.strokeStyle=EXC_COLOR;g.lineWidth=2.1;g.lineCap='round';
+  g.beginPath();g.moveTo(m-r,m-r);g.lineTo(m+r,m+r);g.moveTo(m+r,m-r);g.lineTo(m-r,m+r);g.stroke();
+  return g.getImageData(0,0,s,s);
+}
+const EXC_SVG='<svg width="14" height="14"><path d="M3.2 3.2 L10.8 10.8 M10.8 3.2 L3.2 10.8" '+
+  `stroke="${EXC_COLOR}" stroke-width="2" stroke-linecap="round"></path></svg>`;
+function alcSvg(shape,color){
+  if(shape==='triangle') return `<svg width="14" height="14"><polygon points="7,1.5 12.8,12 1.2,12" fill="${color}"></polygon></svg>`;
+  if(shape==='square')   return `<svg width="14" height="14"><rect x="2" y="2" width="10" height="10" fill="${color}"></rect></svg>`;
+  if(shape==='diamond')  return `<svg width="14" height="14"><polygon points="7,1.2 12.8,7 7,12.8 1.2,7" fill="${color}"></polygon></svg>`;
+  return `<svg width="14" height="14"><circle cx="7" cy="7" r="4.6" fill="none" stroke="${color}" stroke-width="2"></circle></svg>`;
+}
+async function loadAlcohol(){
+  if(ALC||alcLoading) return; alcLoading=true;
+  try{ ALC=await fetch('data/alcohol.json').then(r=>r.json()); }
+  catch(e){ ALC=null; }
+  alcLoading=false;
+}
+// The overlay's own source is refreshed on its own. refresh() calls this so a
+// borough change reaches it, but nothing here touches the gap or POI sources:
+// switching the overlay on cannot move a single gap dot.
+function refreshAlc(){
+  const s=map.getSource('alc'); if(!s) return;
+  s.setData(alcFC()); renderAlcLegend();
+}
+function alcLabel(cls){
+  const a=META.alcohol, i=a.classes.indexOf(cls);
+  return (i>=0&&a.classLabels[i])||cls;
+}
+function renderAlcLegend(){
+  const a=META.alcohol, el=document.getElementById('alcLegend');
+  if(!a||!a.available) return;
+  el.innerHTML=a.classes.map(c=>{const st=alcStyle(c);
+    return `<label class="${showAlc?'':'off'}"><input type="checkbox" data-alc="${esc(c)}"`+
+      `${alcOn.has(c)?' checked':''}${showAlc?'':' disabled'}>`+
+      `<span class="k">${alcSvg(st.shape,st.color)}</span><span>${esc(alcLabel(c))}</span>`+
+      `<span class="n">${alcCount(c).toLocaleString()}</span></label>`;}).join('');
+  el.querySelectorAll('input[data-alc]').forEach(i=>{i.onchange=e=>{
+    const c=e.target.dataset.alc;
+    e.target.checked?alcOn.add(c):alcOn.delete(c);
+    refreshAlc();};});
+}
+// Name, licence type, class, address and expiry -- everything the SLA row
+// carries that identifies the premises. The click popup adds the licence id so
+// a dot can be traced back to dataset 9s3h-dpkz.
+function alcHTML(p,full){
+  const j=+p.j, st=alcStyle(p.cls);
+  const desc=alcVal('desc',j), exp=alcVal('expires',j);
+  return `<div class="pnb">${esc(ALC.names[j])||'(unnamed licensee)'}</div>`+
+    `<div class="ppop">${esc(desc||'licence type not recorded')}</div>`+
+    `<div class="pmi" style="display:flex;align-items:center;gap:6px">${alcSvg(st.shape,st.color)}`+
+      `<span>${esc(alcLabel(p.cls))}</span></div>`+
+    `<div class="pmi">${esc(ALC.addr[j]||'address not recorded')}</div>`+
+    `<div class="pmi">${exp?'licence expires '+esc(exp):'no expiry date'}</div>`+
+    (full?`<div class="pmi">SLA licence ${esc(ALC.ids[j])}</div>`:'');
+}
+
+// ---- DOHMH detail (restaurant / cafe_bakery only) -------------------------
+// The export packs detail as dictionary-encoded parallel arrays indexed by
+// point (src/loci/viz/webmap_export.py); -1 always means "not recorded".
+function det(){const L=CACHE.pois[biz];return L&&L.detail?L.detail:null;}
+const VOCAB_KEY={cuisine:'cuisine',cuisineSrc:'src',grade:'grade',gradeDate:'date',inspected:'date',basis:'basis'};
+function look(d,key,j){const i=d[key][j];return i<0?null:d.vocab[VOCAB_KEY[key]][i];}
+function cuisineOf(d,j){return look(d,'cuisine',j);}
+function keepDetail(d,j){
+  // active===-1 is "no health-department record", NOT "closed". Only an
+  // explicit 0 is hidden by the active-only toggle.
+  if(activeOnly&&d.active[j]===0) return false;
+  if(cuiSel==='ALL') return true;
+  const c=cuisineOf(d,j);
+  if(cuiSel===CUI_NONE) return c===null;
+  if(cuiSel===CUI_OTHER) return c!==null&&!cuiTop.has(c);
+  return c===cuiSel;
+}
+function cuisineTally(){
+  const d=det(), L=CACHE.pois[biz], m=new Map(); if(!d) return m;
+  const p=L.pts,st=L.stride||5;
+  // Counts KNOWN LOCATIONS only -- excluded records are not supply, so they
+  // must not swell a cuisine count the sidebar prints as "known locations".
+  for(let i=0;i<p.length;i+=st){ if(!boroKeep(p[i+2])||!p[i+4]) continue;
+    const j=i/st; if(activeOnly&&d.active[j]===0) continue;
+    const c=cuisineOf(d,j)||CUI_NONE; m.set(c,(m.get(c)||0)+1); }
+  return m;
+}
+function popcount(n){let c=0;while(n){n&=n-1;c++;}return c;}
+function srcNames(mask){const o=[];META.sources.forEach((s,i)=>{if(mask>>i&1)o.push(s);});return o;}
+
+async function loadCat(cat){
+  if(!CACHE.gaps[cat]||!CACHE.pois[cat]){
+    const [g,p]=await Promise.all([
+      fetch(`data/gaps/${cat}.json`).then(r=>r.json()),
+      fetch(`data/pois/${cat}.json`).then(r=>r.json())]);
+    CACHE.gaps[cat]=g; CACHE.pois[cat]=p;
+  }
+}
 
 map.on('load',async()=>{
-  [META,NAV]=await Promise.all([fetch('buildings_meta.json').then(r=>r.json()),fetch('nav.json').then(r=>r.json())]);
-  const raw=await fetch('gap_buildings.json').then(r=>r.json());
-  FALL=[];const a=raw.pts,st=raw.stride||5;for(let i=0;i<a.length;i+=st){FALL.push({type:'Feature',geometry:{type:'Point',coordinates:[a[i],a[i+1]]},properties:{m:a[i+2],u:a[i+3],inc:a[i+4]||0}});}
-  map.addSource('bld',{type:'geojson',data:subset(),cluster:true,clusterRadius:46,clusterMaxZoom:15,clusterProperties:{u:['+',['get','u']]}});
-  map.addLayer({id:'cl',type:'circle',source:'bld',filter:['has','point_count'],
-    paint:{'circle-color':lc(),'circle-opacity':0.82,'circle-stroke-width':1.4,'circle-stroke-color':'#fff',
+  META=await fetch('data/meta.json').then(r=>r.json());
+  await loadCat(biz);
+
+  map.addSource('gap',{type:'geojson',data:gapFC(),cluster:true,clusterRadius:46,clusterMaxZoom:15,
+    clusterProperties:{u:['+',['get','u']]}});
+  map.addSource('poi',{type:'geojson',data:poiFC()});
+
+  map.addLayer({id:'cl',type:'circle',source:'gap',filter:['has','point_count'],
+    paint:{'circle-color':lc(),'circle-opacity':0.78,'circle-stroke-width':1.4,'circle-stroke-color':'#fff',
       'circle-radius':['step',['get','point_count'],11,25,16,100,23,500,32,2000,44]}});
-  map.addLayer({id:'cln',type:'symbol',source:'bld',filter:['has','point_count'],
-    layout:{'text-field':['get','point_count_abbreviated'],'text-size':11,'text-font':['Open Sans Bold']},paint:{'text-color':'#fff'}});
-  map.addLayer({id:'pt',type:'circle',source:'bld',filter:['!',['has','point_count']],
-    paint:{'circle-color':lc(),'circle-radius':['interpolate',['linear'],['zoom'],13,3,17,6],'circle-stroke-width':1,'circle-stroke-color':'#fff','circle-opacity':0.9}});
-  document.getElementById('loading').remove();
-  buildUI(); updateBanner();
+  map.addLayer({id:'cln',type:'symbol',source:'gap',filter:['has','point_count'],
+    layout:{'text-field':['get','point_count_abbreviated'],'text-size':11,'text-font':['Open Sans Bold']},
+    paint:{'text-color':'#fff'}});
+  map.addLayer({id:'pt',type:'circle',source:'gap',filter:['!',['has','point_count']],
+    paint:{'circle-color':lc(),'circle-radius':['interpolate',['linear'],['zoom'],13,3,17,6],
+      'circle-stroke-width':1,'circle-stroke-color':'#fff','circle-opacity':0.9}});
+
+  // Known locations sit ON TOP and read as a different mark entirely: small
+  // ink dots, filled when 2+ sources corroborate the record and hollow when
+  // only one source attests it (D47). The layer is FILTERED to the supply set
+  // -- excluded records get their own mark below, because a dot the model did
+  // not count must not look like a dot it did.
+  map.addLayer({id:'poi',type:'circle',source:'poi',filter:['==',['get','s'],1],
+    paint:{'circle-radius':['interpolate',['linear'],['zoom'],10,2.2,13,3.4,17,6.5],
+      'circle-color':['case',['==',['get','c'],1],INK,'#fffdf9'],
+      'circle-opacity':['case',['==',['get','c'],1],0.95,0.85],
+      'circle-stroke-width':['case',['==',['get','c'],1],0.8,1.3],
+      'circle-stroke-color':INK,'circle-stroke-opacity':0.9}});
+
+  // Excluded (D52): a grey CROSS, not a circle. Shape carries the difference
+  // because the two circle styles are already spent on corroboration, and a
+  // third circle variant would read as a third grade of supply rather than as
+  // "not supply at all". Same source as the dots, so one setData drives both.
+  if(!map.hasImage(EXC_IMG)) map.addImage(EXC_IMG,excIcon(),{pixelRatio:2});
+  map.addLayer({id:'poix',type:'symbol',source:'poi',filter:['==',['get','s'],0],
+    layout:{'icon-image':EXC_IMG,'icon-allow-overlap':true,'icon-ignore-placement':true,
+      'icon-size':['interpolate',['linear'],['zoom'],10,0.5,13,0.72,17,1.0]},
+    paint:{'icon-opacity':0.8}});
+
+  // Alcohol overlay: registered up front and left EMPTY until the toggle is
+  // switched on, so the draw order is fixed -- it always sits above the gap and
+  // known-location dots, and turning it on never reshuffles the map. One image
+  // per class, drawn at 2x, because shape (not colour) is what keeps a licence
+  // mark from reading as a category dot.
+  ((META.alcohol&&META.alcohol.classes)||[]).forEach(c=>{
+    const st=alcStyle(c);
+    if(!map.hasImage(alcImg(c))) map.addImage(alcImg(c),alcIcon(st.shape,st.color),{pixelRatio:2});
+  });
+  map.addSource('alc',{type:'geojson',data:alcFC()});
+  map.addLayer({id:'alc',type:'symbol',source:'alc',
+    layout:{'icon-image':['get','img'],'icon-allow-overlap':true,'icon-ignore-placement':true,
+      'icon-size':['interpolate',['linear'],['zoom'],10,0.55,13,0.78,17,1.1]}});
+
+  document.getElementById('loading').hidden=true;
+  buildUI(); refresh();
+
   map.on('click','cl',e=>{const f=map.queryRenderedFeatures(e.point,{layers:['cl']})[0];
-    map.getSource('bld').getClusterExpansionZoom(f.properties.cluster_id).then(z=>map.easeTo({center:f.geometry.coordinates,zoom:z+0.3}));});
+    map.getSource('gap').getClusterExpansionZoom(f.properties.cluster_id).then(z=>map.easeTo({center:f.geometry.coordinates,zoom:z+0.3}));});
   map.on('mouseenter','cl',e=>{map.getCanvas().style.cursor='pointer';const p=e.features[0].properties;
-    clTip.setLngLat(e.lngLat).setHTML(`<div class="pnb">${p.point_count.toLocaleString()} buildings</div><div class="ppop">${(+p.u).toLocaleString()} homes with no ${META.catLabels[bi()].toLowerCase()} nearby</div>`).addTo(map);});
+    clTip.setLngLat(e.lngLat).setHTML(`<div class="pnb">${p.point_count.toLocaleString()} gap addresses</div>`+
+      `<div class="ppop">${(+p.u).toLocaleString()} homes with no ${label().toLowerCase()} in reach</div>`).addTo(map);});
   map.on('mouseleave','cl',()=>{map.getCanvas().style.cursor='';clTip.remove();});
-  map.on('click','pt',e=>{const p=e.features[0].properties;const ms=[];for(let i=0;i<META.cats.length;i++)if((p.m>>i)&1)ms.push(i);
-    new maplibregl.Popup({closeButton:false,maxWidth:'240px'}).setLngLat(e.lngLat)
-      .setHTML(`<div class="pnb">Residential building</div><div class="ppop">${p.u} homes${p.inc?" · area median income $"+(+p.inc).toLocaleString():""}</div><div class="pmi">missing</div>`+
-        ms.map(i=>`<span class="biz" style="background:${COL[META.cats[i]]}">${META.catLabels[i]}</span>`).join('')).addTo(map);});
+  map.on('click','pt',e=>{const p=e.features[0].properties;
+    new maplibregl.Popup({closeButton:false,maxWidth:'250px'}).setLngLat(e.lngLat)
+      .setHTML(`<div class="pnb">Gap address</div><div class="ppop">${p.u} homes · no ${label().toLowerCase()} in reach</div>`+
+        `<div class="pmi">bbl ${p.id}</div>`).addTo(map);});
   map.on('mouseenter','pt',()=>map.getCanvas().style.cursor='pointer');
   map.on('mouseleave','pt',()=>map.getCanvas().style.cursor='');
+
+  map.on('mouseenter','poi',e=>{map.getCanvas().style.cursor='pointer';const p=e.features[0].properties;
+    const d=det(), j=p.j;
+    const sub=(d&&j>=0&&cuisineOf(d,j))||label();
+    poiTip.setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(`<div class="pnb">${esc(p.nm)||'(unnamed)'}</div><div class="ppop">${esc(sub)}</div>`+
+        (d&&j>=0?gradeChip(d,j):'')+
+        `<div class="pmi">${p.c?'corroborated':'single source'}</div>`).addTo(map);});
+  map.on('mouseleave','poi',()=>{map.getCanvas().style.cursor='';poiTip.remove();});
+  map.on('click','poi',e=>{const p=e.features[0].properties, srcs=srcNames(p.m), d=det();
+    new maplibregl.Popup({closeButton:false,maxWidth:'270px'}).setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(`<div class="pnb">${esc(p.nm)||'(unnamed)'}</div><div class="ppop">${label()}</div>`+
+        (d&&p.j>=0?detailHTML(d,p.j):'')+
+        `<div class="pmi">${srcs.length} source${srcs.length===1?'':'s'}</div>`+
+        srcs.map(s=>`<span class="src">${esc(s)}</span>`).join('')+
+        (srcs.length<2?'<div class="warn">Single source — unverified supply (D47)</div>':'')+
+        `<div class="pmi">${esc(p.id)}</div>`).addTo(map);});
+
+  // The excluded mark gets its own popup wording. It must never read as a
+  // known location, and it must say WHY it was dropped and what that costs.
+  map.on('mouseenter','poix',e=>{map.getCanvas().style.cursor='pointer';const p=e.features[0].properties;
+    poiTip.setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(`<div class="pnb">${esc(p.nm)||'(unnamed)'}</div>`+
+        `<div class="ppop">${label()} — excluded from supply</div>`+
+        `<div class="pmi">single aggregator record, no licence</div>`).addTo(map);});
+  map.on('mouseleave','poix',()=>{map.getCanvas().style.cursor='';poiTip.remove();});
+  map.on('click','poix',e=>{const p=e.features[0].properties, srcs=srcNames(p.m);
+    new maplibregl.Popup({closeButton:false,maxWidth:'280px'}).setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(`<div class="pnb">${esc(p.nm)||'(unnamed)'}</div><div class="ppop">${label()}</div>`+
+        `<div class="pmi">${srcs.length} source${srcs.length===1?'':'s'}</div>`+
+        srcs.map(s=>`<span class="src">${esc(s)}</span>`).join('')+
+        `<div class="warn">Excluded from the ${esc(supplySet())} supply set (D52) — one `+
+        `aggregator record, no licence or registry entry, in a category whose registry is `+
+        `dense enough to have listed it. The gaps on this map were measured WITHOUT it.</div>`+
+        `<div class="pmi">${esc(p.id)}</div>`).addTo(map);});
+
+  map.on('mouseenter','alc',e=>{map.getCanvas().style.cursor='pointer';
+    alcTip.setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(alcHTML(e.features[0].properties,false)).addTo(map);});
+  map.on('mouseleave','alc',()=>{map.getCanvas().style.cursor='';alcTip.remove();});
+  map.on('click','alc',e=>{
+    new maplibregl.Popup({closeButton:false,maxWidth:'270px'})
+      .setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(alcHTML(e.features[0].properties,true)).addTo(map);});
 });
-function refresh(){map.getSource('bld').setData(subset());
-  map.setPaintProperty('cl','circle-color',lc());map.setPaintProperty('pt','circle-color',lc());updateBanner();}
-function updateBanner(){const n=META.gapCounts[biz]||0;
-  document.getElementById('banner').innerHTML=`<span class="sw" style="background:${lc()}"></span><div><b>Missing: ${META.catLabels[bi()]}</b><div class="bsub">${n.toLocaleString()} buildings across NYC · ${Math.round(META.prevalence[biz]*100)}% of buildings can reach one</div></div>`;}
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+// DOHMH's own letter vocabulary — Z and N are not bad grades, they are
+// "no grade yet", and saying so keeps the popup from libelling a restaurant.
+const GRADE_TEXT={A:'Grade A',B:'Grade B',C:'Grade C',Z:'Grade pending',N:'Not yet graded',P:'Pending (re-opening)'};
+function gradeChip(d,j){const g=look(d,'grade',j); if(!g) return '';
+  return `<div class="pmi"><span class="grade ${/^[ABC]$/.test(g)?g:''}">${esc(g)}</span>${esc(GRADE_TEXT[g]||'Grade '+g)}</div>`;}
+function detailHTML(d,j){
+  const cu=cuisineOf(d,j), src=look(d,'cuisineSrc',j);
+  const g=look(d,'grade',j), gd=look(d,'gradeDate',j), ins=look(d,'inspected',j);
+  const act=d.active[j], basis=look(d,'basis',j), camis=d.camis[j];
+  let h='';
+  if(cu) h+=`<div class="ppop">${esc(cu)}${src&&src!==META.detailSource?` <span class="src">${esc(shortSrc(src))} category</span>`:''}</div>`;
+  if(g) h+=`<div class="pmi" style="margin-top:5px"><span class="grade ${/^[ABC]$/.test(g)?g:''}">${esc(g)}</span>`+
+    `${esc(GRADE_TEXT[g]||'Grade '+g)}${gd?' · '+esc(gd):''}</div>`;
+  if(ins) h+=`<div class="pmi">last inspected ${esc(ins)}</div>`;
+  if(act===0) h+=`<div class="pmi dead">Inactive — ${esc(humanBasis(basis))}</div>`;
+  else if(act===1) h+=`<div class="pmi">Active — ${esc(humanBasis(basis))}</div>`;
+  else h+=`<div class="pmi">No health-department record — status unknown</div>`;
+  if(camis) h+=`<div class="pmi">CAMIS ${esc(camis)}</div>`;
+  return h;
+}
+function shortSrc(s){return s.replace(/_(os_)?places$/,'').replace(/^nyc_/,'');}
+function humanBasis(b){if(!b) return 'basis not recorded';
+  const m=/^inspected_(\d+)d_ago$/.exec(b); if(m) return `inspected ${(+m[1]).toLocaleString()} days ago`;
+  const s=/^stale_(\d+)d$/.exec(b); if(s) return `no inspection in ${(+s[1]).toLocaleString()} days`;
+  return b.replace(/_/g,' ');}
+
+function refresh(){
+  syncCuisineUI();          // must precede poiFC(): it fills cuiTop
+  map.getSource('gap').setData(gapFC());
+  const pf=poiFC();
+  map.getSource('poi').setData(pf);
+  map.setPaintProperty('cl','circle-color',lc());
+  map.setPaintProperty('pt','circle-color',lc());
+  // Only IN-SET features count towards "known locations shown" -- an excluded
+  // cross on screen is not a known location and must not inflate the banner.
+  updateBanner(pf.features.reduce((n,f)=>n+(f.properties.s?1:0),0));
+  updateLegend(); refreshAlc();
+}
+function sumOver(obj,pick){let n=0;META.boroughs.forEach(b=>{if(boroSel==='ALL'||b===boroSel)n+=pick(obj[b]);});return n;}
+function updateBanner(shown){
+  const g=sumOver(META.gapCounts[biz],v=>v), p=sumOver(META.poiCounts[biz],v=>v.all);
+  const where=boroSel==='ALL'?'Manhattan & Brooklyn':META.boroughNames[boroSel];
+  // When a known-location filter is on, say so in the banner — an unqualified
+  // count next to a filtered map is how a screenshot starts lying.
+  const filtered=showPois&&shown!=null&&shown<p;
+  const poiTxt=filtered?`${shown.toLocaleString()} of ${p.toLocaleString()} known locations shown`
+                       :`${p.toLocaleString()} known locations`;
+  const cui=cuiSel==='ALL'?'':cuiSel===CUI_OTHER?' · other cuisines':cuiSel===CUI_NONE?' · cuisine not recorded':` · ${cuiSel}`;
+  document.getElementById('banner').innerHTML=
+    `<span class="sw" style="background:${lc()}"></span><div><b>${label()}${esc(cui)}${activeOnly&&det()?' · active only':''}</b>`+
+    `<div class="bsub">${g.toLocaleString()} gap addresses · ${poiTxt} · ${where} · reach ${META.reach_m[biz]} m</div></div>`;
+}
+// THREE marks, three meanings, and the legend has to name all three or the
+// grey crosses read as a fourth kind of dot: filled = corroborated supply,
+// hollow = single-source supply that the set KEPT (its category has a registry
+// anchor that listed it, or has no anchor loaded at all), cross = a record the
+// supply set dropped and the gap model never counted.
+function updateLegend(){
+  const corr=sumOver(META.poiCounts[biz],v=>v.corroborated), sing=sumOver(META.poiCounts[biz],v=>v.single);
+  const exc=excludedCount(), g=sumOver(META.gapCounts[biz],v=>v);
+  document.getElementById('legend').innerHTML=
+    `<div class="row"><span class="k"><svg width="14" height="14"><circle cx="7" cy="7" r="6" fill="${lc()}" opacity=".8" stroke="#fff"></circle></svg></span>`+
+      `<span>Gap address</span><span class="n">${g.toLocaleString()}</span></div>`+
+    `<div class="row"><span class="k"><svg width="14" height="14"><circle cx="7" cy="7" r="3.4" fill="${INK}"></circle></svg></span>`+
+      `<span>Known location — corroborated (2+ sources)</span><span class="n">${corr.toLocaleString()}</span></div>`+
+    `<div class="row"><span class="k"><svg width="14" height="14"><circle cx="7" cy="7" r="3.4" fill="#fffdf9" stroke="${INK}" stroke-width="1.3"></circle></svg></span>`+
+      `<span>Known location — single source, kept</span><span class="n">${sing.toLocaleString()}</span></div>`+
+    `<div class="row"><span class="k">${EXC_SVG}</span>`+
+      `<span>Excluded — single aggregator record, no licence</span><span class="n">${exc.toLocaleString()}</span></div>`+
+    `<div class="fine">The first two are the <b>${(corr+sing).toLocaleString()} known locations</b> the gaps `+
+      `were measured against. The third was dropped by the <b>${esc(supplySet())}</b> supply set and counts `+
+      `towards nothing — shown here so the drop can be judged by eye, off by default so the map matches the model.</div>`+
+    // Deliberate: points are NOT coloured by letter grade. The dot already
+    // encodes the one thing this map is about -- whether the supply that
+    // closes a gap is attested twice (D47) -- and a second colour scale on the
+    // same mark would fight the category colour and read as a quality map.
+    (det()?`<div class="fine">Health-department grade, cuisine and inspection date are in the point popup — the dot colour stays reserved for corroboration.</div>`:'');
+}
+function supplySet(){return (META.supply&&META.supply.set)||'all';}
+function excludedCount(){
+  const e=META.excludedCounts&&META.excludedCounts[biz]; if(!e) return 0;
+  return sumOver(e,v=>v);
+}
+// The provenance line, and the loud version of it. `warning` is non-null
+// exactly when analysis.address_gaps was measured against a different supply
+// set than this export drew -- the one state in which every gap on screen is
+// being checked against a universe the model never saw.
+function renderSupply(){
+  const s=META.supply, el=document.getElementById('supBadge');
+  if(!s){el.hidden=true;return;}
+  el.hidden=false;
+  el.className=s.warning?'sub supbad':'sub supok';
+  el.innerHTML=s.warning
+    ? `<b>⚠ ${esc(s.warning)}</b>`
+    : `supply set <b>${esc(s.set)}</b> · gaps measured against <b>${esc(s.gapsSet||'?')}</b>`+
+      (s.gapsHash?` · supply_hash ${esc(s.gapsHash)}`:'');
+}
+
+// The cuisine dropdown is rebuilt only when its counts can have changed
+// (category, borough, active-only); picking a cuisine must not yank the open
+// <select> out from under the cursor.
+let cuiSig='';
+function syncCuisineUI(){
+  const sec=document.getElementById('cuiSec'), sel=document.getElementById('cuiSel'), d=det();
+  sec.hidden=!d;
+  if(!d){cuiTop=new Set();cuiSig='';return;}
+  const sig=[biz,boroSel,activeOnly].join('|'); if(sig===cuiSig) return; cuiSig=sig;
+  const tally=[...cuisineTally()].sort((a,b)=>b[1]-a[1]);
+  const named=tally.filter(([c])=>c!==CUI_NONE), top=named.slice(0,TOP_CUISINES);
+  cuiTop=new Set(top.map(([c])=>c));
+  const other=named.slice(TOP_CUISINES).reduce((n,kv)=>n+kv[1],0);
+  const none=(tally.find(([c])=>c===CUI_NONE)||[,0])[1];
+  const total=tally.reduce((n,kv)=>n+kv[1],0);
+  const opts=[['ALL',`All cuisines (${total.toLocaleString()})`]]
+    .concat(top.map(([c,n])=>[c,`${c} (${n.toLocaleString()})`]))
+    .concat(other?[[CUI_OTHER,`Other cuisines (${other.toLocaleString()})`]]:[])
+    .concat(none?[[CUI_NONE,`Not recorded (${none.toLocaleString()})`]]:[]);
+  if(!opts.some(o=>o[0]===cuiSel)) cuiSel='ALL';
+  sel.innerHTML=opts.map(([v,t])=>`<option value="${esc(v)}"${v===cuiSel?' selected':''}>${esc(t)}</option>`).join('');
+  const pc=META.poiCounts[biz], withDetail=sumOver(pc,v=>v.dohmh||0), all=sumOver(pc,v=>v.all);
+  const pct=all?Math.round(100*withDetail/all):0;
+  document.getElementById('cuiFine').innerHTML=
+    `${withDetail.toLocaleString()} of ${all.toLocaleString()} known locations (${pct}%) match a health-department record; `+
+    `those carry cuisine, grade and inspection date. The rest fall back to the source's own category label. `+
+    `<b>These two filters change known locations only — gap addresses are model output and never move.</b>`;
+}
 function buildUI(){
   const opts=document.getElementById('opts');
-  Object.entries(META.gapCounts).sort((a,b)=>b[1]-a[1]).forEach(([c,n])=>{
-    const b=document.createElement('button');b.className='opt';b.setAttribute('aria-pressed',c===biz);
-    b.innerHTML=`<span class="sw" style="background:${COL[c]}"></span><span>${META.catLabels[META.cats.indexOf(c)]}</span><span class="n">${n.toLocaleString()}</span>`;
-    b.onclick=()=>{biz=c;[...opts.children].forEach(x=>x.setAttribute('aria-pressed','false'));b.setAttribute('aria-pressed','true');refresh();};opts.appendChild(b);});
+  const order=META.cats.slice().sort((a,b)=>
+    sumOver(META.gapCounts[b],v=>v)-sumOver(META.gapCounts[a],v=>v));
+  order.forEach(c=>{
+    const b=document.createElement('button');b.className='opt';b.dataset.cat=c;
+    b.setAttribute('aria-pressed',String(c===biz));
+    b.innerHTML=`<span class="sw" style="background:${META.colors[c]}"></span>`+
+      `<span>${META.catLabels[META.cats.indexOf(c)]}</span>`+
+      `<span class="n" data-n="${c}">${sumOver(META.gapCounts[c],v=>v).toLocaleString()}</span>`;
+    b.onclick=async()=>{
+      if(biz===c) return;
+      const ld=document.getElementById('loading'); ld.hidden=false; ld.textContent='Loading '+
+        META.catLabels[META.cats.indexOf(c)].toLowerCase()+'…';
+      biz=c; cuiSel='ALL'; await loadCat(c);   // cuisines are per-category
+      [...opts.children].forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.cat===biz)));
+      refresh(); ld.hidden=true;
+    };
+    opts.appendChild(b);
+  });
   const bel=document.getElementById('boros');
-  NAV.boros.forEach(b=>{const x=document.createElement('button');x.textContent=b==='Staten Island'?'Staten Is.':b;
-    x.onclick=()=>{const bb=NAV.boroBounds[b];map.fitBounds([[bb[0],bb[1]],[bb[2],bb[3]]],{padding:40,duration:800});};bel.appendChild(x);});
-  const dl=document.getElementById('ntal');NAV.ntaList.forEach(n=>{const o=document.createElement('option');o.value=n;dl.appendChild(o);});
-  document.getElementById('ntaIn').addEventListener('change',e=>{const bb=NAV.ntaBounds[e.target.value];
-    if(bb)map.fitBounds([[bb[0],bb[1]],[bb[2],bb[3]]],{padding:50,duration:800,maxZoom:16});});
+  [['ALL','Both'],...META.boroughs.map(b=>[b,META.boroughNames[b]])].forEach(([code,name])=>{
+    const x=document.createElement('button');x.textContent=name;x.dataset.b=code;
+    x.setAttribute('aria-pressed',String(code===boroSel));
+    x.onclick=()=>{boroSel=code;
+      [...bel.children].forEach(y=>y.setAttribute('aria-pressed',String(y.dataset.b===boroSel)));
+      updateCounts(); refresh();
+      const bb=code==='ALL'?allBounds():META.boroBounds[code];
+      if(bb) map.fitBounds([[bb[0],bb[1]],[bb[2],bb[3]]],{padding:30,duration:700});};
+    bel.appendChild(x);});
+  const dl=document.getElementById('ntal');
+  META.neighborhoods.forEach(n=>{const o=document.createElement('option');
+    o.value=n.name;o.label=n.boro;dl.appendChild(o);});
+  document.getElementById('ntaIn').addEventListener('change',e=>{
+    const n=META.neighborhoods.find(x=>x.name===e.target.value); if(!n) return;
+    map.fitBounds([[n.bounds[0],n.bounds[1]],[n.bounds[2],n.bounds[3]]],
+      {padding:50,duration:800,maxZoom:16});});
+  document.getElementById('poiTog').onchange=e=>{showPois=e.target.checked;
+    document.getElementById('soloTog').disabled=!showPois;
+    document.getElementById('excTog').disabled=!showPois; refresh();};
+  document.getElementById('soloTog').onchange=e=>{showSingle=e.target.checked;refresh();};
+  document.getElementById('excTog').onchange=e=>{showExcluded=e.target.checked;refresh();};
+  document.getElementById('supFine').innerHTML=
+    `Known locations are the <b>${esc(supplySet())}</b> supply set — the same set `+
+    `<code>analysis.address_gaps</code> used, so a gap and the businesses around it are `+
+    `counted the same way (D52). <b>Excluded records</b> are lone aggregator listings in a `+
+    `category whose licence registry is dense enough to have listed them; they are exported `+
+    `and drawn on request, never counted.`;
+  renderSupply();
+  document.getElementById('cuiSel').onchange=e=>{cuiSel=e.target.value;refresh();};
+  document.getElementById('actTog').onchange=e=>{activeOnly=e.target.checked;refresh();};
+  buildAlcUI();
+}
+// The overlay's section is hidden entirely when the export carries no alcohol
+// block, and shown-but-disabled when `loci ingest-alcohol` has not run -- an
+// empty overlay that says "not loaded" beats a confident zero.
+function buildAlcUI(){
+  const a=META.alcohol, sec=document.getElementById('alcSec'),
+        tog=document.getElementById('alcTog'), fine=document.getElementById('alcFine');
+  if(!a) return;
+  sec.hidden=false;
+  if(!a.available){
+    tog.disabled=true;
+    fine.textContent='Not loaded — run `loci ingest-alcohol`, then `loci export-webmap`.';
+    return;
+  }
+  alcOn=new Set(a.classes);            // all classes on once the overlay is on
+  tog.checked=false; showAlc=false;    // off by default, every load
+  fine.innerHTML='Every <b>active NYS Liquor Authority licence</b> in view, classified by licence '+
+    'type. <b>This is an overlay, not a business category</b> — it is not in the selector above, '+
+    'it is not deduplicated against the known locations, and switching it on cannot open or close '+
+    'a gap. Most on-premises licences are restaurants already drawn under <b>Restaurant</b>, so the '+
+    'two layers overlap by design.';
+  renderAlcLegend();
+  tog.onchange=async e=>{
+    showAlc=e.target.checked;
+    if(showAlc&&!ALC){
+      const ld=document.getElementById('loading');
+      ld.hidden=false; ld.textContent='Loading alcohol licences…';
+      await loadAlcohol(); ld.hidden=true;
+      if(!ALC){ showAlc=false; e.target.checked=false;
+        fine.textContent='Could not load data/alcohol.json.'; }
+    }
+    refreshAlc();
+  };
+}
+function updateCounts(){
+  document.querySelectorAll('[data-n]').forEach(el=>{
+    el.textContent=sumOver(META.gapCounts[el.dataset.n],v=>v).toLocaleString();});
 }
 
 document.getElementById('valBtn').onclick=async()=>{
@@ -106,11 +672,11 @@ document.getElementById('valBtn').onclick=async()=>{
   const c=map.getCenter();btn.disabled=true;btn.textContent='Checking Google…';
   try{
     const d=await fetch(`/api/validate?lat=${c.lat.toFixed(5)}&lng=${c.lng.toFixed(5)}&cat=${biz}`).then(r=>r.json());
-    const label=META.catLabels[bi()];
+    const lb=label();
     if(d.error==='disabled'||d.error==='budget'){out.innerHTML=`<span class="hole">Live Google check is off — coverage is validated in a capped batch (<code>loci validate</code>), not per click.</span>`;}
-    else if(d.error){out.innerHTML=`<span class="hole">Couldn't reach Google (${d.error}).</span>`;}
-    else if(d.n===0){out.innerHTML=`<span class="tag real">Real gap ✓</span><br>Google finds <b>no ${label.toLowerCase()}</b> within 800 m of this spot. Our data agrees — worth a look.`;}
-    else{out.innerHTML=`<span class="tag hole">Data hole</span><br>Google finds <b>${d.n} ${label.toLowerCase()}</b> here that our map missed:<br>${(d.names||[]).slice(0,5).map(n=>'· '+n).join('<br>')}`;}
+    else if(d.error){out.innerHTML=`<span class="hole">Couldn't reach Google (${esc(d.error)}).</span>`;}
+    else if(d.n===0){out.innerHTML=`<span class="tag real">Real gap ✓</span><br>Google finds <b>no ${lb.toLowerCase()}</b> within 800 m of this spot. Our data agrees — worth a look.`;}
+    else{out.innerHTML=`<span class="tag hole">Data hole</span><br>Google finds <b>${d.n} ${lb.toLowerCase()}</b> here that our map missed:<br>${(d.names||[]).slice(0,5).map(n=>'· '+esc(n)).join('<br>')}`;}
     out.hidden=false;
   }catch(e){out.innerHTML='<span class="hole">Validation failed.</span>';out.hidden=false;}
   btn.disabled=false;btn.textContent='✓ Check this view against Google';
