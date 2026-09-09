@@ -39,6 +39,18 @@ def init_schema(con: duckdb.DuckDBPyConnection) -> None:
         if path.name.startswith("001_"):
             continue
         con.execute(path.read_text())
+        if path.name == "002_schema.sql":
+            # analysis.address_gaps is a VIEW generated from
+            # loci.categories.CATEGORIES (model/address_gaps.address_gaps_view_sql),
+            # not static DDL -- 002 itself never creates it. It has to exist
+            # by THIS point, not at the end of the sweep: 004/005/006 all
+            # reference analysis.address_gaps by name and DuckDB resolves a
+            # view's query at CREATE time. Imported locally (not at module
+            # level) because model.address_gaps imports loci.score.access,
+            # which imports loci.db -- a module-level import here would be
+            # circular.
+            from loci.model.address_gaps import address_gaps_view_sql
+            con.execute(address_gaps_view_sql())
 
 
 # DuckDB's ST_Distance_Sphere reads POINT(x, y) as (LATITUDE, LONGITUDE); our geometry

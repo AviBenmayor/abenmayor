@@ -173,17 +173,17 @@ CREATE TABLE IF NOT EXISTS analysis.hex_access (
     PRIMARY KEY (h3_index, category, threshold_min)
 );
 
--- The index, the supply-model fit, and the residual (CONTEXT.md 4.4-4.5).
-CREATE TABLE IF NOT EXISTS analysis.hex_dnci (
-    h3_index       VARCHAR REFERENCES analysis.hex(h3_index),
-    threshold_min  SMALLINT NOT NULL,
-    dnci           FLOAT NOT NULL CHECK (dnci BETWEEN 0 AND 1),
-    dnci_predicted FLOAT,
-    residual       FLOAT,   -- the signal. negative = underserved vs. peers.
-    opportunity    FLOAT,
-    model_version  VARCHAR NOT NULL,
-    PRIMARY KEY (h3_index, threshold_min, model_version)
-);
+-- RETIRED UNDER D38 (2026-09-09): analysis.hex_dnci is DROPPED. It held the
+-- Daily-Needs Convenience Index per hex per walk threshold, plus the E3 supply
+-- model's fitted value and residual. Two reasons it is gone, not frozen:
+-- (a) the SCOPE CORRECTION at the top of CHECKPOINT.md records that the E3
+--     residual/growth framing answered the wrong question -- the deliverable is
+--     a present-day screen, not a causal growth thesis; and
+-- (b) D38 moved the unit of analysis off the hex, so nothing the owner looks at
+--     could read it even if the model were right.
+-- score/dnci.py keeps `dnci_from_counts` / `category_score` (pure, no DB) so
+-- tests/test_dnci.py can still pin the geometric-mean and saturation properties.
+-- model/supply.py, the only reader, is deleted.
 
 -- LODES WAC annual panel, block -> hex (CONTEXT.md 4.6). Jobs, not
 -- establishments -- see threat 7.4.
@@ -195,17 +195,10 @@ CREATE TABLE IF NOT EXISTS analysis.hex_panel (
     PRIMARY KEY (h3_index, year, naics)
 );
 
--- Outcomes for the growth regression.
-CREATE TABLE IF NOT EXISTS analysis.hex_outcomes (
-    h3_index         VARCHAR REFERENCES analysis.hex(h3_index),
-    period_start     SMALLINT NOT NULL,
-    period_end       SMALLINT NOT NULL,
-    d_log_population FLOAT,
-    d_log_households FLOAT,
-    d_log_zori       FLOAT,
-    permitted_units  FLOAT,
-    PRIMARY KEY (h3_index, period_start, period_end)
-);
+-- RETIRED UNDER D38 (2026-09-09): analysis.hex_outcomes is DROPPED. It was the
+-- dependent-variable table for the E3 growth regression and never had a writer
+-- at all -- it held 0 rows for the life of the project. Dead DDL for a question
+-- the SCOPE CORRECTION says Loci is not asking.
 
 -- Ground-truth enumeration for the coverage-bias test (CONTEXT.md 7.1 / P3).
 -- This table is the evidence for the prediction most likely to kill the project.
@@ -301,255 +294,211 @@ CREATE TABLE IF NOT EXISTS analysis.poi_dedup (
     category     VARCHAR NOT NULL
 );
 
--- Per-hex investment screen (present-day): a walkable, populated hex missing an
--- "expected" daily-needs business — one that areas like it normally have, so its
--- absence is conspicuous. The missing business IS the opportunity. Ranked (for
--- now) by resident population; "people affected" = walking-catchment population
--- is a later refinement.
-CREATE TABLE IF NOT EXISTS analysis.hex_gaps (
-    h3_index          VARCHAR NOT NULL,
-    threshold_min     SMALLINT NOT NULL,
-    population        REAL,
-    present_count     SMALLINT NOT NULL,
-    lead_missing      VARCHAR,      -- the most-expected missing business
-    lead_prevalence   REAL,         -- share of areas that have it
-    missing_expected  VARCHAR,      -- all conspicuously-missing businesses (comma-sep)
-    PRIMARY KEY (h3_index, threshold_min)
-);
+-- RETIRED UNDER D38 (2026-09-09): analysis.hex_gaps and analysis.hex_gaps_reach
+-- are DROPPED. They were the per-HEX gap screen -- the window rule (726 hexes)
+-- and the reach rule (1,966 rows) -- together with the D37/D49 demand
+-- annotation columns bolted onto both. D38 made the residential PLUTO lot the
+-- unit of analysis and the address screen never read either table; leaving them
+-- in place only invited a future session to re-run a screen the owner does not
+-- look at and believe the numbers.
+--
+-- Where each thing went:
+--   * the screen itself      -> analysis.address / analysis.address_category,
+--                               surfaced wide as the analysis.address_gaps VIEW
+--   * the demand annotation  -> the annotation columns on
+--                               analysis.address_category (D57), computed from
+--                               analysis.address_demographics' tract-direct
+--                               income, not a hex-interpolated one
+--   * the monotonicity proof -> model/gaps.py's compute functions, which are
+--                               kept (pure, no writer) so
+--                               tests/test_gaps_monotonicity.py still runs
+--   * the caveat wording     -> loci/demand.py, pinned against model/gaps.py's
+--                               private copy by tests/test_demand_caveat.py
+-- The hex tables the ADDRESS pipeline still reads -- hex, hex_controls,
+-- hex_demographics, hex_access, hex_poi_distance, hex_panel -- are untouched.
+-- They are a crosswalk and a distance cache, not a geography of record.
 
--- Demand-side context (CHECKPOINT demand-caveat ticket; Meltzer & Schuetz 2012,
--- src/loci/demand.yaml): ANNOTATES each gap row, never filters -- the set of gap
--- hexes and the set of (hex, category) missing pairs are unaffected by these
--- columns (tests/test_demand_caveat.py part (c)). median_hh_income/renter_share
--- come from analysis.hex_demographics at the same acs_year the rest of the gap
--- screen uses (2023). income_class is 'low' if median_hh_income < the
--- demand.yaml `low_income_cutoff` times the citywide MEAN household income (ACS
--- B19025/B11001, household-weighted -- see the GTM-109 note below, which
--- replaced the old population-weighted mean of tract MEDIANS), else
--- 'mid_high'; NULL if income is NULL. demand_caveat flags the LEAD missing
--- category (model/gaps.py prefers a non-caveated category for lead; falls back
--- only if every missing category is caveated) as discretionary in a
--- CONFIDENTLY low-income hex -- per the paper,
--- plausibly demand-following rather than a conspicuous supply gap.
--- caveated_missing lists every caveated category among missing_expected, not
--- just the lead.
-ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS median_hh_income REAL;
-ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS renter_share REAL;
-ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS income_class VARCHAR;
-ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS demand_caveat BOOLEAN;
-ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS caveated_missing VARCHAR;
+-- FOLDED INTO THE GAP TABLES (2026-09-09): analysis.address_convenience is
+-- DROPPED. It was a 200-row prototype holding, per address, the same 15
+-- per-category network distances the gap screen already computes -- under
+-- `<category>_distance_m` instead of `<category>_nearest_m` -- plus a
+-- `<category>_satisfied` boolean that is nothing more than
+-- `distance_m <= conveniences.yaml[category]`.
+--
+-- Two per-address distance tables built by two Dijkstra passes over the same
+-- graph and the same supply set is a divergence waiting to happen, and the
+-- prototype had already diverged: 200 rows against the screen's 767,337.
+-- `loci conveniences` survives as a READ-ONLY report that applies
+-- conveniences.yaml's owner-set norm to analysis.address_category's
+-- `nearest_m` -- the question ("is category c within the OWNER'S norm of this
+-- address?") is unchanged, it is simply asked of the distances that already
+-- exist rather than re-measured. model/conveniences.py keeps
+-- `compute_address_convenience` (pure, graph in / rows out) as the reference
+-- Dijkstra implementation that tests/test_conveniences.py pins and
+-- model/address_gaps.py's `_dijkstra_per_category` mirrors.
 
--- GTM-109 (contrarian review of the demand annotation). Three defects were
--- fixed and the annotation was made continuous:
---   (1) the necessity/discretionary class is now DERIVED from spend.yaml's BLS
---       CEX income_elasticity at a 0.35 cut (reproduces 7/7 of the paper's own
---       rows); the eight owner priors are gone and clinic is excluded outright
---       (D30). See src/loci/demand.yaml.
---   (2) income_class's denominator is now the citywide MEAN household income
---       (ACS B19025_001E / B11001_001E over the five NYC counties,
---       household-weighted -- the paper's own quantity), NOT the
---       population-weighted mean of tract MEDIANS this screen used before.
---   (3) the binary badge is superseded by a continuous, MOE-aware statement,
---       because ~55% of gap hexes sit within one ACS MOE of the cutoff:
---       income_ratio      = median_hh_income / citywide mean household income
---       income_ratio_moe  = 90% MOE on that ratio (ACS derived-ratio
---                           approximation; see model/gaps._ratio_moe)
---       income_indeterminate = TRUE where the cutoff is within one MOE of the
---                           ratio -- income_class is a coin flip there and must
---                           NOT be read on its own
---       demand_caveat_text = the worded caveat, populated ONLY where the hex is
---                           CONFIDENTLY below the cutoff (ratio + moe < cutoff)
---                           and at least one missing category is caveat-eligible.
---                           It always carries the X6 disclaimer; never render
---                           the ratio without it.
--- caveated_missing/demand_caveat now also key off that confident test, so a
--- coin-flip income classification cannot move lead_missing. Nothing here may
--- filter, sort, rank or score (tests/test_demand_caveat.py parts (c)/(d)).
-ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS income_ratio REAL;
-ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS income_ratio_moe REAL;
-ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS income_indeterminate BOOLEAN;
-ALTER TABLE analysis.hex_gaps ADD COLUMN IF NOT EXISTS demand_caveat_text VARCHAR;
-
--- Same screen, REACH-based rule (QUESTIONS D6, CHECKPOINT D33): each category
--- gets a fixed reach distance (src/loci/reach.yaml) instead of one shared walk
--- window, so tightening a reach can only add gaps, never remove them (the
--- monotonicity property analysis.hex_gaps' window rule violates). Kept in its
--- own table, never mixed with hex_gaps, so `loci gaps --rule window` (the
--- default, and everything downstream that reads hex_gaps) is unaffected.
-CREATE TABLE IF NOT EXISTS analysis.hex_gaps_reach (
-    h3_index          VARCHAR NOT NULL,
-    population        REAL,
-    present_count     SMALLINT NOT NULL,
-    lead_missing      VARCHAR,      -- missing category with the smallest reach
-    lead_reach_m      REAL,         -- reach(lead), metres — not a 0-1 share
-    missing_expected  VARCHAR,      -- all categories missing beyond their reach (comma-sep)
-    PRIMARY KEY (h3_index)
-);
-
--- Provenance (defect review item 4): without these, two runs of `loci gaps
--- --rule reach` at different --quantile values (or after editing reach.yaml)
--- are indistinguishable once written, because the table is fully replaced
--- each run. reach_quantile/reach_min_pop are reach.yaml's own `quantile` and
--- `min_pop` fields (NULL when a caller passed an explicit reach dict, e.g.
--- tests, bypassing the file); reach_hash is a hash of the actual
--- {category: reach_m} used for the run, so it is always populated and lets
--- two runs be compared even when the quantile/min_pop are unknown.
-ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS reach_quantile REAL;
-ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS reach_min_pop REAL;
-ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS reach_hash VARCHAR;
-
--- Demand-side context, same definition and rationale as analysis.hex_gaps'
--- identically-named columns above (CHECKPOINT demand-caveat ticket).
-ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS median_hh_income REAL;
-ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS renter_share REAL;
-ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS income_class VARCHAR;
-ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS demand_caveat BOOLEAN;
-ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS caveated_missing VARCHAR;
-
--- GTM-109 (contrarian review of the demand annotation). Three defects were
--- fixed and the annotation was made continuous:
---   (1) the necessity/discretionary class is now DERIVED from spend.yaml's BLS
---       CEX income_elasticity at a 0.35 cut (reproduces 7/7 of the paper's own
---       rows); the eight owner priors are gone and clinic is excluded outright
---       (D30). See src/loci/demand.yaml.
---   (2) income_class's denominator is now the citywide MEAN household income
---       (ACS B19025_001E / B11001_001E over the five NYC counties,
---       household-weighted -- the paper's own quantity), NOT the
---       population-weighted mean of tract MEDIANS this screen used before.
---   (3) the binary badge is superseded by a continuous, MOE-aware statement,
---       because ~55% of gap hexes sit within one ACS MOE of the cutoff:
---       income_ratio      = median_hh_income / citywide mean household income
---       income_ratio_moe  = 90% MOE on that ratio (ACS derived-ratio
---                           approximation; see model/gaps._ratio_moe)
---       income_indeterminate = TRUE where the cutoff is within one MOE of the
---                           ratio -- income_class is a coin flip there and must
---                           NOT be read on its own
---       demand_caveat_text = the worded caveat, populated ONLY where the hex is
---                           CONFIDENTLY below the cutoff (ratio + moe < cutoff)
---                           and at least one missing category is caveat-eligible.
---                           It always carries the X6 disclaimer; never render
---                           the ratio without it.
--- caveated_missing/demand_caveat now also key off that confident test, so a
--- coin-flip income classification cannot move lead_missing. Nothing here may
--- filter, sort, rank or score (tests/test_demand_caveat.py parts (c)/(d)).
-ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS income_ratio REAL;
-ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS income_ratio_moe REAL;
-ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS income_indeterminate BOOLEAN;
-ALTER TABLE analysis.hex_gaps_reach ADD COLUMN IF NOT EXISTS demand_caveat_text VARCHAR;
-
--- Address-level convenience check (docs/CHECKPOINT.md D-conveniences): for
--- every residential address, per-category network distance to the nearest
--- canonical business and whether it clears the OWNER-SET norm in
--- src/loci/conveniences.yaml (not a data-derived threshold -- see that
--- file's header). Distinct from hex_gaps/hex_gaps_reach: this is an
--- absolute per-address question, not a relative per-hex one, and the two
--- are never read together. One row per (borough, address); address_id is
--- the PLUTO BBL where available (see sources/cities/nyc/addresses.py), so
--- unique per tax lot without a borough qualifier in practice, but the
--- borough is still part of the key to keep a per-borough rebuild
--- (`loci conveniences build --borough X`) from ever colliding with another
--- borough's fallback row-index ids.
-CREATE TABLE IF NOT EXISTS analysis.address_convenience (
-    address_id             VARCHAR NOT NULL,
-    bbl                     VARCHAR,
-    lon                     DOUBLE  NOT NULL,
-    lat                     DOUBLE  NOT NULL,
-    units                   REAL,
-    nta_code                VARCHAR,
-    neighborhood            VARCHAR,
-    -- one {category}_distance_m / {category}_satisfied pair per Loci category
-    -- (categories.py order). distance_m is NULL beyond the 30-minute network
-    -- cap (hex_poi_distance's convention) -- always unsatisfied in that case.
-    grocery_distance_m       REAL, grocery_satisfied       BOOLEAN,
-    convenience_distance_m   REAL, convenience_satisfied   BOOLEAN,
-    pharmacy_distance_m      REAL, pharmacy_satisfied      BOOLEAN,
-    laundry_distance_m       REAL, laundry_satisfied       BOOLEAN,
-    hair_barber_distance_m   REAL, hair_barber_satisfied   BOOLEAN,
-    nails_beauty_distance_m  REAL, nails_beauty_satisfied  BOOLEAN,
-    tailor_repair_distance_m REAL, tailor_repair_satisfied BOOLEAN,
-    restaurant_distance_m    REAL, restaurant_satisfied    BOOLEAN,
-    cafe_bakery_distance_m   REAL, cafe_bakery_satisfied   BOOLEAN,
-    bar_distance_m           REAL, bar_satisfied           BOOLEAN,
-    childcare_distance_m     REAL, childcare_satisfied     BOOLEAN,
-    clinic_distance_m        REAL, clinic_satisfied        BOOLEAN,
-    fitness_distance_m       REAL, fitness_satisfied       BOOLEAN,
-    bank_distance_m          REAL, bank_satisfied          BOOLEAN,
-    hardware_distance_m      REAL, hardware_satisfied      BOOLEAN,
-    n_unsatisfied           SMALLINT NOT NULL CHECK (n_unsatisfied BETWEEN 0 AND 15),
-    -- provenance: which conveniences.yaml, which walk graph, and when this
-    -- row was computed, so two runs (after editing either input) are
-    -- distinguishable once written -- same rationale as hex_gaps_reach above.
-    conveniences_hash        VARCHAR NOT NULL,
-    graph_version             VARCHAR NOT NULL,
-    run_at                     TIMESTAMP NOT NULL,
-    borough                    VARCHAR NOT NULL,
-    PRIMARY KEY (borough, address_id)
-);
-
--- Address-level GAP screen (CHECKPOINT D33/D38/D39/D41) -- REPLACES the old
--- 800m/>=80%-prevalence rule that once lived in model/address_gaps.py.
--- Per residential PLUTO lot (UnitsRes > 0, D38): a FIXED, reach-independent
--- walkability gate (`eligible` -- present within 800 m for >= 12 of the 15
--- categories, mirroring model/gaps.py's `_eligible_universe` at address
--- grain) decides which addresses are in scope at all; among eligible
--- addresses, `gap_score` = max over categories of nearest_m/reach_m is a
--- CONTINUOUS ranking (D39), not a binary "exactly one missing" list --
--- gap_score > 1 means at least one category sits beyond its reach.
--- `lead_category`/`lead_excess_m` name the worst (max-ratio) category;
--- ties go to the larger raw nearest_m (the more conspicuous absence).
--- `n_missing` counts categories with ratio > 1. All four are NULL/0 for an
--- ineligible address -- out of scope, like a hex that fails the window gate.
--- `units_capped` clips units at 500/lot for unit-weighted ranking (D39 found
--- Co-op City-scale lots with ~10k units dominate an uncapped rank); raw
--- `units` is kept alongside it. `cluster_id` groups eligible, gap_score > 1
--- addresses that share a lead_category and sit within ~200 m of each other
--- (single-linkage/DBSCAN-like, eps=200m) -- the action signal is a CLUSTER of
--- addresses missing the same business, not one address. reach_source/
--- reach_hash/graph_version/run_at are provenance, same rationale as
--- hex_gaps_reach/address_convenience above: two runs (tiers vs p80 reach, or
--- after a graph rebuild) must be distinguishable once written.
-CREATE TABLE IF NOT EXISTS analysis.address_gaps (
+-- ==========================================================================
+-- THE ADDRESS SCREEN, in its principled shape: one narrow row per address,
+-- one row per (address, category), and a VIEW that reassembles the wide table
+-- every existing consumer was written against.
+--
+-- WHY THE SPLIT. analysis.address_gaps was a single 90-column table carrying
+-- three unrelated things at three different grains: facts about the address
+-- (identity, units, eligibility, its winning gap), facts about (address,
+-- category) pairs smeared across 30 pivoted columns, and a per-address
+-- provenance stamp. Adding a 16th category meant an ALTER for two more
+-- columns in the DDL, two more entries in every SELECT list, and a migration;
+-- the demand annotation could not live there at all and had to become a
+-- sibling table (D57). One row per pair makes all three problems go away, and
+-- the wide shape is regenerated mechanically, so it can never drift from
+-- categories.yaml.
+--
+-- WHAT MOVED WHERE, exactly:
+--   analysis.address           identity + the summary of the screen + ONE set
+--                              of provenance stamps
+--   analysis.address_category  nearest_m / ratio per pair, plus the D57 demand
+--                              annotation (which was analysis.address_demand,
+--                              now dropped)
+--   analysis.address_gaps      a VIEW: analysis.address joined to a pivot of
+--                              analysis.address_category, in the old column
+--                              order, so viz/webmap_export.py, the laundry
+--                              views and the CLI queries are unchanged
+--
+-- THE SCREEN ITSELF IS UNCHANGED (D33/D38/D39/D41). Per residential PLUTO lot
+-- (UnitsRes > 0): a FIXED, reach-independent walkability gate (`eligible` --
+-- >= 12 of 15 categories present within 800 m, mirroring model/gaps.py's
+-- `_eligible_universe` at address grain) decides what is in scope at all;
+-- among eligible addresses `gap_score` = max over categories of
+-- nearest_m / reach_m is a CONTINUOUS ranking (D39), never a binary "exactly
+-- one missing" list. `lead_category` / `lead_excess_m` name the worst
+-- (max-ratio) category, ties going to the larger raw nearest_m (the more
+-- conspicuous absence). `n_missing` counts categories with ratio > 1. All are
+-- NULL/0 for an ineligible address. `units_capped` clips units at 500/lot for
+-- unit-weighted ranking (D39: Co-op City-scale lots would otherwise dominate);
+-- raw `units` is kept beside it. `cluster_id` groups eligible, gap_score > 1
+-- addresses sharing a lead_category within ~200 m (single-linkage, eps=200 m)
+-- -- the action signal is a CLUSTER missing the same business, not one lot.
+--
+-- NO DEMOGRAPHICS HERE (D56). Join analysis.address_demographics on
+-- address_id: it holds the lot's own census tract's ACS figures, taken
+-- directly. The hex-interpolated copy sql/008 briefly put on address_gaps is
+-- gone -- one address had two different median_hh_income values.
+--
+-- PROVENANCE lives on analysis.address and nowhere else: reach_source /
+-- reach_hash (which reach table, D41), graph_version (which walk graph),
+-- supply_set / supply_hash (which POIs counted as supply, D52) and run_at.
+-- CAVEAT THE DATABASE CANNOT ENFORCE: because the provenance stamp sits on
+-- analysis.address and address_category has no run key of its own, this pair
+-- of tables holds exactly ONE run at a time. analysis.address_demand could
+-- hold two supply sets side by side keyed by (reach_hash, supply_hash); this
+-- shape cannot. The delete-then-insert in model/address_gaps.py is per
+-- borough and rewrites BOTH tables together, so they cannot fall out of step
+-- -- but comparing two supply sets now means snapshotting to parquet
+-- (data/interim/) between runs, the way D59 did, not keeping both in the
+-- warehouse.
+CREATE TABLE IF NOT EXISTS analysis.address (
     address_id        VARCHAR NOT NULL,
     bbl               VARCHAR,
     lon               DOUBLE  NOT NULL,
     lat               DOUBLE  NOT NULL,
     units             REAL,
-    units_capped      REAL,
+    units_capped      REAL,                -- clipped at 500/lot for unit-weighted ranking (D39)
     nta_code          VARCHAR,
     neighborhood      VARCHAR,
     borough           VARCHAR NOT NULL,
-    present_count     SMALLINT NOT NULL,   -- categories present within 800m (the fixed gate's own count)
+    h3_index          VARCHAR,             -- res-9 cell CONTAINING the lot: the borough/NTA
+                                           -- join key and the roll-up-to-grid key. Geometry,
+                                           -- not demography -- nothing demographic rides on it.
+    present_count     SMALLINT NOT NULL,   -- categories within 800 m (the fixed gate's own count)
     eligible          BOOLEAN NOT NULL,    -- present_count >= 12; reach-independent by construction
     gap_score         REAL,                -- max(nearest_m / reach_m); NULL if not eligible
     lead_category     VARCHAR,             -- argmax ratio, ties -> larger nearest_m; NULL if not eligible
     lead_excess_m     REAL,                -- nearest_m - reach_m at lead_category; NULL if not eligible
     n_missing         SMALLINT NOT NULL,   -- count of categories with ratio > 1; 0 if not eligible
     cluster_id        VARCHAR,             -- "{borough}:{lead_category}:{local_id}"; NULL unless gap_score > 1
-    -- one {category}_nearest_m / {category}_ratio pair per Loci category
-    -- (categories.py order). nearest_m is censored at the 30-minute network
-    -- cap (hex_poi_distance's convention) for a category with nothing
-    -- reachable -- ratio is still finite (cap / reach) in that case.
-    grocery_nearest_m       REAL, grocery_ratio       REAL,
-    convenience_nearest_m   REAL, convenience_ratio   REAL,
-    pharmacy_nearest_m      REAL, pharmacy_ratio      REAL,
-    laundry_nearest_m       REAL, laundry_ratio       REAL,
-    hair_barber_nearest_m   REAL, hair_barber_ratio   REAL,
-    nails_beauty_nearest_m  REAL, nails_beauty_ratio  REAL,
-    tailor_repair_nearest_m REAL, tailor_repair_ratio REAL,
-    restaurant_nearest_m    REAL, restaurant_ratio    REAL,
-    cafe_bakery_nearest_m   REAL, cafe_bakery_ratio   REAL,
-    bar_nearest_m           REAL, bar_ratio           REAL,
-    childcare_nearest_m     REAL, childcare_ratio     REAL,
-    clinic_nearest_m        REAL, clinic_ratio        REAL,
-    fitness_nearest_m       REAL, fitness_ratio       REAL,
-    bank_nearest_m          REAL, bank_ratio          REAL,
-    hardware_nearest_m      REAL, hardware_ratio      REAL,
     reach_source      VARCHAR NOT NULL CHECK (reach_source IN ('tiers', 'p80')),
     reach_hash        VARCHAR NOT NULL,
     graph_version     VARCHAR NOT NULL,
+    supply_set        VARCHAR,             -- D52; NULL only on a pre-D52 row
+    supply_hash       VARCHAR,
     run_at            TIMESTAMP NOT NULL,
     PRIMARY KEY (borough, address_id)
 );
+
+-- One row per (address, category) -- 15 rows per address, every category,
+-- present or missing. `nearest_m` is censored at the 30-minute network cap
+-- (analysis.hex_poi_distance's convention) when nothing of that category is
+-- reachable; `ratio` = nearest_m / reach_m is still finite there (cap / reach),
+-- which is why the ranking is continuous and the censoring has to be read off
+-- nearest_m, not inferred from a NULL.
+--
+-- THE DEMAND ANNOTATION (D49 at address grain, D57) lives in the second half of
+-- this table rather than in a sibling. What that costs and how it is repaid:
+-- D57 made analysis.address_demand a separate table precisely so that the
+-- non-filtering guarantee was MECHANICAL -- model/address_demand.py had no
+-- write path to the screen at all. Folding the columns in gives that up, so it
+-- is replaced by two things that must both hold:
+--   1. model/address_demand.py issues ONLY `UPDATE ... SET <annotation columns>`,
+--      built from its DEMAND_ANNOTATION_COLUMNS constant. It never INSERTs,
+--      never DELETEs, and never names nearest_m, ratio, is_lead or eligible.
+--      A test asserts that constant is disjoint from the screen's own columns.
+--   2. tests/test_address_demand.py still re-runs the D57 proof on real shape:
+--      hash-sum checksums of gap_score, lead_category, n_missing, eligible,
+--      nearest_m and ratio are byte-identical before and after the annotation.
+-- The annotation may never change WHICH (address, category) pairs are gaps, or
+-- their order (D48: the output is graded, never filtered). An annotation that
+-- reorders leads has become a filter wearing a costume.
+--
+-- `is_lead` and `eligible` are written by the SCREEN, not by the annotation --
+-- they are copies of analysis.address.lead_category = category and
+-- analysis.address.eligible, denormalised so a reader can slice the long table
+-- without a join. The annotation reads them; it does not set them.
+--
+-- demand_class is DERIVED from spend.yaml's BLS CEX income elasticity at
+-- demand.yaml's 0.35 cut (D49), never hand-coded; `elasticity` is the CEX
+-- number the class came from, carried so a reader can see the derivation.
+-- income_ratio is the address's TRACT median household income (from
+-- analysis.address_demographics -- the least-modelled input) over the citywide
+-- MEAN household income (B19025/B11001, Meltzer & Schuetz's own denominator).
+-- income_indeterminate is a THIRD state and must never be folded into "not
+-- low": that would resolve every uncertain case in the direction that keeps the
+-- gap looking clean. demand_caveat fires only on the MOE-confident test
+-- (income_ratio + income_ratio_moe < 0.80) AND a discretionary, annotatable
+-- category; unknown MOE means no assertion. Clinic rows exist but can never be
+-- caveated (D30: loci's clinic layer excludes doctors' offices and no source
+-- reproduces that exclusion).
+--
+-- RENDERERS MUST NOT TRUNCATE demand_caveat_text. The QUESTIONS-X6 disclaimer
+-- is the TAIL of the string, and it is the sentence that keeps the annotation
+-- from laundering under-provision as absent demand (the same paper finds race
+-- predicts retail NET of income). Clipping keeps the income claim and drops the
+-- warning -- exactly backwards.
+CREATE TABLE IF NOT EXISTS analysis.address_category (
+    address_id           VARCHAR NOT NULL,
+    borough              VARCHAR NOT NULL,
+    category             VARCHAR NOT NULL,
+    nearest_m            REAL,               -- censored at the 30-minute network cap
+    ratio                REAL,               -- nearest_m / reach_m; > 1 means "missing" (D39)
+    is_lead              BOOLEAN,            -- written by the screen: this is the address's lead_category
+    eligible             BOOLEAN,            -- written by the screen: the address's walkability gate
+    -- ---- demand annotation, written ONLY by model/address_demand.py ----
+    demand_class         VARCHAR CHECK (demand_class IS NULL
+                                        OR demand_class IN ('necessity', 'discretionary')),
+    elasticity           REAL,               -- spend.yaml BLS CEX income elasticity
+    income_ratio         REAL,               -- tract median hh income / citywide MEAN
+    income_ratio_moe     REAL,               -- NULL when the ACS MOE is unknown
+    income_indeterminate BOOLEAN,            -- cutoff within one MOE; do not read the class alone
+    demand_caveat        BOOLEAN,            -- the MOE-confident test; never a filter
+    demand_caveat_text   VARCHAR,            -- render UNTRUNCATED (X6 disclaimer is the tail)
+    acs_year             SMALLINT,           -- vintage of the income the annotation used
+    PRIMARY KEY (borough, address_id, category)
+);
+
+-- analysis.address_gaps is a VIEW over the two tables above, created by
+-- model/address_gaps.address_gaps_view_sql() and applied by db.init_schema()
+-- after every .sql migration. It is NOT defined here because its 30 pivoted
+-- columns are GENERATED from categories.yaml -- writing them out by hand is
+-- exactly the drift this refactor removes.
 
 -- Census ZIP Business Patterns (ZBP), via the County Business Patterns (CBP)
 -- API (registry.yaml `census_zbp`; docs/CHECKPOINT.md ZBP-validation ticket).
@@ -608,6 +557,22 @@ CREATE TABLE IF NOT EXISTS analysis.zip_category_establishments (
 -- undercoverage in that ZIP/category, ratio >> 1 suggests POI overcount /
 -- a dedup miss / NAICS bleed inflating the ZBP side. VALIDATION ONLY -- never
 -- feeds analysis.hex_gaps or analysis.hex_gaps_reach.
+--
+-- CONSIDERED AND REJECTED (2026-09-09, owner consolidation pass): replacing
+-- this table with a VIEW that sums analysis.zip_coverage_by_source's
+-- poi_count per (year, zipcode, category). Measured on the live database:
+-- zip_coverage_by_source is built by INNER-joining onto the canonical POI
+-- layer (model/zbp_compare._poi_counts_by_zip_category_source), so a
+-- (zipcode, category) with ZERO canonical POIs has NO source rows to sum --
+-- it would not appear in the view at all, not appear with poi_count=0. Of
+-- this table's 2,034 rows, 12 have poi_count = 0: exactly the "Census counts
+-- establishments here, Loci found none" rows -- arguably the single
+-- strongest undercoverage signal the whole comparison exists to surface.
+-- Collapsing to a view would silently drop them, which is the "never ingest
+-- a silent zero" failure mode CLAUDE.md warns about, not a refactor. This
+-- table stays a base table, built directly by build_coverage_check (LEFT
+-- JOIN against the POI side, poi_count defaulting to 0), independently of
+-- whether analysis.zip_coverage_by_source is also built.
 CREATE TABLE IF NOT EXISTS analysis.zip_coverage_check (
     year      SMALLINT NOT NULL,
     zipcode   VARCHAR  NOT NULL,
@@ -700,93 +665,22 @@ CREATE TABLE IF NOT EXISTS analysis.address_demographics (
 -- session; keep edits inside this delimited block.
 -- ==========================================================================
 
--- Address-level DEMAND ANNOTATION -- the D49 annotation at the D38 grain.
--- This is the ONLY live copy of that annotation: the hex version
--- (analysis.hex_gaps / hex_gaps_reach's income_ratio / income_ratio_moe /
--- income_indeterminate / demand_caveat / demand_caveat_text columns above) is
--- FROZEN HISTORY under D38, which made the residential address, not the hex,
--- the unit of analysis.
---
--- NOT a filter, by construction (D48: the output is graded, never filtered).
--- This is a SIBLING table keyed by address_id; model/address_demand.py opens
--- analysis.address_gaps read-only and has no write path to it, so nothing
--- here can change gap_score, lead_category, n_missing, or membership in the
--- missing set. tests/test_address_demand.py pins that both ways.
---
--- GRAIN: one row per (address_id, category, run key), the run key being
--- (reach_hash, supply_hash) copied from the address_gaps run this row
--- annotates -- those two hashes are what decide what "missing" and "nearest"
--- mean (D41 reach table; D52 supply set), so an annotation row detached from
--- them is uninterpretable. address_gaps itself keeps only the latest run per
--- borough, so a run key here that no longer appears there is stale history:
--- always join on (address_id, reach_hash, supply_hash), never on address_id
--- alone.
---
--- WHICH ROWS: every category whose address-level `ratio` > 1.0 -- the
--- CONTINUOUS reading of "missing" from D39/D41 (nearest business beyond that
--- category's reach), not a binary gap flag -- plus the address's
--- `lead_category`, always. Lead rows are the only ones that can carry
--- ratio <= 1 (an eligible address with no gap at all still gets its headline
--- category annotated); they are flagged `is_lead`.
---
--- THE CAVEAT IS MOE-GATED AND CONTINUOUS (D49). ACS median-income MOE runs
--- ~27% of the estimate, and more than half of gap units sit within one MOE of
--- the 0.80 line, so the old binary low-income badge was retired as a coin
--- flip wearing a label. What is stored instead:
---    income_ratio         = the address's TRACT median household income
---                           (analysis.address_demographics, B19013, taken
---                           directly -- a PLUTO lot is in exactly one tract)
---                           divided by the citywide MEAN household income
---                           (B19025/B11001, household-weighted -- Meltzer &
---                           Schuetz's own denominator, NOT a mean of medians)
---                           NOTE: the tract-direct value from
---                           analysis.address_demographics, NOT
---                           analysis.address_gaps.median_hh_income, which
---                           migration 008 added as the HEX-interpolated
---                           number (tract -> hex by unit share, then hex ->
---                           address by containment). Least-modelled input wins
---                           for a caveat that names a household income.
---    income_ratio_moe     = ACS derived-RATIO MOE (loci.demand.ratio_moe);
---                           NULL when the input MOE is unknown
---    income_indeterminate = TRUE where the cutoff sits within one MOE of the
---                           ratio -- the classification is a coin flip there
---                           and must NOT be read on its own
---    demand_caveat        = TRUE only when the category is discretionary AND
---                           annotatable AND the address is CONFIDENTLY below
---                           the line (income_ratio + income_ratio_moe < 0.80).
---                           Unknown MOE => FALSE: no MOE, no assertion.
---    demand_caveat_text   = the worded caveat, populated only where
---                           demand_caveat is TRUE.
--- demand_class is DERIVED from spend.yaml's BLS CEX income elasticity at
--- demand.yaml's 0.35 cut (D49/GTM-109), never hand-coded; `elasticity` is the
--- CEX number the class came from, carried so a reader can see the derivation.
--- Clinic rows exist but can never be caveated (D30: loci's clinic layer
--- excludes doctors' offices and no source reproduces that exclusion).
---
--- RENDERERS MUST NOT TRUNCATE demand_caveat_text. The QUESTIONS-X6
--- disclaimer is the TAIL of the string, and it is the sentence that keeps the
--- annotation from laundering under-provision as absent demand (the same paper
--- finds race predicts retail NET of income). Clipping the string keeps the
--- income claim and drops the warning -- exactly backwards.
-CREATE TABLE IF NOT EXISTS analysis.address_demand (
-    address_id           VARCHAR NOT NULL,
-    bbl                  VARCHAR,
-    borough              VARCHAR NOT NULL,
-    category             VARCHAR NOT NULL,
-    is_lead              BOOLEAN NOT NULL,   -- this is the address's lead_category
-    eligible             BOOLEAN NOT NULL,   -- address_gaps' walkability gate, carried for scope
-    ratio                REAL,               -- nearest_m / reach_m, from address_gaps
-    nearest_m            REAL,               -- censored at the 30-minute network cap
-    demand_class         VARCHAR NOT NULL CHECK (demand_class IN ('necessity', 'discretionary')),
-    elasticity           REAL,               -- spend.yaml BLS CEX income elasticity
-    income_ratio         REAL,               -- tract median hh income / citywide MEAN
-    income_ratio_moe     REAL,               -- NULL when the ACS MOE is unknown
-    income_indeterminate BOOLEAN,            -- cutoff within one MOE; do not read the class alone
-    demand_caveat        BOOLEAN NOT NULL,   -- the MOE-confident test; never a filter
-    demand_caveat_text   VARCHAR,            -- render UNTRUNCATED (X6 disclaimer is the tail)
-    acs_year             SMALLINT NOT NULL,
-    reach_hash           VARCHAR NOT NULL,   -- run key, from analysis.address_gaps
-    supply_hash          VARCHAR NOT NULL,   -- run key, from analysis.address_gaps
-    run_at               TIMESTAMP NOT NULL,
-    PRIMARY KEY (address_id, category, reach_hash, supply_hash)
-);
+-- SUPERSEDED 2026-09-09 (D58, folded into the address/address_category split
+-- above). analysis.address_demand was a SIBLING table, keyed by
+-- (address_id, category, reach_hash, supply_hash), that D57 built precisely
+-- so the non-filtering guarantee was MECHANICAL: model/address_demand.py had
+-- no write path to the screen at all. That guarantee is now enforced a
+-- different way -- the demand annotation columns (demand_class, elasticity,
+-- income_ratio, income_ratio_moe, income_indeterminate, demand_caveat,
+-- demand_caveat_text, acs_year) live directly on analysis.address_category
+-- (see its own header above), and model/address_demand.py is restricted by
+-- CODE, not by table boundary, to issuing UPDATE ... SET <those columns
+-- only> -- it never INSERTs, never DELETEs, and never names
+-- nearest_m/ratio/is_lead/eligible (DEMAND_ANNOTATION_COLUMNS in
+-- model/address_demand.py, and a test asserting it is disjoint from the
+-- screen's own columns). A sibling table could hold two supply sets side by
+-- side keyed by (reach_hash, supply_hash); folding the columns in gives that
+-- up -- comparing two supply sets now means snapshotting to parquet between
+-- runs, same as analysis.address/address_category already require, not
+-- keeping both in the warehouse. sql/009_retire_split_tables.sql drops the
+-- physical table from any database built before this change.

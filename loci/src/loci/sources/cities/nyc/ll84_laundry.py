@@ -8,7 +8,10 @@ them LL84 vintages).
 This is NOT a POI adapter. It emits no POIRecords and never touches
 staging.poi: a laundry hookup is a BUILDING ATTRIBUTE keyed to a tax lot, not
 an establishment with a location. It writes `staging.ll84_laundry` (bbl x
-vintage) and `analysis.address_laundry` (bbl), per sql/004_ll84_laundry.sql.
+vintage, sql/004_ll84_laundry.sql) and its own (bbl, 'll84') rows of the
+shared `analysis.address_laundry_evidence` table (D58 merge,
+sql/010_address_laundry_evidence.sql) -- never touching the 'listing' rows
+sources/cities/nyc/listings.py writes there.
 
 --------------------------------------------------------------------------
 FIELD NAMES MUST BE RESOLVED BY HUMAN-READABLE NAME. NEVER BY fieldName.
@@ -365,10 +368,18 @@ def build_ll84_laundry(con, *, limit: int | None = None,
 
 def build_address_laundry(con) -> int:
     """Pool staging.ll84_laundry to one row per BBL. Latest non-null wins, per
-    field independently."""
-    con.execute("DELETE FROM analysis.address_laundry")
+    field independently. Writes analysis.address_laundry_evidence with
+    source='ll84' (D58 merge of address_laundry into the shared evidence
+    table; sql/010_address_laundry_evidence.sql) -- only this source's own
+    (bbl, 'll84') rows are touched, never the 'listing' rows written by
+    sources/cities/nyc/listings.py."""
+    con.execute("DELETE FROM analysis.address_laundry_evidence WHERE source = 'll84'")
     con.execute("""
-        INSERT INTO analysis.address_laundry
+        INSERT INTO analysis.address_laundry_evidence (
+            bbl, source, has_common_laundry, has_in_unit_laundry, laundry_measured,
+            latest_vintage, n_vintages, n_vintages_disagree,
+            common_area_hookups, in_unit_hookups, units_reported, any_multi_bbl, built_at
+        )
         WITH latest_common AS (
             SELECT bbl, filed_year, common_area_hookups,
                    row_number() OVER (PARTITION BY bbl ORDER BY filed_year DESC) AS rn
@@ -412,6 +423,7 @@ def build_address_laundry(con) -> int:
             GROUP BY 1
         )
         SELECT w.bbl,
+               'll84',
                CASE WHEN w.common_area_hookups IS NULL THEN NULL
                     ELSE w.common_area_hookups > 0 END,
                CASE WHEN w.in_unit_hookups IS NULL THEN NULL
@@ -429,4 +441,6 @@ def build_address_laundry(con) -> int:
         FROM winner w
         LEFT JOIN disagree d ON d.bbl = w.bbl
     """)
-    return con.execute("SELECT count(*) FROM analysis.address_laundry").fetchone()[0]
+    return con.execute(
+        "SELECT count(*) FROM analysis.address_laundry_evidence WHERE source = 'll84'"
+    ).fetchone()[0]

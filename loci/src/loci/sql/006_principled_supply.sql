@@ -106,8 +106,13 @@ WHERE d.is_canonical;
 -- Provenance on the address screen, the same reason reach_source/reach_hash/
 -- graph_version already exist there: two runs that differ ONLY in which POIs
 -- counted as supply are otherwise indistinguishable once written, and the
--- difference is large (D52 moves whole categories). Nullable rather than NOT
--- NULL because ALTER cannot retro-fill existing rows -- a NULL here means a
--- row written before D52, which is exactly the fact a reader needs.
-ALTER TABLE analysis.address_gaps ADD COLUMN IF NOT EXISTS supply_set  VARCHAR;
-ALTER TABLE analysis.address_gaps ADD COLUMN IF NOT EXISTS supply_hash VARCHAR;
+-- difference is large (D52 moves whole categories).
+--
+-- SUPERSEDED 2026-09-09 (D58): the two ALTER TABLE statements that were here
+-- targeted analysis.address_gaps back when it was still a base table.
+-- analysis.address_gaps is now a VIEW (model/address_gaps.address_gaps_view_sql,
+-- applied by db.init_schema() right after 002_schema.sql) -- ALTER TABLE
+-- against a view errors -- and supply_set/supply_hash are native, nullable
+-- columns on analysis.address itself (002_schema.sql), which the view already
+-- exposes. Deleted, not commented into a no-op, per sql/008's own precedent
+-- for a migration statement a later refactor makes impossible to run.

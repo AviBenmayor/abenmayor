@@ -322,6 +322,13 @@ claim stands on.
 - **Fails if:** n/a — exploratory. Directly interrogates "retail follows rooftops", the assumption the residual design rests on. Caveat: ACS 5-year smoothing limits timing resolution to roughly half-decades; LODES is annual but is jobs, not storefronts (M2).
 - **Current answer:** —
 
+### T7 — How do nearby storefronts respond to a residential density shock (new units / occupancy), on what lag, and at which construction stage is the signal actionable?
+- **Status:** open (proposed 2026-09-09)
+- **Prediction:** —
+- **Answered by:** `Ingest DOB Certificates of Occupancy + PLUTO vintage archive` · `Stacked matched event study around ≥50-unit completions`
+- **Fails if:** Q5 not separating from Q1 beyond bootstrap CI; separation already present at τ=−4; not beating persistence baseline; **KILL CHECK (verified 2026-09-09):** no storefront opening/closing time series exists in Loci. Only foursquare_os_places has opened_on (109k rows; 2010 spike is Foursquare's launch, not storefronts). nys_sla_liquor_licenses has opened_on only for recent licences (3,205 rows, 2023-09→2026-09). overture, dohmh, dos, snap, dcwp_inspections have no opened_on. No source has closed_on. Conclusion: Loci has no storefront opening/closing time series; the one-session MVA cannot run until inactive/expired DCWP licences, full historical SLA licences, and raw DOHMH history are ingested (Increment-2 work, not an MVA).
+- **Current answer:** Exploratory only, pending full historical licensing ingest (see *Fails if* above). T5 (gap closure over 2002–2023) and T6 (retail vs rooftop lead/lag) map longer horizons. Timing catalysts from O5: catalyst→construction ~5–9 yr, catalyst→demographic ~10–20 yr (market-rate only). LODES panel issue: registry.yaml describes lodes_wac as annual 2002–2023, but analysis.hex_panel holds only three vintages (2002, 2013, 2023; ~11.5k hex rows each); cannot resolve a 1–3 year lag. Registry mismatch flagged for docs/CHECKPOINT decision log. Literature synthesis: Li 2022 JEG (effects within ~500 ft, 1–3 yr, modest), Asquith/Mast/Reed 2023 REStat (amenity effect too small to offset rent), Glaeser/Luca/Moszkowski 2023 (gentrifying tracts show faster entry AND exit), HR&A 2024 + NYC Comptroller 2024 (churn > net growth; post-COVID glut). **Contrarian caveats to carry (2026-09-09, Opus review):** (a) survivor truncation in opened_on series manufactures clean event-time separation under the null (gentrifying hexes have higher exit rates); (b) licence date ≠ opening date, lag longer for new construction, biasing estimated lag toward zero where treatment is; (c) "flat count, more profitable" unfalsifiable with survival/LODES/ZBP proxies — needs lease comps, taxable sales, or foot-traffic panel; (d) stage rule (permit→open by CO+18 mo) asserted, not estimated — needs issued-permit→CO survival curve + out-of-sample horse race (stage-s pipeline at t predicting openings at t+k, ≤2016 train / 2017–23 test, vs baselines, by category); (e) hex-year panel conflicts with address-level directive; narrowest charter-consistent framings are a demand-pool covariate (units under construction / recently CO'd within reach) or a timing annotation on ranked gap addresses. **Provisional planner heuristic (unvalidated):** permit issued → underwrite for daily-needs; operating by CO+18 mo → demand arrives; 50–60% leased across ≥2 buildings → signal for restaurants/fitness. Subsumes T6's focus on magnitude, lag, and pipeline-stage forecast skill.
+
 ### Tier C · Causal — deferred; requires identification
 
 ### C1 — Does adding daily-needs retail to a transit-rich, underserved hex *cause* residential growth?
@@ -417,6 +424,13 @@ questions here — a smaller remaining gap.
 - **Current answer:** Owner directed 2026-09-05 that all streams be picked back up. Conveniences: wired as `loci conveniences` with tests. Spend: grounded in real BLS tables (CHECKPOINT Session 10) but no model reads it and the cited fair-value spec/model do not exist. Comps: 59 BizQuest NYC listings via owner-approved human-paced browser session (commit fe59eb2); fill rates thin with cash_flow_sde ~14% (hidden behind sign-in on most listings), and only restaurant meets benchmarks.yaml's ≥8-row bar for fair-value modeling; scripted fetches remain 403.
 - **Demand annotation (2026-09-08, D49):** contrarian review found the eight `assumed` rows contradicted spend.yaml's BLS CEX elasticities and the 0.80 cutoff used the wrong denominator; both fixed, annotation now continuous and MOE-gated. See CHECKPOINT D49. Open follow-ups: GTM-110 port; renderers must not truncate `demand_caveat_text`; `hex_gaps_reach` had drifted from reach.yaml and was rebuilt (1,966 hexes / 5,053 pairs); checked 2026-09-08 — no published number cited the stale table (all citations are dated log entries D34/D37; the address screen reads reach_tiers.yaml), so nothing re-tabulated.
 
+### O10 — Within the cities that are trying to become walkable (H-L13), which neighborhoods have the most opportunity? · *predictive screen*
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** `Extract universal interface; run a second city`
+- **Fails if:** the screen run on universal sources only (CONTEXT.md §10) produces a gap distribution with no usable spread in the second city, or its top-ranked neighborhoods are the ones with no policy tailwind — in which case "trying to become walkable" added nothing over the plain screen and H-L13's premise is wrong.
+- **Current answer:** — (Owner question, 2026-09-09, follow-up to H-L13. Depends on H-L13 producing a ranked city list first. The intent is that the second-city screen is joined to the policy signal: a neighborhood scores highest when it is both under-supplied on daily needs *and* inside the footprint of an adopted walkability program (upzoning, parking-minimum repeal, bike/pedestrian capital), since that is where a present-day gap is about to become an actionable one. This is C3's generalization test with an investment reading attached; it inherits C3's `deferred` risk and the NYC-only-controls threat (PLUTO has no national analogue). Investor-agent review before any build, as O6–O8 require.)
+
 ---
 
 ## Part B — Homework: things to research before building
@@ -488,6 +502,36 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Status:** open
 - **Unblocks:** E5 · Deferred
 - **Current answer:** [was: Axis 1 (invest.py)] — (Bay Area; revitalization gains concentrate in middle-income, not poorest, neighborhoods.)
+
+### H-L13 — Which cities are actively trying to become walkable, and which of them could be Loci's second city?
+- **Status:** open
+- **Unblocks:** E8 · Second-City Feasibility
+- **Current answer:** — (Owner question, 2026-09-09. Candidate signals: adopted 15-minute-city or complete-neighborhoods plans (Paris, Melbourne, Portland), parking-minimum repeal and upzoning (Minneapolis, Austin, Buffalo), pedestrianisation and bike-network capital programs, walkability targets in a comprehensive plan. A city *trying* to become walkable is the interesting second-city case: its retail gaps are the ones policy is about to make actionable, whereas an already-walkable city just replicates NYC. Output should be a short ranked list with the policy citation per city and whether the universal sources in CONTEXT.md §10 cover it.)
+
+### H-L14 — Do retail agglomeration effects concentrate around new residential construction, and how long is the lag?
+- **Status:** open
+- **Unblocks:** T7 · Density-shock MVA
+- **Current answer:** (Li 2022 JEG, within ~500 ft, 1–3 yr lag. Precedent for the matched-event-study design and effect sizes; review which categories showed demand response vs supply-driven agglomeration.)
+
+### H-L15 — When new housing enters a low-income neighbourhood, what types of retail follow or decline?
+- **Status:** open
+- **Unblocks:** T7 · Density-shock MVA
+- **Current answer:** (Asquith/Mast/Reed 2023 REStat. Amenity effects exist but are too small to offset rent increases; separates which categories are demand-elastic vs gentrification-driven.)
+
+### H-L16 — Do entry and exit rates in retail rise together in gentrifying tracts, and what does that tell us about supply-vs-demand mechanisms?
+- **Status:** open
+- **Unblocks:** T7 · Density-shock MVA · O5 · Frontier Diffusion
+- **Current answer:** (Glaeser/Luca/Moszkowski 2023 JEG. Gentrifying tracts show faster entry AND exit; reframes the null from "supply shifts" to "category churn without net growth." Key for understanding survivor truncation bias in T7.)
+
+### H-L17 — What do NYC Comptroller vacancy reports and HR&A 2024 say about post-COVID retail churn vs net growth?
+- **Status:** open
+- **Unblocks:** T7 · Density-shock MVA
+- **Current answer:** (NYC Comptroller 2024, Comptroller 2019 baseline, HR&A 2024 "The Retail Reckoning". Quantifies churn patterns and structural change; benchmarks expectations for entry rates around new residential supply.)
+
+### H-L18 — Should address demographics be catchment-weighted (aggregated over the address's walk-shed) rather than the lot's own tract?
+- **Status:** open
+- **Unblocks:** E7 · Market Reach
+- **Current answer:** — (Today (D60) each address carries its tract's ACS values 1:1. A retail thesis about who is within reach of a gap wants the demographics of the walk-shed, which is far larger than a tract in Manhattan and smaller than one in eastern Queens. Unblocks: investor-grade catchment reads on gap clusters. Fails if: tract-direct and catchment-weighted rank the same top-50 clusters, in which case the extra modelling buys nothing.)
 
 ### Data quirks
 

@@ -481,8 +481,9 @@ sources:
       IN-BUILDING LAUNDRY AS SUPPLY (owner decision D51(d)). The only measured
       address-level laundry source in public data -- a Socrata catalogue sweep
       on q=laundry returns 13 hits, all LL84 vintages. Ingested by
-      `loci ingest-ll84` into staging.ll84_laundry / analysis.address_laundry
-      (sql/004_ll84_laundry.sql). ATTRIBUTE SOURCE, NOT A POI SOURCE: nothing
+      `loci ingest-ll84` into staging.ll84_laundry / analysis.address_laundry_evidence
+      (source='ll84'; sql/004_ll84_laundry.sql, sql/010_address_laundry_evidence.sql).
+      ATTRIBUTE SOURCE, NOT A POI SOURCE: nothing
       reaches staging.poi. The two hookup columns must be resolved by
       human-readable name -- Socrata's positional `fieldName`
       multifamily_housing_number_2 means "in all units" in four vintages and

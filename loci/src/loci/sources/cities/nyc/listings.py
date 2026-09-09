@@ -2,8 +2,11 @@
 
 An ATTRIBUTE source, like PLUTO or ACS -- not a POI source. Nothing here
 reaches ``staging.poi``; it does not subclass ``SourceAdapter``. The output is
-``staging.listings`` and the BBL rollup ``analysis.address_listing_laundry``.
-DDL and the full caveat list live in ``loci/sql/005_listings_laundry.sql``.
+``staging.listings`` and this source's own (bbl, 'listing') rows of the
+shared BBL rollup ``analysis.address_laundry_evidence`` (D58 merge with
+sources/cities/nyc/ll84_laundry.py's 'll84' rows;
+``loci/sql/010_address_laundry_evidence.sql``). DDL for ``staging.listings``
+and the full caveat list live in ``loci/sql/005_listings_laundry.sql``.
 
 Fetching goes through the Tavily API (search + extract), which renders the page
 server-side. Direct ``requests`` fetches of all four candidate sites are
@@ -1128,18 +1131,27 @@ def _write(con, rows, budget: TavilyBudget) -> int:
 
 
 def build_address_listing_laundry(con) -> int:
-    """Roll staging.listings up to one row per BBL.
+    """Roll staging.listings up to one row per BBL. Writes analysis.address_
+    laundry_evidence with source='listing' (D58 merge of address_listing_
+    laundry into the shared evidence table; sql/010_address_laundry_evidence.sql)
+    -- only this source's own (bbl, 'listing') rows are touched, never the
+    'll84' rows sources/cities/nyc/ll84_laundry.py writes there.
 
     ``any_laundry_advertised`` is TRUE or NULL and NEVER FALSE: a NULL result
     for a BBL whose listings were all silent is the honest answer, because
     silence demonstrably does not mean absence (42 Carlton Avenue, 1 of 4).
     ``n_silent`` sizes that unusable stratum instead of laundering it to zero.
     """
-    con.execute("DELETE FROM analysis.address_listing_laundry")
+    con.execute("DELETE FROM analysis.address_laundry_evidence WHERE source = 'listing'")
     con.execute("""
-        INSERT INTO analysis.address_listing_laundry
+        INSERT INTO analysis.address_laundry_evidence (
+            bbl, source, n_listings, n_with_amenities, n_in_unit, n_in_building,
+            n_none, n_silent, latest_listed, any_laundry_advertised,
+            best_match_confidence, sites, built_at
+        )
         SELECT
             bbl,
+            'listing',
             count(*)                                                      AS n_listings,
             count(*) FILTER (WHERE amenities_present)                     AS n_with_amenities,
             count(*) FILTER (WHERE laundry_in_unit)                       AS n_in_unit,
@@ -1159,4 +1171,6 @@ def build_address_listing_laundry(con) -> int:
         WHERE bbl IS NOT NULL
         GROUP BY bbl
     """)
-    return con.execute("SELECT count(*) FROM analysis.address_listing_laundry").fetchone()[0]
+    return con.execute(
+        "SELECT count(*) FROM analysis.address_laundry_evidence WHERE source = 'listing'"
+    ).fetchone()[0]

@@ -38,6 +38,7 @@ from loci import db as locidb
 from loci.demand import X6_DISCLAIMER, load_demand, ratio_moe
 from loci.model.address_demand import (
     ADDRESS_DEMAND_COLUMNS,
+    DEMAND_ANNOTATION_COLUMNS,
     build_address_demand,
     caveat_text,
     compute_address_demand,
@@ -80,25 +81,29 @@ def _fresh_con():
 def _insert_address(con, address_id: str, *, ratios: dict[str, float],
                     lead: str | None, eligible: bool = True,
                     income: float | None, income_moe: float | None) -> None:
-    """One analysis.address_gaps row + its analysis.address_demographics row.
-    `ratios` names the categories with ratio > 1 (their nearest_m is set to
-    ratio * 400 m, an arbitrary but consistent reach); every other category
-    gets ratio 0.5."""
-    cols = ["address_id", "bbl", "lon", "lat", "units", "units_capped", "borough",
-            "present_count", "eligible", "gap_score", "lead_category",
-            "lead_excess_m", "n_missing", "reach_source", "reach_hash",
-            "graph_version", "run_at", "supply_set", "supply_hash"]
-    vals = [address_id, address_id, -73.98, 40.75, 10.0, 10.0, "BK",
-            15, eligible,
-            max(ratios.values()) if ratios else 0.5,
-            lead, 100.0, len(ratios), "tiers", REACH_HASH,
-            "g1", datetime.datetime(2026, 9, 9), "principled", SUPPLY_HASH]
+    """One analysis.address row + its 15 analysis.address_category rows (the
+    D38/D58 split -- analysis.address_gaps is the VIEW joining them) + its
+    analysis.address_demographics row. `ratios` names the categories with
+    ratio > 1 (their nearest_m is set to ratio * 400 m, an arbitrary but
+    consistent reach); every other category gets ratio 0.5."""
+    con.execute(
+        """INSERT INTO analysis.address
+           (address_id, bbl, lon, lat, units, units_capped, borough,
+            present_count, eligible, gap_score, lead_category, lead_excess_m,
+            n_missing, reach_source, reach_hash, graph_version, run_at,
+            supply_set, supply_hash)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        [address_id, address_id, -73.98, 40.75, 10.0, 10.0, "BK",
+         15, eligible, max(ratios.values()) if ratios else 0.5,
+         lead, 100.0, len(ratios), "tiers", REACH_HASH,
+         "g1", datetime.datetime(2026, 9, 9), "principled", SUPPLY_HASH])
     for c in ALLCATS:
         r = ratios.get(c, 0.5)
-        cols += [f"{c}_ratio", f"{c}_nearest_m"]
-        vals += [r, r * 400.0]
-    holes = ", ".join("?" for _ in vals)
-    con.execute(f"INSERT INTO analysis.address_gaps ({', '.join(cols)}) VALUES ({holes})", vals)
+        con.execute(
+            """INSERT INTO analysis.address_category
+               (address_id, borough, category, nearest_m, ratio, is_lead, eligible)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            [address_id, "BK", c, r * 400.0, r, c == lead, eligible])
     con.execute(
         "INSERT INTO analysis.address_demographics "
         "(address_id, bbl, tract_geoid, acs_year, median_hh_income, median_hh_income_moe) "
@@ -186,15 +191,62 @@ def test_rows_above_ratio_one_are_exactly_the_missing_set():
 
 
 def test_columns_match_the_ddl():
-    """Drift check: the frame's column list is the table's column list."""
+    """Drift check: the frame's column list is stable (screen context
+    followed by the annotation columns), and every annotation column write
+    is ever allowed to touch exists on analysis.address_category."""
     con = _fresh_con()
     _seed(con)
     df = _build(con)
     assert list(df.columns) == ADDRESS_DEMAND_COLUMNS
-    cols = [r[0] for r in con.execute(
+    cols = {r[0] for r in con.execute(
         "SELECT column_name FROM information_schema.columns "
-        "WHERE table_name = 'address_demand' ORDER BY ordinal_position").fetchall()]
-    assert cols == ADDRESS_DEMAND_COLUMNS
+        "WHERE table_schema = 'analysis' AND table_name = 'address_category'").fetchall()}
+    assert set(DEMAND_ANNOTATION_COLUMNS) <= cols
+
+
+def test_annotation_columns_are_disjoint_from_the_screens_own():
+    """The non-filtering guarantee is now enforced in code, not by table
+    boundary (D58): write_address_demand's SET clause is built exclusively
+    from DEMAND_ANNOTATION_COLUMNS, so it can only ever clobber the screen if
+    that list ever collides with a screen-owned name. Pin the disjointness
+    directly rather than trusting a reviewer to notice a future rename."""
+    screen_owned = {"address_id", "borough", "category", "nearest_m", "ratio",
+                    "is_lead", "eligible"}
+    assert screen_owned.isdisjoint(DEMAND_ANNOTATION_COLUMNS)
+
+
+def test_a_category_that_leaves_the_missing_set_has_its_stale_annotation_cleared():
+    """RESET-then-UPDATE (write_address_demand): a category caveated on one
+    run must not keep that verdict once it is no longer missing or lead on a
+    later run -- UPDATE has no DELETE to fall back on, so the writer has to
+    clear it explicitly."""
+    con = _fresh_con()
+    _seed(con)
+    build_address_demand(con, ["BK"], citywide=CITYWIDE_PAIR, cutoff=CUTOFF)
+    before = con.execute(
+        "SELECT demand_caveat FROM analysis.address_category "
+        "WHERE address_id = 'A_low' AND category = 'restaurant'").fetchone()[0]
+    assert before is True
+
+    # restaurant is no longer missing (nor A_low's lead, which stays clinic)
+    con.execute("UPDATE analysis.address_category SET ratio = 0.5, nearest_m = 200.0 "
+                "WHERE address_id = 'A_low' AND category = 'restaurant'")
+    build_address_demand(con, ["BK"], citywide=CITYWIDE_PAIR, cutoff=CUTOFF)
+    row = con.execute(
+        "SELECT demand_caveat, demand_caveat_text, income_ratio FROM analysis.address_category "
+        "WHERE address_id = 'A_low' AND category = 'restaurant'").fetchone()
+    # NULL, not FALSE: the category is simply out of scope this run (neither
+    # missing nor lead), so nothing was computed for it -- reporting FALSE
+    # would claim a verdict ("checked, not caveated") that was never reached.
+    assert row == (None, None, None)
+
+    # ...and a row untouched by the edit (still missing, still a necessity so
+    # never caveated) keeps its ANNOTATION -- demand_class is populated, not
+    # reset to NULL by the pass that cleared restaurant above.
+    still = con.execute(
+        "SELECT demand_class, demand_caveat FROM analysis.address_category "
+        "WHERE address_id = 'A_low' AND category = 'grocery'").fetchone()
+    assert still == ("necessity", False)
 
 
 # --- (b) the MOE gate -------------------------------------------------------

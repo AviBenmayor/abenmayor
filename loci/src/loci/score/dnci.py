@@ -46,26 +46,19 @@ def dnci_from_counts(counts: dict[str, int]) -> float:
     return math.exp(logsum)
 
 
-def build_dnci(con, model_version: str = "dnci-v1") -> int:
-    thresholds = [r[0] for r in con.execute(
-        "SELECT DISTINCT threshold_min FROM analysis.hex_access ORDER BY 1").fetchall()]
-    all_hexes = [r[0] for r in con.execute("SELECT h3_index FROM analysis.hex").fetchall()]
-    rows = []
-    for t in thresholds:
-        acc = con.execute(
-            "SELECT h3_index, category, n_reachable FROM analysis.hex_access WHERE threshold_min = ?",
-            [t]).fetchall()
-        by_hex: dict[str, dict[str, int]] = {}
-        for h, cat, n in acc:
-            by_hex.setdefault(h, {})[cat] = n
-        for h in all_hexes:
-            rows.append((h, t, dnci_from_counts(by_hex.get(h, {})), None, None, None, model_version))
-
-    con.execute("DELETE FROM analysis.hex_dnci WHERE model_version = ?", [model_version])
-    import pandas as pd
-    df = pd.DataFrame(rows, columns=["h3_index", "threshold_min", "dnci",
-                                     "dnci_predicted", "residual", "opportunity", "model_version"])
-    con.register("_dnci", df)
-    con.execute("INSERT INTO analysis.hex_dnci SELECT * FROM _dnci")
-    con.unregister("_dnci")
-    return len(df)
+# ---------------------------------------------------------------------------
+# RETIRED UNDER D38 (2026-09-09). `build_dnci` -- which materialised
+# analysis.hex_dnci, one DNCI per hex per walk threshold -- is DELETED with the
+# table. The DNCI was the E3 causal-supply-model input (regress DNCI on
+# density/income/transit, read the residual as opportunity); the SCOPE
+# CORRECTION at the top of CHECKPOINT.md records that E3 answered the wrong
+# question, and D38 then moved the geography off the hex entirely. Nothing on
+# the address path reads it.
+#
+# `dnci_from_counts` and `category_score` STAY: they are pure functions with no
+# database at all, and tests/test_dnci.py uses them to pin the index's two
+# load-bearing properties -- the geometric mean punishes a missing essential
+# rather than letting an abundance of restaurants paper over it, and each
+# category saturates. Those are project decisions worth keeping executable
+# whatever geography the screen runs on.
+# ---------------------------------------------------------------------------

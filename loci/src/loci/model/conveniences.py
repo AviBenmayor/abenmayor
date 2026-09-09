@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import hashlib
 import pathlib
-import pickle
 
 import numpy as np
 import osmnx as ox
@@ -37,7 +36,6 @@ from scipy.sparse.csgraph import dijkstra
 
 from loci.categories import CATEGORIES
 from loci.score.access import DIST_LIMIT, MIN_COMPONENT, _prune, _to_csr
-from loci.score.supply import DEFAULT_SUPPLY_SET, canonical_poi_sql
 from loci.score.walkgraph import OUT as GRAPH_PATH
 
 PKG = pathlib.Path(__file__).resolve().parents[1]  # src/loci
@@ -135,84 +133,80 @@ def compute_address_convenience(
     return rows
 
 
-def build_address_convenience(
+def _threshold_case_sql(conveniences: dict[str, float]) -> str:
+    """A SQL `CASE category WHEN 'grocery' THEN 400.0 ... END` expression
+    evaluating to the owner-set norm for whichever category a row names --
+    generated from conveniences.yaml so the report's SQL and
+    compute_address_convenience's python dict can never define a norm two
+    different ways."""
+    arms = " ".join(f"WHEN '{c}' THEN {v!r}" for c, v in conveniences.items())
+    return f"CASE category {arms} END"
+
+
+def convenience_report(
     con,
-    addresses_df,
     borough: str,
-    graph_path: pathlib.Path = GRAPH_PATH,
     conveniences_path: pathlib.Path = CONVENIENCES_PATH,
-    supply_set: str = DEFAULT_SUPPLY_SET,
-) -> int:
-    """Persist analysis.address_convenience for `addresses_df` (columns:
-    address_id, bbl, lon, lat, units, address -- see
-    sources/cities/nyc/addresses.py). Deletes existing rows for `borough`
-    first (idempotent per-borough rebuild). Returns rows written.
+) -> dict:
+    """READ-ONLY report: applies conveniences.yaml's owner-set norm to
+    analysis.address_category.nearest_m for `borough` -- the SAME per-category
+    network distances model/address_gaps.py already computed and wrote, via
+    the SAME multi-source-Dijkstra engine this module's own
+    `compute_address_convenience` is the reference implementation for. No
+    second Dijkstra pass, no persisted table (D58: analysis.address_convenience,
+    a 200-row prototype duplicating that column under a different name, is
+    dropped -- see sql/002_schema.sql and sql/009_retire_split_tables.sql).
+
+    Requires `loci address-gaps` to have already populated
+    analysis.address_category for `borough`; raises ValueError otherwise, so a
+    forgotten prerequisite reads as "run address-gaps first", not a silent
+    empty report.
     """
-    import datetime
-    import pandas as pd
-
     conveniences = load_conveniences(conveniences_path)
-    conv_hash = conveniences_hash(conveniences)
-    gver = graph_version(graph_path)
-    run_at = datetime.datetime.now(datetime.timezone.utc)
+    b = borough.upper()
+    n_addr = con.execute(
+        "SELECT count(*) FROM analysis.address WHERE borough = ?", [b]).fetchone()[0]
+    if not n_addr:
+        raise ValueError(
+            f"analysis.address has no rows for borough={b} -- run `loci address-gaps` first")
 
-    with pathlib.Path(graph_path).open("rb") as fh:
-        G = pickle.load(fh)
+    case_sql = _threshold_case_sql(conveniences)
+    row = con.execute(
+        f"""SELECT count(*), sum(a.units)
+            FROM analysis.address a WHERE a.borough = ?""", [b]).fetchone()
+    total_addr, total_units = row[0], (row[1] or 0.0)
 
-    pois = con.execute(canonical_poi_sql(supply_set)).fetchall()
+    cat_rows = con.execute(
+        f"""SELECT c.category,
+                   sum(CASE WHEN c.nearest_m IS NULL OR c.nearest_m > {case_sql}
+                            THEN a.units ELSE 0 END) AS unsat_units
+            FROM analysis.address_category c
+            JOIN analysis.address a ON a.address_id = c.address_id AND a.borough = c.borough
+            WHERE c.borough = ?
+            GROUP BY c.category""", [b]).fetchall()
+    unsat_units_by_cat = {cat: float(u or 0.0) for cat, u in cat_rows}
+    cat_share = {c: 1.0 - unsat_units_by_cat.get(c, 0.0) / total_units if total_units else 0.0
+                for c in ALLCATS}
 
-    addr_tuples = list(zip(addresses_df["address_id"], addresses_df["lon"], addresses_df["lat"]))
-    results = compute_address_convenience(G, addr_tuples, pois, conveniences)
+    fully_units = con.execute(
+        f"""WITH per_addr AS (
+                SELECT c.address_id,
+                       sum(CASE WHEN c.nearest_m IS NULL OR c.nearest_m > {case_sql}
+                                THEN 1 ELSE 0 END) AS n_unsatisfied
+                FROM analysis.address_category c
+                WHERE c.borough = ?
+                GROUP BY c.address_id
+            )
+            SELECT sum(a.units) FROM per_addr p
+            JOIN analysis.address a ON a.address_id = p.address_id AND a.borough = ?
+            WHERE p.n_unsatisfied = 0""", [b, b]).fetchone()[0] or 0.0
 
-    # h3 res-9 cell -> analysis.hex (borough, nta_code), same join address_gaps.py
-    # already uses for demand data. A resolution mismatch between the grid this
-    # was built at and RES here would silently return NULLs, not wrong values,
-    # because the join key is a full h3_index string.
-    import h3
-
-    RES = 9
-    h3_index = [h3.latlng_to_cell(lat, lon, RES) for lat, lon in zip(addresses_df["lat"], addresses_df["lon"])]
-    hex_lookup = {r[0]: (r[1], r[2]) for r in con.execute("SELECT h3_index, borough, nta_code FROM analysis.hex").fetchall()}
-
-    names_path = pathlib.Path(graph_path).resolve().parents[1] / "interim" / "nta_names.json"
-    nta_names: dict[str, str] = {}
-    if names_path.exists():
-        import json
-        nta_names = json.loads(names_path.read_text())
-
-    units_by_id = dict(zip(addresses_df["address_id"], addresses_df["units"]))
-    bbl_by_id = dict(zip(addresses_df["address_id"], addresses_df["bbl"]))
-    lonlat_by_id = dict(zip(addresses_df["address_id"], zip(addresses_df["lon"], addresses_df["lat"])))
-    hex_by_id = dict(zip(addresses_df["address_id"], h3_index))
-
-    rows = []
-    for r in results:
-        aid = r["address_id"]
-        h3idx = hex_by_id[aid]
-        borough_col, nta_code = hex_lookup.get(h3idx, (None, None))
-        neighborhood = nta_names.get(nta_code, nta_code) if nta_code else None
-        lon, lat = lonlat_by_id[aid]
-        row = [aid, bbl_by_id[aid] or None, lon, lat, units_by_id[aid], nta_code, neighborhood]
-        for cat in ALLCATS:
-            row.append(r["distance_m"][cat])
-            row.append(r["satisfied"][cat])
-        row += [r["n_unsatisfied"], conv_hash, gver, run_at, borough.upper()]
-        rows.append(row)
-
-    cols = ["address_id", "bbl", "lon", "lat", "units", "nta_code", "neighborhood"]
-    for cat in ALLCATS:
-        cols += [f"{cat}_distance_m", f"{cat}_satisfied"]
-    cols += ["n_unsatisfied", "conveniences_hash", "graph_version", "run_at", "borough"]
-
-    df = pd.DataFrame(rows, columns=cols)
-    con.execute("DELETE FROM analysis.address_convenience WHERE borough = ?", [borough.upper()])
-    con.register("_addr_conv", df)
-    try:
-        placeholders = ", ".join(cols)
-        con.execute(f"INSERT INTO analysis.address_convenience ({placeholders}) SELECT {placeholders} FROM _addr_conv")
-    finally:
-        con.unregister("_addr_conv")
-    return len(df)
+    return {
+        "n_addresses": total_addr,
+        "n_units": total_units,
+        "category_satisfied_share": cat_share,
+        "share_fully_satisfied": fully_units / total_units if total_units else 0.0,
+    }
 
 
 def summarize_results(results: list[dict], addresses_df) -> dict:
@@ -236,74 +230,86 @@ def summarize_results(results: list[dict], addresses_df) -> dict:
     }
 
 
-def convenience_summary(
-    con,
-    addresses_df,
-    graph_path: pathlib.Path = GRAPH_PATH,
-    conveniences_path: pathlib.Path = CONVENIENCES_PATH,
-    supply_set: str = DEFAULT_SUPPLY_SET,
-) -> dict:
-    """Run compute_address_convenience for `addresses_df` and summarize --
-    no DB write, no hex/NTA join, no provenance columns. This is the
-    `loci conveniences --dry-run` path: it pays the ~90s graph load + 15
-    Dijkstra passes but leaves analysis.address_convenience untouched."""
-    conveniences = load_conveniences(conveniences_path)
-    with pathlib.Path(graph_path).open("rb") as fh:
-        G = pickle.load(fh)
-    pois = con.execute(canonical_poi_sql(supply_set)).fetchall()
-    addr_tuples = list(zip(addresses_df["address_id"], addresses_df["lon"], addresses_df["lat"]))
-    results = compute_address_convenience(G, addr_tuples, pois, conveniences)
-    return summarize_results(results, addresses_df)
-
-
-def _weighted_share(con, borough: str, category: str) -> float:
-    """Unit-weighted share of `borough` residential units UNSATISFIED for `category`."""
+def _weighted_share(con, borough: str, category: str, conveniences: dict[str, float]) -> float:
+    """Unit-weighted share of `borough` residential units UNSATISFIED for
+    `category`, off analysis.address_category.nearest_m (D58) -- no
+    persisted address_convenience table."""
+    threshold = conveniences[category]
     row = con.execute(
-        f"""SELECT sum(CASE WHEN NOT {category}_satisfied THEN units ELSE 0 END) / sum(units)
-            FROM analysis.address_convenience WHERE borough = ?""",
-        [borough.upper()],
+        """SELECT sum(CASE WHEN c.nearest_m IS NULL OR c.nearest_m > ? THEN a.units ELSE 0 END)
+                  / sum(a.units)
+            FROM analysis.address_category c
+            JOIN analysis.address a ON a.address_id = c.address_id AND a.borough = c.borough
+            WHERE c.borough = ? AND c.category = ?""",
+        [threshold, borough.upper(), category],
     ).fetchone()
     return float(row[0]) if row and row[0] is not None else 0.0
 
 
-def category_unsatisfied_shares(con, borough: str) -> list[tuple[str, float]]:
+def category_unsatisfied_shares(
+    con, borough: str, conveniences_path: pathlib.Path = CONVENIENCES_PATH,
+) -> list[tuple[str, float]]:
     """[(category, unit-weighted unsatisfied share)] for all 15 categories,
     worst (highest unsatisfied share) first."""
-    out = [(c, _weighted_share(con, borough, c)) for c in ALLCATS]
+    conveniences = load_conveniences(conveniences_path)
+    out = [(c, _weighted_share(con, borough, c, conveniences)) for c in ALLCATS]
     return sorted(out, key=lambda t: -t[1])
 
 
-def n_unsatisfied_distribution(con, borough: str) -> list[tuple[int, float, float]]:
+def n_unsatisfied_distribution(
+    con, borough: str, conveniences_path: pathlib.Path = CONVENIENCES_PATH,
+) -> list[tuple[int, float, float]]:
     """[(n_unsatisfied, share_of_addresses, share_of_units)] -- the distribution
     of how many of the 15 categories are unsatisfied, both per-address and
     UNIT-weighted (a 200-unit tower counts 200x an SRO in the unit-weighted
-    view, which is the one the report leads with per the brief)."""
+    view, which is the one the report leads with per the brief). The
+    per-category threshold is a generated SQL CASE (`_threshold_case_sql`):
+    each category has a DIFFERENT owner-set norm, so "unsatisfied" cannot be
+    one WHERE predicate the way `_weighted_share`'s single-category query
+    can use one."""
+    conveniences = load_conveniences(conveniences_path)
+    case_sql = _threshold_case_sql(conveniences)
     df = con.execute(
-        """SELECT n_unsatisfied, count(*) n_addr, sum(units) n_units
-           FROM analysis.address_convenience WHERE borough = ?
-           GROUP BY 1 ORDER BY 1""",
-        [borough.upper()],
+        f"""WITH per_addr AS (
+                SELECT c.address_id,
+                       sum(CASE WHEN c.nearest_m IS NULL OR c.nearest_m > {case_sql}
+                                THEN 1 ELSE 0 END) AS n_unsatisfied
+                FROM analysis.address_category c
+                WHERE c.borough = ?
+                GROUP BY c.address_id
+            )
+            SELECT p.n_unsatisfied, count(*) n_addr, sum(a.units) n_units
+            FROM per_addr p
+            JOIN analysis.address a ON a.address_id = p.address_id AND a.borough = ?
+            GROUP BY 1 ORDER BY 1""",
+        [borough.upper(), borough.upper()],
     ).fetchall()
     total_addr = sum(r[1] for r in df) or 1
     total_units = sum(r[2] for r in df) or 1.0
     return [(n, n_addr / total_addr, n_units / total_units) for n, n_addr, n_units in df]
 
 
-def top_ntas_for_category(con, borough: str, category: str, n: int = 10) -> list[tuple[str, str, float, float]]:
+def top_ntas_for_category(
+    con, borough: str, category: str, n: int = 10,
+    conveniences_path: pathlib.Path = CONVENIENCES_PATH,
+) -> list[tuple[str, str, float, float]]:
     """[(nta_code, neighborhood, unit-weighted unsatisfied share, total units)]
     for the `n` NTAs with the highest unit-weighted unsatisfied share for
     `category`, restricted to NTAs with at least 50 residential units (avoids
     a single-lot NTA fragment reading as 100% unsatisfied)."""
+    threshold = load_conveniences(conveniences_path)[category]
     rows = con.execute(
-        f"""SELECT nta_code, any_value(neighborhood),
-                   sum(CASE WHEN NOT {category}_satisfied THEN units ELSE 0 END) / sum(units) AS share,
-                   sum(units) AS total_units
-            FROM analysis.address_convenience
-            WHERE borough = ? AND nta_code IS NOT NULL
-            GROUP BY nta_code
-            HAVING sum(units) >= 50
-            ORDER BY share DESC
-            LIMIT ?""",
-        [borough.upper(), n],
+        """SELECT a.nta_code, any_value(a.neighborhood),
+                  sum(CASE WHEN c.nearest_m IS NULL OR c.nearest_m > ? THEN a.units ELSE 0 END)
+                  / sum(a.units) AS share,
+                  sum(a.units) AS total_units
+           FROM analysis.address_category c
+           JOIN analysis.address a ON a.address_id = c.address_id AND a.borough = c.borough
+           WHERE c.borough = ? AND c.category = ? AND a.nta_code IS NOT NULL
+           GROUP BY a.nta_code
+           HAVING sum(a.units) >= 50
+           ORDER BY share DESC
+           LIMIT ?""",
+        [threshold, borough.upper(), category, n],
     ).fetchall()
     return rows

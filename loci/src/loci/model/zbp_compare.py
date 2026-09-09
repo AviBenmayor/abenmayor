@@ -223,7 +223,16 @@ def build_coverage_by_source(con, year: int | None = None) -> int:
     analysis.zip_coverage_check (built/rebuilt first) as the already-filtered
     (population >= 1,000, ZBP not suppressed) whitelist of (zipcode, category)
     pairs, then attributes each one's poi_count across sources. Returns the
-    row count written."""
+    row count written.
+
+    zip_coverage_check stays a base table, not a view derived from this one
+    (considered under the 2026-09-09 consolidation pass; see
+    sql/002_schema.sql's zip_coverage_check header): this table only ever
+    gets a row for a (zipcode, category) with at least one canonical POI
+    (the inner join below), so 12 of zip_coverage_check's 2,034 rows --
+    every poi_count=0 "Census sees establishments, Loci found none" row --
+    would silently vanish from a view built by summing this table instead.
+    """
     n_base = build_coverage_check(con, year)
     used_year = con.execute("SELECT max(year) FROM analysis.zip_coverage_check").fetchone()[0]
 

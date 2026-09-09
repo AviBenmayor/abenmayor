@@ -395,9 +395,9 @@ def test_sink_writes_parquet_and_progress_and_never_touches_the_database(tmp_pat
     # totals reconcile: rollup sums == staging counts, no double count, no drop
     row = con.execute("""
         SELECT (SELECT count(*) FROM staging.listings),
-               (SELECT sum(n_listings) FROM analysis.address_listing_laundry),
+               (SELECT sum(n_listings) FROM analysis.address_laundry_evidence WHERE source = 'listing'),
                (SELECT count(*) FROM staging.listings WHERE laundry_in_building),
-               (SELECT sum(n_in_building) FROM analysis.address_listing_laundry),
+               (SELECT sum(n_in_building) FROM analysis.address_laundry_evidence WHERE source = 'listing'),
                (SELECT count(*) FROM staging.listings WHERE laundry_in_unit = FALSE),
                (SELECT count(*) FROM staging.listings WHERE laundry_in_building = FALSE)
     """).fetchone()
@@ -429,7 +429,8 @@ def test_merge_is_idempotent_and_deduplicates_overlapping_parts(tmp_path):
     assert second["rows_replaced"] == 3
     assert con.execute("SELECT count(*) FROM staging.listings").fetchone()[0] == 3
     assert con.execute(
-        "SELECT max(n_listings) FROM analysis.address_listing_laundry").fetchone()[0] == 1
+        "SELECT max(n_listings) FROM analysis.address_laundry_evidence "
+        "WHERE source = 'listing'").fetchone()[0] == 1
 
 
 def test_merge_refuses_an_empty_sink(tmp_path):

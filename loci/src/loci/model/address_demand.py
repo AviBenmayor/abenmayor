@@ -1,4 +1,5 @@
-"""The D49 demand-side annotation, ported to the D38 address grain (GTM-110).
+"""The D49 demand-side annotation, ported to the D38 address grain (GTM-110),
+FOLDED onto analysis.address_category (D58).
 
 WHAT THIS IS
 --------------------------------------------------------------------------
@@ -18,16 +19,26 @@ continuous and MOE-gated: `income_ratio` with its propagated MOE,
 asserted ONLY when the address is confidently below the line
 (`income_ratio + income_ratio_moe < low_income_cutoff`).
 
-NON-FILTERING BY CONSTRUCTION
+NON-FILTERING BY CODE, NOT BY TABLE BOUNDARY (D58)
 --------------------------------------------------------------------------
-The table is a SIBLING of `analysis.address_gaps`, keyed by address_id, and
-this module opens address_gaps read-only. It cannot change `gap_score`,
-`lead_category`, `n_missing` or membership in the missing set, because it
-never writes to that table -- the D48 rule ("the output is graded, never
-filtered") is enforced by the shape of the code, not by a convention.
-`tests/test_address_demand.py` pins that: address_gaps' `gap_score` and
-`lead_category` are byte-identical before and after a build, and the
-ratio > 1 rows here are exactly address_gaps' own missing set.
+D57 made this a SIBLING table (analysis.address_demand) precisely so the
+D48 rule ("the output is graded, never filtered") was mechanical: the module
+had no write path to the screen's own columns at all. D58 folded the
+annotation columns onto analysis.address_category instead (one row per
+address x category already; a second table with the same key was pure
+overhead), which gives that mechanical guarantee up -- so it is replaced by
+a narrower one, enforced here in code: `write_address_demand` issues ONLY
+`UPDATE analysis.address_category SET <DEMAND_ANNOTATION_COLUMNS>`. It never
+INSERTs, never DELETEs, and the SET list is built exclusively from
+DEMAND_ANNOTATION_COLUMNS, which is disjoint from the screen's own columns
+(nearest_m, ratio, is_lead, eligible) by construction -- a test pins that
+disjointness, and `tests/test_address_demand.py` still re-runs the D57 proof
+on real shape: analysis.address_gaps' `gap_score`, `lead_category`,
+`n_missing` and `eligible` are byte-identical before and after a build, and
+the ratio > 1 rows annotated here are exactly address_gaps' own missing set.
+A RESET-then-UPDATE pattern (see write_address_demand) clears a stale
+verdict from a category that leaves the missing/lead set on a re-run,
+without ever touching a row this module does not own.
 
 GRAIN
 --------------------------------------------------------------------------
@@ -44,17 +55,16 @@ traceable to the run it annotates. Rows are emitted for:
     the lead's own ratio is <= 1 (an eligible address with no gap at all).
     Those rows are flagged `is_lead` and are the ONLY rows with ratio <= 1.
 
-WHICH INCOME, OF THE TWO NOW ON DISK
+WHICH INCOME
 --------------------------------------------------------------------------
-`income_ratio`'s numerator is deliberately `analysis.address_demographics.
-median_hh_income` -- the address's own 2020 census TRACT median, assigned by
-a BBL lookup with no apportionment (a PLUTO lot sits in exactly one tract).
-It is NOT `analysis.address_gaps.median_hh_income`, the hex-interpolated
-column that migration 008 added to that table: that one is the H3 res-9
-cell's value, doubly modelled (tract -> hex by PLUTO unit share, then hex ->
-address by containment) and a step function across hex boundaries. Both are
-legitimate for their own purposes; a demand caveat that names a household
-income has to use the least-modelled one available.
+`income_ratio`'s numerator is `analysis.address_demographics.median_hh_income`
+-- the address's own 2020 census TRACT median, assigned by a BBL lookup with
+no apportionment (a PLUTO lot sits in exactly one tract; D56). An earlier
+version of migration 008 briefly added a SECOND, hex-interpolated
+median_hh_income to analysis.address_gaps (tract -> hex by PLUTO unit share,
+then hex -> address by containment, a step function across hex boundaries);
+that copy is gone (D56/D58: address_gaps carries no demographics at all, see
+model/address_gaps.py), so there is now only one number, and it is this one.
 
 CLINIC
 --------------------------------------------------------------------------
@@ -76,7 +86,6 @@ the warning -- exactly backwards.
 from __future__ import annotations
 
 import dataclasses
-import datetime
 
 import pandas as pd
 
@@ -87,23 +96,32 @@ from loci.demand import (
     load_low_income_cutoff,
     ratio_moe,
 )
-from loci.model.conveniences import ALLCATS
-
 #: The ACS vintage this annotation reads, matching model/address_demographics.py
 #: and gaps.py's own pinned 2023. A single vintage, stated once: pooling two
 #: vintages' medians into one ratio would silently mix denominators.
 ACS_YEAR = 2023
 
-#: Column list of analysis.address_demand, in DDL order. The drift test asserts
-#: the table's column list matches this constant, so editing one without the
-#: other fails loudly instead of writing a silently mis-shaped row.
+#: The ONLY columns write_address_demand is allowed to name in a SET clause
+#: (D58). Disjoint from analysis.address_category's screen-owned columns
+#: (address_id, borough, category, nearest_m, ratio, is_lead, eligible) by
+#: construction -- tests/test_address_demand.py asserts that disjointness --
+#: so this module cannot accidentally clobber the screen with a plain re-run
+#: of the annotation, even though it shares a table with the screen now.
+DEMAND_ANNOTATION_COLUMNS = [
+    "demand_class", "elasticity",
+    "income_ratio", "income_ratio_moe", "income_indeterminate",
+    "demand_caveat", "demand_caveat_text", "acs_year",
+]
+
+#: compute_address_demand's output frame, in column order: the screen
+#: context it read (address_id/bbl/borough/category/is_lead/eligible/ratio/
+#: nearest_m, all read-only copies off analysis.address_category /
+#: analysis.address) followed by DEMAND_ANNOTATION_COLUMNS, the only part of
+#: this list write_address_demand ever writes.
 ADDRESS_DEMAND_COLUMNS = [
     "address_id", "bbl", "borough", "category",
     "is_lead", "eligible", "ratio", "nearest_m",
-    "demand_class", "elasticity",
-    "income_ratio", "income_ratio_moe", "income_indeterminate",
-    "demand_caveat", "demand_caveat_text",
-    "acs_year", "reach_hash", "supply_hash", "run_at",
+    *DEMAND_ANNOTATION_COLUMNS,
 ]
 
 
@@ -198,40 +216,23 @@ def caveat_text(ic: AddressIncomeContext, category: str,
 # ----------------------------------------------------------------- the read
 
 def _long_form_sql(boroughs: list[str]) -> str:
-    """address_gaps' 15 wide `{cat}_nearest_m` / `{cat}_ratio` column pairs,
-    unpivoted to one row per (address, category), keeping only rows that are
-    missing (ratio > 1, the D41 continuous reading) or are the address's lead.
-
-    Written as a generated UNION ALL rather than DuckDB's UNPIVOT so the
-    category order is `loci.categories.CATEGORIES` order exactly, the same
-    order address_gaps writes its column pairs in -- one list, one source of
-    truth, no chance of a nearest_m landing beside the wrong category's ratio.
+    """analysis.address_category IS the long-form table already (D58) -- one
+    row per (address, category), is_lead/eligible/ratio/nearest_m all native
+    columns -- so there is no unpivot to write any more; this is a plain
+    read, keeping only rows that are missing (ratio > 1, the D41 continuous
+    reading) or are the address's lead.
     """
     holes = ", ".join("?" for _ in boroughs)
-    arms = "\n        UNION ALL\n".join(
-        f"        SELECT address_id, bbl, borough, eligible, lead_category, "
-        f"reach_hash, supply_hash, '{c}' AS category, "
-        f"{c}_ratio AS ratio, {c}_nearest_m AS nearest_m FROM g"
-        for c in ALLCATS
-    )
     return f"""
-        WITH g AS (
-            SELECT * FROM analysis.address_gaps WHERE borough IN ({holes})
-        ), longform AS (
-{arms}
-        )
-        SELECT l.address_id, l.bbl, l.borough, l.category,
-               -- IS NOT NULL guard, not just an equality: an INELIGIBLE
-               -- address has lead_category NULL, and `x = NULL` is NULL, not
-               -- FALSE -- a NULL here would land in a NOT NULL column.
-               (l.lead_category IS NOT NULL AND l.category = l.lead_category) AS is_lead,
-               l.eligible, l.ratio, l.nearest_m,
-               l.reach_hash, l.supply_hash,
+        SELECT c.address_id, a.bbl, c.borough, c.category,
+               c.is_lead, c.eligible, c.ratio, c.nearest_m,
                d.median_hh_income, d.median_hh_income_moe
-        FROM longform l
+        FROM analysis.address_category c
+        JOIN analysis.address a ON a.address_id = c.address_id AND a.borough = c.borough
         LEFT JOIN analysis.address_demographics d
-               ON d.address_id = l.address_id AND d.acs_year = ?
-        WHERE l.ratio > 1.0 OR l.category = l.lead_category
+               ON d.address_id = c.address_id AND d.acs_year = ?
+        WHERE c.borough IN ({holes})
+          AND (c.ratio > 1.0 OR c.is_lead)
     """
 
 
@@ -241,9 +242,10 @@ def compute_address_demand(
     cutoff: float | None = None,
     acs_year: int = ACS_YEAR,
 ) -> pd.DataFrame:
-    """Build the annotation frame. READ-ONLY over analysis.address_gaps and
-    analysis.address_demographics -- it issues no UPDATE, no DELETE and no
-    INSERT against either.
+    """Build the annotation frame. READ-ONLY over analysis.address_category,
+    analysis.address and analysis.address_demographics -- it issues no
+    UPDATE, no DELETE and no INSERT against any of them; only
+    write_address_demand does, and only on DEMAND_ANNOTATION_COLUMNS.
 
     `citywide` and `cutoff` are injectable for tests; in production both come
     from the same places D49 fixed them: the ACS B19025/B11001 citywide mean
@@ -254,7 +256,7 @@ def compute_address_demand(
     demand = load_demand()
     eligible_for_caveat = caveat_categories()
 
-    df = con.execute(_long_form_sql(boroughs), [*boroughs, acs_year]).fetchdf()
+    df = con.execute(_long_form_sql(boroughs), [acs_year, *boroughs]).fetchdf()
     if df.empty:
         return pd.DataFrame(columns=ADDRESS_DEMAND_COLUMNS)
 
@@ -297,41 +299,57 @@ def compute_address_demand(
         "demand_caveat": [c in eligible_for_caveat and ic.confidently_low
                           for c, ic in zip(cats, ctxs)],
         "acs_year": acs_year,
-        "reach_hash": df["reach_hash"],
-        "supply_hash": df["supply_hash"],
     })
     out["demand_caveat_text"] = [
         caveat_text(ic, c, demand) if caveated else None
         for ic, c, caveated in zip(ctxs, cats, out["demand_caveat"])
     ]
-    out["run_at"] = datetime.datetime.now(datetime.timezone.utc)
     return out[ADDRESS_DEMAND_COLUMNS]
 
 
 # ---------------------------------------------------------------- the write
 
-def write_address_demand(con, df: pd.DataFrame) -> int:
-    """Persist to analysis.address_demand, replacing every
-    (borough, reach_hash, supply_hash) present in `df`.
+def write_address_demand(con, df: pd.DataFrame, boroughs: list[str]) -> int:
+    """Annotate analysis.address_category for `boroughs`. Issues ONLY
+    `UPDATE ... SET <DEMAND_ANNOTATION_COLUMNS>` -- never INSERT, never
+    DELETE, and the SET list never names a screen-owned column (D58; see the
+    module docstring's non-filtering note).
 
-    Delete-then-insert on the RUN KEY, not on the borough alone (which is what
-    write_address_gaps does): re-running the same reach/supply configuration
-    replaces its own rows, while a run under a different supply set lands
-    beside the old one instead of silently erasing it -- the D51/D52 finding
-    was that two defensible supply sets give two different cities, so both
-    have to be comparable after the fact.
+    Two passes, both UPDATE:
+      1. RESET every row in scope (every (address, category) pair whose
+         borough is in `boroughs`) to NULL on the annotation columns. Without
+         this, a category that WAS caveated/annotated on a previous run but
+         falls out of the missing-or-lead set on this run (a tightened reach
+         table, a different supply set) would keep last run's verdict
+         forever -- UPDATE has no DELETE to fall back on to clear it.
+      2. UPDATE ... FROM the computed frame, joined on (address_id, borough,
+         category), for the rows actually in scope this run.
+    `boroughs` is passed explicitly (not inferred from `df`) so an empty-df
+    run (nothing missing, nothing led -- impossible in practice since every
+    eligible address always has a lead row, but not assumed here) still
+    resets rather than silently leaving stale annotations in place.
     """
+    if not boroughs:
+        return 0
+    reset_cols = ", ".join(f"{c} = NULL" for c in DEMAND_ANNOTATION_COLUMNS)
+    holes = ", ".join("?" for _ in boroughs)
+    con.execute(
+        f"UPDATE analysis.address_category SET {reset_cols} WHERE borough IN ({holes})",
+        list(boroughs),
+    )
     if df.empty:
         return 0
-    keys = df[["borough", "reach_hash", "supply_hash"]].drop_duplicates()
-    for b, rh, sh in keys.itertuples(index=False):
-        con.execute(
-            "DELETE FROM analysis.address_demand "
-            "WHERE borough = ? AND reach_hash = ? AND supply_hash = ?", [b, rh, sh])
     con.register("_ad", df)
     try:
-        cols = ", ".join(ADDRESS_DEMAND_COLUMNS)
-        con.execute(f"INSERT INTO analysis.address_demand ({cols}) SELECT {cols} FROM _ad")
+        set_clause = ", ".join(f"{c} = _ad.{c}" for c in DEMAND_ANNOTATION_COLUMNS)
+        con.execute(f"""
+            UPDATE analysis.address_category AS ac
+            SET {set_clause}
+            FROM _ad
+            WHERE ac.address_id = _ad.address_id
+              AND ac.borough = _ad.borough
+              AND ac.category = _ad.category
+        """)
     finally:
         con.unregister("_ad")
     return len(df)
@@ -341,7 +359,7 @@ def build_address_demand(con, boroughs: list[str], **kwargs) -> tuple[int, pd.Da
     """compute + write. Returns (rows written, the frame) so the CLI prints
     the same summary on the write path as under --dry-run."""
     df = compute_address_demand(con, boroughs, **kwargs)
-    return write_address_demand(con, df), df
+    return write_address_demand(con, df, boroughs), df
 
 
 # ------------------------------------------------------------- reporting

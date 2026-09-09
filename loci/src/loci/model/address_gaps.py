@@ -91,6 +91,31 @@ MIN_PRESENT = 12        # gaps.py's _eligible_universe default gate, mirrored at
 UNITS_CAP = 500.0       # D39: cap per-lot units for any unit-weighted ranking
 CLUSTER_RADIUS_M = 200.0
 
+#: analysis.address's column list, DDL order (sql/002_schema.sql). Identity +
+#: the summary of the screen + ONE set of provenance stamps -- everything
+#: else on compute_address_gaps' wide working frame is a per-category pair
+#: that belongs on analysis.address_category instead. Declared once here so
+#: write_address_gaps' split and address_gaps_view_sql's SELECT list can
+#: never quietly diverge from the DDL.
+ADDRESS_COLUMNS = [
+    "address_id", "bbl", "lon", "lat", "units", "units_capped",
+    "nta_code", "neighborhood", "borough", "h3_index",
+    "present_count", "eligible", "gap_score", "lead_category",
+    "lead_excess_m", "n_missing", "cluster_id",
+    "reach_source", "reach_hash", "graph_version",
+    "supply_set", "supply_hash", "run_at",
+]
+
+#: analysis.address_category's SCREEN-owned columns (D38/D58 split) -- the
+#: ones write_address_gaps is allowed to touch. The demand annotation columns
+#: on the same table (demand_class, elasticity, income_ratio, ...) are NOT
+#: here: model/address_demand.py owns those and issues UPDATE only, per the
+#: D57/D58 non-filtering guarantee -- this writer never names them, so it
+#: cannot accidentally clobber an annotation with a plain re-run of the screen.
+ADDRESS_CATEGORY_SCREEN_COLUMNS = [
+    "address_id", "borough", "category", "nearest_m", "ratio", "is_lead", "eligible",
+]
+
 
 # --------------------------------------------------------------- the engine
 
@@ -428,20 +453,109 @@ def compute_address_gaps(
     return pd.DataFrame(data)
 
 
+def _split_wide(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Split compute_address_gaps' wide working frame (one row per address,
+    30 pivoted `{cat}_nearest_m`/`{cat}_ratio` columns) into the two shapes
+    analysis.address and analysis.address_category actually store (D38/D58):
+    identity + summary + provenance on one row per address, and
+    nearest_m/ratio/is_lead/eligible on one row per (address, category) --
+    ALLCATS rows per address, always, present or missing alike."""
+    addr_df = df[ADDRESS_COLUMNS].copy()
+    lead = df["lead_category"]
+    long_frames = [
+        pd.DataFrame({
+            "address_id": df["address_id"],
+            "borough": df["borough"],
+            "category": cat,
+            "nearest_m": df[f"{cat}_nearest_m"],
+            "ratio": df[f"{cat}_ratio"],
+            # IS NOT NULL guard: an ineligible address has lead_category NULL,
+            # and `NULL == cat` is NULL, not FALSE -- would read as neither
+            # true nor false rather than "not the lead" if compared bare.
+            "is_lead": lead.notna() & (lead == cat),
+            "eligible": df["eligible"],
+        })
+        for cat in ALLCATS
+    ]
+    cat_df = pd.concat(long_frames, ignore_index=True)[ADDRESS_CATEGORY_SCREEN_COLUMNS]
+    return addr_df, cat_df
+
+
 def write_address_gaps(con, df: pd.DataFrame) -> int:
-    """Persist `df` (compute_address_gaps' output) to analysis.address_gaps,
-    replacing every borough present in `df` (delete-then-insert per borough,
-    same idiom as model/conveniences.py's build_address_convenience) -- a
-    single-borough rebuild never disturbs another borough's rows."""
+    """Persist `df` (compute_address_gaps' wide working frame) by splitting
+    it into analysis.address and analysis.address_category (D38/D58's
+    principled split -- see sql/002_schema.sql's "THE ADDRESS SCREEN, in its
+    principled shape" header) and delete-then-inserting every borough present
+    in `df` on BOTH tables together, so a partial rebuild can never leave one
+    table one borough ahead of the other. analysis.address_gaps is a VIEW
+    over these two (address_gaps_view_sql, applied by db.init_schema()) --
+    there is no wide table to write here at all any more.
+
+    Only the screen's own columns are ever named on address_category
+    (ADDRESS_CATEGORY_SCREEN_COLUMNS): the demand annotation columns on the
+    same table are left at their DEFAULT (NULL) by this INSERT and are
+    model/address_demand.py's to fill, by UPDATE, never by this writer.
+    """
+    addr_df, cat_df = _split_wide(df)
     for b in sorted(df["borough"].unique()):
-        con.execute("DELETE FROM analysis.address_gaps WHERE borough = ?", [b])
-    con.register("_ag", df)
+        con.execute("DELETE FROM analysis.address_category WHERE borough = ?", [b])
+        con.execute("DELETE FROM analysis.address WHERE borough = ?", [b])
+    con.register("_aa", addr_df)
     try:
-        cols = ", ".join(df.columns)
-        con.execute(f"INSERT INTO analysis.address_gaps ({cols}) SELECT {cols} FROM _ag")
+        cols = ", ".join(addr_df.columns)
+        con.execute(f"INSERT INTO analysis.address ({cols}) SELECT {cols} FROM _aa")
     finally:
-        con.unregister("_ag")
+        con.unregister("_aa")
+    con.register("_ac", cat_df)
+    try:
+        cols = ", ".join(cat_df.columns)
+        con.execute(f"INSERT INTO analysis.address_category ({cols}) SELECT {cols} FROM _ac")
+    finally:
+        con.unregister("_ac")
     return len(df)
+
+
+def address_gaps_view_sql() -> str:
+    """`CREATE OR REPLACE VIEW analysis.address_gaps`: analysis.address
+    joined to a PIVOT of analysis.address_category's long rows back into the
+    old wide `{cat}_nearest_m`/`{cat}_ratio` column pairs, in the OLD column
+    order (identity, summary, the 15 pairs in categories.py order, then
+    provenance) -- so viz/webmap_export.py, sql/004+005's laundry views and
+    every CLI query written against the pre-split table keep working
+    unchanged. Generated from ALLCATS (loci.categories.CATEGORIES order) so a
+    16th category is one entry in that dict, never a hand-edited SELECT list.
+
+    Applied by db.init_schema() immediately after 002_schema.sql -- NOT at
+    the end of the migration sweep -- because sql/004_ll84_laundry.sql,
+    005_listings_laundry.sql and 006_principled_supply.sql all reference
+    analysis.address_gaps by name, and DuckDB resolves a view's query at
+    CREATE time, not at first SELECT.
+    """
+    pivot_cols = ",\n            ".join(
+        f"MAX(CASE WHEN category = '{c}' THEN nearest_m END) AS {c}_nearest_m,\n"
+        f"            MAX(CASE WHEN category = '{c}' THEN ratio END) AS {c}_ratio"
+        for c in ALLCATS
+    )
+    select_cols = ",\n            ".join(f"w.{c}_nearest_m, w.{c}_ratio" for c in ALLCATS)
+    return f"""
+        CREATE OR REPLACE VIEW analysis.address_gaps AS
+        WITH wide AS (
+            SELECT address_id, borough,
+            {pivot_cols}
+            FROM analysis.address_category
+            GROUP BY address_id, borough
+        )
+        SELECT
+            a.address_id, a.bbl, a.lon, a.lat, a.units, a.units_capped,
+            a.nta_code, a.neighborhood, a.borough,
+            a.present_count, a.eligible, a.gap_score, a.lead_category,
+            a.lead_excess_m, a.n_missing, a.cluster_id,
+            {select_cols},
+            a.reach_source, a.reach_hash, a.graph_version, a.run_at,
+            a.supply_set, a.supply_hash, a.h3_index
+        FROM analysis.address a
+        LEFT JOIN wide w ON w.address_id = a.address_id AND w.borough = a.borough
+    """
 
 
 def build_address_gaps(

@@ -179,7 +179,8 @@ def test_address_laundry_latest_non_null_wins_and_counts_disagreement():
     got = {r[0]: r[1:] for r in con.execute(
         """SELECT bbl, has_common_laundry, has_in_unit_laundry, laundry_measured,
                   latest_vintage, n_vintages, n_vintages_disagree
-           FROM analysis.address_laundry""").fetchall()}
+           FROM analysis.address_laundry_evidence
+           WHERE source = 'll84'""").fetchall()}
 
     assert got["1000000001"] == (False, False, True, 2024, 2, 1)
     assert got["3000000002"] == (True, None, True, 2019, 2, 0)

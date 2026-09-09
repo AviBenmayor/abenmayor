@@ -123,21 +123,26 @@ def test_run_skips_categories_with_no_google_mapping(tmp_path):
 
 _ADDR_COLS = ("address_id", "bbl", "lon", "lat", "units", "units_capped", "borough",
               "present_count", "eligible", "gap_score", "n_missing",
-              "reach_source", "reach_hash", "graph_version", "run_at",
-              "hardware_ratio", "grocery_ratio")
+              "reach_source", "reach_hash", "graph_version", "run_at")
 
 
 def _add_address(con, address_id, income, borough="BK", units=10.0, eligible=True,
                  hardware_ratio=0.5, grocery_ratio=0.5, lon=None, lat=None, acs_year=2023):
-    """One residential lot in analysis.address_gaps + its tract demographics."""
+    """One residential lot in analysis.address + analysis.address_category
+    (D38/D58 split -- analysis.address_gaps is the VIEW joining them), plus
+    its tract demographics."""
     lon = LON if lon is None else lon
     lat = LAT if lat is None else lat
-    con.execute(f"""INSERT INTO analysis.address_gaps ({", ".join(_ADDR_COLS)})
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+    con.execute(f"""INSERT INTO analysis.address ({", ".join(_ADDR_COLS)})
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 [address_id, address_id, lon, lat, units, min(units, 500.0), borough,
                  14, eligible, max(hardware_ratio, grocery_ratio), 0,
-                 "tiers", "h", "g", dt.datetime(2026, 9, 9),
-                 hardware_ratio, grocery_ratio])
+                 "tiers", "h", "g", dt.datetime(2026, 9, 9)])
+    for cat, ratio in (("hardware", hardware_ratio), ("grocery", grocery_ratio)):
+        con.execute("""INSERT INTO analysis.address_category
+            (address_id, borough, category, nearest_m, ratio, is_lead, eligible)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    [address_id, borough, cat, ratio * 400.0, ratio, False, eligible])
     con.execute("""INSERT INTO analysis.address_demographics
         (address_id, bbl, tract_geoid, acs_year, median_hh_income)
         VALUES (?, ?, ?, ?, ?)""", [address_id, address_id, "36047" + address_id[-6:].zfill(6),
@@ -216,7 +221,7 @@ def test_sample_is_restricted_to_the_scope_boroughs():
 
 def test_ineligible_addresses_are_out_of_frame():
     con = _address_fixture(n=20)
-    con.execute("UPDATE analysis.address_gaps SET eligible = false WHERE address_id = 'a000'")
+    con.execute("UPDATE analysis.address SET eligible = false WHERE address_id = 'a000'")
     s = smp.draw_sample(con, categories=["hardware"], per_stratum=99)
     assert "a000" not in {r["address_id"] for r in s}
     s_all = smp.draw_sample(con, categories=["hardware"], per_stratum=99, eligible_only=False)
@@ -229,7 +234,7 @@ def test_unit_weighted_flag_changes_the_draw():
     households rather than about loci's inventory at a point."""
     con = _address_fixture(n=40)
     # make one address in each stratum enormously large so weighting must show
-    con.execute("UPDATE analysis.address_gaps SET units = 5000, units_capped = 500 "
+    con.execute("UPDATE analysis.address SET units = 5000, units_capped = 500 "
                 "WHERE address_id IN ('a001', 'a003', 'a005', 'a007', 'a009')")
     plain = smp.draw_sample(con, categories=["hardware"], per_stratum=1)
     weighted = smp.draw_sample(con, categories=["hardware"], per_stratum=1, unit_weighted=True)
