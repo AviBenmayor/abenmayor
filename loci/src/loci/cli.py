@@ -492,9 +492,11 @@ def ingest_listings(
                                    limit=limit, min_units=min_units)
     if sink and not dry_run:
         done = L.fetched_bbls(sink) if Path(sink).exists() else set()
-        if done:
+        searched = L.searched_addresses(sink) if Path(sink).exists() else set()
+        if done or searched:
             n0 = len(targets)
-            targets = [t for t in targets if str(t["bbl"]) not in done]
+            targets = [t for t in targets if str(t["bbl"]) not in done
+                       and L._addr_key(t["address"]) not in searched]
             console.print(f"[dim]resume:[/] {n0 - len(targets):,} addresses already in "
                           f"{sink}, {len(targets):,} left")
         con.close()
@@ -973,6 +975,45 @@ def export_webmap_cmd(
         table.add_row("[bold]total[/]", *[f"[bold]{v:,}[/]" for v in tot], "", "")
         console.print(table)
 
+    # The development-pipeline overlay (sql/011). Counted per stage and per
+    # size band because those are exactly the two things the map's symbol
+    # encodes — if the table here and the legend there ever disagree, one of
+    # them is drawing something it did not count.
+    pipe = counts["pipeline"]
+    if not pipe["available"]:
+        console.print("[yellow]development pipeline:[/] analysis.dev_pipeline not loaded "
+                      "— run `loci ingest-dcp-housing` then `loci pipeline`; "
+                      "an empty overlay is exported.")
+    else:
+        pt = Table(title=f"Development pipeline — net units ≥ {wx.PIPELINE_MIN_UNITS}, "
+                         f"stages {'/'.join(wx.PIPELINE_MAP_STAGES)}, "
+                         f"completions within {wx.PIPELINE_COMPLETE_MONTHS} months{suffix}")
+        pt.add_column("stage / band")
+        for b in boros:
+            pt.add_column(f"{b} jobs", justify="right")
+        pt.add_column("units", justify="right")
+        for s, lab in zip(pipe["stages"], pipe["stageLabels"]):
+            pt.add_row(lab, *[f"{pipe['counts'][s][b]:,}" for b in boros],
+                       f"{sum(pipe['units'][s][b] for b in boros):,}")
+        pt.add_row("", *["" for _ in boros], "")
+        for lab in pipe["bandLabels"]:
+            pt.add_row(f"[dim]band[/] {lab}", *[f"{pipe['bands'][lab][b]:,}" for b in boros],
+                       f"{pipe['bandUnits'][lab]:,}")
+        pt.add_row("[bold]total[/]",
+                   *[f"[bold]{sum(pipe['counts'][s][b] for s in pipe['stages']):,}[/]" for b in boros],
+                   f"[bold]{sum(sum(v.values()) for v in pipe['units'].values()):,}[/]")
+        console.print(pt)
+        co = pipe["co"]
+        console.print(f"[dim]certificate of occupancy: {co.get('final', 0):,} final · "
+                      f"{co.get('temporary', 0):,} temporary · {co.get('none', 0):,} none[/]")
+        # The vintage is not decoration. DCP publishes semiannually, so the
+        # coming-units side of this layer is a floor that ages; the map is
+        # required to print both dates and so is this.
+        console.print(f"[bold]pipeline as of {pipe['asof']}[/] (completion windows) · "
+                      f"DCP {pipe['vintage'] or '?'} carries filings and permits only to "
+                      f"[bold]{pipe['cutoff'] or '?'}[/] — anything filed or permitted since "
+                      "is absent, so the coming-units count is a floor, never a ceiling.")
+
     if dry_run:
         console.print("[dim]--dry-run: nothing written.[/]")
         raise typer.Exit(0)
@@ -1177,6 +1218,142 @@ def address_demand_cmd(
     console.print("[bold]caveated rows by category:[/]")
     for cat, k in s["caveated_by_category"].items():
         console.print(f"  {cat:14} {k:>10,}")
+
+
+def _parse_boroughs(boroughs: str) -> list[str]:
+    """"MN,BK" -> ["MN", "BK"]; "ALL" -> every borough. D48 default is MN+BK."""
+    from loci.sources.cities.nyc.addresses import BOROCODE
+
+    raw = (boroughs or "").strip().upper()
+    if raw in ("ALL", "*"):
+        return sorted(BOROCODE)
+    out = [b.strip() for b in raw.split(",") if b.strip()]
+    bad = [b for b in out if b not in BOROCODE]
+    if bad:
+        raise typer.BadParameter(f"unknown borough(s) {bad}; expected ALL or {sorted(BOROCODE)}")
+    if not out:
+        raise typer.BadParameter("no boroughs given")
+    return out
+
+
+@app.command(name="ingest-dcp-housing")
+def ingest_dcp_housing(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL (D48 default MN,BK)."),
+    limit: int = typer.Option(None, help="Cap rows fetched per dataset (smoke tests)."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Fetch, normalize and report; write nothing."),
+) -> None:
+    """Land the residential development pipeline: DCP Housing Database
+    (project-level, `br6q-ssj3`) as the spine, DOB Certificates of Occupancy
+    (`bs8b-p36w` + `pkdm-hqz6`, daily) as the freshness supplement, into
+    analysis.dev_pipeline -- ONE ROW PER DOB JOB.
+
+    DCP publishes semiannually and is up to eight months stale at the end of a
+    cycle; the CO feeds correct the completion side only, so the forward
+    pipeline is a floor, never a ceiling. Read sql/011_dev_pipeline.sql for
+    the dedup rule (a job has many CO rows and they must NEVER be summed) and
+    for why `under_construction` is not in the stage vocabulary.
+    """
+    import datetime as _dt
+
+    from loci.sources.cities.nyc import dcp_housing as dcph
+
+    boros = tuple(_parse_boroughs(boroughs))
+    con = None if dry_run else locidb.connect()
+    if con is not None:
+        locidb.init_schema(con)
+
+    console.print(f"[dim]fetching DCP {dcph.DCP_DATASET} + CO feeds "
+                  f"{dcph.CO_BIS_DATASET}/{dcph.CO_NOW_DATASET} for {','.join(boros)}…[/]")
+    rows, report = dcph.build(con, boros, limit=limit, dry_run=dry_run)
+    written = report.pop("_written", None)
+
+    console.print(f"DCP rows {report['dcp_rows']:,} · CO rows "
+                  f"{report['co_bis_rows']:,} (BIS) + {report['co_now_rows']:,} (NOW) "
+                  f"-> {report['co_jobs']:,} jobs with CO evidence")
+    console.print(f"DCP version [bold]{report['vintage']}[/] · "
+                  f"{report['co_overrode_dcp']:,} jobs whose CO is FRESHER than DCP's status "
+                  f"· {report['no_geom']:,} rows without a coordinate")
+
+    t = Table(title=f"analysis.dev_pipeline — {','.join(boros)}")
+    t.add_column("stage"); t.add_column("jobs", justify="right")
+    t.add_column("net units", justify="right")
+    for stage in dcph.STAGES:
+        s = report["by_stage"].get(stage)
+        if s:
+            t.add_row(stage, f"{int(s['count']):,}", f"{int(s['sum']):,}")
+    console.print(t)
+
+    if dry_run:
+        console.print("[dim]--dry-run:[/] nothing written.")
+        raise typer.Exit(0)
+    console.print(f"[green]ok[/] {written:,} rows -> analysis.dev_pipeline")
+    by = con.execute("""SELECT borough, stage, count(*), sum(net_units)
+                        FROM analysis.dev_pipeline GROUP BY 1,2 ORDER BY 1,2""").fetchall()
+    for b, stage, n, u in by:
+        console.print(f"  {b} {stage:<20} {n:>7,} jobs  {int(u or 0):>9,} net units")
+    _ = _dt
+
+
+@app.command()
+def pipeline(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL (D48 default MN,BK)."),
+    radius_m: float = typer.Option(400.0, "--radius-m",
+                                   help="Tight catchment radius in NETWORK metres (default 400 = the 5-min tier)."),
+    asof: str = typer.Option(None, help="Run date the completion windows count back from (YYYY-MM-DD; default today)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """Annotate analysis.address with development-pipeline exposure.
+
+    For every address: net units PERMITTED (not yet occupied) and net units
+    COMPLETED in the last 24 and 60 months, within a 5-minute (400 m) and a
+    10-minute (800 m) NETWORK walk, plus the nearest project of >= 50 net
+    units with its stage and date.
+
+    UPDATE-only on analysis.address (model/dev_pipeline.PIPELINE_COLUMNS,
+    pinned disjoint from the screen's own columns) -- pipeline exposure is an
+    annotation, never a filter: it cannot move gap_score, lead_category,
+    n_missing or eligible. 24mo is a SUBSET of 60mo; never add the two.
+    """
+    import datetime as _dt
+
+    from loci.model import dev_pipeline as dp
+
+    boros = _parse_boroughs(boroughs)
+    when = _dt.date.fromisoformat(asof) if asof else _dt.date.today()
+
+    con = locidb.connect(read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+
+    console.print(f"[dim]pipeline exposure for {','.join(boros)} as of {when} "
+                  f"at {radius_m:.0f} m / {dp.WIDE_RADIUS_M:.0f} m network…[/]")
+    df, report = dp.build_pipeline(con, boros, asof=when, radius_m=radius_m, dry_run=dry_run)
+    written = report.pop("_written", None)
+
+    console.print(f"{report['projects']:,} jobs in scope "
+                  f"({report['large_projects']:,} of >= {dp.LARGE_UNITS} units; "
+                  f"{report['projects_no_geom']:,} without a coordinate, dropped from the "
+                  f"spatial measures) over {report['addresses']:,} addresses")
+    for label, units in report["units_by_measure"].items():
+        console.print(f"  citywide-in-scope units {label:<18} {int(units):>9,}")
+
+    t = Table(title="pipeline exposure")
+    t.add_column("measure"); t.add_column("addresses > 0", justify="right")
+    t.add_column("median where > 0", justify="right"); t.add_column("max", justify="right")
+    for col in [c for c in dp.PIPELINE_COLUMNS if c.startswith("units_")]:
+        nz = df[col][df[col] > 0]
+        t.add_row(col, f"{len(nz):,}", f"{nz.median():.0f}" if len(nz) else "-",
+                  f"{df[col].max():,.0f}")
+    console.print(t)
+    console.print(f"addresses with a large project within {dp.DIST_LIMIT:.0f} m: "
+                  f"{report['addresses_with_large_project']:,}")
+
+    if dry_run:
+        console.print("[dim]--dry-run:[/] nothing written.")
+        raise typer.Exit(0)
+    console.print(f"[green]ok[/] annotated {written:,} rows -> analysis.address "
+                  f"(pipeline columns; graph {report['graph_version']})")
 
 
 if __name__ == "__main__":

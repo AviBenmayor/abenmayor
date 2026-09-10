@@ -912,6 +912,37 @@ def fetched_bbls(sink_dir) -> set[str]:
     return out
 
 
+def searched_addresses(sink_dir) -> set[str]:
+    """Addresses whose building SEARCH already ran, from the fetch-log parts --
+    the second half of the resume key.
+
+    ``fetched_bbls`` only knows BBLs with a RESULT; an address whose search
+    found no unit page leaves no listing row, so a resumed sweep re-searched
+    it (1 credit) -- and with ~2/3 of six-plus-unit addresses yielding nothing,
+    every crash re-spent a credit on each of them (observed 2026-09-09: a
+    restart at ~300 addresses re-searched ~190). The fetch log records every
+    search call with the address in ``note``, so it answers "attempted?"
+    exactly and without a second source of truth about spend.
+    """
+    import pathlib
+
+    import pyarrow.parquet as pq
+
+    out: set[str] = set()
+    for f in sorted(pathlib.Path(sink_dir).glob("log-*.parquet")):
+        t = pq.read_table(f, columns=["endpoint", "note"])
+        for ep, note in zip(t["endpoint"].to_pylist(), t["note"].to_pylist()):
+            if ep == "search" and note:
+                out.add(_addr_key(note))
+    return out
+
+
+def _addr_key(address: str) -> str:
+    """Normalised address string used as the resume key for searches."""
+    import re as _re
+    return _re.sub(r"\s+", " ", str(address)).strip().upper()
+
+
 def build_listings(con, targets: list[dict], *, max_calls: int = 200,
                    dry_run: bool = False, fetcher: TavilyFetcher | None = None,
                    pace_s: float = 0.0, cooldown_s: float = 0.0,

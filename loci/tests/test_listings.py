@@ -343,7 +343,7 @@ def _sink_fetcher(budget, n_addresses_pages=1):
 
         def search_building(self, address, borough):
             self.budget.reserve("search")
-            self.budget.record(endpoint="search", n_urls=1, credits=1,
+            self.budget.record(endpoint="search", n_urls=1, credits=1, note=address,
                                http_status=200, n_ok=1, n_failed=0)
             slug = L.slugs_for(address, borough)[0]
             return [{"url": f"https://streeteasy.com/building/{slug}/1a", "score": 0.9}]
@@ -382,6 +382,8 @@ def test_sink_writes_parquet_and_progress_and_never_touches_the_database(tmp_pat
     assert prog["finished"] is True and prog["addresses"] == 7
     assert prog["run_id"] == rep["run_id"] and prog["credits"] == rep["credits"] == 21.0
     assert L.fetched_bbls(sink) == {t["bbl"] for t in _targets(7)}
+    # resume key half 2: every SEARCHED address, including ones with no result
+    assert L.searched_addresses(sink) == {L._addr_key(t["address"]) for t in _targets(7)}
 
     # ---- merge, and only now does anything reach a database ---------------
     con = locidb.connect(":memory:")
@@ -519,7 +521,7 @@ def test_fallback_rows_that_fail_verification_are_dropped_not_written(tmp_path):
 
         def search_building(self, address, borough):
             self.budget.reserve("search")
-            self.budget.record(endpoint="search", n_urls=1, credits=1,
+            self.budget.record(endpoint="search", n_urls=1, credits=1, note=address,
                                http_status=200, n_ok=2, n_failed=0)
             return [{"url": "https://streeteasy.com/building/marcy-tower/3a", "score": 0.9},
                     {"url": "https://streeteasy.com/building/division-house/1b", "score": 0.9}]
@@ -573,7 +575,7 @@ def test_sustained_all_failure_trips_the_circuit_breaker_but_keeps_the_sink(tmp_
 
         def search_building(self, address, borough):
             self.budget.reserve("search")
-            self.budget.record(endpoint="search", n_urls=1, credits=1,
+            self.budget.record(endpoint="search", n_urls=1, credits=1, note=address,
                                http_status=200, n_ok=1, n_failed=0)
             slug = L.slugs_for(address, borough)[0]
             return [{"url": f"https://streeteasy.com/building/{slug}/{i}a", "score": 0.9}
