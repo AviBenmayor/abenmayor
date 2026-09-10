@@ -239,7 +239,7 @@ claim stands on.
 - **Answered by:** (not ticketed)
 - **Fails if:** either category's Brooklyn-only Conley CI on its own high-vs-low age contrast includes 1.0, or its dispersion ratio falls below 1 — the same F2/F3 gate `bar` had to clear, applied without relaxation because two independent sources agreeing on a sign is corroboration, not a licence to skip the gate.
 - **Unblocks:** E2 · Access Engine
-- **Current answer:** — (D63 shipped `bar` only. The striking fact is that the supply-revealed placebo independently reproduces the CEX note's only two passing categories with the same signs, from a completely different source; that is the strongest evidence so far that b(w18) is category-specific rather than a generic urbanity coefficient, and the strongest argument for testing exactly these two next.)
+- **Current answer:** — (D64: childcare tested and REFUSED — composition spec b(under_18_share) = −0.769 in Brooklyn, contrast 0.767 [0.545, 1.078] includes 1.0 → F2 fail, while F3 passed at 1.49×; the count spec is significantly wrong-signed at 0.542 [0.396, 0.741], so F2 now tests sign as well as interval. Childcare has no registry anchor loaded, so its outcome is the screen's own aggregator supply and a low value may be coverage rather than demand — load DOHMH `dsg6-ifza` before re-testing. Under-5 share enters at +0.783 and should become a warehouse column. Pharmacy still untested.)
 
 ### Tier X · Explanatory — conditional structure, no temporal claim
 

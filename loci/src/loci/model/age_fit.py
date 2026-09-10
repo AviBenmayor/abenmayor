@@ -1,11 +1,11 @@
-"""`age_fit_bar`: a SUPPLY-REVEALED age multiplier for the `bar` category,
-estimated from New York's own licensed-venue composition (D63).
+"""`age_fit`: SUPPLY-REVEALED age multipliers, one curve per fitted category,
+estimated from New York's own composition of supply (D63 `bar`, D64 `childcare`).
 
 WHAT THIS IS
 --------------------------------------------------------------------------
 The owner's request (2026-09-10): *"a bar gap in the Upper East Side where avg
 age is 60+ vs a bar gap in the East Village where avg age is 25 -- the East
-Village bar should score higher."*  This module answers it with a curve fitted
+Village bar should score higher."*  This module answers it with curves fitted
 to New York, not with a national budget survey.
 
 `docs/age_demand_fit.md` tried the survey route (BLS CEX) and it failed on its
@@ -17,7 +17,25 @@ have scored the UES ABOVE the East Village. `docs/bar_age_nyc.md` replaces it
 with a market-revealed relationship measured on this warehouse's own data, and
 recommends exactly ONE specification of the several it tested.
 
-THE SPECIFICATION (`sla_composition_v1`, docs/bar_age_nyc.md §7)
+THE CURVE REGISTRY (D64)
+--------------------------------------------------------------------------
+D63 shipped `bar` alone and said, in as many words, that extending the curve to
+another category is "a separate decision with its own gate, not a loop over
+ALLCATS". D64 takes that decision for ONE more category (`childcare`, QUESTIONS
+D15) and, rather than copying the estimator, turns the bar-shaped code into a
+REGISTRY: `CURVES` maps a category to a `CategorySpec` carrying its outcome, its
+age regressors, its contrast definition and its reach radius. Everything else --
+the controls, the Conley SEs, the anchor, the delta-method MOE, the F2/F3 gate,
+the UPDATE-only writer -- is shared, so a second category cannot quietly get a
+weaker gate than the first.
+
+The bar spec is byte-for-byte the D63 one: same outcome, same regressors, same
+400 m radius, same fixed Carnegie-Hill -> East-Village contrast, same formula
+STRING (the design columns are suffixed with the radius, and bar's radius is
+400). `tests/test_age_fit.py` pins that the refit reproduces the committed
+coefficients and that applying both curves leaves every bar value unchanged.
+
+THE `bar` SPECIFICATION (`sla_composition_v1`, docs/bar_age_nyc.md §7)
 --------------------------------------------------------------------------
 Unit: census tract (the ACS grain), Manhattan + Brooklyn (D48), population
 >= 100.  Centroid: the `units_capped`-weighted mean of the tract's ADDRESS
@@ -42,32 +60,54 @@ a count, and that is the whole reason this spec was chosen:
     two NAICS sectors, one of which (CNS18, accommodation and food services) IS
     the outcome in payroll form and must never be conditioned on.
 
-Regressors: `w18` and `w65` (ADULT shares, renormalized by 1 - under_18_share,
-so the omitted band is 35-64 and each coefficient reads relative to a 35-64
-adult), log units within 400 m, log(1 + CNS07 retail jobs within 400 m),
-log walk_m_to_subway, log median household income, renter share, and a
-Manhattan fixed effect.  Standard errors are CONLEY spatial-HAC (Bartlett,
-2 km): the residuals have Moran's I ~= 0.42 on KNN(8) weights -- adjacent tract
-centroids are often < 400 m apart so their outcome discs physically overlap --
-and HC3 is therefore unusable. Every interval this module reports is the Conley
-one. Read them as optimistic: a spatial-error model would shrink the
-coefficient itself, not merely widen the band.
+THE `childcare` SPECIFICATION (`poi_composition_v1`, D64 / QUESTIONS D15)
+--------------------------------------------------------------------------
+The same shape, one radius and one regressor different, and one caveat MORE.
+
+    childcare_share_640 = log(1 + canonical childcare POIs within 640 m)
+                        - log(1 + ALL canonical POIs within 640 m)
+
+640 m is the category's own reach tier (`reach_tiers.yaml`), not bar's 400 m --
+the disc has to be the distance at which the category is actually consumed.
+The composition form is chosen for the same mechanical reason as bar: the
+denominator is every canonical storefront near the centroid, so "this is a
+dense commercial strip" cancels out of numerator and denominator and what is
+left is the MIX. The primary age regressor is `under_18_share` -- for childcare
+the direct demand variable is the presence of CHILDREN, not the age of adults --
+with bar's two adult shares kept alongside it so the placebo b(w18) stays
+comparable to the docs/bar_age_nyc.md §5c table (childcare -0.574 there).
+
+THE CAVEAT THAT IS SPECIFIC TO `childcare`, AND IS NOT SMALL
+--------------------------------------------------------------------------
+Bar's outcome is measured on NYS SLA licences -- a registry feed the address
+screen does NOT read. Childcare has NO registry anchor loaded (see
+`analysis.category_anchor`: `anchor_sources` is NULL and `anchor_coverage` is
+0.00, so `in_principled` degrades to `in_all` and all 4,302 canonical childcare
+POIs come from Overture and Foursquare alone). Its outcome is therefore built
+from the SAME canonical supply the screen already reads. The composition form
+blunts this -- the screen reads a per-category NETWORK DISTANCE to the nearest
+childcare POI, not a 640 m share of all storefronts -- but it does not remove
+it, and it is the tightest form of the D1 trap that D63's §7.2 test 8 pins for
+bar. Loading a childcare registry anchor (DOHMH child-care-centre inspections,
+`dsg6-ifza` -- NOT currently ingested, despite what `score/supply.py`'s prose
+implies) is the fix; until then this column is weaker evidence than bar's.
 
 THE MULTIPLIER
 --------------------------------------------------------------------------
-    age_fit_bar(tract) = exp[ b18*(w18 - w18_anchor) + b65*(w65 - w65_anchor) ]
+    age_fit(tract) = exp[ sum_k b_k * (a_k - anchor_k) ]
 
-which is "predicted bar composition at this tract's age mix / predicted at the
-MN+BK average age mix, every control at its own value" -- the controls cancel
-because they are identical in numerator and denominator. The anchor is the
-unit-weighted MN+BK adult mix over the estimation sample.
+over the spec's age terms `a_k`: "predicted composition at this tract's age mix
+/ predicted at the MN+BK average age mix, every control at its own value" --
+the controls cancel because they are identical in numerator and denominator.
+The anchor is the unit-weighted MN+BK mix over the estimation sample.
 
 `age_fit_moe` is a 90% MOE by the DELTA METHOD through exp(.): the linear
-predictor's variance is the quadratic form of the two age deltas against the
-Conley coefficient covariance, PLUS the two ACS share MOEs converted to SEs at
-1.645 and added in quadrature; that variance is scaled by exp(.)^2 and
-re-inflated to 90% at 1.645. The renormalizing denominator (1 - under_18_share)
-is treated as fixed -- a second-order term, stated rather than hidden.
+predictor's variance is the quadratic form of the age deltas against the Conley
+coefficient covariance, PLUS each ACS share MOE converted to an SE at 1.645 and
+added in quadrature; that variance is scaled by exp(.)^2 and re-inflated to 90%
+at 1.645. The renormalizing denominator of the ADULT shares (1 -
+under_18_share) is treated as fixed -- a second-order term, stated rather than
+hidden.
 
 NON-FILTERING, ENFORCED IN CODE (D48/D57/D61 pattern)
 --------------------------------------------------------------------------
@@ -87,49 +127,50 @@ address: it can reorder, it can never gate.
 
 THE F2 GATE, ALSO IN CODE (docs/bar_age_nyc.md §7.1)
 --------------------------------------------------------------------------
-The note ships this column only while its failure criteria hold, and names F2
-as the one that binds -- it is the ONLY reason the composition spec is preferred
+The note ships a column only while its failure criteria hold, and names F2 as
+the one that binds -- it is the ONLY reason the composition spec is preferred
 over the bar-POI count spec, and the test a re-run on a new supply set or ACS
-vintage is most likely to fail. So `fit_bar_curve` refuses to WRITE anything at
-all unless:
+vintage is most likely to fail. It is applied to EVERY category in the registry
+WITHOUT relaxation (QUESTIONS D15: "two independent sources agreeing on a sign
+is corroboration, not a licence to skip the gate"). So `fit_curve` refuses to
+WRITE anything at all unless:
 
-  F2  the BROOKLYN-ONLY Conley CI on the Carnegie-Hill -> East-Village contrast
-      excludes 1.0; and
+  F2  the BROOKLYN-ONLY Conley CI on the category's own low-age -> high-age
+      contrast excludes 1.0, and the point estimate has the demanded SIGN; and
   F3  the dispersion gate passes: (p90 - p10 of the multiplier over the
       estimation tracts) / median(age_fit_moe) >= 1.0 -- the same derived gate
       `docs/age_demand_fit.md` §5 defined and the CEX multiplier failed at 0.10.
 
 A curve that fails its own criterion must not reach the ranking, so the command
-exits non-zero and leaves the previous `age_fit_bar.json` untouched rather than
+exits non-zero and leaves the previous fit JSON untouched rather than
 half-writing a fit nobody may apply.
 
 WHAT THE COLUMN MAY NOT BE READ AS (AGE_FIT_DISCLAIMER)
 --------------------------------------------------------------------------
 Three sentences, and all three are load-bearing. (i) SUPPLY-REVEALED: every
-coefficient is fitted on where bars ALREADY are, so it mixes demand with
+coefficient is fitted on where the supply ALREADY is, so it mixes demand with
 residential sorting (young renters move to neighbourhoods that already have
-bars at least as hard as bars open where young renters already live) and there
-is no instrument here that separates them. (ii) A low value is NEVER evidence
-that a neighbourhood does not deserve the service -- the D49/QUESTIONS-X6
-hazard, in a new costume. (iii) Resident age is a PROXY FOR A BUNDLE -- young,
-renter, transit-rich, commercially active. Spatial-block CV says age adds
-+3.2-3.6% out-of-sample over a density-only model in Brooklyn but ~0% once
-income, renter share, walk-to-subway and retail jobs are already in, and it
-transfers NEGATIVELY from Brooklyn to Manhattan. It carries real information
+bars at least as hard as bars open where young renters already live; families
+move to neighbourhoods that already have daycare) and there is no instrument
+here that separates them. (ii) A low value is NEVER evidence that a
+neighbourhood does not deserve the service -- the D49/QUESTIONS-X6 hazard, in a
+new costume. (iii) Resident age is a PROXY FOR A BUNDLE. Spatial-block CV says
+age adds +3.2-3.6% out-of-sample over a density-only model in Brooklyn but ~0%
+once income, renter share, walk-to-subway and retail jobs are already in, and
+it transfers NEGATIVELY from Brooklyn to Manhattan. It carries real information
 relative to what `gap_score` knows and almost none that is uniquely age.
 
 Render the disclaimer untruncated, exactly as `demand_caveat_text` (D49/D57).
 
 SCOPE
 --------------------------------------------------------------------------
-`bar` only. The placebo (docs/bar_age_nyc.md §5c) ran this identical
+`CURVES` and nothing else. The placebo (docs/bar_age_nyc.md §5c) ran the bar
 specification with all fifteen categories as the outcome: `bar` has the largest
 positive b(w18) of the fifteen and `pharmacy` the most negative, which is what
-rules out "b(w18) is a generic urbanity coefficient". Extending the curve to
-other categories is a separate decision with its own gate, not a loop over
-ALLCATS -- so FITTED_CATEGORIES is a tuple of one and every other category's
-`age_fit` is NULL, not 1.0. NULL means "no curve exists here"; 1.0 would mean
-"a curve exists and says neutral", and the two must not be confused.
+rules out "b(w18) is a generic urbanity coefficient". Every category NOT in
+`CURVES` keeps a NULL `age_fit`, not 1.0. NULL means "no curve exists here";
+1.0 would mean "a curve exists and says neutral", and the two must not be
+confused. `pharmacy` remains open (QUESTIONS D15).
 """
 from __future__ import annotations
 
@@ -147,20 +188,17 @@ from loci.model.address_gaps import (
     ADDRESS_COLUMNS,
     INTERIM_DIR,
 )
+from loci.score.supply import DEFAULT_SUPPLY_SET, supply_predicate
 from loci.sources.cities.nyc.nys_sla import BAR_DESCRIPTIONS
 
-#: Identifier written into `age_fit_source` on every fitted row, so a reader can
-#: tell WHICH curve produced the number without opening the JSON. Bump it when
-#: the specification changes -- not when the coefficients are merely re-fitted.
+#: Identifier written into `age_fit_source` on every fitted `bar` row. Bump it
+#: when the specification changes -- not when the coefficients are merely
+#: re-fitted. Kept as a module constant because D63's CLI help and tests name it.
 SPEC_VERSION = "sla_composition_v1"
 
-#: The ONLY categories a curve exists for (docs/bar_age_nyc.md §7). See the
-#: module docstring: every other category gets NULL, never 1.0.
-FITTED_CATEGORIES = ("bar",)
-
-#: D48 scope, and the sample the curve is estimated on. A coefficient fitted in
-#: Manhattan+Brooklyn transfers NEGATIVELY to the other direction across the
-#: East River (§6), so the multiplier is applied only where it was estimated.
+#: D48 scope, and the sample every curve is estimated on. A coefficient fitted
+#: in Manhattan+Brooklyn transfers NEGATIVELY to the other direction across the
+#: East River (§6), so a multiplier is applied only where it was estimated.
 FIT_BOROUGHS = ("MN", "BK")
 
 ACS_YEAR = 2023            # matches model/address_demographics.py's pinned vintage
@@ -168,7 +206,7 @@ DISC_M = 400.0             # the bar reach tier; ~493 m of walking at D53's 1.23
 CONLEY_CUTOFF_M = 2000.0   # Bartlett kernel cutoff; the more conservative of 1 km / 2 km
 MIN_POPULATION = 100.0     # tracts below this are institutional/very-low-response noise
 MIN_WALK_M = 25.0          # floor before log(walk_m_to_subway); a 0 m walk is a 0 m fiction
-CI_Z = 1.96                # 95% CI on the CH -> EV contrast (the F2 gate reads this)
+CI_Z = 1.96                # 95% CI on the age contrast (the F2 gate reads this)
 MOE_Z = 1.645              # ACS 90% MOE <-> SE, both directions
 RETAIL_NAICS = "CNS07"     # retail trade. NEVER CNS18: food-service payroll IS the outcome.
 
@@ -183,11 +221,14 @@ DISPERSION_GATE_MIN = 1.0
 #: and pinned by a test, rather than silently clipped.
 MULTIPLIER_BOUNDS = (0.5, 2.0)
 
-#: The two NTAs of the owner's example, resolved by NTA CODE rather than name so
-#: a DCP label change cannot silently retarget the F2 gate.
+#: The two NTAs of the owner's BAR example, resolved by NTA CODE rather than
+#: name so a DCP label change cannot silently retarget the F2 gate.
 CONTRAST_NTAS = {"from": "MN0802", "to": "MN0303"}   # UES-Carnegie Hill -> East Village
 
-FIT_PATH = INTERIM_DIR / "age_fit_bar.json"
+#: An NTA must carry at least this many in-scope addresses to be eligible as an
+#: endpoint of a DERIVED contrast. A three-address NTA's age mix is noise, and a
+#: gate evaluated on noise is not a gate.
+CONTRAST_MIN_ADDRESSES = 500
 
 #: The ONLY columns the address_category writer may name in a SET clause.
 #: Disjoint from ADDRESS_CATEGORY_SCREEN_COLUMNS by construction; a test pins it.
@@ -201,13 +242,24 @@ ADDRESS_AGE_FIT_COLUMNS = ["age_fit_lead", "age_fit_lead_moe", "gap_score_fit"]
 #: sentences; see the module docstring for why each one is load-bearing.
 AGE_FIT_DISCLAIMER = (
     "Supply-revealed: this is where the New York market has historically put "
-    "bar-type licences relative to resident age -- demand and residential "
+    "this category's supply relative to resident age -- demand and residential "
     "sorting together, not separated. A low value is never evidence that a "
     "neighbourhood does not want the service. Resident age here is a proxy for "
     "a bundle (young, renter, transit-rich, commercially active) and adds "
     "essentially nothing once those are measured directly, so it must not be "
     "read as an isolated age effect."
 )
+
+#: Each age regressor's published ACS 90% MOE column ON THE PANEL. `w18`/`w65`
+#: are the ADULT-renormalized shares, so their MOEs are the published ones
+#: divided by the same (1 - under_18_share); `under_18_share` uses its own MOE
+#: as published. A term with no entry here would silently lose its ACS
+#: uncertainty, so `_age_moe_columns` raises rather than defaulting.
+AGE_MOE_COLUMNS = {
+    "w18": "w18_moe",
+    "w65": "w65_moe",
+    "under_18_share": "under_18_share_moe",
+}
 
 
 class AgeFitGateFailure(RuntimeError):
@@ -226,6 +278,175 @@ class AgeFitStale(RuntimeError):
     by yesterday's curve."""
 
 
+# ------------------------------------------------------------ the registry
+
+@dataclasses.dataclass(frozen=True)
+class ContrastSpec:
+    """How a category's F2 contrast endpoints are chosen.
+
+    `kind="fixed"` pins two NTA codes (bar: the owner's own example, so the gate
+    is evaluated on exactly the comparison that motivated the column).
+    `kind="extreme"` DERIVES them from the panel as the NTAs with the lowest and
+    highest unit-weighted `variable` among MN+BK NTAs carrying at least
+    `min_addresses` addresses -- because for a category whose demand variable is
+    not the owner's anecdote, hand-picking two neighbourhoods would be choosing
+    the answer.
+    """
+    kind: str
+    from_nta: str | None = None
+    to_nta: str | None = None
+    variable: str | None = None
+    min_addresses: int = CONTRAST_MIN_ADDRESSES
+    #: F2 requires the point estimate to have this sign as well as a CI that
+    #: excludes 1.0. `+1` = the high-demand endpoint must have MORE of the
+    #: category. A CI that excludes 1.0 from BELOW is a rejection of the
+    #: hypothesis, not a confirmation of it.
+    require_sign: int = 1
+
+
+@dataclasses.dataclass(frozen=True)
+class CategorySpec:
+    """One category's curve: outcome, regressors, contrast, radius.
+
+    Everything NOT here -- controls, Conley SEs, anchor, delta-method MOE,
+    F2/F3 gate, UPDATE-only writer -- is shared across categories on purpose,
+    so a second category cannot get a weaker gate than the first."""
+    category: str
+    spec_version: str
+    radius_m: float
+    #: the age regressors, in the order the coefficient vector and the Conley
+    #: covariance block are stored in. The FIRST is the primary demand variable.
+    age_terms: tuple[str, ...]
+    contrast: ContrastSpec
+    #: "sla" -> NYS SLA on-premises licences (bar-type / all on-premises);
+    #: "poi" -> canonical supply (this category / all categories).
+    overlay: str
+    outcome_stem: str
+    outcome_label: str
+    #: extra outcomes fitted and REPORTED as robustness, never shipped.
+    robustness_outcomes: tuple[str, ...] = ()
+
+    @property
+    def primary_age_term(self) -> str:
+        return self.age_terms[0]
+
+    @property
+    def r(self) -> int:
+        """The radius as a column suffix. Bar's is 400, so bar's design column
+        names -- and therefore its FORMULA STRING -- are byte-identical to
+        D63's."""
+        return int(self.radius_m)
+
+    @property
+    def outcome_col(self) -> str:
+        return f"{self.outcome_stem}_{self.r}"
+
+    @property
+    def fit_path(self) -> pathlib.Path:
+        return INTERIM_DIR / f"age_fit_{self.category}.json"
+
+    @property
+    def formula(self) -> str:
+        return f"{self.outcome_col} ~ {self.rhs()} + MN"
+
+    def rhs(self) -> str:
+        ages = " + ".join(self.age_terms)
+        return (f"{ages} + lunits_{self.r} + lwalk + linc + renter_share "
+                f"+ lretail_{self.r}")
+
+    def formula_one_borough(self) -> str:
+        """`MN` is dropped for a borough-internal fit: a constant fixed effect
+        is not identified."""
+        return f"{self.outcome_col} ~ {self.rhs()}"
+
+
+def reach_m(category: str) -> float:
+    """A category's reach tier, read from reach_tiers.yaml through the same
+    `loci.reach.load_reach` the address screen uses -- never pinned here.
+
+    The disc has to be the distance at which the category is actually consumed,
+    and that number is owned by the reach table (D41/D53), not by this module.
+    Read at import, so a change to the tier changes the design-column suffix and
+    therefore the formula string, and the fit is invalidated loudly."""
+    from loci.reach import load_reach
+
+    return float(load_reach("tiers")[category])
+
+
+CHILDCARE_M = reach_m("childcare")
+
+BAR_SPEC = CategorySpec(
+    category="bar",
+    spec_version=SPEC_VERSION,
+    radius_m=DISC_M,
+    age_terms=("w18", "w65"),
+    contrast=ContrastSpec(kind="fixed", from_nta=CONTRAST_NTAS["from"],
+                          to_nta=CONTRAST_NTAS["to"]),
+    overlay="sla",
+    outcome_stem="bar_share",
+    outcome_label=("log(1 + bar-type on-premises licences within {r} m) "
+                   "- log(1 + all on-premises licences within {r} m)"),
+)
+
+CHILDCARE_SPEC = CategorySpec(
+    category="childcare",
+    spec_version="poi_composition_v1",
+    radius_m=CHILDCARE_M,
+    # under_18_share FIRST: for childcare the direct demand variable is the
+    # presence of children, not the age of adults. The two adult shares stay so
+    # the placebo b(w18) remains comparable to docs/bar_age_nyc.md §5c.
+    age_terms=("under_18_share", "w18", "w65"),
+    contrast=ContrastSpec(kind="extreme", variable="under_18_share",
+                          min_addresses=CONTRAST_MIN_ADDRESSES, require_sign=1),
+    overlay="poi",
+    outcome_stem="childcare_share",
+    outcome_label=("log(1 + canonical childcare POIs within {r} m) "
+                   "- log(1 + ALL canonical POIs within {r} m)"),
+    # The plain count, reported so the composition choice is defended by a
+    # number rather than by precedent. NEVER shipped without a decision.
+    robustness_outcomes=("count", "under_5"),
+)
+
+#: The registry. A category absent from here has NO curve and keeps a NULL
+#: `age_fit` -- never 1.0.
+CURVES: dict[str, CategorySpec] = {s.category: s for s in (BAR_SPEC, CHILDCARE_SPEC)}
+
+#: The ONLY categories a curve exists for. Derived from CURVES so the two can
+#: never drift.
+FITTED_CATEGORIES = tuple(CURVES)
+
+#: Back-compat: D63's module-level bar names, still imported by tests and by the
+#: negative pin (§7.2 test 8) that the outcome is the COMPOSITION one.
+FORMULA = BAR_SPEC.formula
+FORMULA_ONE_BOROUGH = BAR_SPEC.formula_one_borough()
+FIT_PATH = BAR_SPEC.fit_path
+
+
+def spec_for(category: str) -> CategorySpec:
+    try:
+        return CURVES[category]
+    except KeyError:
+        raise ValueError(
+            f"no age-fit curve for {category!r}; fitted categories are "
+            f"{', '.join(sorted(CURVES))}") from None
+
+
+def _age_moe_columns(terms) -> list[str]:
+    """The MOE column for each age term. Raises on an unknown term rather than
+    defaulting to zero: a regressor that silently loses its ACS uncertainty
+    would shrink `age_fit_moe` and make the F3 gate easier to pass, which is
+    exactly backwards."""
+    out = []
+    for t in terms:
+        if t not in AGE_MOE_COLUMNS:
+            raise KeyError(
+                f"age term {t!r} has no MOE column in AGE_MOE_COLUMNS; add one "
+                "before using it as a regressor -- a term without its ACS "
+                "margin would make the F3 dispersion gate easier to pass")
+        out.append(AGE_MOE_COLUMNS[t])
+    return out
+
+
 # ------------------------------------------------------------ the tract panel
 
 @dataclasses.dataclass(frozen=True)
@@ -233,11 +454,11 @@ class TractPanel:
     """The estimation frame plus everything downstream needs from it.
 
     `tracts` is one row per tract with `keep` marking the regression sample;
-    `n_licences` and `supply_hash` are carried so the fit can stamp exactly
-    which inputs produced it."""
+    `n_target` / `n_universe` and `supply_hash` are carried so the fit can stamp
+    exactly which inputs produced it."""
     tracts: pd.DataFrame
-    n_licences: int
-    n_bar_licences: int
+    n_universe: int
+    n_target: int
     supply_hash: str | None
     acs_year: int
 
@@ -275,7 +496,8 @@ def _addresses_sql(boroughs: list[str]) -> str:
         SELECT a.address_id, a.borough, a.lon, a.lat, a.units_capped,
                a.nta_code, a.neighborhood, a.eligible, a.gap_score, a.lead_category,
                d.tract_geoid, d.population, d.median_hh_income, d.renter_share,
-               d.under_18_share, d.age_18_34_share, d.age_65_plus_share,
+               d.under_18_share, d.under_18_share_moe,
+               d.age_18_34_share, d.age_65_plus_share,
                d.age_18_34_share_moe, d.age_65_plus_share_moe
         FROM analysis.address a
         JOIN analysis.address_demographics d USING (address_id)
@@ -293,6 +515,9 @@ def load_addresses(con, boroughs: list[str], acs_year: int = ACS_YEAR) -> pd.Dat
     df["units_capped"] = df["units_capped"].fillna(0.0).clip(lower=0.0)
     # ADULT shares: the omitted band is 35-64, so a coefficient reads "relative
     # to a 35-64 adult" rather than "relative to a resident, children included".
+    # `under_18_share` is NOT renormalized -- it is a share of everybody, which
+    # is what makes it a clean demand variable for childcare and leaves it
+    # linearly independent of the two adult shares.
     adult = 1.0 - df["under_18_share"]
     with np.errstate(divide="ignore", invalid="ignore"):
         df["w18"] = df["age_18_34_share"] / adult
@@ -302,10 +527,56 @@ def load_addresses(con, boroughs: list[str], acs_year: int = ACS_YEAR) -> pd.Dat
     return df
 
 
-def build_tract_panel(con, boroughs: list[str] = FIT_BOROUGHS,
+def _overlay_points(con, spec: CategorySpec, boroughs: list[str]
+                    ) -> tuple[np.ndarray, np.ndarray, int, int]:
+    """(target_xy, universe_xy, n_universe, n_target) for a spec's outcome.
+
+    `sla`: bar-type on-premises licences against ALL on-premises licences. The
+    bar vocabulary is nys_sla.BAR_DESCRIPTIONS -- the SAME set that decides what
+    enters staging.poi as a `bar` -- imported rather than copied, so the overlay
+    and the category can never drift apart. (There is no `Tavern` licence type
+    in the NYC feed; `Additional Bar` is a RIDER on an existing premises, not a
+    venue, and is deliberately not bar-type.)
+
+    `poi`: this category's canonical POIs against ALL canonical POIs. Citywide,
+    NOT borough-filtered: a 640 m disc near the East River legitimately sees
+    Queens supply, and clipping it at the borough line would manufacture a
+    composition cliff along the boundary.
+    """
+    if spec.overlay == "sla":
+        holes = ", ".join("?" for _ in boroughs)
+        lic = con.execute(f"""
+            SELECT lower(trim(description)) AS description,
+                   ST_X(geom) AS lon, ST_Y(geom) AS lat
+            FROM staging.alcohol_licences
+            WHERE active AND borough IN ({holes})
+              AND classification = 'on_premises' AND geom IS NOT NULL
+        """, boroughs).fetchdf()
+        xy = _to_utm(lic["lon"], lic["lat"]) if len(lic) else np.zeros((0, 2))
+        is_target = (lic["description"].isin(BAR_DESCRIPTIONS).to_numpy()
+                     if len(lic) else np.zeros(0, bool))
+        return xy[is_target], xy, len(lic), int(is_target.sum())
+
+    if spec.overlay == "poi":
+        pred = supply_predicate(DEFAULT_SUPPLY_SET)
+        poi = con.execute(f"""
+            SELECT s.category, ST_X(s.geom) AS lon, ST_Y(s.geom) AS lat
+            FROM analysis.poi_supply s
+            WHERE s.{pred} AND s.geom IS NOT NULL
+        """).fetchdf()
+        xy = _to_utm(poi["lon"], poi["lat"]) if len(poi) else np.zeros((0, 2))
+        is_target = ((poi["category"] == spec.category).to_numpy()
+                     if len(poi) else np.zeros(0, bool))
+        return xy[is_target], xy, len(poi), int(is_target.sum())
+
+    raise ValueError(f"unknown overlay {spec.overlay!r}")
+
+
+def build_tract_panel(con, spec: CategorySpec = BAR_SPEC,
+                      boroughs: list[str] = FIT_BOROUGHS,
                       acs_year: int = ACS_YEAR,
                       addresses: pd.DataFrame | None = None) -> TractPanel:
-    """Aggregate addresses to tracts, hang the 400 m disc measures off each
+    """Aggregate addresses to tracts, hang the spec's disc measures off each
     tract's RESIDENTIAL centroid, and mark the regression sample. READ-ONLY:
     this function issues four SELECTs and no write of any kind.
 
@@ -313,6 +584,7 @@ def build_tract_panel(con, boroughs: list[str] = FIT_BOROUGHS,
     synthetic frame without a warehouse.
     """
     boroughs = list(boroughs)
+    r = spec.radius_m
     addr = load_addresses(con, boroughs, acs_year) if addresses is None else addresses.copy()
     xy = _to_utm(addr["lon"], addr["lat"])
     addr["x"], addr["y"] = xy[:, 0], xy[:, 1]
@@ -331,39 +603,27 @@ def build_tract_panel(con, boroughs: list[str] = FIT_BOROUGHS,
         "y": addr.assign(_v=addr["y"] * addr["_wt"]).groupby("tract_geoid", sort=True)["_v"].sum() / wsum,
     })
     first = g.first()
-    for c in ("borough", "population", "median_hh_income", "renter_share",
-              "under_18_share", "w18", "w65", "w18_moe", "w65_moe"):
+    carry = ["borough", "population", "median_hh_income", "renter_share",
+             "under_18_share", "under_18_share_moe", "w18", "w65",
+             "w18_moe", "w65_moe"]
+    for c in carry:
         tr[c] = first[c]
     tr["units_tract"] = g["units_capped"].sum()
     tr["n_addr"] = g.size()
     tr = tr.reset_index()
     centres = tr[["x", "y"]].to_numpy()
 
-    # --- the licence overlay -------------------------------------------------
-    holes = ", ".join("?" for _ in boroughs)
-    lic = con.execute(f"""
-        SELECT lower(trim(description)) AS description,
-               ST_X(geom) AS lon, ST_Y(geom) AS lat
-        FROM staging.alcohol_licences
-        WHERE active AND borough IN ({holes})
-          AND classification = 'on_premises' AND geom IS NOT NULL
-    """, boroughs).fetchdf()
-    # The bar vocabulary is nys_sla.BAR_DESCRIPTIONS -- the SAME set that decides
-    # what enters staging.poi as a `bar` -- imported rather than copied, so the
-    # overlay and the category can never drift apart. (There is no `Tavern`
-    # licence type in the NYC feed; `Additional Bar` is a RIDER on an existing
-    # premises, not a venue, and is deliberately not bar-type.)
-    lic_xy = _to_utm(lic["lon"], lic["lat"]) if len(lic) else np.zeros((0, 2))
-    is_bar = lic["description"].isin(BAR_DESCRIPTIONS).to_numpy() if len(lic) else np.zeros(0, bool)
-    tr["onprem_400"] = _disc_sums(centres, lic_xy, DISC_M)
-    tr["barlike_400"] = _disc_sums(centres, lic_xy[is_bar], DISC_M)
+    # --- the outcome overlay -------------------------------------------------
+    target_xy, universe_xy, n_universe, n_target = _overlay_points(con, spec, boroughs)
+    tr[f"universe_{spec.r}"] = _disc_sums(centres, universe_xy, r)
+    tr[f"target_{spec.r}"] = _disc_sums(centres, target_xy, r)
 
     # --- exposure: units inside the SAME disc, not the tract's own count -----
-    # A tract's units and a 400 m disc around its centroid are different
-    # geographies; using the tract count as the denominator for a disc count
-    # would be a units mismatch.
-    tr["units_400"] = _disc_sums(centres, addr[["x", "y"]].to_numpy(), DISC_M,
-                                 addr["units_capped"].to_numpy())
+    # A tract's units and a disc around its centroid are different geographies;
+    # using the tract count as the denominator for a disc count would be a
+    # units mismatch.
+    tr[f"units_{spec.r}"] = _disc_sums(centres, addr[["x", "y"]].to_numpy(), r,
+                                       addr["units_capped"].to_numpy())
 
     # --- daytime control: CNS07 retail jobs ----------------------------------
     jobs = con.execute(f"""
@@ -372,9 +632,9 @@ def build_tract_panel(con, boroughs: list[str] = FIT_BOROUGHS,
         WHERE p.naics = '{RETAIL_NAICS}'
           AND p.year = (SELECT max(year) FROM analysis.hex_panel)
     """).fetchdf()
-    tr["retail_jobs_400"] = _disc_sums(
+    tr[f"retail_jobs_{spec.r}"] = _disc_sums(
         centres, _to_utm(jobs["lon"], jobs["lat"]) if len(jobs) else np.zeros((0, 2)),
-        DISC_M, jobs["jobs"].to_numpy() if len(jobs) else None)
+        r, jobs["jobs"].to_numpy() if len(jobs) else None)
 
     # --- transit: nearest hex centroid that HAS a walk distance --------------
     # walk_m_to_subway is present on 5,845 of 8,321 hexes; a tract takes the
@@ -394,20 +654,23 @@ def build_tract_panel(con, boroughs: list[str] = FIT_BOROUGHS,
     # --- the estimation sample ----------------------------------------------
     # Ten MN+BK tracts with population >= 100 publish no median household income
     # (large-institution and very-low-response tracts); they drop out of the
-    # REGRESSION but keep their multiplier, which needs only the two age shares.
-    tr["keep"] = (
+    # REGRESSION but keep their multiplier, which needs only the age shares.
+    keep = (
         (tr["population"] >= MIN_POPULATION)
         & tr["median_hh_income"].notna() & (tr["median_hh_income"] > 0)
-        & tr["renter_share"].notna() & tr["w18"].notna() & tr["w65"].notna()
-        & tr["walk_m_to_subway"].notna() & (tr["units_400"] > 0)
+        & tr["renter_share"].notna()
+        & tr["walk_m_to_subway"].notna() & (tr[f"units_{spec.r}"] > 0)
     )
+    for t in spec.age_terms:
+        keep &= tr[t].notna()
+    tr["keep"] = keep
     supply_hash = con.execute(
         "SELECT DISTINCT supply_hash FROM analysis.address WHERE supply_hash IS NOT NULL"
     ).fetchall()
     return TractPanel(
         tracts=tr,
-        n_licences=len(lic),
-        n_bar_licences=int(is_bar.sum()),
+        n_universe=n_universe,
+        n_target=n_target,
         supply_hash=supply_hash[0][0] if len(supply_hash) == 1 else None,
         acs_year=acs_year,
     )
@@ -415,25 +678,26 @@ def build_tract_panel(con, boroughs: list[str] = FIT_BOROUGHS,
 
 # ---------------------------------------------------------------- estimation
 
-def _design(tr: pd.DataFrame) -> pd.DataFrame:
+def _design(tr: pd.DataFrame, spec: CategorySpec,
+            extra: pd.DataFrame | None = None) -> pd.DataFrame:
     """The regression frame: the estimation sample with every transform the
-    formula names already materialized, so the formula string below is a
-    literal reading of docs/bar_age_nyc.md §3 rather than a nest of calls."""
+    formula names already materialized, so the formula string is a literal
+    reading of docs/bar_age_nyc.md §3 rather than a nest of calls.
+
+    `extra` is an optional tract-indexed frame of ROBUSTNESS regressors (the
+    under-5 share); it is merged but never enters the shipped formula."""
     d = tr[tr["keep"]].copy()
-    d["bar_share_400"] = np.log1p(d["barlike_400"]) - np.log1p(d["onprem_400"])
-    d["lunits_400"] = np.log(d["units_400"])
-    d["lretail_400"] = np.log1p(d["retail_jobs_400"])
+    r = spec.r
+    d[spec.outcome_col] = np.log1p(d[f"target_{r}"]) - np.log1p(d[f"universe_{r}"])
+    d[f"{spec.category}_count_{r}"] = np.log1p(d[f"target_{r}"])
+    d[f"lunits_{r}"] = np.log(d[f"units_{r}"])
+    d[f"lretail_{r}"] = np.log1p(d[f"retail_jobs_{r}"])
     d["lwalk"] = np.log(d["walk_m_to_subway"].clip(lower=MIN_WALK_M))
     d["linc"] = np.log(d["median_hh_income"])
     d["MN"] = (d["borough"] == "MN").astype(float)
+    if extra is not None:
+        d = d.merge(extra, on="tract_geoid", how="left")
     return d
-
-
-#: The composition specification, written once. `MN` is dropped for a
-#: borough-internal fit (a constant fixed effect is not identified).
-_RHS = "w18 + w65 + lunits_400 + lwalk + linc + renter_share + lretail_400"
-FORMULA = f"bar_share_400 ~ {_RHS} + MN"
-FORMULA_ONE_BOROUGH = f"bar_share_400 ~ {_RHS}"
 
 
 def _conley_cov(model, xy: np.ndarray, cutoff_m: float = CONLEY_CUTOFF_M) -> np.ndarray:
@@ -442,9 +706,9 @@ def _conley_cov(model, xy: np.ndarray, cutoff_m: float = CONLEY_CUTOFF_M) -> np.
     Standard sandwich with a distance-decayed meat: K_ij = max(0, 1 - d_ij/h).
     The finite-sample correction n/(n-k) matches statsmodels' HC0->HC1 step so
     the two are comparable. Needed because the residuals here have Moran's I
-    ~= 0.42 -- neighbouring tracts share the same nightlife district and their
-    400 m discs physically overlap, so the effective n is far below the row
-    count and HC3 would be badly optimistic.
+    ~= 0.42 -- neighbouring tracts share the same district and their discs
+    physically overlap -- so the effective n is far below the row count and HC3
+    would be badly optimistic.
     """
     from scipy.spatial import distance_matrix
 
@@ -458,14 +722,14 @@ def _conley_cov(model, xy: np.ndarray, cutoff_m: float = CONLEY_CUTOFF_M) -> np.
     return bread @ (xe.T @ kern @ xe) @ bread * (n / (n - k))
 
 
-def _contrast(params: pd.Series, cov: np.ndarray, dw18: float, dw65: float) -> dict:
-    """The Carnegie-Hill -> East-Village partial effect: the ratio of predicted
-    composition at the two age mixes with EVERY control held fixed, plus its
-    Conley CI. A linear contrast in the log-composition, exponentiated."""
+def _contrast(params: pd.Series, cov: np.ndarray, terms, deltas) -> dict:
+    """A partial effect between two age mixes: the ratio of predicted outcome at
+    the two mixes with EVERY control held fixed, plus its Conley CI. A linear
+    contrast in the log-composition, exponentiated."""
     names = list(params.index)
     g = np.zeros(len(names))
-    g[names.index("w18")] = dw18
-    g[names.index("w65")] = dw65
+    for t, dv in zip(terms, deltas):
+        g[names.index(t)] = float(dv)
     delta = float(g @ params.to_numpy())
     se = float(np.sqrt(g @ cov @ g))
     return {
@@ -476,8 +740,8 @@ def _contrast(params: pd.Series, cov: np.ndarray, dw18: float, dw65: float) -> d
     }
 
 
-def _nta_age_mix(addr: pd.DataFrame, nta_code: str) -> tuple[float, float]:
-    """(w18, w65) for one NTA: the MEDIAN over its addresses, matching
+def _nta_age_mix(addr: pd.DataFrame, nta_code: str, terms) -> tuple[float, ...]:
+    """The age mix of one NTA: the MEDIAN over its addresses, matching
     docs/bar_age_nyc.md §2.3's own convention.
 
     DERIVED from the panel rather than pinned as a literal, so the F2 gate
@@ -493,108 +757,250 @@ def _nta_age_mix(addr: pd.DataFrame, nta_code: str) -> tuple[float, float]:
     sub = addr[addr["nta_code"] == nta_code]
     if sub.empty:
         raise ValueError(f"NTA {nta_code!r} has no addresses in scope; F2 cannot be evaluated")
-    return float(sub["w18"].median()), float(sub["w65"].median())
+    return tuple(float(sub[t].median()) for t in terms)
+
+
+def resolve_contrast_ntas(addr: pd.DataFrame, spec: CategorySpec) -> tuple[str, str, pd.DataFrame]:
+    """(from_nta, to_nta, the ranking table). For a `fixed` contrast this is the
+    pinned pair; for an `extreme` contrast the endpoints are DERIVED as the
+    lowest and highest UNIT-WEIGHTED `variable` among NTAs with at least
+    `min_addresses` in-scope addresses.
+
+    Unit-weighted for the selection because the question "which neighbourhood
+    has the most children" is about people, and an NTA of 3,000 one-family lots
+    and an NTA of 3,000 studios are not the same neighbourhood. The MIX the
+    contrast is then evaluated at is still the MEDIAN (`_nta_age_mix`), so the
+    gate is computed the same way bar's was; the two statistics are reported
+    side by side rather than one hidden inside the other.
+    """
+    c = spec.contrast
+    ranked = pd.DataFrame(columns=["nta_code", "neighborhood", "n_addr",
+                                   "units", "mean", "median", "weighted"])
+    if c.kind == "fixed":
+        return c.from_nta, c.to_nta, ranked
+    if c.kind != "extreme":
+        raise ValueError(f"unknown contrast kind {c.kind!r}")
+
+    var = c.variable
+    sub = addr[addr[var].notna() & addr["nta_code"].notna()].copy()
+    sub["_u"] = sub["units_capped"].fillna(0.0).clip(lower=0.0)
+    sub["_wv"] = sub["_u"] * sub[var]
+    g = sub.groupby("nta_code", sort=True)
+    agg = pd.DataFrame({
+        "neighborhood": g["neighborhood"].first(),
+        "n_addr": g.size(),
+        "units": g["_u"].sum(),
+        "_wv": g["_wv"].sum(),
+        "mean": g[var].mean(),
+        "median": g[var].median(),
+    })
+    # An NTA of pure-commercial lots has zero capped units; fall back to the
+    # unweighted mean there rather than dividing by 0.
+    agg["weighted"] = np.where(agg["units"] > 0, agg["_wv"] / agg["units"].replace(0, np.nan),
+                               agg["mean"])
+    ranked = agg.drop(columns=["_wv"]).reset_index()
+    ranked = ranked[ranked["n_addr"] >= c.min_addresses].sort_values("weighted")
+    if len(ranked) < 2:
+        raise ValueError(
+            f"fewer than two NTAs carry >= {c.min_addresses} addresses; the "
+            f"{spec.category} contrast cannot be derived")
+    return (str(ranked.iloc[0]["nta_code"]), str(ranked.iloc[-1]["nta_code"]), ranked)
+
+
+def multiplier_terms(deltas: np.ndarray, coefs: np.ndarray) -> np.ndarray:
+    """The general multiplier: exp(delta @ coefs) for an (n, k) delta matrix.
+
+    exp(.) of a linear form in the age deltas: strictly positive for any finite
+    input, which is what makes `gap_score * age_fit` non-filtering by
+    construction rather than by assertion. The ONLY place the formula is
+    written; `multiplier` below is the two-term bar wrapper over it."""
+    d = np.atleast_2d(np.asarray(deltas, float))
+    return np.exp(d @ np.asarray(coefs, float))
 
 
 def multiplier(w18, w65, b18: float, b65: float,
                anchor_w18: float, anchor_w65: float) -> np.ndarray:
-    """age_fit_bar. Vectorized, and the ONLY place the formula is written.
+    """age_fit for a two-adult-share curve (bar). Kept as-is from D63 so the
+    published closed form is still checkable against arithmetic."""
+    a = np.asarray(w18, float) - anchor_w18
+    b = np.asarray(w65, float) - anchor_w65
+    return multiplier_terms(np.column_stack([np.atleast_1d(a), np.atleast_1d(b)]),
+                            [b18, b65]).reshape(np.shape(a))
 
-    exp(.) of a linear form in the two age deltas: strictly positive for any
-    finite input, which is what makes `gap_score * age_fit` non-filtering by
-    construction rather than by assertion."""
-    return np.exp(b18 * (np.asarray(w18, float) - anchor_w18)
-                  + b65 * (np.asarray(w65, float) - anchor_w65))
+
+def multiplier_moe_terms(fit_value, deltas: np.ndarray, coefs: np.ndarray,
+                         cov_age: np.ndarray, moes: np.ndarray) -> np.ndarray:
+    """90% MOE on `multiplier_terms`, by the DELTA METHOD through exp(.).
+
+    Var(log age_fit) has two independent parts, added in quadrature:
+      * COEFFICIENT uncertainty -- the quadratic form of the age deltas against
+        `cov_age`, the (k, k) block of the CONLEY covariance (never HC3; see the
+        module docstring);
+      * ACS SAMPLING uncertainty -- each published 90% share MOE converted to an
+        SE at 1.645 and scaled by its own coefficient.
+    Var(age_fit) ~= age_fit^2 * Var(log age_fit); the result is re-inflated to a
+    90% MOE at 1.645 so it is directly comparable to the ACS MOEs it is built
+    from. The renormalizing denominator of the ADULT shares (1 -
+    under_18_share) is treated as fixed: second order, and stated rather than
+    hidden."""
+    d = np.atleast_2d(np.asarray(deltas, float))
+    C = np.asarray(cov_age, float)
+    b = np.asarray(coefs, float)
+    var_coef = np.einsum("ij,jk,ik->i", d, C, d)
+    var_acs = (((np.atleast_2d(np.asarray(moes, float)) * b) / MOE_Z) ** 2).sum(axis=1)
+    return MOE_Z * np.asarray(fit_value, float) * np.sqrt(var_coef + var_acs)
 
 
 def multiplier_moe(fit_value, w18, w65, b18: float, b65: float,
                    anchor_w18: float, anchor_w65: float,
                    cov_age: np.ndarray, w18_moe, w65_moe) -> np.ndarray:
-    """90% MOE on `multiplier`, by the DELTA METHOD through exp(.).
-
-    Var(log age_fit) has two independent parts, added in quadrature:
-      * COEFFICIENT uncertainty -- the quadratic form of the two age deltas
-        against `cov_age`, the 2x2 (w18, w65) block of the CONLEY covariance
-        (never HC3; see the module docstring);
-      * ACS SAMPLING uncertainty -- each published 90% share MOE converted to an
-        SE at 1.645 and scaled by its own coefficient.
-    Var(age_fit) ~= age_fit^2 * Var(log age_fit); the result is re-inflated to a
-    90% MOE at 1.645 so it is directly comparable to the ACS MOEs it is built
-    from. The renormalizing denominator (1 - under_18_share) is treated as
-    fixed: second order, and stated rather than hidden."""
-    a = np.asarray(w18, float) - anchor_w18
-    b = np.asarray(w65, float) - anchor_w65
-    var_coef = (a ** 2 * cov_age[0, 0] + b ** 2 * cov_age[1, 1]
-                + 2.0 * a * b * cov_age[0, 1])
-    var_acs = ((b18 * np.asarray(w18_moe, float) / MOE_Z) ** 2
-               + (b65 * np.asarray(w65_moe, float) / MOE_Z) ** 2)
-    return MOE_Z * np.asarray(fit_value, float) * np.sqrt(var_coef + var_acs)
+    """The two-term bar wrapper over `multiplier_moe_terms`."""
+    a = np.atleast_1d(np.asarray(w18, float) - anchor_w18)
+    b = np.atleast_1d(np.asarray(w65, float) - anchor_w65)
+    moes = np.column_stack([np.atleast_1d(np.asarray(w18_moe, float)),
+                            np.atleast_1d(np.asarray(w65_moe, float))])
+    return multiplier_moe_terms(fit_value, np.column_stack([a, b]),
+                                [b18, b65], cov_age, moes)
 
 
-def estimate_bar_curve(panel: TractPanel, addr: pd.DataFrame,
-                       cutoff_m: float = CONLEY_CUTOFF_M) -> dict:
-    """Fit `sla_composition_v1` and return the provenance record, PURE of IO.
+def _deltas(frame: pd.DataFrame, terms, anchors) -> np.ndarray:
+    return np.column_stack([frame[t].to_numpy(float) - float(a)
+                            for t, a in zip(terms, anchors)])
 
-    Three fits, all on the same design: the pooled MN+BK model that supplies the
-    shipped coefficients, and one borough-internal model each for Brooklyn (the
-    F2 gate -- 98% of the bar-lead gap set lives there, so the curve has to hold
-    where it will be used, not merely where it is best identified) and Manhattan
-    (reported for contrast; §6.1's finding that the two boroughs run on
-    different mechanisms is the reason pooling alone is not enough).
-    """
+
+def _fit_one(d: pd.DataFrame, spec: CategorySpec, outcome: str, terms,
+             cutoff_m: float, mix_from, mix_to, extra_terms: tuple[str, ...] = ()
+             ) -> dict:
+    """One OLS + Conley fit on an already-built design, pooled and per borough.
+
+    Shared by the SHIPPED specification and by every robustness variant, so a
+    robustness number can never come from a slightly different sample or a
+    slightly different SE than the one it is supposed to be compared against."""
     import statsmodels.formula.api as smf
 
-    d = _design(panel.tracts)
-    if len(d) < 50:
-        raise ValueError(f"estimation sample is {len(d)} tracts; refusing to fit a curve on it")
-    xy = d[["x", "y"]].to_numpy()
-
-    model = smf.ols(FORMULA, data=d).fit()
-    cov = _conley_cov(model, xy, cutoff_m)
+    rhs = " + ".join([*terms, *extra_terms,
+                      f"lunits_{spec.r}", "lwalk", "linc", "renter_share",
+                      f"lretail_{spec.r}"])
+    dd = d.dropna(subset=[outcome, *terms, *extra_terms]).copy()
+    model = smf.ols(f"{outcome} ~ {rhs} + MN", data=dd).fit()
+    cov = _conley_cov(model, dd[["x", "y"]].to_numpy(), cutoff_m)
     names = list(model.params.index)
-    i18, i65 = names.index("w18"), names.index("w65")
-    cov_age = np.array([[cov[i18, i18], cov[i18, i65]],
-                        [cov[i65, i18], cov[i65, i65]]])
-    b18 = float(model.params["w18"])
-    b65 = float(model.params["w65"])
-
-    # --- the anchor: unit-weighted MN+BK adult mix over the estimation sample
-    wts = d["units_tract"].to_numpy(float)
-    if wts.sum() <= 0:
-        wts = np.ones(len(d))
-    anchor_w18 = float(np.average(d["w18"], weights=wts))
-    anchor_w65 = float(np.average(d["w65"], weights=wts))
-
-    # --- the owner's contrast, derived from the data, not pinned -------------
-    ch18, ch65 = _nta_age_mix(addr, CONTRAST_NTAS["from"])
-    ev18, ev65 = _nta_age_mix(addr, CONTRAST_NTAS["to"])
-    dw18, dw65 = ev18 - ch18, ev65 - ch65
-    pooled_contrast = _contrast(model.params, cov, dw18, dw65)
+    idx = [names.index(t) for t in terms]
+    cov_age = np.array([[cov[i, j] for j in idx] for i in idx])
+    deltas = [float(b) - float(a) for a, b in zip(mix_from, mix_to)]
 
     by_borough: dict[str, dict] = {}
-    for boro in sorted(d["borough"].unique()):
-        sub = d[d["borough"] == boro]
+    for boro in sorted(dd["borough"].unique()):
+        sub = dd[dd["borough"] == boro]
         if len(sub) < 50:
             continue
-        m_b = smf.ols(FORMULA_ONE_BOROUGH, data=sub).fit()
+        m_b = smf.ols(f"{outcome} ~ {rhs}", data=sub).fit()
         cov_b = _conley_cov(m_b, sub[["x", "y"]].to_numpy(), cutoff_m)
         nb = list(m_b.params.index)
-        j18, j65 = nb.index("w18"), nb.index("w65")
         by_borough[boro] = {
             "n_tracts": int(m_b.nobs),
-            "b18": float(m_b.params["w18"]),
-            "b18_se_conley": float(np.sqrt(cov_b[j18, j18])),
-            "b65": float(m_b.params["w65"]),
-            "b65_se_conley": float(np.sqrt(cov_b[j65, j65])),
-            "contrast": _contrast(m_b.params, cov_b, dw18, dw65),
+            "coefs": {t: float(m_b.params[t]) for t in terms},
+            "se_conley": {t: float(np.sqrt(cov_b[nb.index(t), nb.index(t)]))
+                          for t in terms},
+            "t_conley": {t: float(m_b.params[t]
+                                  / np.sqrt(cov_b[nb.index(t), nb.index(t)]))
+                         for t in terms},
+            "contrast": _contrast(m_b.params, cov_b, terms, deltas),
         }
+    return {
+        "outcome": outcome,
+        "formula": f"{outcome} ~ {rhs} + MN",
+        "n_tracts": int(model.nobs),
+        "r_squared": float(model.rsquared),
+        "coefs": {t: float(model.params[t]) for t in terms},
+        "se_conley": {t: float(np.sqrt(cov[names.index(t), names.index(t)]))
+                      for t in terms},
+        "t_conley": {t: float(model.params[t]
+                              / np.sqrt(cov[names.index(t), names.index(t)]))
+                     for t in terms},
+        "cov_age_conley": [[float(v) for v in row] for row in cov_age],
+        "coefficients": {k: float(v) for k, v in model.params.items()},
+        "contrast_pooled": _contrast(model.params, cov, terms, deltas),
+        "by_borough": by_borough,
+        "_model_params": model.params,
+        "_cov": cov,
+        "_design": dd,
+    }
+
+
+def under_5_share(acs_year: int = ACS_YEAR,
+                  path: pathlib.Path | None = None) -> pd.DataFrame | None:
+    """Tract-level under-5 share from the RAW ACS cache, for the D64 robustness
+    check only. Returns None when the cache is absent.
+
+    B01001_003 (male under 5) + B01001_027 (female under 5) over B01001_001,
+    the table's OWN total -- the same denominator grid/acs.py uses for the three
+    shipped bands, so this is directly comparable to `under_18_share`. It is
+    DELIBERATELY not written to the warehouse in this pass: a fourth age column
+    on analysis.address_demographics is an ACS ingest decision (D60), not a
+    side-effect of an age-fit run.
+    """
+    p = pathlib.Path(path) if path else (
+        pathlib.Path(__file__).resolve().parents[3] / "data" / "raw" / "acs"
+        / f"tracts_{acs_year}.json")
+    if not p.exists():
+        return None
+    doc = json.loads(p.read_text())
+    rows = []
+    for geoid, rec in doc.get("tracts", {}).items():
+        try:
+            tot = float(rec["B01001_001E"])
+            n5 = float(rec["B01001_003E"]) + float(rec["B01001_027E"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if tot <= 0:
+            continue
+        rows.append((str(geoid), n5 / tot))
+    if not rows:
+        return None
+    return pd.DataFrame(rows, columns=["tract_geoid", "under_5_share"])
+
+
+def estimate_curve(panel: TractPanel, addr: pd.DataFrame,
+                   spec: CategorySpec = BAR_SPEC,
+                   cutoff_m: float = CONLEY_CUTOFF_M) -> dict:
+    """Fit `spec` and return the provenance record, PURE of IO.
+
+    Three fits on the shipped outcome, all on the same design: the pooled MN+BK
+    model that supplies the shipped coefficients, and one borough-internal model
+    each for Brooklyn (the F2 gate -- the curve has to hold where it will be
+    used, not merely where it is best identified) and Manhattan (reported for
+    contrast; §6.1's finding that the two boroughs run on different mechanisms
+    is the reason pooling alone is not enough). Any `robustness_outcomes` are
+    fitted the same way and REPORTED, never shipped.
+    """
+    terms = list(spec.age_terms)
+    extra = under_5_share(panel.acs_year) if "under_5" in spec.robustness_outcomes else None
+    d = _design(panel.tracts, spec, extra=extra)
+    if len(d) < 50:
+        raise ValueError(f"estimation sample is {len(d)} tracts; refusing to fit a curve on it")
+
+    from_nta, to_nta, ranked = resolve_contrast_ntas(addr, spec)
+    mix_from = _nta_age_mix(addr, from_nta, terms)
+    mix_to = _nta_age_mix(addr, to_nta, terms)
+
+    main = _fit_one(d, spec, spec.outcome_col, terms, cutoff_m, mix_from, mix_to)
+    coefs = [main["coefs"][t] for t in terms]
+    cov_age = np.asarray(main["cov_age_conley"], float)
+
+    # --- the anchor: unit-weighted MN+BK mix over the estimation sample ------
+    dd = main["_design"]
+    wts = dd["units_tract"].to_numpy(float)
+    if wts.sum() <= 0:
+        wts = np.ones(len(dd))
+    anchors = [float(np.average(dd[t], weights=wts)) for t in terms]
 
     # --- the multiplier over the estimation tracts, and its dispersion gate --
     tr = panel.tracts
-    fit_all = multiplier(tr["w18"], tr["w65"], b18, b65, anchor_w18, anchor_w65)
-    moe_all = multiplier_moe(fit_all, tr["w18"], tr["w65"], b18, b65,
-                             anchor_w18, anchor_w65, cov_age,
-                             tr["w18_moe"], tr["w65_moe"])
+    dl = _deltas(tr, terms, anchors)
+    fit_all = multiplier_terms(dl, coefs)
+    moe_all = multiplier_moe_terms(
+        fit_all, dl, coefs, cov_age, tr[_age_moe_columns(terms)].to_numpy(float))
     in_sample = tr["keep"].to_numpy()
     fs = pd.Series(fit_all[in_sample]).dropna()
     ms = pd.Series(moe_all[in_sample]).dropna()
@@ -602,32 +1008,59 @@ def estimate_bar_curve(panel: TractPanel, addr: pd.DataFrame,
     median_moe = float(ms.median())
     spread = p90 - p10
 
-    return {
-        "spec": SPEC_VERSION,
-        "outcome": "log(1 + bar-type on-premises licences within 400 m) "
-                   "- log(1 + all on-premises licences within 400 m)",
-        "formula": FORMULA,
+    # --- robustness variants, reported and never shipped ---------------------
+    robustness: dict[str, dict] = {}
+    if "count" in spec.robustness_outcomes:
+        count_col = f"{spec.category}_count_{spec.r}"
+        robustness["count"] = _strip(_fit_one(
+            d, spec, count_col, terms, cutoff_m, mix_from, mix_to))
+        robustness["count"]["outcome_label"] = (
+            f"log(1 + canonical {spec.category} POIs within {spec.r} m) "
+            "-- COUNT, no denominator")
+    if "under_5" in spec.robustness_outcomes and extra is not None:
+        robustness["under_5"] = _strip(_fit_one(
+            d, spec, spec.outcome_col, terms, cutoff_m, mix_from, mix_to,
+            extra_terms=("under_5_share",)))
+        m_u5 = robustness["under_5"]
+        m_u5["under_5_share"] = {
+            "coef": float(m_u5["coefficients"]["under_5_share"]),
+            "n_tracts_with_value": int(d["under_5_share"].notna().sum()),
+        }
+    elif "under_5" in spec.robustness_outcomes:
+        robustness["under_5"] = {"skipped": "data/raw/acs/tracts_*.json not present"}
+
+    fit = {
+        "category": spec.category,
+        "spec": spec.spec_version,
+        "outcome": spec.outcome_label.format(r=spec.r),
+        "formula": main["formula"],
+        "radius_m": spec.radius_m,
         "se": f"Conley spatial-HAC, Bartlett kernel, {cutoff_m:.0f} m cutoff",
-        "boroughs": sorted(d["borough"].unique().tolist()),
-        "n_tracts": int(model.nobs),
+        "boroughs": sorted(dd["borough"].unique().tolist()),
+        "n_tracts": main["n_tracts"],
         "n_tracts_all": len(tr),
-        "r_squared": float(model.rsquared),
-        "b18": b18,
-        "b18_se_conley": float(np.sqrt(cov[i18, i18])),
-        "b18_t_conley": b18 / float(np.sqrt(cov[i18, i18])),
-        "b65": b65,
-        "b65_se_conley": float(np.sqrt(cov[i65, i65])),
-        "b65_t_conley": b65 / float(np.sqrt(cov[i65, i65])),
-        "cov_age_conley": [[float(v) for v in row] for row in cov_age],
-        "anchor_w18": anchor_w18,
-        "anchor_w65": anchor_w65,
+        "r_squared": main["r_squared"],
+        "age_terms": terms,
+        "primary_age_term": spec.primary_age_term,
+        "coefs": main["coefs"],
+        "se_conley": main["se_conley"],
+        "t_conley": main["t_conley"],
+        "anchors": {t: a for t, a in zip(terms, anchors)},
+        "cov_age_conley": main["cov_age_conley"],
         "contrast": {
-            "from_nta": CONTRAST_NTAS["from"], "to_nta": CONTRAST_NTAS["to"],
-            "from_w18": ch18, "from_w65": ch65, "to_w18": ev18, "to_w65": ev65,
-            "pooled": pooled_contrast,
+            "kind": spec.contrast.kind,
+            "variable": spec.contrast.variable,
+            "require_sign": spec.contrast.require_sign,
+            "min_addresses": spec.contrast.min_addresses,
+            "from_nta": from_nta, "to_nta": to_nta,
+            "from_name": _nta_name(addr, from_nta),
+            "to_name": _nta_name(addr, to_nta),
+            "from_mix": {t: v for t, v in zip(terms, mix_from)},
+            "to_mix": {t: v for t, v in zip(terms, mix_to)},
+            "pooled": main["contrast_pooled"],
         },
-        "by_borough": by_borough,
-        "coefficients": {k: float(v) for k, v in model.params.items()},
+        "by_borough": main["by_borough"],
+        "coefficients": main["coefficients"],
         "multiplier": {
             "p10": p10, "p50": p50, "p90": p90,
             "spread": spread,
@@ -635,24 +1068,68 @@ def estimate_bar_curve(panel: TractPanel, addr: pd.DataFrame,
             "dispersion_ratio": (spread / median_moe) if median_moe > 0 else float("inf"),
             "min": float(fs.min()), "max": float(fs.max()),
         },
+        "robustness": robustness,
         "inputs": {
             "acs_year": panel.acs_year,
             "supply_hash": panel.supply_hash,
-            "n_onprem_licences": panel.n_licences,
-            "n_bar_licences": panel.n_bar_licences,
-            "hash": inputs_hash(panel.supply_hash, panel.acs_year, panel.n_bar_licences),
+            "n_universe": panel.n_universe,
+            "n_target": panel.n_target,
+            "hash": inputs_hash(panel.supply_hash, panel.acs_year, panel.n_target),
         },
         "disclaimer": AGE_FIT_DISCLAIMER,
         "fitted_at": dt.datetime.now(dt.UTC).isoformat(timespec="seconds"),
     }
+    if spec.contrast.kind == "extreme" and len(ranked):
+        fit["contrast"]["ranking_extremes"] = {
+            "lowest": ranked.head(3).to_dict("records"),
+            "highest": ranked.tail(3).to_dict("records"),
+            "n_ntas": len(ranked),
+        }
+    # --- back-compat keys for a two-adult-share curve ------------------------
+    # D63's `age_fit_bar.json` schema, kept so an older reader (and the D63
+    # tests' synthetic FIT dicts) still work unchanged.
+    if terms == ["w18", "w65"]:
+        fit.update({
+            "b18": main["coefs"]["w18"], "b65": main["coefs"]["w65"],
+            "b18_se_conley": main["se_conley"]["w18"],
+            "b65_se_conley": main["se_conley"]["w65"],
+            "b18_t_conley": main["t_conley"]["w18"],
+            "b65_t_conley": main["t_conley"]["w65"],
+            "anchor_w18": anchors[0], "anchor_w65": anchors[1],
+        })
+        fit["inputs"]["n_bar_licences"] = panel.n_target
+        fit["inputs"]["n_onprem_licences"] = panel.n_universe
+        for b in fit["by_borough"].values():
+            b["b18"], b["b65"] = b["coefs"]["w18"], b["coefs"]["w65"]
+            b["b18_se_conley"] = b["se_conley"]["w18"]
+            b["b65_se_conley"] = b["se_conley"]["w65"]
+        fit["contrast"].update({
+            "from_w18": mix_from[0], "from_w65": mix_from[1],
+            "to_w18": mix_to[0], "to_w65": mix_to[1],
+        })
+    return fit
 
 
-def inputs_hash(supply_hash: str | None, acs_year: int, n_bar_licences: int) -> str:
+def _strip(one: dict) -> dict:
+    """Drop the non-serializable working objects a `_fit_one` result carries."""
+    return {k: v for k, v in one.items() if not k.startswith("_")}
+
+
+def _nta_name(addr: pd.DataFrame, nta_code: str) -> str | None:
+    sub = addr.loc[addr["nta_code"] == nta_code, "neighborhood"]
+    return None if sub.empty else str(sub.iloc[0])
+
+
+def inputs_hash(supply_hash: str | None, acs_year: int, n_target: int) -> str:
     """The identity of the inputs a curve was revealed from. A supply-revealed
     coefficient is only valid against the supply set it was revealed from
     (docs/bar_age_nyc.md §7.2 test 7), so this triple is stamped on the fit and
-    re-checked by `apply_age_fit` before the multiplier touches a ranking."""
-    key = f"{supply_hash}|{acs_year}|{n_bar_licences}"
+    re-checked by `apply_age_fit` before the multiplier touches a ranking.
+
+    `n_target` is the count of the OUTCOME's own numerator -- bar-type SLA
+    licences for `bar`, canonical childcare POIs for `childcare` -- so a change
+    that moves one category's evidence invalidates only that category's curve."""
+    key = f"{supply_hash}|{acs_year}|{n_target}"
     return hashlib.sha256(key.encode()).hexdigest()[:12]
 
 
@@ -661,12 +1138,15 @@ def inputs_hash(supply_hash: str | None, acs_year: int, n_bar_licences: int) -> 
 def failed_gates(fit: dict) -> list[str]:
     """Which of the published failure criteria this curve fails. Empty == ship.
 
-    Pure, so a test can hand it a synthetic curve. Two criteria are enforced
-    here because they are the two that decide whether the multiplier may be
-    APPLIED at all:
+    Pure, so a test can hand it a synthetic curve. Applied identically to EVERY
+    category in the registry -- QUESTIONS D15 is explicit that a second source
+    agreeing on a sign is corroboration, not a licence to relax the gate. Two
+    criteria are enforced here because they are the two that decide whether the
+    multiplier may be APPLIED at all:
 
-      F2  the Brooklyn-only Conley CI on the Carnegie-Hill -> East-Village
-          contrast must EXCLUDE 1.0. This is the criterion the note names as
+      F2  the Brooklyn-only Conley CI on the category's low-age -> high-age
+          contrast must EXCLUDE 1.0, and (where the spec demands a sign) the
+          point estimate must carry it. This is the criterion the note names as
           binding: it is the only reason the composition spec is preferred over
           the bar-POI count spec, whose Brooklyn CI grazes 1.0 at [1.011,
           2.178]. Brooklyn, not the pooled sample, because 98.2% of the
@@ -677,9 +1157,9 @@ def failed_gates(fit: dict) -> list[str]:
           is what retired it; a successor that cannot clear its own noise floor
           is not an improvement.
 
-    The remaining criteria (F1 non-filtering, F4 the EV > CH ordering with MOEs,
-    F5 the placebo ordering, F6 the Jaccard band, F7 Conley-not-HC3) are pinned
-    by tests/test_age_fit.py and by the note, not re-derived on every fit.
+    The remaining criteria (F1 non-filtering, F4 the high > low ordering with
+    MOEs, F5 the placebo ordering, F6 the Jaccard band, F7 Conley-not-HC3) are
+    pinned by tests/test_age_fit.py and by the note, not re-derived on every fit.
     """
     bad: list[str] = []
     bk = (fit.get("by_borough") or {}).get("BK")
@@ -689,6 +1169,16 @@ def failed_gates(fit: dict) -> list[str]:
         lo, hi = bk["contrast"]["ci_low"], bk["contrast"]["ci_high"]
         if lo <= 1.0 <= hi:
             bad.append(f"F2 (Brooklyn Conley CI [{lo:.3f}, {hi:.3f}] includes 1.0)")
+        else:
+            want = int((fit.get("contrast") or {}).get("require_sign", 0))
+            ratio = bk["contrast"]["ratio"]
+            if want > 0 and ratio < 1.0:
+                bad.append(
+                    f"F2 (Brooklyn contrast {ratio:.3f} is the WRONG SIGN: the "
+                    "high-demand endpoint has LESS of the category, so the CI "
+                    "excludes 1.0 by rejecting the hypothesis, not confirming it)")
+            if want < 0 and ratio > 1.0:
+                bad.append(f"F2 (Brooklyn contrast {ratio:.3f} is the wrong sign)")
     ratio = fit["multiplier"]["dispersion_ratio"]
     if not (ratio >= DISPERSION_GATE_MIN):
         bad.append(f"F3 (dispersion spread/MOE = {ratio:.2f} < {DISPERSION_GATE_MIN})")
@@ -699,102 +1189,188 @@ def write_fit_if_gates_pass(fit: dict, path: pathlib.Path = FIT_PATH) -> pathlib
     """Persist the curve -- and ONLY if it passes its own failure criterion.
 
     The order matters and is the point: gates first, write second. A curve that
-    fails F2 or F3 leaves the previous `age_fit_bar.json` exactly as it was, so
-    a failed re-fit degrades to "yesterday's curve, explicitly stale" rather
-    than to "today's curve, quietly invalid"."""
+    fails F2 or F3 leaves the previous fit JSON exactly as it was, so a failed
+    re-fit degrades to "yesterday's curve, explicitly stale" rather than to
+    "today's curve, quietly invalid"."""
     bad = failed_gates(fit)
     if bad:
         raise AgeFitGateFailure(
-            "age_fit_bar failed its own failure criterion (docs/bar_age_nyc.md §7.1): "
-            + "; ".join(bad) + ". Nothing written; the multiplier must not be applied "
+            f"age_fit_{fit.get('category', 'bar')} failed its own failure criterion "
+            "(docs/bar_age_nyc.md §7.1): " + "; ".join(bad)
+            + ". Nothing written; the multiplier must not be applied "
             "from a curve that fails its own criterion.")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(fit, indent=2, sort_keys=True) + "\n")
+    path.write_text(json.dumps(fit, indent=2, sort_keys=True, default=float) + "\n")
     return path
 
 
-def load_fit(path: pathlib.Path = FIT_PATH) -> dict:
-    if not pathlib.Path(path).exists():
+def load_fit(path: pathlib.Path | None = None, category: str | None = None) -> dict:
+    """One curve's JSON. `category` resolves the path from the registry."""
+    if path is None:
+        path = spec_for(category).fit_path if category else FIT_PATH
+    p = pathlib.Path(path)
+    if not p.exists():
         raise FileNotFoundError(
-            f"{path} not found -- run `loci age-fit fit` before `loci age-fit apply`")
-    return json.loads(pathlib.Path(path).read_text())
+            f"{p} not found -- run `loci age-fit fit"
+            + (f" --category {category}" if category else "")
+            + "` before `loci age-fit apply`")
+    return json.loads(p.read_text())
+
+
+def load_fits(categories=None, missing_ok: bool = False) -> dict[str, dict]:
+    """{category: fit} for every requested category.
+
+    A category NAMED explicitly and never fitted RAISES -- an apply that
+    silently skipped the one category the caller asked for would look like a
+    success. Under `missing_ok` (the `--category all` path) a category with no
+    JSON is SKIPPED instead, which is the state a category sits in when its
+    curve is defined in the registry but failed its own F2/F3 gate and was
+    therefore never written. The caller must still reset that category's rows,
+    so `apply_age_fit` scopes the reset by what was REQUESTED, not by what was
+    found."""
+    cats = list(categories) if categories is not None else list(FITTED_CATEGORIES)
+    out: dict[str, dict] = {}
+    for c in cats:
+        try:
+            out[c] = load_fit(category=c)
+        except FileNotFoundError:
+            if not missing_ok:
+                raise
+    return out
+
+
+def fit_curve(con, category: str = "bar", boroughs: list[str] = FIT_BOROUGHS,
+              acs_year: int = ACS_YEAR, cutoff_m: float = CONLEY_CUTOFF_M,
+              dry_run: bool = False,
+              path: pathlib.Path | None = None) -> tuple[dict, pathlib.Path | None]:
+    """Re-estimate one category's curve from the warehouse. READ-ONLY on the
+    database in both modes; under `--dry-run` it also writes no JSON. Returns
+    (fit, path-written-or-None) and RAISES `AgeFitGateFailure` before writing
+    anything if the curve fails F2 or F3."""
+    spec = spec_for(category)
+    boroughs = list(boroughs)
+    addr = load_addresses(con, boroughs, acs_year)
+    panel = build_tract_panel(con, spec, boroughs, acs_year, addresses=addr)
+    fit = estimate_curve(panel, addr, spec, cutoff_m=cutoff_m)
+    if dry_run:
+        bad = failed_gates(fit)
+        if bad:
+            raise AgeFitGateFailure(
+                f"age_fit_{spec.category} failed its own failure criterion "
+                "(docs/bar_age_nyc.md §7.1): " + "; ".join(bad))
+        return fit, None
+    return fit, write_fit_if_gates_pass(fit, path or spec.fit_path)
 
 
 def fit_bar_curve(con, boroughs: list[str] = FIT_BOROUGHS, acs_year: int = ACS_YEAR,
                   cutoff_m: float = CONLEY_CUTOFF_M, dry_run: bool = False,
                   path: pathlib.Path = FIT_PATH) -> tuple[dict, pathlib.Path | None]:
-    """Re-estimate the curve from the warehouse. READ-ONLY on the database in
-    both modes; under `--dry-run` it also writes no JSON. Returns
-    (fit, path-written-or-None) and RAISES `AgeFitGateFailure` before writing
-    anything if the curve fails F2 or F3."""
-    boroughs = list(boroughs)
-    addr = load_addresses(con, boroughs, acs_year)
-    panel = build_tract_panel(con, boroughs, acs_year, addresses=addr)
-    fit = estimate_bar_curve(panel, addr, cutoff_m=cutoff_m)
-    if dry_run:
-        bad = failed_gates(fit)
-        if bad:
-            raise AgeFitGateFailure(
-                "age_fit_bar failed its own failure criterion (docs/bar_age_nyc.md §7.1): "
-                + "; ".join(bad))
-        return fit, None
-    return fit, write_fit_if_gates_pass(fit, path)
+    """D63's entry point, kept as a thin alias so an older caller does not
+    break. New code calls `fit_curve(con, category=...)`."""
+    return fit_curve(con, "bar", boroughs, acs_year, cutoff_m, dry_run, path)
+
+
+# Back-compat alias: D63 named the estimator after its only category.
+estimate_bar_curve = estimate_curve
 
 
 # ------------------------------------------------------------- the apply side
 
-def compute_age_fit(con, boroughs: list[str], fit: dict,
+def _fit_age_block(fit: dict) -> tuple[list[str], list[float], list[float], np.ndarray]:
+    """(terms, coefs, anchors, cov_age) from a fit JSON, tolerant of D63's
+    bar-only schema so an old file and the tests' synthetic curves still load."""
+    cov = np.asarray(fit["cov_age_conley"], float)
+    if "age_terms" in fit:
+        terms = list(fit["age_terms"])
+        return terms, [float(fit["coefs"][t]) for t in terms], \
+            [float(fit["anchors"][t]) for t in terms], cov
+    return (["w18", "w65"], [float(fit["b18"]), float(fit["b65"])],
+            [float(fit["anchor_w18"]), float(fit["anchor_w65"])], cov)
+
+
+def fit_category(fit: dict) -> str:
+    """Which category a fit JSON belongs to. D63's file predates the field, and
+    its only category was `bar`."""
+    return str(fit.get("category", "bar"))
+
+
+def compute_age_fit(con, boroughs: list[str], fits: dict[str, dict] | dict,
                     acs_year: int | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """(category-grain frame, address-grain frame). READ-ONLY.
 
-    The category frame carries one row per (address, FITTED category) with its
-    multiplier and MOE; the address frame carries `age_fit_lead`,
+    The category frame carries one row per (address, fitted category) with THAT
+    category's multiplier and MOE; the address frame carries `age_fit_lead`,
     `age_fit_lead_moe` and `gap_score_fit` for every in-scope address.
+
+    `fits` is {category: fit}. A single fit dict is accepted too and is treated
+    as that fit's own category (D63 compatibility).
 
     `age_fit_lead` is 1.0 -- the identity multiplier, so `gap_score_fit ==
     gap_score` exactly -- whenever the address's lead category has no fitted
     curve, or has one but no ACS age mix to evaluate it at. Its MOE is NULL
     there, not 0.0: "no curve" is not "a curve with no uncertainty".
     """
-    acs_year = fit["inputs"]["acs_year"] if acs_year is None else acs_year
+    if "cov_age_conley" in fits:                     # a single fit dict
+        fits = {fit_category(fits): fits}
+    years = {f["inputs"]["acs_year"] for f in fits.values()}
+    if acs_year is None:
+        if len(years) > 1:
+            raise ValueError(f"curves disagree on the ACS vintage: {sorted(years)}")
+        # No curves at all is a legitimate state -- every category's `age_fit`
+        # is NULL and every `age_fit_lead` is 1.0 -- so it must produce frames,
+        # not an exception, or the reset pass never runs.
+        acs_year = years.pop() if years else ACS_YEAR
     addr = load_addresses(con, list(boroughs), acs_year)
-    b18, b65 = fit["b18"], fit["b65"]
-    a18, a65 = fit["anchor_w18"], fit["anchor_w65"]
-    cov_age = np.asarray(fit["cov_age_conley"], float)
 
-    value = multiplier(addr["w18"], addr["w65"], b18, b65, a18, a65)
-    moe = multiplier_moe(value, addr["w18"], addr["w65"], b18, b65, a18, a65,
-                         cov_age, addr["w18_moe"], addr["w65_moe"])
-    # A tract with no published age share (or no MOE) gets no multiplier at all.
-    # Failing closed to NULL is the only honest option: a silent 1.0 would be
-    # indistinguishable from "fitted, and neutral".
-    ok = (addr["w18"].notna() & addr["w65"].notna()
-          & addr["w18_moe"].notna() & addr["w65_moe"].notna()).to_numpy()
-    addr["age_fit"] = np.where(ok, value, np.nan)
-    addr["age_fit_moe"] = np.where(ok, moe, np.nan)
+    per_cat: dict[str, pd.DataFrame] = {}
+    for cat, fit in fits.items():
+        terms, coefs, anchors, cov_age = _fit_age_block(fit)
+        moe_cols = _age_moe_columns(terms)
+        dl = _deltas(addr, terms, anchors)
+        value = multiplier_terms(dl, coefs)
+        moe = multiplier_moe_terms(value, dl, coefs, cov_age,
+                                   addr[moe_cols].to_numpy(float))
+        # A tract with no published age share (or no MOE) gets no multiplier at
+        # all. Failing closed to NULL is the only honest option: a silent 1.0
+        # would be indistinguishable from "fitted, and neutral".
+        ok = np.ones(len(addr), bool)
+        for c in [*terms, *moe_cols]:
+            ok &= addr[c].notna().to_numpy()
+        part = pd.DataFrame({
+            "address_id": addr["address_id"].to_numpy(),
+            "borough": addr["borough"].to_numpy(),
+            "category": cat,
+            "age_fit": np.where(ok, value, np.nan),
+            "age_fit_moe": np.where(ok, moe, np.nan),
+            # The SPEC that produced the number, taken from the fit rather than
+            # from the module constant: a row must say which curve it came from,
+            # not which curve the code currently ships.
+            "age_fit_source": fit.get("spec", SPEC_VERSION),
+        })
+        per_cat[cat] = part
 
-    cat_rows = []
-    for cat in FITTED_CATEGORIES:
-        part = addr.loc[addr["age_fit"].notna(),
-                        ["address_id", "borough", "age_fit", "age_fit_moe"]].copy()
-        part["category"] = cat
-        # The SPEC that produced the number, taken from the fit rather than
-        # from the module constant: a row must say which curve it came from,
-        # not which curve the code currently ships.
-        part["age_fit_source"] = fit.get("spec", SPEC_VERSION)
-        cat_rows.append(part)
-    cat_df = (pd.concat(cat_rows, ignore_index=True) if cat_rows
+    cat_df = (pd.concat([p[p["age_fit"].notna()] for p in per_cat.values()],
+                        ignore_index=True) if per_cat
               else pd.DataFrame(columns=["address_id", "borough", "category",
                                          *AGE_FIT_COLUMNS]))
     cat_df = cat_df[["address_id", "borough", "category", *AGE_FIT_COLUMNS]]
 
-    lead_is_fitted = addr["lead_category"].isin(FITTED_CATEGORIES) & addr["age_fit"].notna()
+    # --- the lead multiplier: whichever curve matches THIS address's lead ----
+    lead = addr["lead_category"].to_numpy()
+    lead_fit = np.full(len(addr), np.nan)
+    lead_moe = np.full(len(addr), np.nan)
+    for cat, part in per_cat.items():
+        m = (lead == cat) & part["age_fit"].notna().to_numpy()
+        lead_fit[m] = part["age_fit"].to_numpy()[m]
+        lead_moe[m] = part["age_fit_moe"].to_numpy()[m]
+    has_lead = addr["lead_category"].notna().to_numpy()
+    lead_fit = np.where(has_lead & np.isnan(lead_fit), 1.0, lead_fit)
+
     addr_df = pd.DataFrame({
         "address_id": addr["address_id"],
         "borough": addr["borough"],
-        "age_fit_lead": np.where(addr["lead_category"].isna(), np.nan,
-                                 np.where(lead_is_fitted, addr["age_fit"], 1.0)),
-        "age_fit_lead_moe": np.where(lead_is_fitted, addr["age_fit_moe"], np.nan),
+        "age_fit_lead": lead_fit,
+        "age_fit_lead_moe": lead_moe,
     })
     addr_df["gap_score_fit"] = addr["gap_score"].to_numpy() * addr_df["age_fit_lead"]
     return cat_df, addr_df[["address_id", "borough", *ADDRESS_AGE_FIT_COLUMNS]]
@@ -813,7 +1389,8 @@ def _assert_disjoint() -> None:
 
 
 def write_age_fit(con, cat_df: pd.DataFrame, addr_df: pd.DataFrame,
-                  boroughs: list[str]) -> tuple[int, int]:
+                  boroughs: list[str],
+                  categories: list[str] | None = None) -> tuple[int, int]:
     """UPDATE-only annotation of both tables. Never INSERT, never DELETE, and
     the two SET lists are built exclusively from AGE_FIT_COLUMNS and
     ADDRESS_AGE_FIT_COLUMNS.
@@ -824,19 +1401,37 @@ def write_age_fit(con, cat_df: pd.DataFrame, addr_df: pd.DataFrame,
     mix) would otherwise keep last run's number forever, because UPDATE has no
     DELETE to fall back on. `boroughs` is passed explicitly rather than inferred
     from the frames so an empty-frame run still clears.
+
+    `categories` SCOPES the reset. Applying the whole fitted set (the default)
+    resets every row, which is what retires a category dropped from the
+    registry. Applying a SUBSET resets only that subset's category rows and only
+    the addresses whose lead is in it -- otherwise `apply --category bar` would
+    silently blank childcare's multipliers and reset those addresses' lead to
+    NULL, which reads on the map as "no curve" rather than "not re-run".
     """
     if not boroughs:
         return 0, 0
     _assert_disjoint()
     holes = ", ".join("?" for _ in boroughs)
-    con.execute(
-        f"UPDATE analysis.address_category SET "
-        f"{', '.join(f'{c} = NULL' for c in AGE_FIT_COLUMNS)} WHERE borough IN ({holes})",
-        list(boroughs))
-    con.execute(
-        f"UPDATE analysis.address SET "
-        f"{', '.join(f'{c} = NULL' for c in ADDRESS_AGE_FIT_COLUMNS)} WHERE borough IN ({holes})",
-        list(boroughs))
+    partial = categories is not None and set(categories) != set(FITTED_CATEGORIES)
+    cat_nulls = ", ".join(f"{c} = NULL" for c in AGE_FIT_COLUMNS)
+    addr_nulls = ", ".join(f"{c} = NULL" for c in ADDRESS_AGE_FIT_COLUMNS)
+    if partial:
+        cats = list(categories)
+        choles = ", ".join("?" for _ in cats)
+        con.execute(
+            f"UPDATE analysis.address_category SET {cat_nulls} "
+            f"WHERE borough IN ({holes}) AND category IN ({choles})",
+            [*boroughs, *cats])
+        con.execute(
+            f"UPDATE analysis.address SET {addr_nulls} "
+            f"WHERE borough IN ({holes}) AND lead_category IN ({choles})",
+            [*boroughs, *cats])
+    else:
+        con.execute(f"UPDATE analysis.address_category SET {cat_nulls} "
+                    f"WHERE borough IN ({holes})", list(boroughs))
+        con.execute(f"UPDATE analysis.address SET {addr_nulls} "
+                    f"WHERE borough IN ({holes})", list(boroughs))
 
     n_cat = 0
     if not cat_df.empty:
@@ -873,45 +1468,82 @@ def write_age_fit(con, cat_df: pd.DataFrame, addr_df: pd.DataFrame,
     return n_cat, n_addr
 
 
+def live_target_count(con, spec: CategorySpec,
+                      boroughs: list[str] = FIT_BOROUGHS) -> int:
+    """The count of the OUTCOME's own numerator as the database now holds it --
+    the third leg of the staleness hash."""
+    if spec.overlay == "sla":
+        return int(con.execute(f"""
+            SELECT count(*) FROM staging.alcohol_licences
+            WHERE active AND borough IN ({', '.join("?" for _ in boroughs)})
+              AND classification = 'on_premises'
+              AND lower(trim(description)) IN ({', '.join("?" for _ in BAR_DESCRIPTIONS)})
+        """, [*boroughs, *sorted(BAR_DESCRIPTIONS)]).fetchone()[0])
+    pred = supply_predicate(DEFAULT_SUPPLY_SET)
+    return int(con.execute(
+        f"SELECT count(*) FROM analysis.poi_supply s "
+        f"WHERE s.{pred} AND s.geom IS NOT NULL AND s.category = ?",
+        [spec.category]).fetchone()[0])
+
+
 def check_fit_is_current(con, fit: dict) -> None:
     """Refuse a curve fitted against a different supply set / ACS vintage /
-    licence count than the database now holds (docs/bar_age_nyc.md §7.2 test 7).
+    outcome count than the database now holds (docs/bar_age_nyc.md §7.2 test 7).
     The supply set moved twice in one month (D52/D59); multiplying today's gap
     set by a curve revealed from a different one is exactly the silent error
-    this check exists to make loud."""
+    this check exists to make loud. Per CATEGORY, so re-ingesting one feed
+    invalidates only the curve that reads it."""
+    spec = spec_for(fit_category(fit))
     rows = con.execute(
         "SELECT DISTINCT supply_hash FROM analysis.address WHERE supply_hash IS NOT NULL"
     ).fetchall()
     live_supply = rows[0][0] if len(rows) == 1 else None
-    n_bar = con.execute(f"""
-        SELECT count(*) FROM staging.alcohol_licences
-        WHERE active AND borough IN ({', '.join("?" for _ in FIT_BOROUGHS)})
-          AND classification = 'on_premises'
-          AND lower(trim(description)) IN ({', '.join("?" for _ in BAR_DESCRIPTIONS)})
-    """, [*FIT_BOROUGHS, *sorted(BAR_DESCRIPTIONS)]).fetchone()[0]
-    live = inputs_hash(live_supply, fit["inputs"]["acs_year"], int(n_bar))
+    n_target = live_target_count(con, spec)
+    live = inputs_hash(live_supply, fit["inputs"]["acs_year"], n_target)
     if live != fit["inputs"]["hash"]:
+        was = fit["inputs"].get("n_target", fit["inputs"].get("n_bar_licences"))
         raise AgeFitStale(
-            f"age_fit_bar.json was fitted from inputs {fit['inputs']['hash']} "
-            f"(supply {fit['inputs']['supply_hash']}, "
-            f"{fit['inputs']['n_bar_licences']:,} bar-type licences) but the database "
-            f"now holds {live} (supply {live_supply}, {n_bar:,}). "
-            "Re-run `loci age-fit fit`.")
+            f"age_fit_{spec.category}.json was fitted from inputs "
+            f"{fit['inputs']['hash']} (supply {fit['inputs']['supply_hash']}, "
+            f"{was:,} outcome records) but the database now holds {live} "
+            f"(supply {live_supply}, {n_target:,}). "
+            f"Re-run `loci age-fit fit --category {spec.category}`.")
 
 
-def apply_age_fit(con, boroughs: list[str] = FIT_BOROUGHS, fit: dict | None = None,
-                  path: pathlib.Path = FIT_PATH, dry_run: bool = False,
-                  check_current: bool = True) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+def apply_age_fit(con, boroughs: list[str] = FIT_BOROUGHS,
+                  fit: dict | None = None, fits: dict[str, dict] | None = None,
+                  path: pathlib.Path | None = None, dry_run: bool = False,
+                  check_current: bool = True,
+                  categories: list[str] | None = None
+                  ) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     """compute + write. A no-op on the database under `--dry-run`: the frames
-    are computed and returned, and nothing is written."""
-    fit = load_fit(path) if fit is None else fit
+    are computed and returned, and nothing is written.
+
+    `fits` is the multi-category form ({category: fit}); `fit` is D63's single
+    curve and is still accepted. `categories` is the RESET SCOPE -- what the
+    caller asked to (re)compute, which can be wider than what was found: a
+    category whose curve failed its gate has no JSON, and its rows must be
+    cleared to NULL rather than keeping a previous run's multiplier."""
+    if fits is None:
+        if fit is not None:
+            fits = {fit_category(fit): fit}
+        elif path is not None:
+            one = load_fit(path)
+            fits = {fit_category(one): one}
+        else:
+            fits = load_fits(categories, missing_ok=categories is None)
     if check_current:
-        check_fit_is_current(con, fit)
+        for f in fits.values():
+            check_fit_is_current(con, f)
     boroughs = list(boroughs)
-    cat_df, addr_df = compute_age_fit(con, boroughs, fit)
-    report = summarize(cat_df, addr_df, fit)
+    reset_scope = list(categories) if categories is not None else list(fits)
+    cat_df, addr_df = compute_age_fit(con, boroughs, fits)
+    report = summarize(cat_df, addr_df, fits)
+    report["reset_categories"] = reset_scope
+    report["missing_curves"] = sorted(set(reset_scope) - set(fits))
     if not dry_run:
-        n_cat, n_addr = write_age_fit(con, cat_df, addr_df, boroughs)
+        n_cat, n_addr = write_age_fit(con, cat_df, addr_df, boroughs,
+                                      categories=reset_scope)
         report["written_category_rows"] = n_cat
         report["written_address_rows"] = n_addr
     return cat_df, addr_df, report
@@ -919,13 +1551,34 @@ def apply_age_fit(con, boroughs: list[str] = FIT_BOROUGHS, fit: dict | None = No
 
 # ---------------------------------------------------------------- reporting
 
-def summarize(cat_df: pd.DataFrame, addr_df: pd.DataFrame, fit: dict) -> dict:
+def summarize(cat_df: pd.DataFrame, addr_df: pd.DataFrame,
+              fits: dict[str, dict] | dict) -> dict:
     """Pure, DB-free summary shared by --dry-run and the post-write report."""
+    if "cov_age_conley" in fits:
+        fits = {fit_category(fits): fits}
     fitted = cat_df["age_fit"].dropna() if len(cat_df) else pd.Series(dtype=float)
     lead = addr_df["age_fit_lead"].dropna() if len(addr_df) else pd.Series(dtype=float)
+    per_category = {}
+    for cat, f in sorted(fits.items()):
+        sub = (cat_df.loc[cat_df["category"] == cat, "age_fit"].dropna()
+               if len(cat_df) else pd.Series(dtype=float))
+        terms, coefs, _, _ = _fit_age_block(f)
+        per_category[cat] = {
+            "spec": f.get("spec"),
+            "n_rows": len(sub),
+            "coefs": dict(zip(terms, coefs)),
+            "primary_age_term": f.get("primary_age_term", terms[0]),
+            "p10": float(sub.quantile(0.10)) if len(sub) else None,
+            "p50": float(sub.quantile(0.50)) if len(sub) else None,
+            "p90": float(sub.quantile(0.90)) if len(sub) else None,
+        }
+    one = next(iter(sorted(fits.items())))[1] if fits else {}
     return {
-        "spec": fit["spec"],
-        "b18": fit["b18"], "b65": fit["b65"],
+        "spec": one.get("spec"),
+        "categories": sorted(fits),
+        "per_category": per_category,
+        # D63 keys, kept so the CLI's bar-only reporting path still reads.
+        "b18": one.get("b18"), "b65": one.get("b65"),
         "n_category_rows": len(cat_df),
         "n_addresses": len(addr_df),
         "n_lead_multiplied": int((lead != 1.0).sum()),
