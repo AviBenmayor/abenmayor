@@ -1,5 +1,6 @@
 """`age_fit`: SUPPLY-REVEALED age multipliers, one curve per fitted category,
-estimated from New York's own composition of supply (D63 `bar`, D64 `childcare`).
+estimated from New York's own composition of supply (D63 `bar`, D64 `childcare`,
+D6x `pharmacy`).
 
 WHAT THIS IS
 --------------------------------------------------------------------------
@@ -92,6 +93,49 @@ bar. Loading a childcare registry anchor (DOHMH child-care-centre inspections,
 `dsg6-ifza` -- NOT currently ingested, despite what `score/supply.py`'s prose
 implies) is the fix; until then this column is weaker evidence than bar's.
 
+THE `pharmacy` SPECIFICATION (`poi_composition_v1`, D6x / QUESTIONS D15)
+--------------------------------------------------------------------------
+The third registry entry, and the first whose gate PASSES.
+
+    pharmacy_share_800 = log(1 + canonical pharmacy POIs within 800 m)
+                       - log(1 + ALL canonical POIs within 800 m)
+
+800 m is pharmacy's own reach tier -- Guadamuz et al.'s pharmacy-desert
+distance for low-income, low-vehicle neighbourhoods, i.e. NYC. The primary
+demand regressor is `age_65_plus_share`, the sign the §5c placebo (pharmacy
+b(w18) = -0.846, the most negative of fifteen) and the CEX note independently
+gave, with `age_18_34_share` beside it. BOTH bands enter UN-renormalized, as
+shares of everybody, for childcare's reason: a pharmacy's demand is the count
+of older residents, not the age of the adult population net of children -- and
+`age_65_plus_share` and `w65` must never both be regressors, since one is the
+other divided by (1 - under_18_share). A test refuses any spec that carries
+both.
+
+The gate passes, and the honest reading of HOW it passes is part of the
+column. Pooled b(age_65_plus_share) is -0.300 (Conley se 0.319, t -0.94) --
+insignificant and, on its face, the wrong sign; Brooklyn +0.264 (se 0.293,
+t +0.90), Manhattan -0.424 (se 0.304, t -1.40). What carries the contrast is
+the OTHER band: b(age_18_34_share) = -1.128 pooled (se 0.304, t -3.71),
+Brooklyn -1.234 (t -3.02). F2 is a contrast over the whole age block, so the
+Brooklyn ratio of 1.585 [1.236, 2.032] on Williamsburg -> UES-Carnegie Hill is
+roughly five-sixths "fewer 18-34s" and one-sixth "more 65+". The curve is
+therefore evidence that pharmacy composition falls where the young are, which
+is a real and category-specific finding -- it is the mirror image of bar, on
+the same tracts and the same controls -- but it is NOT evidence that pharmacy
+composition rises where the old are. Anyone reading the column as "older
+neighbourhood, more pharmacy demand" is reading a coefficient that is not
+there.
+
+Pharmacy has NO registry anchor loaded either (`analysis.category_anchor`:
+anchor_sources NULL, anchor_coverage 0.000), so `in_principled` degrades to
+`in_all` and the outcome is built from the same canonical supply the screen
+reads -- the D1 trap in its tightest form, exactly as for childcare. 63.9% of
+the 5,536 canonical pharmacy POIs are single-source (3,540 of 5,536; 1,996 are
+corroborated, 0 have a registry member). The chains are well covered by the
+aggregators, so the single-source tail is mostly independents, which is also
+where a coverage hole would be. Loading the NYS Board of Pharmacy registry is
+the fix, and it is a planned anchor, not a loaded one.
+
 THE MULTIPLIER
 --------------------------------------------------------------------------
     age_fit(tract) = exp[ sum_k b_k * (a_k - anchor_k) ]
@@ -167,10 +211,11 @@ SCOPE
 `CURVES` and nothing else. The placebo (docs/bar_age_nyc.md §5c) ran the bar
 specification with all fifteen categories as the outcome: `bar` has the largest
 positive b(w18) of the fifteen and `pharmacy` the most negative, which is what
-rules out "b(w18) is a generic urbanity coefficient". Every category NOT in
-`CURVES` keeps a NULL `age_fit`, not 1.0. NULL means "no curve exists here";
-1.0 would mean "a curve exists and says neutral", and the two must not be
-confused. `pharmacy` remains open (QUESTIONS D15).
+rules out "b(w18) is a generic urbanity coefficient". Those are the two ENDS of
+that table and they are the two entries whose gate passes; `childcare`, from
+the middle of it, is refused. Every category NOT in `CURVES` keeps a NULL
+`age_fit`, not 1.0. NULL means "no curve exists here"; 1.0 would mean "a curve
+exists and says neutral", and the two must not be confused.
 """
 from __future__ import annotations
 
@@ -188,7 +233,11 @@ from loci.model.address_gaps import (
     ADDRESS_COLUMNS,
     INTERIM_DIR,
 )
-from loci.score.supply import DEFAULT_SUPPLY_SET, supply_predicate
+from loci.score.supply import (
+    DEFAULT_SUPPLY_SET,
+    supply_hash as live_supply_hash,
+    supply_predicate,
+)
 from loci.sources.cities.nyc.nys_sla import BAR_DESCRIPTIONS
 
 #: Identifier written into `age_fit_source` on every fitted `bar` row. Bump it
@@ -259,6 +308,13 @@ AGE_MOE_COLUMNS = {
     "w18": "w18_moe",
     "w65": "w65_moe",
     "under_18_share": "under_18_share_moe",
+    # D6x `pharmacy`: the UN-renormalized adult bands, as ACS publishes them.
+    # A pharmacy's demand variable is "how many 65+ people live here", a share
+    # of everybody, for the same reason childcare's is `under_18_share` -- and
+    # `age_65_plus_share` and `w65` must never both be regressors, since one is
+    # the other divided by (1 - under_18_share).
+    "age_18_34_share": "age_18_34_share_moe",
+    "age_65_plus_share": "age_65_plus_share_moe",
 }
 
 
@@ -374,6 +430,7 @@ def reach_m(category: str) -> float:
 
 
 CHILDCARE_M = reach_m("childcare")
+PHARMACY_M = reach_m("pharmacy")
 
 BAR_SPEC = CategorySpec(
     category="bar",
@@ -407,9 +464,38 @@ CHILDCARE_SPEC = CategorySpec(
     robustness_outcomes=("count", "under_5"),
 )
 
+PHARMACY_SPEC = CategorySpec(
+    category="pharmacy",
+    spec_version="poi_composition_v1",
+    radius_m=PHARMACY_M,
+    # age_65_plus_share FIRST: the placebo (docs/bar_age_nyc.md §5c) and the
+    # CEX note independently give the same sign for pharmacy -- older, more
+    # pharmacy -- and it is the ONE band whose consumption story is direct
+    # (prescription volume rises steeply with age) rather than a lifestyle
+    # proxy. Both bands enter UN-renormalized, as shares of everybody: mixing
+    # a raw 65+ share with an adult-renormalized w65 in one regression would be
+    # putting the same variable in twice.
+    age_terms=("age_65_plus_share", "age_18_34_share"),
+    contrast=ContrastSpec(kind="extreme", variable="age_65_plus_share",
+                          min_addresses=CONTRAST_MIN_ADDRESSES, require_sign=1),
+    overlay="poi",
+    outcome_stem="pharmacy_share",
+    outcome_label=("log(1 + canonical pharmacy POIs within {r} m) "
+                   "- log(1 + ALL canonical POIs within {r} m)"),
+    # `count` for the same reason childcare reports it: the composition choice
+    # has to be defended by a number rather than by precedent, and a count spec
+    # that disagrees is a finding, not a switch. `adult_shares` refits the
+    # SHIPPED outcome on bar's own (w18, w65) pair so b(w18) is directly
+    # comparable to the §5c placebo's -0.846 -- the raw age_18_34_share
+    # coefficient is the same quantity rescaled by (1 - under_18_share) and is
+    # therefore NOT the placebo's number.
+    robustness_outcomes=("count", "adult_shares"),
+)
+
 #: The registry. A category absent from here has NO curve and keeps a NULL
 #: `age_fit` -- never 1.0.
-CURVES: dict[str, CategorySpec] = {s.category: s for s in (BAR_SPEC, CHILDCARE_SPEC)}
+CURVES: dict[str, CategorySpec] = {
+    s.category: s for s in (BAR_SPEC, CHILDCARE_SPEC, PHARMACY_SPEC)}
 
 #: The ONLY categories a curve exists for. Derived from CURVES so the two can
 #: never drift.
@@ -455,11 +541,22 @@ class TractPanel:
 
     `tracts` is one row per tract with `keep` marking the regression sample;
     `n_target` / `n_universe` and `supply_hash` are carried so the fit can stamp
-    exactly which inputs produced it."""
+    exactly which inputs produced it.
+
+    `supply_hash` is the LIVE hash from `score.supply.supply_hash(con)` -- what
+    the database's supply actually is right now, computed the same way both at
+    fit time and at `check_fit_is_current` time so the two are comparable.
+    `screen_supply_hash` is a SEPARATE, informational field: the stamp the last
+    `loci address-gaps` run left on `analysis.address`. It is carried only so a
+    reader can see when the screen and the curve have drifted apart; it is
+    NEVER hashed into `inputs_hash` and never drives staleness -- an
+    address-gaps run that does not change supply must not trip a false alarm
+    on a category (e.g. bar) whose supply did not move."""
     tracts: pd.DataFrame
     n_universe: int
     n_target: int
     supply_hash: str | None
+    screen_supply_hash: str | None
     acs_year: int
 
 
@@ -578,7 +675,8 @@ def build_tract_panel(con, spec: CategorySpec = BAR_SPEC,
                       addresses: pd.DataFrame | None = None) -> TractPanel:
     """Aggregate addresses to tracts, hang the spec's disc measures off each
     tract's RESIDENTIAL centroid, and mark the regression sample. READ-ONLY:
-    this function issues four SELECTs and no write of any kind.
+    this function issues four SELECTs and no write of any kind (`supply_hash`
+    itself only reads analysis.poi_supply / analysis.category_anchor).
 
     `addresses` is injectable so tests can drive the whole estimator off a
     synthetic frame without a warehouse.
@@ -605,7 +703,12 @@ def build_tract_panel(con, spec: CategorySpec = BAR_SPEC,
     first = g.first()
     carry = ["borough", "population", "median_hh_income", "renter_share",
              "under_18_share", "under_18_share_moe", "w18", "w65",
-             "w18_moe", "w65_moe"]
+             "w18_moe", "w65_moe",
+             # the UN-renormalized adult bands, carried for `pharmacy` (and for
+             # the adult-share robustness refit). Additive: no existing spec
+             # names them, so nothing already fitted moves.
+             "age_18_34_share", "age_65_plus_share",
+             "age_18_34_share_moe", "age_65_plus_share_moe"]
     for c in carry:
         tr[c] = first[c]
     tr["units_tract"] = g["units_capped"].sum()
@@ -664,14 +767,21 @@ def build_tract_panel(con, spec: CategorySpec = BAR_SPEC,
     for t in spec.age_terms:
         keep &= tr[t].notna()
     tr["keep"] = keep
-    supply_hash = con.execute(
+    # LIVE hash of the supply as the database now holds it -- not the screen's
+    # stamp. `analysis.address.supply_hash` is only ever as fresh as the last
+    # `loci address-gaps` run; reading it here would date the curve's inputs
+    # to that run instead of to the actual poi_supply/category_anchor state,
+    # and would falsely flag a curve stale whenever address-gaps re-runs for
+    # an unrelated reason.
+    screen_rows = con.execute(
         "SELECT DISTINCT supply_hash FROM analysis.address WHERE supply_hash IS NOT NULL"
     ).fetchall()
     return TractPanel(
         tracts=tr,
         n_universe=n_universe,
         n_target=n_target,
-        supply_hash=supply_hash[0][0] if len(supply_hash) == 1 else None,
+        supply_hash=live_supply_hash(con),
+        screen_supply_hash=screen_rows[0][0] if len(screen_rows) == 1 else None,
         acs_year=acs_year,
     )
 
@@ -1017,6 +1127,19 @@ def estimate_curve(panel: TractPanel, addr: pd.DataFrame,
         robustness["count"]["outcome_label"] = (
             f"log(1 + canonical {spec.category} POIs within {spec.r} m) "
             "-- COUNT, no denominator")
+    if "adult_shares" in spec.robustness_outcomes:
+        # Same outcome, same sample, same SEs -- only the age pair changes, to
+        # bar's own adult-renormalized (w18, w65). This is the ONLY fit whose
+        # b(w18) is on the same variable as the docs/bar_age_nyc.md §5c placebo
+        # table, so it is the number that column may be compared against.
+        adult = ("w18", "w65")
+        robustness["adult_shares"] = _strip(_fit_one(
+            d, spec, spec.outcome_col, adult, cutoff_m,
+            _nta_age_mix(addr, from_nta, adult), _nta_age_mix(addr, to_nta, adult)))
+        robustness["adult_shares"]["outcome_label"] = (
+            spec.outcome_label.format(r=spec.r)
+            + " -- SHIPPED outcome on bar's (w18, w65) age pair, for placebo "
+              "comparability only")
     if "under_5" in spec.robustness_outcomes and extra is not None:
         robustness["under_5"] = _strip(_fit_one(
             d, spec, spec.outcome_col, terms, cutoff_m, mix_from, mix_to,
@@ -1072,6 +1195,9 @@ def estimate_curve(panel: TractPanel, addr: pd.DataFrame,
         "inputs": {
             "acs_year": panel.acs_year,
             "supply_hash": panel.supply_hash,
+            # informational only -- never hashed, never checked for staleness.
+            # See TractPanel's docstring for why.
+            "screen_supply_hash": panel.screen_supply_hash,
             "n_universe": panel.n_universe,
             "n_target": panel.n_target,
             "hash": inputs_hash(panel.supply_hash, panel.acs_year, panel.n_target),
@@ -1492,12 +1618,17 @@ def check_fit_is_current(con, fit: dict) -> None:
     The supply set moved twice in one month (D52/D59); multiplying today's gap
     set by a curve revealed from a different one is exactly the silent error
     this check exists to make loud. Per CATEGORY, so re-ingesting one feed
-    invalidates only the curve that reads it."""
+    invalidates only the curve that reads it.
+
+    Compares against the LIVE `score.supply.supply_hash(con)`, the same
+    function `build_tract_panel` stamps at fit time -- never against
+    `analysis.address.supply_hash`, which is only the last `loci
+    address-gaps` run's stamp and can move (or not) for reasons unrelated to
+    this category's actual supply. Using it here would raise a false
+    AgeFitStale whenever address-gaps re-runs without this category's supply
+    changing at all."""
     spec = spec_for(fit_category(fit))
-    rows = con.execute(
-        "SELECT DISTINCT supply_hash FROM analysis.address WHERE supply_hash IS NOT NULL"
-    ).fetchall()
-    live_supply = rows[0][0] if len(rows) == 1 else None
+    live_supply = live_supply_hash(con)
     n_target = live_target_count(con, spec)
     live = inputs_hash(live_supply, fit["inputs"]["acs_year"], n_target)
     if live != fit["inputs"]["hash"]:

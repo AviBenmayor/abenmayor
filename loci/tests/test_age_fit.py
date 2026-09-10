@@ -1,7 +1,7 @@
-"""The D63/D64 supply-revealed age multipliers (model/age_fit.py,
+"""The D63/D64/D6x supply-revealed age multipliers (model/age_fit.py,
 docs/bar_age_nyc.md).
 
-Eight things under test, and the first is the one that matters most.
+Nine things under test, and the first is the one that matters most.
 
 (a) NON-FILTERING, PROVED ON REAL SHAPE. `age_fit` is a SECOND ranking column,
     never a gate (D48: the output is graded, never filtered). Build the screen
@@ -52,6 +52,18 @@ Eight things under test, and the first is the one that matters most.
     childcare POIs. A CI that excludes 1.0 by rejecting the hypothesis is not a
     pass, and without the sign test it would have read as one.
 
+(i) THE D6x PHARMACY CURVE, the first entry whose gate PASSES. Same three
+    obligations as childcare -- the registry drift check, a gate-refusal
+    fixture (CI straddling 1.0, and a significant contrast in the wrong
+    direction), and an ordering test on the live curve that skips when no curve
+    is on disk -- plus two pins the third entry adds: bar STILL does not move
+    when a third curve is applied beside it, and pharmacy's ordering on the two
+    fixture addresses is the OPPOSITE of bar's, which is the registry's whole
+    claim that b(age) is category-specific rather than a density coefficient
+    wearing an age label. The drift check also refuses any spec that regresses
+    on both a raw ACS band and its adult-renormalized twin, because w65 IS
+    age_65_plus_share / (1 - under_18_share).
+
 Plus the NEGATIVE pin (§7.2 test 8): the specification is the COMPOSITION one.
 A future session must not quietly swap in the bar-POI count outcome, which is
 insignificant in Brooklyn and whose outcome is the same supply the screen
@@ -75,14 +87,18 @@ from loci.model.age_fit import (
     FORMULA,
     MULTIPLIER_BOUNDS,
     AgeFitGateFailure,
+    AgeFitStale,
     apply_age_fit,
+    check_fit_is_current,
     failed_gates,
+    inputs_hash,
     load_fit,
     multiplier,
     spec_for,
     write_fit_if_gates_pass,
 )
 from loci.model.conveniences import ALLCATS
+from loci.score.supply import supply_hash as live_supply_hash
 
 REACH_HASH, SUPPLY_HASH = "reach0000", "supply0000"
 
@@ -287,7 +303,7 @@ def test_age_fit_is_null_on_every_category_without_a_curve():
     # actually PASSED to apply may write. Everything else stays NULL -- and
     # "in the registry" is not "has a curve": `childcare` is defined here and
     # its D64 fit failed F2, so it ships nothing.
-    assert "bar" in FITTED_CATEGORIES and "childcare" in FITTED_CATEGORIES
+    assert {"bar", "childcare", "pharmacy"} <= set(FITTED_CATEGORIES)
     assert set(FITTED_CATEGORIES) == set(CURVES)
     stray = con.execute(
         "SELECT count(*) FROM analysis.address_category "
@@ -738,6 +754,14 @@ def test_every_registry_curve_declares_its_contrast():
         assert spec.primary_age_term in spec.age_terms
         for t in spec.age_terms:
             assert t in AGE_MOE_COLUMNS, f"{cat}: {t} has no ACS MOE column"
+        # ...and no spec may carry BOTH a raw ACS band and its adult-
+        # renormalized twin: w65 IS age_65_plus_share / (1 - under_18_share),
+        # so regressing on both puts one variable in twice and splits its
+        # coefficient between two nearly-collinear columns.
+        for raw, norm in (("age_18_34_share", "w18"), ("age_65_plus_share", "w65")):
+            assert not ({raw, norm} <= set(spec.age_terms)), (
+                f"{cat} regresses on both {raw} and {norm}, which are the same "
+                "variable up to the adult renormalization")
         c = spec.contrast
         assert c.kind in ("fixed", "extreme")
         if c.kind == "fixed":
@@ -805,7 +829,16 @@ def test_the_refitted_bar_curve_reproduces_the_committed_one():
     for k in ("ratio", "ci_low", "ci_high"):
         assert fit["by_borough"]["BK"]["contrast"][k] == pytest.approx(
             committed["by_borough"]["BK"]["contrast"][k], abs=5e-4), k
-    assert fit["inputs"]["hash"] == committed["inputs"]["hash"]
+    # The evidence itself is unchanged: same outcome-numerator count, same
+    # denominator. NOT `fit["inputs"]["hash"] == committed[...]["hash"]" --
+    # `inputs.supply_hash` now records the LIVE `score.supply.supply_hash(con)`
+    # rather than `analysis.address`'s screen stamp (the provenance fix this
+    # module makes), so a `committed` file written before that fix carries a
+    # different hash for the SAME evidence. That is a one-time change in what
+    # the field means, not a regression in what was fitted.
+    assert fit["inputs"]["n_target"] == committed["inputs"]["n_target"]
+    assert fit["inputs"]["n_universe"] == committed["inputs"]["n_universe"]
+    assert fit["inputs"]["supply_hash"] == live_supply_hash(con)
     assert failed_gates(fit) == []
 
 
@@ -847,3 +880,249 @@ def test_the_childcare_ordering_on_the_live_curve():
         f"separation {hi - lo:.3f} must exceed the larger median MOE "
         f"{max(hi_moe, lo_moe):.3f}")
     assert failed_gates(fit) == []
+
+
+# --- (i) THE D6x PHARMACY CURVE ---------------------------------------------
+#
+# The third registry entry, and the first one whose F2 gate PASSES on a
+# contrast the primary demand regressor did not drive. A synthetic curve again:
+# these tests are the plumbing and the gate, not the coefficients.
+#
+# `age_65_plus_share` is the primary demand variable, un-renormalized, and it
+# is the SAME variable the contrast ranks NTAs on -- for pharmacy the direct
+# demand story is prescription volume, which rises with the count of older
+# residents, not with the age of the adult population net of children.
+PH_FIT = {
+    "category": "pharmacy",
+    "spec": "test_pharmacy_v0",
+    "age_terms": ["age_65_plus_share", "age_18_34_share"],
+    "primary_age_term": "age_65_plus_share",
+    "coefs": {"age_65_plus_share": 0.30, "age_18_34_share": -0.60},
+    "anchors": {"age_65_plus_share": 0.163, "age_18_34_share": 0.281},
+    "cov_age_conley": [[0.090, 0.010], [0.010, 0.070]],
+    "contrast": {"kind": "extreme", "variable": "age_65_plus_share",
+                 "require_sign": 1, "min_addresses": 500,
+                 "from_nta": "BK0102", "to_nta": "MN0802"},
+    "by_borough": {"BK": {"n_tracts": 770,
+                          "coefs": {"age_65_plus_share": 0.264,
+                                    "age_18_34_share": -1.234},
+                          "contrast": {"ratio": 1.585, "ci_low": 1.236,
+                                       "ci_high": 2.032, "se_log": 0.127}}},
+    "multiplier": {"p10": 0.880, "p50": 1.050, "p90": 1.144, "spread": 0.264,
+                   "median_moe": 0.088, "dispersion_ratio": 3.01,
+                   "min": 0.534, "max": 1.442},
+    "inputs": {"acs_year": 2023, "supply_hash": SUPPLY_HASH,
+               "n_target": 0, "n_universe": 0, "hash": "beef00000000"},
+}
+
+
+def test_a_pharmacy_curve_whose_brooklyn_ci_straddles_one_is_refused(tmp_path):
+    """The gate-refusal fixture for the third category. Pharmacy's LIVE fit
+    clears F2 at 1.585 [1.236, 2.032]; this is the same curve nudged until its
+    Brooklyn CI includes 1.0, and it must be refused and leave no file. Written
+    for a re-fit -- a NYS pharmacy-registry anchor, a new ACS vintage, a moved
+    supply set -- which is exactly when a passing curve turns into a failing
+    one and nobody re-reads the gate."""
+    bad = json.loads(json.dumps(PH_FIT))
+    bad["by_borough"]["BK"]["contrast"].update(
+        {"ratio": 1.19, "ci_low": 0.94, "ci_high": 1.51})
+    out = tmp_path / "age_fit_pharmacy.json"
+    assert any(g.startswith("F2") for g in failed_gates(bad))
+    with pytest.raises(AgeFitGateFailure, match="F2"):
+        write_fit_if_gates_pass(bad, out)
+    assert not out.exists(), "a curve that fails its own criterion must leave no file"
+
+
+def test_a_pharmacy_contrast_that_ranks_old_neighbourhoods_down_is_refused(tmp_path):
+    """The sign half of F2, for pharmacy. `require_sign = +1` says the OLD
+    endpoint must carry more pharmacy composition; a significant contrast the
+    other way would rank the neighbourhoods with the most 65+ residents DOWN,
+    which is the D49/X6 hazard and not a pass."""
+    bad = json.loads(json.dumps(PH_FIT))
+    bad["by_borough"]["BK"]["contrast"].update(
+        {"ratio": 0.62, "ci_low": 0.45, "ci_high": 0.85})
+    out = tmp_path / "age_fit_pharmacy.json"
+    gates = failed_gates(bad)
+    assert any("WRONG SIGN" in g for g in gates), gates
+    with pytest.raises(AgeFitGateFailure, match="F2"):
+        write_fit_if_gates_pass(bad, out)
+    assert not out.exists()
+
+
+def test_a_passing_pharmacy_curve_is_written(tmp_path):
+    """The gate is a gate, not a veto: the same code writes the curve that
+    clears it, so "pharmacy was refused" and "pharmacy can never pass" stay
+    distinguishable."""
+    out = tmp_path / "age_fit_pharmacy.json"
+    assert failed_gates(PH_FIT) == []
+    assert write_fit_if_gates_pass(PH_FIT, out) == out
+    assert json.loads(out.read_text())["coefs"]["age_65_plus_share"] == 0.30
+
+
+def test_a_third_curve_still_does_not_move_a_single_bar_value():
+    """The D64 regression proof, extended. Every new registry entry re-runs it:
+    the risk of a registry is that adding an entry moves an entry that already
+    shipped."""
+    con = _fresh_con()
+    _seed(con)
+    _apply(con)
+    before = _bar_rows(con)
+    assert any(r[1] is not None for r in before)
+    apply_age_fit(con, ["BK"], fits={"bar": FIT, "childcare": CC_FIT,
+                                     "pharmacy": PH_FIT},
+                  dry_run=False, check_current=False)
+    assert _bar_rows(con) == before
+    ph = con.execute(
+        "SELECT count(*) FROM analysis.address_category "
+        "WHERE category = 'pharmacy' AND age_fit IS NOT NULL").fetchone()[0]
+    assert ph > 0
+
+
+def test_the_old_tract_outranks_the_young_one_for_pharmacy():
+    """Pharmacy's ordering is the OPPOSITE of bar's, on the same two addresses
+    and the same warehouse -- which is the whole claim that b(age) is
+    category-specific rather than a generic urbanity coefficient. If both
+    curves ranked the same address first, the registry would be measuring
+    density twice."""
+    con = _fresh_con()
+    _seed(con)
+    apply_age_fit(con, ["BK"], fits={"bar": FIT, "pharmacy": PH_FIT},
+                  dry_run=False, check_current=False)
+    got = dict(con.execute(
+        "SELECT address_id, age_fit FROM analysis.address_category "
+        "WHERE category = 'pharmacy' AND age_fit IS NOT NULL").fetchall())
+    assert got["A_old_bar"] > got["A_young_bar"]
+    bar = dict(con.execute(
+        "SELECT address_id, age_fit FROM analysis.address_category "
+        "WHERE category = 'bar' AND age_fit IS NOT NULL").fetchall())
+    assert bar["A_young_bar"] > bar["A_old_bar"]
+
+
+def test_the_pharmacy_specification_is_the_composition_one():
+    """The negative pin, pharmacy's twin of §7.2 test 8. The shipped outcome is
+    the pharmacy SHARE of all canonical POIs at the category's OWN 800 m reach
+    tier (Guadamuz et al.'s low-income pharmacy-desert distance), not a
+    pharmacy count -- and the count spec is fitted and REPORTED so the choice is
+    defended by a number. `adult_shares` is the second reported variant: the
+    shipped outcome on bar's (w18, w65) pair, the only fit whose b(w18) is on
+    the same variable as the docs/bar_age_nyc.md §5c placebo's -0.846."""
+    spec = spec_for("pharmacy")
+    assert spec.formula.split("~")[0].strip() == "pharmacy_share_800"
+    assert spec.primary_age_term == "age_65_plus_share"
+    assert "age_18_34_share" in spec.formula
+    assert "lretail_800" in spec.formula          # CNS07, the daytime control
+    assert "median_age" not in spec.formula
+    assert "count" in spec.robustness_outcomes    # reported, never shipped
+    assert "adult_shares" in spec.robustness_outcomes
+
+
+@pytest.mark.skipif(not spec_for("pharmacy").fit_path.exists(),
+                    reason="pharmacy has no fitted curve; run "
+                           "`loci age-fit fit --category pharmacy` first")
+def test_the_pharmacy_ordering_on_the_live_curve():
+    """F4 for pharmacy, the twin of the East-Village test, on the live fitted
+    curve and the live warehouse. The contrast's HIGH-65+ endpoint must carry a
+    higher median multiplier than its LOW-65+ endpoint, by more than the larger
+    of the two median MOEs -- the inequality with its uncertainty attached.
+
+    Skips on a fresh clone (data/loci.duckdb is gitignored) and skips if the
+    curve was never written, in the same shape as childcare's, so a future
+    re-fit cannot ship without clearing it.
+    """
+    fit = load_fit(category="pharmacy")
+    con = locidb.connect(read_only=True)
+    rows: dict[str, tuple] = {}
+    for nta in (fit["contrast"]["to_nta"], fit["contrast"]["from_nta"]):
+        got = con.execute("""
+            SELECT median(c.age_fit), median(c.age_fit_moe), count(*)
+            FROM analysis.address a
+            JOIN analysis.address_category c
+              ON c.address_id = a.address_id AND c.borough = a.borough
+            WHERE c.category = 'pharmacy' AND a.nta_code = ?
+              AND c.age_fit IS NOT NULL
+        """, [nta]).fetchone()
+        if not got or got[2] == 0:
+            pytest.skip("age_fit has not been applied to pharmacy; "
+                        "run `loci age-fit apply`")
+        rows[nta] = got
+
+    hi, hi_moe, _ = rows[fit["contrast"]["to_nta"]]
+    lo, lo_moe, _ = rows[fit["contrast"]["from_nta"]]
+    assert hi > lo, (f"{fit['contrast']['to_name']} {hi:.3f} should exceed "
+                     f"{fit['contrast']['from_name']} {lo:.3f}")
+    assert hi - lo > max(hi_moe, lo_moe), (
+        f"separation {hi - lo:.3f} must exceed the larger median MOE "
+        f"{max(hi_moe, lo_moe):.3f}")
+    assert failed_gates(fit) == []
+    assert fit["spec"] == "poi_composition_v1"
+
+
+# --- provenance: the live supply hash, not the screen's stamp ---------------
+#
+# `check_fit_is_current` used to read `analysis.address.supply_hash` -- the
+# stamp `loci address-gaps` last left on the screen -- as "the current
+# supply". That conflates two different things: the screen can re-run (and
+# re-stamp every address row) for reasons that have nothing to do with a
+# category's own supply, e.g. a reach-graph rebuild. Comparing against the
+# LIVE `score.supply.supply_hash(con)` instead means a category whose supply
+# genuinely has not changed never trips a false AgeFitStale just because the
+# screen ran again.
+
+def test_a_fits_supply_hash_matches_the_live_supply_hash():
+    """A fit stamped with today's `score.supply.supply_hash(con)` passes
+    `check_fit_is_current` even though the fixture's screen stamp (SUPPLY_HASH)
+    is a different, unrelated string -- proving the check compares against the
+    LIVE hash, not `analysis.address.supply_hash`."""
+    con = _fresh_con()
+    _seed(con)
+    live = live_supply_hash(con)
+    assert live != SUPPLY_HASH  # the screen's stamp is not, and need not be, live
+
+    n_target = 0  # no staging.alcohol_licences rows in this fixture
+    fit = dict(FIT)
+    fit["inputs"] = dict(FIT["inputs"])
+    fit["inputs"]["supply_hash"] = live
+    fit["inputs"]["n_target"] = n_target
+    fit["inputs"]["hash"] = inputs_hash(live, fit["inputs"]["acs_year"], n_target)
+
+    check_fit_is_current(con, fit)  # must not raise
+
+
+def test_a_changed_address_stamp_alone_does_not_raise_age_fit_stale():
+    """A later `loci address-gaps` run that re-stamps every row with a NEW
+    screen supply_hash -- while poi_supply/category_anchor (and so the live
+    hash) are untouched -- must not trip AgeFitStale for a category (e.g.
+    bar) whose actual supply did not move."""
+    con = _fresh_con()
+    _seed(con)
+    live = live_supply_hash(con)
+    n_target = 0
+    fit = dict(FIT)
+    fit["inputs"] = dict(FIT["inputs"])
+    fit["inputs"]["supply_hash"] = live
+    fit["inputs"]["n_target"] = n_target
+    fit["inputs"]["hash"] = inputs_hash(live, fit["inputs"]["acs_year"], n_target)
+
+    check_fit_is_current(con, fit)  # passes against the original screen stamp
+
+    # Simulate a later address-gaps run re-stamping every address row, e.g.
+    # because the reach graph rebuilt, with no change to poi_supply itself.
+    con.execute("UPDATE analysis.address SET supply_hash = 'screen_moved_9999'")
+    assert live_supply_hash(con) == live  # the live hash is genuinely unmoved
+
+    check_fit_is_current(con, fit)  # still must not raise
+
+
+def test_check_fit_is_current_still_raises_when_the_live_supply_moves():
+    """The staleness check is not simply disabled: a fit stamped with a hash
+    that does not match the CURRENT live supply hash is still refused."""
+    con = _fresh_con()
+    _seed(con)
+    fit = dict(FIT)
+    fit["inputs"] = dict(FIT["inputs"])
+    fit["inputs"]["supply_hash"] = "not_the_live_hash"
+    fit["inputs"]["n_target"] = 0
+    fit["inputs"]["hash"] = inputs_hash("not_the_live_hash", fit["inputs"]["acs_year"], 0)
+
+    with pytest.raises(AgeFitStale):
+        check_fit_is_current(con, fit)

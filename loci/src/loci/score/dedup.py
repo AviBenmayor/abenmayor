@@ -106,6 +106,14 @@ def source_rank(category: str, source_id: str) -> int:
         order = ["nys_dos_appearance_enhancement"] + _TAIL
     elif category in SNAP:
         order = ["usda_snap_retailers"] + _TAIL
+    elif category == "childcare":
+        # D65: the DOHMH active child-care roster is a permit registry, so it
+        # wins canonical selection over the aggregators exactly as DOHMH
+        # restaurants do for food. Without this branch the source falls through
+        # to the `else` and scores WORSE than Overture (rank 4 vs 0), which
+        # would keep an aggregator's name and geometry for a cluster the
+        # registry anchors -- the opposite of what source authority is for.
+        order = ["nyc_dohmh_childcare"] + _TAIL
     else:
         order = _TAIL
     return order.index(source_id) if source_id in order else len(order)

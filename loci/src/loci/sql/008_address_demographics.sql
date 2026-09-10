@@ -82,3 +82,13 @@ ALTER TABLE analysis.address_demographics ADD COLUMN IF NOT EXISTS college_share
 -- household composition (B11016_010 over B11016_001 -- a share of ALL households)
 ALTER TABLE analysis.address_demographics ADD COLUMN IF NOT EXISTS one_person_hh_share FLOAT;
 ALTER TABLE analysis.address_demographics ADD COLUMN IF NOT EXISTS one_person_hh_share_moe FLOAT;
+
+-- D65 (2026-09-10): under-5 share, the address twin of the hex column added at
+-- the end of 002_schema.sql. Full reasoning, and the caveat that under_5_share
+-- is a STRICT SUBSET of under_18_share (so the age shares must never be
+-- summed), are in that block; both columns come from the single
+-- grid/acs.py::SHARE_SPECS entry, so they cannot define the measure two ways.
+-- It is LAST in this file on purpose: ADDRESS_DEMOGRAPHICS_COLUMNS is built in
+-- SHARE_SPECS order and the drift test compares by ordinal position.
+ALTER TABLE analysis.address_demographics ADD COLUMN IF NOT EXISTS under_5_share     FLOAT;
+ALTER TABLE analysis.address_demographics ADD COLUMN IF NOT EXISTS under_5_share_moe FLOAT;

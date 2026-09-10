@@ -259,6 +259,27 @@ SHARE_SPECS: dict[str, tuple[tuple[str, ...], str]] = {
     "hispanic_share": (("B03002_012",), "B03002_001"),
     "college_share": (EDU_COLLEGE_CELLS, "B15003_001"),
     "one_person_hh_share": (("B11016_010",), "B11016_001"),
+    # D65 (2026-09-10). Under-5 share: B01001_003 (male) + _027 (female) over
+    # B01001_001, the same table's own total. It is the childcare-demand
+    # regressor D64 ran as a robustness check off the raw ACS cache and found
+    # entering at +0.783 while driving under_18_share more negative (Brooklyn
+    # -0.975) -- under-5s raise childcare composition, 5-17s lower it -- so it
+    # has to be a first-class column before that fit can be re-run reproducibly.
+    #
+    # It is APPENDED, not grouped with the other age bands, ON PURPOSE: this
+    # dict's ORDER is the physical column order of both demographic tables
+    # (build_acs and ADDRESS_DEMOGRAPHICS_COLUMNS are generated from it) while
+    # the DDL adds columns by ALTER, which can only append. The ordered drift
+    # test in tests/test_address_demographics.py compares the two by ordinal
+    # position, so inserting here instead of appending would break it.
+    #
+    # NOT MUTUALLY EXCLUSIVE with under_18_share: cells 003/027 are a SUBSET of
+    # the under_18 band (which is 003-006 + 027-030). The four age columns
+    # under_5 / under_18 / 18_34 / 65_plus therefore do NOT partition the
+    # population and MUST NOT be summed. under_5 is a strict subset of
+    # under_18; a "5 to 17" figure is under_18_share - under_5_share, and its
+    # MOE is NOT the difference of the MOEs.
+    "under_5_share": (("B01001_003", "B01001_027"), "B01001_001"),
 }
 
 # INTENSIVE fields: `output column -> cell stem`. A tract's value is already a

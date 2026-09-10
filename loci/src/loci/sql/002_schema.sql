@@ -780,3 +780,84 @@ ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS age_fit_source  V
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS age_fit_lead     REAL;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS age_fit_lead_moe REAL;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS gap_score_fit    REAL;
+
+
+-- ==========================================================================
+-- STOREFRONT VACANCY (2026-09-10; sql/012_storefront_registry.sql,
+-- model/storefronts.py). Seven address-grain columns from the NYC DOF
+-- Storefront Registry (Local Law 157, Socrata 92iy-9c3n), written ONLY by
+-- `UPDATE ... SET` from model/storefronts.STOREFRONT_COLUMNS.
+--
+-- They live HERE and not in 012 for the reason D62's twelve pipeline columns
+-- do: db.init_schema() creates the generated VIEW analysis.address_gaps
+-- immediately after 002 and before 003..012, and DuckDB resolves a view's
+-- query at CREATE time. On a database built before this landed,
+-- analysis.address already exists so 002's CREATE TABLE IF NOT EXISTS is a
+-- no-op; a column added in 012 would not exist when the view naming it is
+-- created, and every connection would raise BinderException. ONE file stays
+-- responsible for the shape of analysis.address.
+--
+-- CAVEATS THE SCHEMA CANNOT ENFORCE (full list in sql/012's header):
+--   * `vacant_storefronts_400m` is a SUBSET of `storefronts_400m`. Never add
+--     them; the pair is a rate, and a rate over a tiny denominator is not one.
+--   * The registry is SELF-REPORTED and non-filing is invisible, so 0 vacant
+--     within 400 m and "nobody near here filed" are the same observation --
+--     `storefronts_400m` is what tells them apart.
+--   * `storefront_asof` is an ANNUAL observation date (default 2024-12-31),
+--     not a live listing. There is no rent and no square footage anywhere in
+--     the source.
+--   * `nearest_vacant_lease_expired` is NULL when no lease was reported --
+--     never FALSE -- and DOF stopped publishing the lease field on the annual
+--     file after the 2024-06-03 release, so it is mostly NULL on the default
+--     snapshot.
+-- ==========================================================================
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS vacant_storefronts_400m            INTEGER;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS storefronts_400m                   INTEGER;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS nearest_vacant_storefront_m        DOUBLE;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS nearest_vacant_storefront_id       VARCHAR;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS nearest_vacant_storefront_business VARCHAR;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS nearest_vacant_lease_expired       BOOLEAN;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS storefront_asof                    DATE;
+
+
+-- ==========================================================================
+-- UNDER-5 SHARE (D65, 2026-09-10; grid/acs.py SHARE_SPECS, GTM-134 follow-up).
+-- B01001_003E/M (male, under 5) + B01001_027E/M (female, under 5) over
+-- B01001_001 (the same table's own total population), estimates summed and
+-- MOEs root-sum-squared within the tract, then the ACS handbook derived-
+-- proportion MOE -- identical arithmetic to every other SHARE_SPECS column,
+-- because it IS driven by the same dict.
+--
+-- Why now: D64 fitted the childcare age curve with under-5 as a robustness
+-- regressor computed ad hoc from the raw ACS cache. It entered at +0.783 and
+-- pushed b(under_18_share) more negative (Brooklyn -0.975, contrast ratio
+-- 0.708 [0.513, 0.978]) -- under-5s raise childcare composition, 5-17s lower
+-- it, and the net under-18 coefficient hides that. A regressor that changes
+-- the reading of the gate cannot live in a scratch script.
+--
+-- No new Census API call was needed: B01001_003E/M and _027E/M are ALREADY in
+-- GETVARS (they are members of the under_18 age band), so data/raw/acs/
+-- tracts_2023.json is unchanged and still valid. Adding this column does not
+-- move the cache's `vars` fingerprint.
+--
+-- CAVEAT THE SCHEMA CANNOT ENFORCE: under_5_share is a STRICT SUBSET of
+-- under_18_share (cells 003/027 are inside the under_18 band 003-006 +
+-- 027-030). The four age-share columns do NOT partition the population and
+-- must never be summed. "5 to 17" is under_18_share - under_5_share, and its
+-- MOE is NOT the difference of the two MOEs.
+--
+-- Appended rather than grouped with the other age columns because ALTER can
+-- only append and the ordered drift test compares physical ordinal position
+-- against grid/acs.py's SHARE_SPECS order.
+--
+-- THE ADDRESS TWIN IS NOT HERE. analysis.address_demographics' D60 measure
+-- columns are added by sql/008_address_demographics.sql, which db.init_schema
+-- applies AFTER this file. Adding the address twin here would place it at
+-- ordinal position 17-18 -- ahead of median_age and every share -- on a
+-- freshly built database, while ADDRESS_DEMOGRAPHICS_COLUMNS puts it last;
+-- tests/test_address_demographics.py compares those two by ordinal position,
+-- so the twin ALTER lives at the END of 008. Both tables' columns still come
+-- from the one SHARE_SPECS entry.
+-- ==========================================================================
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS under_5_share     FLOAT;
+ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS under_5_share_moe FLOAT;

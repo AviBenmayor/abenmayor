@@ -11,11 +11,11 @@
     loci address-gaps [--borough ALL] [--reach tiers|p80] [--supply-set principled]
                       [--limit 0] [--dry-run]
     loci address-demand [--borough MNBK|MN|BK|ALL] [--dry-run]  (D49 annotation, GTM-110)
-    loci age-fit fit   [--category bar|childcare|all] [--boroughs MN,BK] [--dry-run]
+    loci age-fit fit   [--category <registry category>|all] [--boroughs MN,BK] [--dry-run]
                                                        (D63/D64: re-estimate the
                                                         supply-revealed age curves;
                                                         exits non-zero on the F2 gate)
-    loci age-fit apply [--category bar|childcare|all] [--boroughs MN,BK] [--dry-run]
+    loci age-fit apply [--category <registry category>|all] [--boroughs MN,BK] [--dry-run]
                                                        (D63/D64: age_fit on each fitted
                                                         category's rows, gap_score_fit
                                                         beside gap_score)
@@ -1037,6 +1037,42 @@ def export_webmap_cmd(
                       f"[bold]{pipe['cutoff'] or '?'}[/] — anything filed or permitted since "
                       "is absent, so the coming-units count is a floor, never a ceiling.")
 
+    # The vacant-storefront overlay (sql/012). Counted per borough and per
+    # consecutive-years band because those are what the symbol encodes, and
+    # ALWAYS beside the registered-storefront denominator: in a self-reported
+    # registry a vacancy count with no denominator cannot tell "nothing is
+    # empty here" from "nobody here filed".
+    shop = counts["storefront"]
+    if not shop["available"]:
+        console.print("[yellow]vacant storefronts:[/] analysis.storefront not loaded "
+                      "— run `loci ingest-storefronts` then `loci storefronts`; "
+                      "an empty overlay is exported.")
+    else:
+        st = Table(title=f"Vacant storefronts — snapshot {shop['asof']} "
+                         f"({shop['universe']} filing, filed {shop['filingDate']}){suffix}")
+        st.add_column("band")
+        for b in boros:
+            st.add_column(f"{b} premises", justify="right")
+        for lab in shop["bandLabels"]:
+            st.add_row(lab, *[f"{shop['bands'][lab][b]:,}" for b in boros])
+        st.add_row("[dim]of which construction reported[/]",
+                   *[f"[dim]{shop['construction'][b]:,}[/]" for b in boros])
+        st.add_row("[bold]vacant premises drawn[/]",
+                   *[f"[bold]{sum(shop['bands'][lab][b] for lab in shop['bandLabels']):,}[/]"
+                     for b in boros])
+        console.print(st)
+        for b in boros:
+            t = shop["totals"].get(b) or {}
+            n_sf, n_vac = t.get("storefronts", 0), t.get("vacantStorefronts", 0)
+            rate = f"{100 * n_vac / n_sf:.1f}%" if n_sf else "n/a"
+            console.print(f"[dim]{b}: {n_vac:,} of {n_sf:,} registered storefronts vacant "
+                          f"({rate}) · {t.get('vacantPremises', 0):,} vacant premises, "
+                          f"{t.get('noGeom', 0):,} with no coordinate (not drawn)[/]")
+        console.print(f"[bold]storefront registry snapshot {shop['asof']}[/] "
+                      f"(DOF {shop['vintage'] or '?'}, filed {shop['filingDate']}) — "
+                      "self-reported; a landlord who does not file is invisible, and "
+                      "small buildings are mostly absent.")
+
     if dry_run:
         console.print("[dim]--dry-run: nothing written.[/]")
         raise typer.Exit(0)
@@ -1154,6 +1190,71 @@ def ingest_dcwp(
         raise typer.Exit(0)
 
     deleted, inserted = dcwp.apply_pending(con)
+    console.print(f"[green]ok[/] promoted {inserted:,} rows into staging.poi "
+                  f"(replaced {deleted:,}). Re-run `loci dedup` before any score.")
+
+
+@app.command(name="ingest-dohmh-childcare")
+def ingest_dohmh_childcare(
+    limit: int = typer.Option(None, help="Cap rows fetched (for smoke tests)."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+        help="Fetch + normalize and print the summary; write nothing at all."),
+    apply: bool = typer.Option(False, "--apply",
+        help="Promote staging.poi_dohmh_childcare_pending into staging.poi. Run `loci dedup` after."),
+    stage: bool = typer.Option(True, "--stage/--no-stage",
+        help="Fetch and land into the pending table. --no-stage --apply promotes what is already staged."),
+) -> None:
+    """Land the DOHMH child-care anchor (D65) — the registry source `childcare` lacked.
+
+    DEFAULTS TO PENDING, like `loci ingest-dcwp`: the ingest writes
+    staging.poi_dohmh_childcare_pending, never staging.poi, so it cannot race
+    `loci dedup` reading the supply universe. `--apply` is the separate,
+    explicit promotion step.
+
+    Dataset is gy3q-4tzp ("Active NYC Health Code Regulated Child Care
+    Programs"), NOT the dsg6-ifza inspections file the registry originally
+    planned against — that one is titled "(Historical)" and its own portal note
+    says it reflects data as of 2019-05-14. Full reasoning, and the caveat that
+    OCFS-licensed home-based family day care is absent from every NYC feed, is
+    in sources/cities/nyc/dohmh_childcare.py."""
+    from loci.sources.cities.nyc import dohmh_childcare as ccare
+
+    if dry_run:
+        recs = ccare.DohmhChildcareAdapter().load(None, limit=limit, dry_run=True)
+        boros = Counter(r.attrs.get("borough") for r in recs)
+        fac = Counter(r.attrs.get("facility_type") for r in recs)
+        console.print(f"[dim]--dry-run:[/] {len(recs):,} childcare records, nothing written.")
+        console.print(f"  by borough      {dict(sorted(boros.items(), key=lambda kv: -kv[1]))}")
+        console.print(f"  by facility     {dict(fac)}")
+        raise typer.Exit(0)
+
+    con = locidb.connect()
+    locidb.init_schema(con)
+
+    if stage:
+        recs = ccare.stage_pending(con, limit=limit)
+        boros = Counter(r.attrs.get("borough") for r in recs)
+        fac = Counter(r.attrs.get("facility_type") for r in recs)
+        table = Table(title="DOHMH child care -> staging.poi_dohmh_childcare_pending")
+        table.add_column("borough")
+        table.add_column("staged", justify="right")
+        for b in sorted(x for x in boros if x):
+            table.add_row(b, f"{boros[b]:,}")
+        table.add_row("[bold]total[/]", f"[bold]{len(recs):,}[/]")
+        table.add_row("of which active", f"{sum(1 for r in recs if r.attrs.get('active')):,}")
+        console.print(table)
+        console.print(f"[dim]facility types {dict(fac)}; "
+                      f"MN+BK staged {sum(v for k, v in boros.items() if k in ('MN', 'BK')):,}[/]")
+
+    if not apply:
+        n = con.execute(f"SELECT count(*) FROM {ccare.PENDING_TABLE}").fetchone()[0]
+        console.print(f"[green]ok[/] {n:,} rows pending in {ccare.PENDING_TABLE}. "
+                      f"Nothing written to staging.poi.")
+        console.print("[dim]to promote:  loci ingest-dohmh-childcare --no-stage --apply "
+                      "&&  loci dedup[/]")
+        raise typer.Exit(0)
+
+    deleted, inserted = ccare.apply_pending(con)
     console.print(f"[green]ok[/] promoted {inserted:,} rows into staging.poi "
                   f"(replaced {deleted:,}). Re-run `loci dedup` before any score.")
 
@@ -1379,6 +1480,156 @@ def pipeline(
                   f"(pipeline columns; graph {report['graph_version']})")
 
 
+@app.command(name="ingest-storefronts")
+def ingest_storefronts(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL (D48 default MN,BK)."),
+    refresh: bool = typer.Option(False, "--refresh",
+                                 help="Re-download the CSV even if data/raw/ already has it."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Download, transform and report; write nothing."),
+) -> None:
+    """Land the NYC DOF Storefront Registry (Local Law 157, `92iy-9c3n`) into
+    analysis.storefront -- ONE ROW PER STOREFRONT PER FILING.
+
+    The ~99 MB CSV export is STREAMED to data/raw/ and the whole normalisation
+    runs as one query inside DuckDB; the 414,884 source rows never enter Python.
+
+    Read sql/012_storefront_registry.sql before changing anything. Two things
+    in that header decide whether the numbers mean anything: (1) DOF assigns no
+    storefront identifier and `unit` is blank on 87% of rows, so NOTHING is
+    ever collapsed -- four identical rows at one address are four ground
+    floors, and fusing them would delete three of them; (2) five of the eleven
+    filings contain ONLY storefronts reported vacant, so pooling them with the
+    full filings reads as a 100% vacancy rate. `universe` carries that and is
+    derived from the data, not hard-coded.
+    """
+    import datetime as _dt
+
+    from loci.sources.cities.nyc import storefront_registry as sr
+
+    boros = tuple(_parse_boroughs(boroughs))
+    con = locidb.connect(read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+
+    console.print(f"[dim]fetching DOF {sr.DATASET} (streamed to disk) for "
+                  f"{','.join(boros)}…[/]")
+    report = sr.build(con, boros, dry_run=dry_run, force_download=refresh,
+                      asof=_dt.date.today())
+    written = report.pop("_written", None)
+
+    console.print(f"CSV {report['csv_bytes']/1e6:.1f} MB at {report['csv_path']} · "
+                  f"vintage [bold]{report['vintage']}[/]")
+    console.print(f"{report['rows']:,} storefront-filing rows over "
+                  f"{report['premises']:,} premises and {report['filings']} filings "
+                  f"· {report['no_geom']:,} without any coordinate")
+
+    t = Table(title=f"analysis.storefront — {','.join(boros)}")
+    for c in ("filing due", "period", "universe", "12/31", "6/30", "rows",
+              "premises", "vac 12/31", "vac 6/30", "w/ lease"):
+        t.add_column(c, justify="right" if c not in ("period", "universe") else "left")
+    for r in report["by_filing"].itertuples():
+        t.add_row(str(r.filing_due_date), str(r.period), str(r.universe),
+                  str(r.obs_1231 or "-"), str(r.obs_0630 or "-"),
+                  f"{r.rows_in:,}", f"{r.premises:,}",
+                  f"{r.vac_1231:,}", f"{r.vac_0630:,}", f"{r.with_lease:,}")
+    console.print(t)
+    console.print("[bold]geometry source:[/] " + " · ".join(
+        f"{r.src} {r.n:,}" for r in report["geom_source"].itertuples()))
+
+    if dry_run:
+        console.print("[dim]--dry-run:[/] nothing written.")
+        raise typer.Exit(0)
+    console.print(f"[green]ok[/] {written:,} rows -> analysis.storefront")
+
+
+@app.command()
+def storefronts(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL (D48 default MN,BK)."),
+    radius_m: float = typer.Option(400.0, "--radius-m",
+                                   help="Catchment radius in NETWORK metres (default 400 = the 5-min tier)."),
+    asof: str = typer.Option(None, "--asof",
+                             help="Observation date to snapshot (YYYY-MM-DD; default the "
+                                  "latest FULL-universe 12/31 in analysis.storefront)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """Annotate analysis.address with storefront-vacancy exposure.
+
+    For every address: how many registered storefronts were reported VACANT on
+    the snapshot's 12/31 within a 5-minute (400 m) NETWORK walk, how many
+    registered storefronts there are in total at that radius (the denominator),
+    and the nearest vacant one -- its id, its last reported business activity
+    and whether its lease had expired.
+
+    The default snapshot is the latest FULL-universe observation, not the
+    latest observation. The vacant-only supplements are fresher but have no
+    denominator, so counting them gives a numerator with nothing to divide by
+    and a ~60% undercount (sql/012 caveat 4). `--asof 2023-12-31` is the
+    lease-complete view: DOF stopped publishing the lease field on the annual
+    file after the 2024-06-03 release.
+
+    UPDATE-only on analysis.address (model/storefronts.STOREFRONT_COLUMNS,
+    pinned disjoint from the screen's own columns, from D62's PIPELINE_COLUMNS
+    and from D63's age_fit columns) -- vacancy is an ACTIONABILITY annotation,
+    never a filter: it cannot move gap_score, lead_category, n_missing or
+    eligible. `vacant_storefronts_400m` is a SUBSET of `storefronts_400m`;
+    never add the two.
+    """
+    import datetime as _dt
+
+    from loci.model import storefronts as sf
+    from loci.sources.cities.nyc import storefront_registry as sr
+
+    boros = _parse_boroughs(boroughs)
+    con = locidb.connect(read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+
+    when = _dt.date.fromisoformat(asof) if asof else sr.latest_full_observation(con, boros)
+    if when is None:
+        console.print("[yellow]analysis.storefront is empty for these boroughs -- "
+                      "run `loci ingest-storefronts` first[/]")
+        raise typer.Exit(1)
+    if abs(radius_m - sf.DEFAULT_RADIUS_M) > 1e-6:
+        console.print(f"[yellow]warning:[/] --radius-m {radius_m:.0f} differs from the "
+                      f"{sf.DEFAULT_RADIUS_M:.0f} m the COLUMN NAMES encode; the values "
+                      f"will be at {radius_m:.0f} m and the names will still say 400.")
+
+    console.print(f"[dim]storefront vacancy for {','.join(boros)} as of {when} "
+                  f"at {radius_m:.0f} m network…[/]")
+    df, report = sf.build_storefronts(con, boros, when, radius_m=radius_m, dry_run=dry_run)
+    written = report.pop("_written", None)
+
+    if report["universe"] != "full":
+        console.print(f"[yellow]warning:[/] the only filing observing {when} is "
+                      f"{report['universe']} -- `storefronts_400m` is NOT a universe "
+                      f"count and the rate it implies is not a rate.")
+    console.print(f"{report['storefronts']:,} storefronts in the {report['universe']} "
+                  f"filing due {report['filing_due_date']} "
+                  f"over {report['premises']:,} premises · "
+                  f"[bold]{report['storefronts_vacant']:,} vacant[/] "
+                  f"({100*report['vacancy_rate']:.2f}%) · "
+                  f"{report['construction_reported']:,} reporting construction · "
+                  f"{report['vacant_with_lease']:,} vacant rows carry a lease expiry")
+
+    t = Table(title=f"storefront exposure — {','.join(boros)} @ {when}")
+    t.add_column("measure"); t.add_column("addresses > 0", justify="right")
+    t.add_column("median where > 0", justify="right"); t.add_column("max", justify="right")
+    for col in ("vacant_storefronts_400m", "storefronts_400m"):
+        nz = df[col][df[col] > 0]
+        t.add_row(col, f"{len(nz):,}", f"{nz.median():.0f}" if len(nz) else "-",
+                  f"{df[col].max():,.0f}")
+    console.print(t)
+    console.print(f"addresses with a vacant storefront within {sf.DIST_LIMIT:.0f} m: "
+                  f"{report['addresses_with_vacant']:,} of {report['addresses']:,}")
+
+    if dry_run:
+        console.print("[dim]--dry-run:[/] nothing written.")
+        raise typer.Exit(0)
+    console.print(f"[green]ok[/] annotated {written:,} rows -> analysis.address "
+                  f"(storefront columns; graph {report['graph_version']})")
+
+
 age_fit_app = typer.Typer(add_completion=False, help=(
     "The age-fit ranking signal: SUPPLY-REVEALED age multipliers, one curve per "
     "fitted category, estimated from New York's own composition of supply "
@@ -1468,7 +1719,9 @@ def _print_curve(fit: dict) -> None:
 @age_fit_app.command("fit")
 def age_fit_fit(
     category: str = typer.Option("all", "--category",
-                                 help="bar | childcare | all (default)."),
+                                 help="One of the registry categories "
+                                      "(age_fit.FITTED_CATEGORIES), or 'all' "
+                                      "(default)."),
     boroughs: str = typer.Option("MN,BK", help="Estimation sample (D48 default MN,BK)."),
     acs_year: int = typer.Option(None, help="ACS vintage; default the pinned 2023."),
     dry_run: bool = typer.Option(False, "--dry-run",
@@ -1526,7 +1779,9 @@ def age_fit_fit(
 @age_fit_app.command("apply")
 def age_fit_apply(
     category: str = typer.Option("all", "--category",
-                                 help="bar | childcare | all (default)."),
+                                 help="One of the registry categories "
+                                      "(age_fit.FITTED_CATEGORIES), or 'all' "
+                                      "(default)."),
     boroughs: str = typer.Option("MN,BK", help="Where to apply (D48 default MN,BK)."),
     dry_run: bool = typer.Option(False, "--dry-run",
                                  help="Compute and print the summary; write nothing."),

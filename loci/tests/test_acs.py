@@ -389,6 +389,71 @@ def test_new_demographics_propagate_with_hand_computed_share_and_moe(tmp_path, m
             assert r[key] is not None and r[key] >= 0.0
 
 
+def test_under_5_share_is_a_strict_subset_of_under_18_and_needs_no_new_getvars():
+    """D65 spec check, no database and no network.
+
+    Two things this pins. (1) under_5 is built from EXACTLY the two under-5
+    cells (male 003 + female 027) over B01001's own total. (2) those cells are
+    a STRICT SUBSET of the under_18 band, which is the invariant the schema
+    cannot enforce: the four age-share columns do not partition the population
+    and must never be summed. (3) it therefore needs NO new Census variable --
+    both cells were already in GETVARS as members of the under_18 band, which
+    is why data/raw/acs/tracts_2023.json stayed valid when D65 landed and no
+    ACS refresh was required."""
+    num, den = SHARE_SPECS["under_5_share"]
+    assert num == ("B01001_003", "B01001_027")
+    assert den == "B01001_001"
+    assert SHARE_SPECS["under_18_share"][1] == den          # same denominator
+    under_18_cells = set(SHARE_SPECS["under_18_share"][0])
+    assert set(num) < under_18_cells                        # STRICT subset
+    # the cells are the ones the Census labels "under 5 years", both sexes
+    assert B01001_AGE_CELLS["003"] == "male, under 5 years"
+    assert B01001_AGE_CELLS["027"] == "female, under 5 years"
+    # already fetched: no GETVARS change, so the raw ACS cache is unaffected
+    for stem in num:
+        assert stem + "E" in GETVARS and stem + "M" in GETVARS
+    # it is appended last so the physical (ALTER-appended) column order of both
+    # demographic tables matches the order these dicts are generated in
+    assert list(SHARE_SPECS)[-1] == "under_5_share"
+
+
+def test_under_5_share_hand_computed_estimate_and_moe(tmp_path, monkeypatch):
+    """The D65 column end to end on the same fixture, asserted by hand.
+
+    Fixture tract: every B01001 age cell is 25 with MOE 5, B01001_001 = 1000
+    with MOE 100. So under-5 = 003 + 027 = 50, share 0.05, and the MOE is the
+    handbook sum rule within the tract (RSS of two 5s), apportioned by the
+    hex's unit share, then the handbook derived-proportion formula."""
+    con = locidb.connect(":memory:")
+    locidb.init_schema(con)
+    for h in (H1, H2):
+        con.execute(
+            "INSERT INTO analysis.hex (h3_index, resolution, geom, centroid, land_fraction) "
+            "VALUES (?, 9, ST_Point(0,0), ST_Point(0,0), 1.0)", [h])
+    pluto_csv = tmp_path / "pluto.csv"
+    _write_pluto_fixture(pluto_csv)
+    fake = {TRACT_GEOID: _fake_tract_record()}
+    monkeypatch.setattr("loci.grid.acs.fetch_acs", lambda year=2023, refresh=False: fake)
+    assert build_acs(con, pluto_csv=pluto_csv, year=2023) == 2
+
+    rows = {r[0]: r[1:] for r in con.execute(
+        "SELECT h3_index, under_5_share, under_5_share_moe, under_18_share "
+        "FROM analysis.hex_demographics").fetchall()}
+    for h, w in ((H1, 0.6), (H2, 0.4)):
+        u5, u5_moe, u18 = rows[h]
+        assert math.isclose(u5, 50.0 / 1000.0, rel_tol=1e-5)
+        # STRICT subset, so the under-5 share can never exceed the under-18 one
+        assert u5 < u18
+
+        num_moe = w * math.sqrt(2 * 25.0)      # two cells, MOE 5 each, RSS
+        den_moe = w * 100.0
+        p = 0.05
+        under = num_moe ** 2 - (p ** 2) * (den_moe ** 2)
+        if under < 0:                          # handbook fallback: add, not subtract
+            under = num_moe ** 2 + (p ** 2) * (den_moe ** 2)
+        assert math.isclose(u5_moe, math.sqrt(under) / (w * 1000.0), rel_tol=1e-5)
+
+
 def test_build_acs_raises_when_b01001_and_b01003_population_disagree(tmp_path, monkeypatch):
     """Sex-by-age and total-population are different tables over the same
     universe. If they disagree, an age cell index is wrong or a fetch chunk
