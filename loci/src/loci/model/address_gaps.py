@@ -552,7 +552,16 @@ def address_gaps_view_sql() -> str:
             a.lead_excess_m, a.n_missing, a.cluster_id,
             {select_cols},
             a.reach_source, a.reach_hash, a.graph_version, a.run_at,
-            a.supply_set, a.supply_hash, a.h3_index
+            a.supply_set, a.supply_hash, a.h3_index,
+            -- The development-pipeline annotation (sql/011, model/dev_pipeline.py),
+            -- APPENDED so every positional consumer of the old column order is
+            -- untouched. All NULL until `loci pipeline` has run for the borough.
+            a.units_permitted_400m, a.units_permitted_800m,
+            a.units_completed_24mo_400m, a.units_completed_24mo_800m,
+            a.units_completed_60mo_400m, a.units_completed_60mo_800m,
+            a.nearest_large_project_id, a.nearest_large_project_m,
+            a.nearest_large_project_units, a.nearest_large_project_stage,
+            a.nearest_large_project_date, a.pipeline_asof
         FROM analysis.address a
         LEFT JOIN wide w ON w.address_id = a.address_id AND w.borough = a.borough
     """

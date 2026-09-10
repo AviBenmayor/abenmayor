@@ -317,7 +317,7 @@ sources:
     url: https://lehd.ces.census.gov/data/
     access: https://lehd.ces.census.gov/data/lodes/LODES8/ny/wac/
     geography: census block
-    temporal: {start: 2002, end: 2023, grain: annual}
+    temporal: {start: 2002, end: 2023, grain: vintage, note: "loaded vintages are 2002, 2013, 2023 only (not annual series)"}
     cost: {amount: 0, unit: total}
     bias: >
       Counts JOBS, not establishments. Census noise infusion at block level.
@@ -405,19 +405,73 @@ sources:
     open_question: "ZIP -> hex crosswalk method. CONTEXT.md 9, item 4."
     notes: Weakest of the four outcomes; label it as such in the memo.
 
-  - id: nyc_dob_hpd
-    name: NYC DOB Job Application Filings + HPD Housing Database
+  # SUPERSEDES the `nyc_dob_hpd` placeholder (DOB Job Application Filings
+  # ic3t-wcy2 + "HPD Housing Database", status: planned, never built). The raw
+  # DOB filing feed is the wrong spine: it is one row per FILING with
+  # self-reported, unrecoded unit counts and no completion date. DCP's Housing
+  # Database is the same universe already QA'd, geocoded, unit-recoded and
+  # joined to CO evidence by City Planning. `hg8x-zxpr` -- the id this work was
+  # briefed with -- is NOT this dataset; it is HPD's Affordable Housing
+  # Production by Building, a subsidised-units-only universe at building grain.
+  # Verified against /api/views/ on 2026-09-09.
+  - id: nyc_dcp_housing_db
+    name: NYC DCP Housing Database — Project-Level Files
     tier: city
     city: nyc
     role: outcome
-    status: planned
-    url: https://data.cityofnewyork.us/Housing-Development/DOB-Job-Application-Filings/ic3t-wcy2
-    geography: tax lot
-    temporal: {start: 2000, end: current, grain: annual}
+    status: verified
+    url: https://data.cityofnewyork.us/Housing-Development/Housing-Database-Project-Level-Files/br6q-ssj3
+    dataset_id: br6q-ssj3
+    api: https://data.cityofnewyork.us/resource/br6q-ssj3.json
+    geography: point (building), with BBL and BIN
+    temporal: {start: 2010-01, end: 2026-01, grain: job-dated, version: 25Q4}
     cost: {amount: 0, unit: total}
+    fields: [Job_Number, Job_Type, Job_Status, ClassANet, ClassAInit, ClassAProp,
+             Units_CO, DateFiled, DatePermit, DateComplt, Boro, BBL, BIN,
+             NTA2020, Latitude, Longitude, Version]
     bias: >
-      Supply-side. Responds to zoning changes more than to amenities.
-      Permits are not completions.
+      Supply-side, and PUBLISHED SEMIANNUALLY: version 25Q4 carries data only
+      to 2026-01-21, so every job filed or permitted since is absent. The
+      forward pipeline is a floor, never a ceiling, and it is most incomplete
+      exactly where a leasing decision is most sensitive (the newest filings).
+      Permits are not completions: 259 MN+BK jobs (4,338 net units) were
+      permitted and then withdrawn. Jobs are geocoded to a BUILDING, so a
+      multi-building masterplan appears as several jobs at several points and
+      no project roll-up is attempted. DCP restates prior releases, so a job's
+      net unit count can change between versions; only the current version is
+      stored. Verified 2026-09-09.
+
+  - id: nyc_dob_certificates_of_occupancy
+    name: NYC DOB Certificates of Occupancy (BIS + DOB NOW)
+    tier: city
+    city: nyc
+    role: outcome
+    status: verified
+    url: https://data.cityofnewyork.us/Housing-Development/DOB-Certificate-Of-Occupancy/bs8b-p36w
+    # NOT `dataset_id`: two datasets, one logical source. Renamed to the
+    # singular key if the pair is ever split into two registry rows.
+    dataset_ids: [bs8b-p36w, pkdm-hqz6]
+    api: https://data.cityofnewyork.us/resource/bs8b-p36w.json
+    geography: point (building), with BBL and BIN
+    temporal: {start: 2012-07, end: current, grain: co-dated}
+    cost: {amount: 0, unit: total}
+    fields: [job_number, issue_type, c_o_issue_date, pr_dwelling_unit,
+             job_filing_name, c_of_o_status, c_of_o_filing_type,
+             c_of_o_issuance_date, number_of_dwelling_units]
+    bias: >
+      FRESHNESS SUPPLEMENT to nyc_dcp_housing_db, joined on the DOB job number,
+      not a standalone spine (it carries no filing or permit date and no net
+      unit count). Both feeds refresh daily and were current to 2026-09-08 when
+      ingested; 436 MN+BK jobs carrying 11,407 net units are still "Permitted"
+      in DCP 25Q4 but already hold a CO. A job has MANY CO rows -- an initial
+      TCO plus a renewal every 90 days (24,579 of pkdm-hqz6's rows are "Renewal
+      Without Change") -- and the same physical CO can appear in both feeds, so
+      the rows are collapsed to one per job by min/max and NEVER summed. A
+      temporary CO is legal occupancy but not a finished building; `co_type`
+      carries the distinction. bs8b-p36w contains out-of-range date typos (a
+      literal 2105-11-05), which are dropped rather than clamped. The BIS feed
+      is winding down (6,158 COs in 2021 -> 722 in 2026 YTD) as filings move to
+      DOB NOW. Verified 2026-09-09.
 
   - id: irs_soi_migration
     name: IRS SOI county-to-county migration

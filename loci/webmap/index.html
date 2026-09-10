@@ -44,6 +44,20 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
 .alc input{accent-color:var(--ink);width:13px;height:13px;flex:none}
 .alc .k{width:16px;display:flex;justify-content:center;flex:none}
 .alc .n{margin-left:auto;font-family:"IBM Plex Mono";font-size:11px;color:var(--muted)}
+/* Development pipeline (owner request 2026-09-09). Same legend layout as the
+   alcohol overlay — it is the same KIND of thing, a standalone overlay — but
+   its own marks: big rings sized by homes, not dots. The gap filter lives in
+   this section because it is a pipeline reading applied to the gap layer, and
+   it stays usable when the overlay itself is switched off. */
+.pipe{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.pipe .row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);padding:3px 0}
+.pipe .k{width:26px;display:flex;justify-content:center;flex:none}
+.pipe .n{margin-left:auto;font-family:"IBM Plex Mono";font-size:11px;color:var(--muted)}
+.pipe.off{opacity:.5}
+.filt{margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
+.filt label{display:block;font-size:11.5px;color:var(--ink2);margin-bottom:5px}
+.asof{margin-top:7px;font-family:"IBM Plex Mono";font-size:10.5px;color:var(--muted);line-height:1.5}
+.asof b{color:var(--ink2)}
 /* All-opportunities mode (owner request 2026-09-09). Its own selector row
    above the fifteen categories, because it is a MODE, not a 16th business:
    picking it changes what the map is about, not which colour it is. */
@@ -109,6 +123,18 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
       <label class="chk"><input type="checkbox" id="excTog"> Show excluded records</label>
       <div class="fine" id="supFine"></div>
     </div>
+    <div class="sec" id="pipeSec" hidden>
+      <h2>Development pipeline <span class="hint">overlay</span></h2>
+      <label class="chk"><input type="checkbox" id="pipeTog"> Show development pipeline</label>
+      <div class="pipe" id="pipeLegend"></div>
+      <div class="filt">
+        <label for="pipeMin">Gap addresses with at least</label>
+        <select id="pipeMin"></select>
+        <div class="fine" id="pipeMinNote"></div>
+      </div>
+      <div class="asof" id="pipeAsof"></div>
+      <div class="fine" id="pipeFine"></div>
+    </div>
     <div class="sec" id="alcSec" hidden>
       <h2>Alcohol licences <span class="hint">overlay</span></h2>
       <label class="chk"><input type="checkbox" id="alcTog"> Show alcohol licences</label>
@@ -159,6 +185,37 @@ const ALC_FALLBACK={shape:'ring', color:'#7d7566'};
 const alcStyle=cls=>ALC_STYLE[cls]||ALC_FALLBACK;
 const alcImg=cls=>'alc-icon-'+cls;
 const alcTip=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:12});
+const pipeTip=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:14});
+// ---- Development pipeline overlay (owner request 2026-09-09) --------------
+// A STANDALONE overlay like alcohol: never read by gapFC() or poiFC(), never
+// touched by the business selector, and switching it on cannot move a gap dot.
+// It DOES honour the borough selector — every layer on this map must, and a
+// Manhattan-only view showing Brooklyn towers is a bug, not a feature.
+//
+// Data: data/pipeline.json, written by `loci export-webmap` from
+// analysis.dev_pipeline (sql/011). One point per DOB job of >= 50 net units in
+// the stages `permitted` / `partially_complete` / `complete within 60 months`.
+// FILED AND WITHDRAWN JOBS ARE NOT IN THE FILE — a filing is a developer's
+// wish, and 259 MN+BK jobs were permitted and then withdrawn.
+//
+// SYMBOL: size = homes (three bands, edges read from the file so they cannot
+// drift from the counts), colour = coming vs arrived, fill = a FINAL
+// certificate of occupancy. Hollow means "not a finished building": either not
+// built yet, or occupied on a temporary CO.
+let showPipe=false, PIPE=null, pipeLoading=false;
+// Minimum units permitted within 400 m for a gap address to be DRAWN. A filter
+// on the gap layer, not on the overlay — "show me the gaps with a wave of
+// residents about to land on them". 0 = no filter, which is the default,
+// because the map's own question is still "what is missing here".
+let pipeMin=0;
+const PIPE_MIN_OPTS=[0,100,300,1000];
+const PIPE_COMING='#e2711d', PIPE_DONE='#26547c';
+// Slot offsets of the four pipeline numbers inside each layer's flat point
+// array. They are APPENDED in the exporter, so everything before them keeps
+// its index; these two constants are the only place the offsets are written.
+const GAP_PIPE=4;     // gaps/<cat>.json  stride 8: lon,lat,boro,units,+4
+const NTA_PIPE=6;     // nta/<code>.json  stride 10: lon,lat,units,lead,score,nMissing,+4
+const pipeColor=stage=>stage==='complete'?PIPE_DONE:PIPE_COMING;
 // Cuisine + active filters are KNOWN-LOCATION filters only. They are read
 // exclusively by poiFC(); gapFC() never sees them. The gap layer is model
 // output (analysis.address_gaps) and must not be reinterpreted client-side --
@@ -188,11 +245,53 @@ const boroKeep=i=>boroSel==='ALL'||META.boroughs[i]===boroSel;
 // once per (category, borough, filter) change.
 function gapFC(){
   const L=CACHE.gaps[biz]; if(!L) return {type:'FeatureCollection',features:[]};
-  const f=[],p=L.pts;
-  for(let i=0;i<p.length;i+=4){ if(!boroKeep(p[i+2])) continue;
+  const f=[],p=L.pts,st=L.stride||4;
+  for(let i=0;i<p.length;i+=st){ if(!boroKeep(p[i+2])) continue;
+    // The pipeline filter. `up` is units PERMITTED within 400 m — coming, not
+    // arrived — because that is the number a lease signed today is a bet on.
+    const up=st>GAP_PIPE?p[i+GAP_PIPE]:0;
+    if(pipeMin&&up<pipeMin) continue;
     f.push({type:'Feature',geometry:{type:'Point',coordinates:[p[i],p[i+1]]},
-      properties:{u:p[i+3],id:L.ids[i/4]}}); }
+      properties:{u:p[i+3],id:L.ids[i/st],j:i/st}}); }
   return {type:'FeatureCollection',features:f};
+}
+// The four pipeline numbers for point j of a layer, plus the nearest large
+// project looked up in that file's own project dictionary. `null` when the
+// export carried no pipeline block at all (a database predating `loci
+// pipeline`), so the popup can say nothing rather than say zero.
+function pipeAt(L,j,off){
+  if(!L||!L.stride||L.stride<=off||!L.projects) return null;
+  const p=L.pts,i=j*L.stride;
+  const k=p[i+off+2], P=L.projects;
+  return {up:p[i+off],done24:p[i+off+1],
+    near:k<0?null:{id:P.ids[k],units:P.units[k],stage:P.stage[k],date:P.date[k],
+                   m:p[i+off+3]}};
+}
+const STAGE_TEXT={permitted:'permitted / under construction',
+  partially_complete:'partially complete',complete:'completed',
+  filed:'filed only',withdrawn:'withdrawn'};
+// The pipeline reading for one gap address. Deliberately explicit about the
+// two ways this can mislead: the nearest large project may be a job the
+// OVERLAY REFUSES TO DRAW (the model's nearest-project column includes filed
+// jobs, 54k MN+BK addresses have one), and the coming-units count is a floor
+// because DCP's release is months behind.
+function pipeHTML(x){
+  if(!x) return '';
+  const P=META.pipeline||{};
+  let h='<div class="pmi" style="margin-top:6px">Development pipeline</div>';
+  h+=`<div class="ppop">${(+x.up).toLocaleString()} homes permitted within 400 m`+
+     ` · ${(+x.done24).toLocaleString()} completed in the last 24 months</div>`;
+  if(x.near){
+    const drawn=P.stages&&P.stages.indexOf(x.near.stage)>=0;
+    h+=`<div class="ppop">nearest large project: <b>${(+x.near.units).toLocaleString()} homes</b>`+
+       `${x.near.m>=0?' · '+(+x.near.m).toLocaleString()+' m walk':''} · `+
+       `${esc(STAGE_TEXT[x.near.stage]||x.near.stage)}`+
+       `${x.near.date?' · '+esc(x.near.date):''}</div>`+
+       `<div class="pmi">DOB job ${esc(x.near.id)}${drawn?'':' — not on the overlay (filed only)'}</div>`;
+  }else h+='<div class="pmi">no project of 50+ homes within 2.4 km</div>';
+  if(P.cutoff) h+=`<div class="pmi">coming homes are a floor — DCP ${esc(P.vintage||'')} `+
+    `carries permits only to ${esc(P.cutoff)}</div>`;
+  return h;
 }
 function poiFC(){
   const L=CACHE.pois[biz]; if(!L||!showPois) return {type:'FeatureCollection',features:[]};
@@ -313,6 +412,108 @@ function alcHTML(p,full){
     (full?`<div class="pmi">SLA licence ${esc(ALC.ids[j])}</div>`:'');
 }
 
+// ---- Development pipeline overlay -----------------------------------------
+// Packed like the other layers: flat stride-6 numbers (lon, lat, borough index,
+// stage index, CO index, net units) plus parallel arrays, with the NTA name,
+// job type and the three dates dictionary-encoded. See pack_pipeline() in
+// src/loci/viz/webmap_export.py.
+function pipeFC(){
+  if(!PIPE||!showPipe) return EMPTY;   // `EMPTY` is defined below; this runs later
+  const f=[],p=PIPE.pts,st=PIPE.stride;
+  for(let i=0;i<p.length;i+=st){
+    if(!boroKeep(p[i+2])) continue;      // the overlay obeys the borough selector
+    const stage=PIPE.stages[p[i+3]], co=PIPE.co[p[i+4]];
+    f.push({type:'Feature',geometry:{type:'Point',coordinates:[p[i],p[i+1]]},
+      properties:{stage:stage,co:co,u:p[i+5],j:i/st,col:pipeColor(stage)}});
+  }
+  return {type:'FeatureCollection',features:f};
+}
+function pipeVal(key,vkey,j){const i=PIPE[key][j];return i<0?null:PIPE.vocab[vkey][i];}
+// Radius steps built FROM THE FILE's band edges, so the mark drawn and the
+// count in the legend can never come from two different definitions of "large".
+function pipeRadius(){
+  const edges=(PIPE.bands||[]).map(b=>b[0]);        // [50,100,300]
+  const at=r=>{const e=['step',['get','u'],r[0]];
+    for(let i=1;i<edges.length;i++) e.push(edges[i],r[i]); return e;};
+  return ['interpolate',['linear'],['zoom'],
+    10,at([3.5,5,7.5]), 13,at([7,10.5,16]), 16,at([12,19,29])];
+}
+// Jobs per stage in the boroughs currently on screen.
+function pipeCount(stage){
+  const c=META.pipeline&&META.pipeline.counts&&META.pipeline.counts[stage]; if(!c) return 0;
+  let n=0; META.boroughs.forEach(b=>{if(boroSel==='ALL'||b===boroSel)n+=c[b]||0;}); return n;
+}
+function pipeUnits(stage){
+  const c=META.pipeline&&META.pipeline.units&&META.pipeline.units[stage]; if(!c) return 0;
+  let n=0; META.boroughs.forEach(b=>{if(boroSel==='ALL'||b===boroSel)n+=c[b]||0;}); return n;
+}
+function pipeSvg(color,r,filled){
+  return `<svg width="26" height="26"><circle cx="13" cy="13" r="${r}" fill="${color}" `+
+    `fill-opacity="${filled?0.32:0.06}" stroke="${color}" stroke-width="1.8"></circle></svg>`;
+}
+async function loadPipeline(){
+  if(PIPE||pipeLoading) return; pipeLoading=true;
+  try{ PIPE=await fetch('data/pipeline.json').then(r=>r.json()); }
+  catch(e){ PIPE=null; }
+  pipeLoading=false;
+}
+let pipeSized=false;
+function refreshPipe(){
+  const s=map.getSource('pipe'); if(!s) return;
+  // The radius expression is built from the file's own band edges, so it can
+  // only be installed once the file is here.
+  if(PIPE&&!pipeSized){map.setPaintProperty('pipe','circle-radius',pipeRadius());pipeSized=true;}
+  s.setData(pipeFC()); renderPipeLegend();
+}
+// Two colour rows (coming / arrived), three size rows (the bands), and one row
+// for the fill rule. Six rows is a lot for a legend, but the symbol encodes
+// three things and a legend that names two of them is worse than none.
+function renderPipeLegend(){
+  const P=META.pipeline, el=document.getElementById('pipeLegend');
+  if(!P||!P.available) return;
+  el.className='pipe'+(showPipe?'':' off');
+  const coming=P.stages.filter(s=>s!=='complete'), done=P.stages.filter(s=>s==='complete');
+  const grp=(sts,color,label)=>{
+    const n=sts.reduce((a,s)=>a+pipeCount(s),0), u=sts.reduce((a,s)=>a+pipeUnits(s),0);
+    return `<div class="row"><span class="k">${pipeSvg(color,8,false)}</span>`+
+      `<span>${esc(label)}<br><span class="hint">${u.toLocaleString()} homes</span></span>`+
+      `<span class="n">${n.toLocaleString()}</span></div>`;};
+  el.innerHTML=
+    grp(coming,PIPE_COMING,'Coming — permitted or building')+
+    grp(done,PIPE_DONE,`Arrived — CO in the last ${Math.round((P.completeMonths||60)/12)} years`)+
+    (P.bandLabels||[]).map((lab,i)=>{
+      const r=[4.5,7,10][i]||7, n=META.boroughs.reduce((a,b)=>
+        a+(boroSel==='ALL'||b===boroSel?((P.bandCounts[lab]||{})[b]||0):0),0);
+      return `<div class="row"><span class="k">${pipeSvg('#8f8879',r,false)}</span>`+
+        `<span>${esc(lab)}</span><span class="n">${n.toLocaleString()}</span></div>`;}).join('')+
+    `<div class="row"><span class="k">${pipeSvg(PIPE_DONE,8,true)}</span>`+
+      `<span>Filled = final certificate of occupancy<br>`+
+      `<span class="hint">hollow = not built yet, or occupied on a temporary CO</span></span></div>`;
+}
+// job number, BBL + neighborhood (analysis.dev_pipeline carries no street
+// address — DCP geocodes to a building, not to a door), homes, stage and the
+// three dates.
+function pipeHTMLJob(p,full){
+  const j=+p.j;
+  const nta=pipeVal('nta','nta',j), type=pipeVal('type','type',j);
+  const df=pipeVal('filed','date',j), dp=pipeVal('permitted','date',j),
+        dc=pipeVal('complete','date',j);
+  const co=p.co==='none'?null:p.co;
+  let h=`<div class="pnb">${(+p.u).toLocaleString()} homes · ${esc(STAGE_TEXT[p.stage]||p.stage)}</div>`+
+    `<div class="ppop">${esc(type||'DOB job')}${nta?' · '+esc(nta):''}</div>`;
+  if(dp) h+=`<div class="pmi">permitted ${esc(dp)}</div>`;
+  else if(df) h+=`<div class="pmi">filed ${esc(df)}</div>`;
+  if(dc) h+=`<div class="pmi">certificate of occupancy ${esc(dc)}`+
+    `${co?' · '+esc(co):''}</div>`;
+  else h+=`<div class="pmi">no certificate of occupancy yet</div>`;
+  if(full){
+    h+=`<div class="pmi">DOB job ${esc(PIPE.ids[j])}${PIPE.bbl[j]?' · BBL '+esc(PIPE.bbl[j]):''}</div>`;
+    if(co==='temporary') h+='<div class="warn">Temporary CO — legal occupancy, '+
+      'but not a finished building.</div>';
+  }
+  return h;
+}
+
 // ---- All opportunities, one neighborhood (owner request 2026-09-09) --------
 // "When I zoom in on one neighborhood, can we show all the opportunities?"
 //
@@ -383,6 +584,9 @@ function allGapFC(){
   if(!NTA||!ntaVisible()) return EMPTY;
   const f=[],p=NTA.pts,st=NTA.stride;
   for(let i=0;i<p.length;i+=st){ const j=i/st;
+    // Same pipeline filter as the single-business view, off the same slot —
+    // one threshold, both modes, or the sidebar control would mean two things.
+    if(pipeMin&&(st<=NTA_PIPE||p[i+NTA_PIPE]<pipeMin)) continue;
     const lead=p[i+3]>=0?META.cats[p[i+3]]:null;
     // `hi` is baked into the feature rather than filtered in the style: the
     // legend highlights addresses MISSING that category, which is not the same
@@ -604,6 +808,22 @@ map.on('load',async()=>{
     layout:{'icon-image':['get','img'],'icon-allow-overlap':true,'icon-ignore-placement':true,
       'icon-size':['interpolate',['linear'],['zoom'],10,0.55,13,0.78,17,1.1]}});
 
+  // Development pipeline: registered up front and left EMPTY until the toggle
+  // is switched on, same contract as the alcohol overlay, so the draw order is
+  // fixed. It sits BELOW everything else — these rings are large enough to
+  // swallow the gap and known-location dots, and the map's subject is still
+  // what is missing, not what is being built.
+  map.addSource('pipe',{type:'geojson',data:EMPTY});
+  map.addLayer({id:'pipe',type:'circle',source:'pipe',
+    paint:{'circle-radius':4,
+      'circle-color':['get','col'],
+      // Filled ONLY for a final certificate of occupancy: a finished building.
+      // Permitted (no CO) and temporary-CO jobs are both hollow, which is the
+      // honest reading — neither is a finished building.
+      'circle-opacity':['case',['==',['get','co'],'final'],0.32,0.06],
+      'circle-stroke-width':1.8,'circle-stroke-color':['get','col'],
+      'circle-stroke-opacity':0.95}},'cl');
+
   document.getElementById('loading').hidden=true;
   buildUI(); refresh();
 
@@ -614,8 +834,9 @@ map.on('load',async()=>{
       `<div class="ppop">${(+p.u).toLocaleString()} homes with no ${label().toLowerCase()} in reach</div>`).addTo(map);});
   map.on('mouseleave','cl',()=>{map.getCanvas().style.cursor='';clTip.remove();});
   map.on('click','pt',e=>{const p=e.features[0].properties;
-    new maplibregl.Popup({closeButton:false,maxWidth:'250px'}).setLngLat(e.lngLat)
+    new maplibregl.Popup({closeButton:false,maxWidth:'285px'}).setLngLat(e.lngLat)
       .setHTML(`<div class="pnb">Gap address</div><div class="ppop">${p.u} homes · no ${label().toLowerCase()} in reach</div>`+
+        pipeHTML(pipeAt(CACHE.gaps[biz],+p.j,GAP_PIPE))+
         `<div class="pmi">bbl ${p.id}</div>`).addTo(map);});
   map.on('mouseenter','pt',()=>map.getCanvas().style.cursor='pointer');
   map.on('mouseleave','pt',()=>map.getCanvas().style.cursor='');
@@ -665,12 +886,16 @@ map.on('load',async()=>{
         `<div class="ppop">lead gap: <b>${esc(catLabel(p.lead)||'—')}</b> · gap score ${(+p.gs).toFixed(2)}</div>`+
         `<div style="margin-top:5px">${missHTML(j)}</div>`+
         `<div class="pmi">× is distance to the nearest one ÷ this category's reach tier</div>`+
+        pipeHTML(pipeAt(NTA,j,NTA_PIPE))+
         `<div class="pmi">bbl ${esc(NTA.ids[j])}</div>`).addTo(map);});
   map.on('mouseenter','allpt',e=>{map.getCanvas().style.cursor='pointer';
     const p=e.features[0].properties;
     clTip.setLngLat(e.features[0].geometry.coordinates)
       .setHTML(`<div class="pnb">${(+p.nm)} missing · ${homes(p.u)}</div>`+
-        `<div class="ppop">lead gap ${esc(catLabel(p.lead)||'—')}</div>`).addTo(map);});
+        `<div class="ppop">lead gap ${esc(catLabel(p.lead)||'—')}</div>`+
+        (()=>{const x=pipeAt(NTA,+p.j,NTA_PIPE);
+          return x&&x.up?`<div class="pmi">${(+x.up).toLocaleString()} homes permitted within 400 m</div>`:'';})()
+      ).addTo(map);});
   map.on('mouseleave','allpt',()=>{map.getCanvas().style.cursor='';clTip.remove();});
   map.on('mouseenter','allpoi',e=>{map.getCanvas().style.cursor='pointer';
     const p=e.features[0].properties;
@@ -695,6 +920,15 @@ map.on('load',async()=>{
     new maplibregl.Popup({closeButton:false,maxWidth:'270px'})
       .setLngLat(e.features[0].geometry.coordinates)
       .setHTML(alcHTML(e.features[0].properties,true)).addTo(map);});
+
+  map.on('mouseenter','pipe',e=>{map.getCanvas().style.cursor='pointer';
+    pipeTip.setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(pipeHTMLJob(e.features[0].properties,false)).addTo(map);});
+  map.on('mouseleave','pipe',()=>{map.getCanvas().style.cursor='';pipeTip.remove();});
+  map.on('click','pipe',e=>{
+    new maplibregl.Popup({closeButton:false,maxWidth:'280px'})
+      .setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(pipeHTMLJob(e.features[0].properties,true)).addTo(map);});
 });
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -734,23 +968,24 @@ function refresh(){
     map.getSource('poi').setData(EMPTY);
     map.getSource('allgap').setData(allGapFC());
     map.getSource('allpoi').setData(allPoiFC());
-    updateBanner(); allLegend(); refreshAlc();
+    updateBanner(); allLegend(); refreshAlc(); refreshPipe();
     return;
   }
   map.getSource('allgap').setData(EMPTY);
   map.getSource('allpoi').setData(EMPTY);
-  map.getSource('gap').setData(gapFC());
+  const gf=gapFC();
+  map.getSource('gap').setData(gf);
   const pf=poiFC();
   map.getSource('poi').setData(pf);
   map.setPaintProperty('cl','circle-color',lc());
   map.setPaintProperty('pt','circle-color',lc());
   // Only IN-SET features count towards "known locations shown" -- an excluded
   // cross on screen is not a known location and must not inflate the banner.
-  updateBanner(pf.features.reduce((n,f)=>n+(f.properties.s?1:0),0));
-  updateLegend(); refreshAlc();
+  updateBanner(pf.features.reduce((n,f)=>n+(f.properties.s?1:0),0),gf.features.length);
+  updateLegend(); refreshAlc(); refreshPipe();
 }
 function sumOver(obj,pick){let n=0;META.boroughs.forEach(b=>{if(boroSel==='ALL'||b===boroSel)n+=pick(obj[b]);});return n;}
-function updateBanner(shown){
+function updateBanner(shown,gshown){
   if(allMode()) return allBanner();
   const g=sumOver(META.gapCounts[biz],v=>v), p=sumOver(META.poiCounts[biz],v=>v.all);
   const where=boroSel==='ALL'?'Manhattan & Brooklyn':META.boroughNames[boroSel];
@@ -760,9 +995,15 @@ function updateBanner(shown){
   const poiTxt=filtered?`${shown.toLocaleString()} of ${p.toLocaleString()} known locations shown`
                        :`${p.toLocaleString()} known locations`;
   const cui=cuiSel==='ALL'?'':cuiSel===CUI_OTHER?' · other cuisines':cuiSel===CUI_NONE?' · cuisine not recorded':` · ${cuiSel}`;
+  // Same rule as the cuisine filter: a filtered map must never print an
+  // unqualified total, because that is how a screenshot starts lying.
+  const gapTxt=(pipeMin&&gshown!=null)
+    ? `${gshown.toLocaleString()} of ${g.toLocaleString()} gap addresses`
+    : `${g.toLocaleString()} gap addresses`;
   document.getElementById('banner').innerHTML=
-    `<span class="sw" style="background:${lc()}"></span><div><b>${label()}${esc(cui)}${activeOnly&&det()?' · active only':''}</b>`+
-    `<div class="bsub">${g.toLocaleString()} gap addresses · ${poiTxt} · ${where} · reach ${META.reach_m[biz]} m</div></div>`;
+    `<span class="sw" style="background:${lc()}"></span><div><b>${label()}${esc(cui)}${activeOnly&&det()?' · active only':''}`+
+    `${pipeMin?` · ${pipeMin}+ homes permitted nearby`:''}</b>`+
+    `<div class="bsub">${gapTxt} · ${poiTxt} · ${where} · reach ${META.reach_m[biz]} m</div></div>`;
 }
 // The mode's banner says the neighborhood, not the business — and when no
 // neighborhood is picked it says THAT, so the empty map is never mistaken for
@@ -922,7 +1163,67 @@ function buildUI(){
   renderSupply();
   document.getElementById('cuiSel').onchange=e=>{cuiSel=e.target.value;refresh();};
   document.getElementById('actTog').onchange=e=>{activeOnly=e.target.checked;refresh();};
-  buildAlcUI();
+  buildAlcUI(); buildPipeUI();
+}
+// The pipeline section carries TWO controls with different scopes: the overlay
+// toggle (a standalone layer) and the minimum-permitted-units filter (a filter
+// on the GAP layer). The filter stays live when the overlay is off — "show me
+// the gaps with a wave of residents landing on them" is a question you can ask
+// without drawing a single ring.
+// The counts beside the fifteen businesses are borough totals from meta.json
+// and do NOT move with this filter. Saying so is cheaper than recomputing
+// fifteen filtered counts on every change, and quieter than a number that
+// disagrees with the map for reasons the reader cannot see.
+function renderPipeMinNote(){
+  const el=document.getElementById('pipeMinNote'); if(!el) return;
+  el.innerHTML=pipeMin
+    ? `Filters the <b>gap layer</b> only, in both modes. The counts beside each business `+
+      `above stay unfiltered totals; the banner shows how many are drawn.`
+    : `Filters the gap layer by how many homes are <b>permitted but not yet occupied</b> `+
+      `within a 5-minute walk — the residents a lease signed today is a bet on.`;
+}
+function buildPipeUI(){
+  const P=META.pipeline, sec=document.getElementById('pipeSec'),
+        tog=document.getElementById('pipeTog'), sel=document.getElementById('pipeMin'),
+        fine=document.getElementById('pipeFine'), asof=document.getElementById('pipeAsof');
+  if(!P) return;
+  sec.hidden=false;
+  sel.innerHTML=PIPE_MIN_OPTS.map(v=>`<option value="${v}"${v===pipeMin?' selected':''}>`+
+    `${v===0?'any pipeline (no filter)':v.toLocaleString()+'+ homes permitted within 400 m'}</option>`).join('');
+  sel.onchange=e=>{pipeMin=+e.target.value;renderPipeMinNote();refresh();};
+  renderPipeMinNote();
+  if(!P.available){
+    tog.disabled=true; sel.disabled=true;
+    fine.textContent='Not loaded — run `loci ingest-dcp-housing`, `loci pipeline`, '+
+      'then `loci export-webmap`.';
+    return;
+  }
+  tog.checked=false; showPipe=false;   // off by default, every load
+  // THE VINTAGE IS PART OF THE LAYER. DCP publishes semiannually, so every
+  // job filed or permitted after `cutoff` is missing: the coming-homes number
+  // is a floor and the map has to say so on its own face, not only in a
+  // terminal nobody kept.
+  asof.innerHTML=`pipeline as of <b>${esc(P.asof||'?')}</b> · DCP ${esc(P.vintage||'?')} `+
+    `carries filings and permits only to <b>${esc(P.cutoff||'?')}</b>`;
+  fine.innerHTML=`Every <b>DOB job of ${(P.minUnits||50)}+ net homes</b> that is permitted, `+
+    `building, or finished within the last ${Math.round((P.completeMonths||60)/12)} years. `+
+    `<b>Filed and withdrawn jobs are not drawn</b> — a filing is a developer's wish, and jobs `+
+    `get permitted and then withdrawn. Because DCP's release is months behind, anything filed `+
+    `or permitted since ${esc(P.cutoff||'its cutoff')} is absent: <b>the coming-homes count is a `+
+    `floor, never a ceiling</b>. This is an overlay, not a business category — switching it on `+
+    `cannot open or close a gap.`;
+  renderPipeLegend();
+  tog.onchange=async e=>{
+    showPipe=e.target.checked;
+    if(showPipe&&!PIPE){
+      const ld=document.getElementById('loading');
+      ld.hidden=false; ld.textContent='Loading development pipeline…';
+      await loadPipeline(); ld.hidden=true;
+      if(!PIPE){ showPipe=false; e.target.checked=false;
+        fine.textContent='Could not load data/pipeline.json.'; }
+    }
+    refreshPipe();
+  };
 }
 // The mode lives at the TOP of the business list and above a divider: it is
 // the same kind of choice (what does the map draw?) with a different kind of

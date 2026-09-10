@@ -53,6 +53,20 @@ PLACES = {
 }
 
 
+#: SQL types for wx.PIPELINE_GAP_COLUMNS, in that order. A dict rather than a
+#: list so the fixture cannot silently declare six of seven.
+PIPE_TYPES = {
+    "units_permitted_400m": "INTEGER",
+    "units_completed_24mo_400m": "INTEGER",
+    "nearest_large_project_id": "VARCHAR",
+    "nearest_large_project_m": "DOUBLE",
+    "nearest_large_project_units": "INTEGER",
+    "nearest_large_project_stage": "VARCHAR",
+    "nearest_large_project_date": "DATE",
+}
+assert list(PIPE_TYPES) == wx.PIPELINE_GAP_COLUMNS
+
+
 @pytest.fixture()
 def con():
     c = db.connect(":memory:")
@@ -74,11 +88,25 @@ def con():
     # -- address_gaps is a VIEW now, and ALTER TABLE against a view errors.
     # This fixture's own mini address_gaps stands in for that view, so it
     # declares them directly.
+    # The seven pipeline columns model/dev_pipeline.py writes onto
+    # analysis.address and the address_gaps view re-exports (sql/011). Declared
+    # here so the export's pipeline reading is exercised rather than skipped by
+    # `has_pipeline_columns`.
+    pipe = ", ".join(f"{c} {t}" for c, t in PIPE_TYPES.items())
     c.execute(f"""CREATE TABLE analysis.address_gaps (
         address_id VARCHAR, lon DOUBLE, lat DOUBLE, borough VARCHAR,
         units_capped FLOAT, nta_code VARCHAR, neighborhood VARCHAR,
         eligible BOOLEAN, gap_score FLOAT, lead_category VARCHAR,
-        supply_set VARCHAR, supply_hash VARCHAR, {cols})""")
+        supply_set VARCHAR, supply_hash VARCHAR, {pipe}, {cols})""")
+    # analysis.address carries the run stamp the completion window counts back
+    # from; analysis.dev_pipeline is the overlay's own table.
+    c.execute("CREATE TABLE analysis.address (address_id VARCHAR, pipeline_asof DATE)")
+    c.execute("""CREATE TABLE analysis.dev_pipeline (
+        job_number VARCHAR, bbl VARCHAR, geom GEOMETRY, borough VARCHAR,
+        nta_code VARCHAR, neighborhood VARCHAR, job_type VARCHAR,
+        net_units INTEGER, stage VARCHAR, date_filed DATE, date_permitted DATE,
+        date_complete DATE, co_type VARCHAR, source VARCHAR,
+        source_vintage VARCHAR, provenance VARCHAR)""")
     # The REAL supply-set definitions, not a restatement of them: 006 also
     # creates analysis.category_anchor, which is where the corroboration
     # check reads from.
@@ -138,8 +166,27 @@ def _add_dohmh(con, poi_id, cluster, boro, canonical=False, cat="restaurant",
                     "active_basis": basis})
 
 
+def _add_job(con, job, boro, net_units=100, stage="permitted", co_type=None,
+             date_permitted="2025-03-01", date_complete=None, date_filed="2023-01-01",
+             job_type="New Building", nbhd=None, vintage="25Q4"):
+    """One analysis.dev_pipeline row, shaped like the real loader's output."""
+    lon, lat = PLACES[boro]
+    con.execute(
+        "INSERT INTO analysis.dev_pipeline VALUES "
+        "(?, ?, ST_Point(?, ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [job, "1000" + job, lon, lat, boro, boro + "0001",
+         nbhd or ("Somewhere in " + boro), job_type, net_units, stage,
+         date_filed, date_permitted, date_complete, co_type,
+         "nyc_dcp_housing_db", vintage, "br6q-ssj3@" + vintage])
+
+
+def _set_asof(con, asof="2026-09-09"):
+    con.execute("DELETE FROM analysis.address")
+    con.execute("INSERT INTO analysis.address VALUES ('a', CAST(? AS DATE))", [asof])
+
+
 def _add_gap(con, address_id, boro, cat="laundry", ratio=2.0, eligible=True,
-             extra=(), units=10.0, score=1.5):
+             extra=(), units=10.0, score=1.5, pipe=None):
     """One address row. `cat` (plus anything in `extra`) is beyond reach at
     `ratio`; every other category sits at 0.5, comfortably inside it.
 
@@ -156,6 +203,12 @@ def _add_gap(con, address_id, boro, cat="laundry", ratio=2.0, eligible=True,
             "neighborhood", "eligible", "gap_score", "lead_category"]
     vals = [address_id, lon, lat, boro, units, boro + "0001",
             "Somewhere in " + boro, eligible, score, cat]
+    # `pipe` is the seven PIPELINE_GAP_COLUMNS as a dict; anything not named
+    # stays NULL, which is the state of a database whose `loci pipeline` has
+    # not run for that address.
+    pipe = dict(pipe or {})
+    cols += list(PIPE_TYPES)
+    vals += [pipe.get(c) for c in PIPE_TYPES]
     for c in wx.ALLCATS:
         cols += [f"{c}_ratio", f"{c}_nearest_m"]
         vals += [ratios[c], 100.0]
@@ -240,11 +293,13 @@ def test_write_emits_one_file_per_category_per_layer(con, tmp_path):
     _add_gap(con, "addr_mn", "MN")
     written = wx.write(wx.collect(con, ["MN", "BK"]), tmp_path)
 
-    # gaps + pois, then meta.json and alcohol.json, then one NTA + its index.
+    # gaps + pois, then meta.json and the two standalone overlays, then one NTA
+    # + its index.
     assert set(written) == (
         {f"gaps/{c}.json" for c in wx.ALLCATS}
         | {f"pois/{c}.json" for c in wx.ALLCATS}
-        | {"meta.json", "alcohol.json", "nta/MN0001.json", "nta/index.json"})
+        | {"meta.json", "alcohol.json", "pipeline.json",
+           "nta/MN0001.json", "nta/index.json"})
     import json
     meta = json.loads((tmp_path / "meta.json").read_text())
     assert meta["boroughs"] == ["MN", "BK"]
@@ -689,3 +744,254 @@ def test_nta_meta_and_index_agree_with_the_files(con, tmp_path):
         assert layer["n"] == row["n"] == len(layer["ids"])
         assert layer["gapCounts"] == row["gapCounts"]
         assert layer["units"] == row["units"]
+
+
+# ------------------------------------------------ development pipeline (D62)
+#
+# Three things are load-bearing and each has already gone wrong somewhere in
+# this project's history:
+#
+#  (a) THE MAP FILTER IS NOT THE INGEST FILTER. analysis.dev_pipeline holds
+#      every job with a unit change, demolitions included; the overlay draws
+#      net_units >= 50 in three stages. If a `filed` job ever reaches the file,
+#      a developer's wish becomes a tower on someone's map -- and 259 MN+BK
+#      jobs were permitted and then withdrawn, so `withdrawn` is the same bug
+#      wearing a later date.
+#
+#  (b) DRIFT AGAINST THE MODEL. model/dev_pipeline.PIPELINE_COLUMNS is the
+#      contract; this export carries seven of the twelve and must account for
+#      the other five explicitly. A thirteenth column added to the model has to
+#      break a test here, not silently never ship.
+#
+#  (c) THE SLOTS ARE APPENDED, NEVER INSERTED. Both gap layers are flat numeric
+#      arrays read by position, and the NTA layer walks its `miss` array off
+#      slot 5. Inserting a pipeline number ahead of those would relabel every
+#      dot on the map with no error anywhere.
+
+
+def _pipeline(con, boroughs=("MN", "BK")):
+    return wx.collect_pipeline(con, list(boroughs))
+
+
+def _jobs(layer):
+    """{job_number: (stage, co, net_units)} out of the packed overlay."""
+    st = layer["stride"]
+    return {job: (layer["stages"][layer["pts"][i * st + 3]],
+                  layer["co"][layer["pts"][i * st + 4]],
+                  layer["pts"][i * st + 5])
+            for i, job in enumerate(layer["ids"])}
+
+
+def test_pipeline_gap_columns_account_for_every_model_column():
+    """DRIFT TEST. The seven columns this export carries plus the five it
+    deliberately drops must EXACTLY cover model/dev_pipeline.PIPELINE_COLUMNS.
+    Adding a thirteenth column to the model then fails here until someone
+    decides whether the map should show it -- which is the point."""
+    from loci.model.dev_pipeline import PIPELINE_COLUMNS
+
+    carried, dropped = set(wx.PIPELINE_GAP_COLUMNS), set(wx.PIPELINE_NOT_EXPORTED)
+    assert not carried & dropped, "a column cannot be both exported and not exported"
+    assert carried | dropped == set(PIPELINE_COLUMNS)
+    # Every dropped column carries a REASON, not just a name.
+    assert all(v.strip() for v in wx.PIPELINE_NOT_EXPORTED.values())
+
+
+def test_gap_layer_advertises_exactly_the_columns_it_packs(con):
+    """The exported layer names its own pipeline contract, and the four slots
+    are APPENDED to the original four -- lon/lat/borough/units keep indices
+    0..3 or every existing reader breaks silently."""
+    _add_gap(con, "a", "MN", pipe={"units_permitted_400m": 250,
+                                   "units_completed_24mo_400m": 40})
+    layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
+    assert layer["pipelineColumns"] == wx.PIPELINE_GAP_COLUMNS
+    assert layer["stride"] == 8
+    assert layer["pts"][:4] == [PLACES["MN"][0], PLACES["MN"][1], 0, 10]
+    assert layer["pts"][4:6] == [250, 40]
+
+
+def test_gap_layer_carries_the_pipeline_reading(con):
+    """Units and the nearest large project round-trip, with the project
+    dictionary-encoded: ~1,400 jobs stand behind 267k addresses, so two
+    addresses nearest the same job must share ONE entry."""
+    p = {"units_permitted_400m": 600, "units_completed_24mo_400m": 120,
+         "nearest_large_project_id": "B00680917", "nearest_large_project_m": 214.0,
+         "nearest_large_project_units": 430, "nearest_large_project_stage": "permitted",
+         "nearest_large_project_date": "2025-03-01"}
+    _add_gap(con, "a", "MN", pipe=p)
+    _add_gap(con, "b", "MN", pipe=p)
+    layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
+    st = layer["stride"]
+    assert layer["projects"]["ids"] == ["B00680917"]          # ONE entry, two users
+    assert layer["projects"]["units"] == [430]
+    assert layer["projects"]["stage"] == ["permitted"]
+    assert layer["projects"]["date"] == ["2025-03-01"]
+    for j in (0, 1):
+        assert layer["pts"][j * st + 6] == 0                 # project index
+        assert layer["pts"][j * st + 7] == 210               # metres, rounded to 10
+
+
+def test_gap_layer_packs_nulls_as_no_project_not_as_zero(con):
+    """An address the model never scored must read as "no project", never as a
+    project at 0 m with 0 homes -- inventing a project out of a null is the
+    "data gap wearing a costume" this project exists to avoid."""
+    _add_gap(con, "a", "MN")
+    layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
+    assert layer["pts"][4:8] == [0, 0, -1, -1]
+    assert layer["projects"]["ids"] == []
+
+
+def test_overlay_holds_no_filed_withdrawn_or_small_job(con):
+    """THE ADVERSARIAL CASE. A filing is a developer's wish; a withdrawn job is
+    attrition; a 12-unit job is not a wave of residents. None of the three may
+    reach the map, whatever the query did."""
+    _set_asof(con)
+    _add_job(con, "keep_permit", "MN", net_units=120, stage="permitted")
+    _add_job(con, "keep_partial", "BK", net_units=300, stage="partially_complete",
+             co_type="temporary", date_complete="2026-01-01")
+    _add_job(con, "drop_filed", "MN", net_units=800, stage="filed")
+    _add_job(con, "drop_withdrawn", "MN", net_units=800, stage="withdrawn")
+    _add_job(con, "drop_small", "MN", net_units=49, stage="permitted")
+    _add_job(con, "drop_negative", "MN", net_units=-200, stage="permitted")
+    layer = _pipeline(con)
+    assert set(layer["ids"]) == {"keep_permit", "keep_partial"}
+    assert all(u >= wx.PIPELINE_MIN_UNITS for u in layer["pts"][5::layer["stride"]])
+    assert set(layer["stages"]) == set(wx.PIPELINE_MAP_STAGES)
+    assert "filed" not in layer["stages"] and "withdrawn" not in layer["stages"]
+
+
+def test_overlay_written_file_holds_no_filed_or_undersized_job(con, tmp_path):
+    """The same guarantee, asserted against the JSON the browser actually
+    fetches rather than against the object in memory."""
+    _set_asof(con)
+    _add_gap(con, "a", "MN")
+    _add_job(con, "keep", "MN", net_units=90, stage="permitted")
+    _add_job(con, "filed", "MN", net_units=900, stage="filed")
+    _add_job(con, "old", "BK", net_units=900, stage="complete",
+             co_type="final", date_complete="2015-06-01")
+    wx.write(wx.collect(con, ["MN", "BK"]), tmp_path)
+    layer = json.loads((tmp_path / "pipeline.json").read_text())
+    assert layer["ids"] == ["keep"]
+    st = layer["stride"]
+    for i in range(0, len(layer["pts"]), st):
+        assert layer["stages"][layer["pts"][i + 3]] in wx.PIPELINE_MAP_STAGES
+        assert layer["pts"][i + 5] >= wx.PIPELINE_MIN_UNITS
+
+
+def test_completions_outside_the_window_are_dropped(con):
+    """"Recently arrived" is a window, not a synonym for "complete". A 2013
+    tower's residents are in ACS already; the map is about the ones who are
+    not."""
+    _set_asof(con, "2026-09-09")
+    _add_job(con, "recent", "MN", net_units=200, stage="complete",
+             co_type="final", date_complete="2024-02-01")
+    _add_job(con, "edge", "BK", net_units=200, stage="complete",
+             co_type="temporary", date_complete="2021-10-01")   # 59 months back
+    _add_job(con, "ancient", "MN", net_units=200, stage="complete",
+             co_type="final", date_complete="2013-05-01")
+    jobs = _jobs(_pipeline(con))
+    assert set(jobs) == {"recent", "edge"}
+    assert jobs["recent"][1] == "final" and jobs["edge"][1] == "temporary"
+
+
+def test_permitted_job_with_no_co_is_none_not_temporary(con):
+    """The CO slot has three states and the map draws two marks off it. A
+    permitted job has NO certificate of occupancy; collapsing that into
+    "temporary" would draw a hollow ring meaning "occupied but unfinished" over
+    a hole in the ground."""
+    _set_asof(con)
+    _add_job(con, "p", "MN", net_units=200, stage="permitted")
+    assert _jobs(_pipeline(con))["p"][1] == "none"
+
+
+def test_bands_come_from_one_definition(con):
+    """The UI sizes its marks off the band edges in the file and the dry-run
+    counts off `pipeline_band`. Both must be the same edges, or the map draws
+    something it did not count."""
+    _set_asof(con)
+    for job, units in (("small", 50), ("mid", 100), ("big", 300), ("huge", 1200)):
+        _add_job(con, job, "MN", net_units=units, stage="permitted")
+    layer = _pipeline(con)
+    summary = wx.pipeline_summary(layer, ["MN", "BK"])
+    assert [b[0] for b in layer["bands"]] == [50, 100, 300]
+    assert summary["bands"]["50–99 homes"]["MN"] == 1
+    assert summary["bands"]["100–299 homes"]["MN"] == 1
+    assert summary["bands"]["300+ homes"]["MN"] == 2
+    assert summary["bandUnits"]["300+ homes"] == 1500
+    assert wx.pipeline_band(49) == -1
+
+
+def test_overlay_obeys_the_borough_filter(con):
+    """Every layer on this map obeys the borough selector; a Queens tower must
+    not reach a Manhattan+Brooklyn export."""
+    _set_asof(con)
+    _add_job(con, "mn", "MN", net_units=200, stage="permitted")
+    _add_job(con, "qn", "QN", net_units=200, stage="permitted")
+    assert _pipeline(con, ("MN", "BK"))["ids"] == ["mn"]
+
+
+def test_missing_pipeline_table_degrades_to_an_empty_overlay(con):
+    """`loci ingest-dcp-housing` is optional -- an export must not fail because
+    of it, and the UI must be able to say "not loaded" rather than show a
+    confident zero."""
+    con.execute("DROP TABLE analysis.dev_pipeline")
+    layer = _pipeline(con)
+    assert layer["available"] is False and layer["n"] == 0
+    assert layer["stages"] == list(wx.PIPELINE_MAP_STAGES)   # legend still renderable
+
+
+def test_meta_carries_the_vintage_and_the_forward_cutoff(con, tmp_path):
+    """THE VINTAGE HAS TO RIDE WITH THE DATA. DCP publishes semiannually, so a
+    layer that says "40,587 homes coming" without saying as-of-when ages into a
+    lie. `cutoff` is DERIVED from the newest filing/permit date in the table,
+    so it cannot drift from the rows actually loaded."""
+    _set_asof(con, "2026-09-09")
+    _add_gap(con, "a", "MN")
+    _add_job(con, "p", "MN", net_units=200, stage="permitted",
+             date_filed="2025-06-01", date_permitted="2026-01-20")
+    wx.write(wx.collect(con, ["MN", "BK"]), tmp_path)
+    meta = json.loads((tmp_path / "meta.json").read_text())["pipeline"]
+    assert meta["available"] is True
+    assert meta["asof"] == "2026-09-09"
+    assert meta["asofSource"] == "analysis.address.pipeline_asof"
+    assert meta["vintage"] == "25Q4"
+    assert meta["cutoff"] == "2026-01-20"
+    assert meta["minUnits"] == wx.PIPELINE_MIN_UNITS
+    assert meta["completeMonths"] == wx.PIPELINE_COMPLETE_MONTHS
+    assert meta["gapColumns"] == wx.PIPELINE_GAP_COLUMNS
+    assert meta["counts"]["permitted"]["MN"] == 1
+
+
+def test_nta_layer_carries_pipeline_without_moving_the_missing_walk(con):
+    """The all-opportunities layer reads `lead`, `gap_score` and `n_missing` by
+    position and walks its `miss` array off slot 5. The four pipeline slots are
+    APPENDED, so all of that must still hold with a stride of 10."""
+    _add_gap(con, "a", "MN", cat="laundry", extra=("bar",),
+             pipe={"units_permitted_400m": 900, "units_completed_24mo_400m": 15,
+                   "nearest_large_project_id": "321590532",
+                   "nearest_large_project_m": 88.0,
+                   "nearest_large_project_units": 512,
+                   "nearest_large_project_stage": "filed",
+                   "nearest_large_project_date": "2026-01-02"})
+    layer = wx.collect_nta(con, ["MN"], "principled", "deadbeef1234")["MN0001"]
+    st = layer["stride"]
+    assert st == 10
+    assert layer["pts"][5] == 2                       # n_missing still slot 5
+    assert len(layer["miss"]) == 4                    # two (category, ratio) pairs
+    assert layer["pts"][6:10] == [900, 15, 0, 90]
+    # The model's nearest-large-project column CAN name a filed job even though
+    # the overlay refuses to draw one. It ships labelled with its stage so the
+    # popup can say the project is not on the map.
+    assert layer["projects"]["stage"] == ["filed"]
+    assert layer["pipelineColumns"] == wx.PIPELINE_GAP_COLUMNS
+
+
+def test_export_survives_a_database_without_the_pipeline_columns(con):
+    """A database built before `loci pipeline` still exports: the slots ship
+    empty so the browser never has to branch on which vintage of file it
+    fetched."""
+    _add_gap(con, "a", "MN")
+    for c in wx.PIPELINE_GAP_COLUMNS:
+        con.execute(f"ALTER TABLE analysis.address_gaps DROP COLUMN {c}")
+    assert wx.has_pipeline_columns(con) is False
+    layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
+    assert layer["stride"] == 8 and layer["pts"][4:8] == [0, 0, -1, -1]

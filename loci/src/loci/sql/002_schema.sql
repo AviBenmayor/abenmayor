@@ -422,6 +422,28 @@ CREATE TABLE IF NOT EXISTS analysis.address (
     supply_set        VARCHAR,             -- D52; NULL only on a pre-D52 row
     supply_hash       VARCHAR,
     run_at            TIMESTAMP NOT NULL,
+    -- THE DEVELOPMENT-PIPELINE EXTENSION (sql/011_dev_pipeline.sql, model/
+    -- dev_pipeline.py). Written ONLY by `UPDATE ... SET PIPELINE_COLUMNS`,
+    -- never by the screen; a test pins that SET-list disjoint from the screen's
+    -- own columns, exactly as address_demand.py's annotation is on
+    -- address_category. Units are NETWORK-metre catchment sums over
+    -- analysis.dev_pipeline (one row per DOB job); `pipeline_asof` is the run
+    -- date the 24/60-month completion windows are measured back from, so a
+    -- stale row is readable rather than silently re-interpreted. 011 carries
+    -- the same twelve columns as ALTER ... ADD COLUMN IF NOT EXISTS for
+    -- databases built before this landed; the two paths must stay in step.
+    units_permitted_400m        INTEGER,
+    units_permitted_800m        INTEGER,
+    units_completed_24mo_400m   INTEGER,
+    units_completed_24mo_800m   INTEGER,
+    units_completed_60mo_400m   INTEGER,
+    units_completed_60mo_800m   INTEGER,
+    nearest_large_project_id    VARCHAR,   -- job_number of the nearest net_units >= 50 job
+    nearest_large_project_m     REAL,      -- network metres, right-censored at DIST_LIMIT
+    nearest_large_project_units INTEGER,
+    nearest_large_project_stage VARCHAR,
+    nearest_large_project_date  DATE,      -- its date_complete, else date_permitted, else date_filed
+    pipeline_asof               DATE,
     PRIMARY KEY (borough, address_id)
 );
 
@@ -684,3 +706,28 @@ CREATE TABLE IF NOT EXISTS analysis.address_demographics (
 -- runs, same as analysis.address/address_category already require, not
 -- keeping both in the warehouse. sql/009_retire_split_tables.sql drops the
 -- physical table from any database built before this change.
+
+
+-- ==========================================================================
+-- DEVELOPMENT-PIPELINE COLUMNS on analysis.address (sql/011_dev_pipeline.sql,
+-- model/dev_pipeline.py). Idempotent, and they MUST run here rather than in
+-- 011: db.init_schema() creates the generated VIEW analysis.address_gaps
+-- immediately after this file, and that view names these columns. On a
+-- database built before they existed, the CREATE TABLE IF NOT EXISTS above is
+-- a no-op, so without these ALTERs the view would bind against a table that
+-- has no such columns and every connection would raise. The CREATE above
+-- carries the same twelve columns for a fresh database; the two must stay in
+-- step, and tests/test_dev_pipeline.py pins that.
+-- ==========================================================================
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS units_permitted_400m       INTEGER;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS units_permitted_800m       INTEGER;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS units_completed_24mo_400m  INTEGER;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS units_completed_24mo_800m  INTEGER;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS units_completed_60mo_400m  INTEGER;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS units_completed_60mo_800m  INTEGER;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS nearest_large_project_id    VARCHAR;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS nearest_large_project_m     REAL;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS nearest_large_project_units INTEGER;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS nearest_large_project_stage VARCHAR;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS nearest_large_project_date  DATE;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS pipeline_asof               DATE;

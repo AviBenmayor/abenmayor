@@ -1,1 +1,1 @@
-{"category":"grocery","label":"Grocery / supermarket","stride":4,"pts":[],"ids":[],"n":0}
+{"category":"grocery","label":"Grocery / supermarket","stride":8,"pts":[],"ids":[],"n":0,"projects":{"ids":[],"units":[],"stage":[],"date":[]},"pipelineColumns":["units_permitted_400m","units_completed_24mo_400m","nearest_large_project_id","nearest_large_project_m","nearest_large_project_units","nearest_large_project_stage","nearest_large_project_date"]}

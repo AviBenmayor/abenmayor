@@ -23,3 +23,6 @@ data/*.duckdb
 
 # Loci query app DB must ship to Railway
 !queryapp/loci_query.duckdb
+
+# DuckDB backups taken before live rebuilds (D61 convention)
+data/*.duckdb.bak*

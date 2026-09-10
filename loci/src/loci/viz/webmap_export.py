@@ -93,6 +93,33 @@ supply set, same provenance -- scoped to a neighborhood because 177k MN+BK
 addresses drawn at once is not a question anyone asked. See the block above
 `NTA_DIR` for the packing.
 
+DEVELOPMENT PIPELINE (owner request 2026-09-09). A FIFTH file,
+`pipeline.json`, holds one point per DOB job of >= 50 net units from
+`analysis.dev_pipeline` (sql/011). Like alcohol it is an OVERLAY, not a 16th
+category: the business selector never touches it and switching it on cannot
+move a gap dot. Unlike alcohol it is also the source of an ANNOTATION on the
+gap layer -- `units_permitted_400m`, `units_completed_24mo_400m` and the
+nearest large project ride in every gap layer, because pipeline exposure is
+what turns "this block is short a laundromat" into "this block is short a
+laundromat and 600 homes are being framed two streets away".
+
+  >= 50 units is a QUERY filter, never an ingest filter (sql/011 caveat 4):
+  analysis.dev_pipeline holds every job with a unit change, including the
+  demolitions and the 3-unit conversions, and the map draws the ones a leasing
+  decision would be made against.
+
+  FILED AND WITHDRAWN ARE NOT DRAWN. A filing is a developer's wish, not a
+  pipeline, and 259 MN+BK jobs were permitted and then withdrawn. The overlay
+  therefore carries `permitted`, `partially_complete`, and `complete` WITH A CO
+  IN THE LAST 60 MONTHS -- coming, and recently arrived. A 2013 completion is
+  neither.
+
+  The nearest-large-project columns on the gap layer are model output and CAN
+  name a filed job (54k MN+BK addresses have one), so the popup labels the
+  stage and says when the project it names is not on the overlay. Silently
+  showing a job the map refuses to draw is how a filing becomes a tower in
+  someone's head.
+
 BOROUGH. `analysis.address_gaps.borough` carries two-letter codes ("MN");
 `analysis.hex.borough` carries full names ("Manhattan"). POIs have no borough
 column at all, so they are labelled the same way the address layer labels
@@ -131,6 +158,55 @@ COORD_DP = 5  # ~1 m at NYC latitude; halves the JSON size vs full float repr
 # classification vocabulary and its labels live with the adapter that produces
 # them, so the map legend cannot drift from the ingest.
 ALCOHOL_TABLE = ("staging", "alcohol_licences")
+
+# ------------------------------------------------------- development pipeline
+# The overlay's table and the three thresholds that define what it draws. All
+# three are QUERY filters (sql/011 caveat 4) -- the table itself holds every
+# job, demolitions included, and narrowing here is reversible by editing one
+# constant rather than re-ingesting.
+PIPELINE_TABLE = ("analysis", "dev_pipeline")
+PIPELINE_MIN_UNITS = 50           # "large project", same threshold as model/dev_pipeline.LARGE_UNITS
+PIPELINE_COMPLETE_MONTHS = 60     # a CO older than this is history, not pipeline
+#: Drawn stages. `filed` is a developer's wish and `withdrawn` is attrition;
+#: neither is a home anyone will live in, so neither reaches the map.
+PIPELINE_MAP_STAGES = ("permitted", "partially_complete", "complete")
+PIPELINE_STAGE_LABELS = {
+    "permitted": "Permitted / under construction",
+    "partially_complete": "Partially complete",
+    "complete": f"Completed (last {PIPELINE_COMPLETE_MONTHS // 12} years)",
+}
+#: Size bands, as (low, high) with an open top. Stored in the file so the UI
+#: sizes its marks from the SAME edges the dry-run counts against.
+PIPELINE_BANDS = ((PIPELINE_MIN_UNITS, 99), (100, 299), (300, None))
+PIPELINE_BAND_LABELS = ("50–99 homes", "100–299 homes", "300+ homes")
+#: Certificate-of-occupancy state, drawn as fill vs hollow ring. `none` is a
+#: job with no CO evidence at all, which for a permitted job is the norm --
+#: it is NOT "temporary", and the two must not share a mark.
+PIPELINE_CO = ("final", "temporary", "none")
+
+#: The pipeline columns (model/dev_pipeline.PIPELINE_COLUMNS) this export
+#: carries onto EVERY gap layer, per address.
+PIPELINE_GAP_COLUMNS = [
+    "units_permitted_400m", "units_completed_24mo_400m",
+    "nearest_large_project_id", "nearest_large_project_m",
+    "nearest_large_project_units", "nearest_large_project_stage",
+    "nearest_large_project_date",
+]
+#: ...and the ones deliberately left out, each with the reason. Together with
+#: PIPELINE_GAP_COLUMNS these must EXACTLY cover PIPELINE_COLUMNS -- the drift
+#: test in tests/test_webmap_export.py pins it, so a thirteenth column added to
+#: the model forces a decision here instead of quietly never shipping.
+PIPELINE_NOT_EXPORTED = {
+    "units_permitted_800m": "the map's pipeline reading is the 5-minute tier; "
+                            "a second radius per address doubles the bytes to answer "
+                            "the same question less sharply",
+    "units_completed_24mo_800m": "same reason as units_permitted_800m",
+    "units_completed_60mo_400m": "the 24mo window is the one that is not yet in ACS; "
+                                 "60mo is on the overlay as drawn completions instead",
+    "units_completed_60mo_800m": "same reason as units_completed_60mo_400m",
+    "pipeline_asof": "one date for the whole run -- carried once in meta.json and "
+                     "once per layer, never 267k times",
+}
 
 # DOHMH is the detail source; the two cuisine-ish fallbacks each store their
 # taxonomy under a different attrs key, so the extraction is per source.
@@ -250,11 +326,18 @@ def _poi_sql(boroughs: list[str], dcats: list[str],
     return sql, list(dcats) + list(dcats) + names + ALLCATS
 
 
-def _gap_sql(cat: str, boroughs: list[str]) -> tuple[str, list]:
+def _gap_sql(cat: str, boroughs: list[str], pipeline: bool = True) -> tuple[str, list]:
     """Eligible addresses whose `cat` is beyond its reach tier (ratio > 1) --
     model/address_gaps.py's own `n_missing` definition, one category at a
-    time."""
+    time.
+
+    `pipeline` selects the seven PIPELINE_GAP_COLUMNS. They are NULL-safe here
+    on purpose: a database whose `loci pipeline` has not run still exports, it
+    just exports zeros and no nearest project, and the UI hides the reading
+    rather than printing a confident "0 homes coming"."""
     placeholders = ", ".join("?" for _ in boroughs)
+    pipe = (", " + ", ".join(PIPELINE_GAP_COLUMNS)) if pipeline else \
+           ", " + ", ".join("NULL" for _ in PIPELINE_GAP_COLUMNS)
     sql = f"""
         SELECT address_id,
                round(lon, {COORD_DP}) AS lon,
@@ -264,6 +347,7 @@ def _gap_sql(cat: str, boroughs: list[str]) -> tuple[str, list]:
                {cat}_ratio AS ratio,
                {cat}_nearest_m AS nearest_m,
                neighborhood
+               {pipe}
         FROM analysis.address_gaps
         WHERE eligible
           AND borough IN ({placeholders})
@@ -387,20 +471,83 @@ def pack_pois(rows, boroughs: list[str], sources: list[str],
     return out
 
 
+class _Projects:
+    """Dictionary encoder for the nearest large project (D62).
+
+    ~1,400 distinct DOB jobs stand behind 267k MN+BK addresses, so a project's
+    id, units, stage and date are stored ONCE per file and each address stores
+    a small integer. Written per-file rather than once globally because a gap
+    file for one category references only the projects its own addresses are
+    nearest to -- the vocabulary is then a few hundred entries, not 1,400.
+    """
+
+    def __init__(self) -> None:
+        self.ids: list[str] = []
+        self.units: list[int] = []
+        self.stage: list[str] = []
+        self.date: list[str] = []
+        self._idx: dict[str, int] = {}
+
+    def index(self, job_id, units, stage, date) -> int:
+        if job_id is None or job_id == "":
+            return -1
+        i = self._idx.get(job_id)
+        if i is None:
+            i = self._idx[job_id] = len(self.ids)
+            self.ids.append(job_id)
+            self.units.append(int(units or 0))
+            self.stage.append(stage or "")
+            self.date.append("" if date is None else str(date)[:10])
+        return i
+
+    def pack(self) -> dict:
+        return {"ids": self.ids, "units": self.units,
+                "stage": self.stage, "date": self.date}
+
+
+#: Network metres to the nearest large project, rounded. 10 m is finer than any
+#: decision made off this map and saves two bytes on every address in every
+#: gap file.
+NEAR_M_ROUND = 10
+
+
+def pipe_slots(projects: _Projects, tail) -> list[int]:
+    """The four numbers every gap point carries, from a row's
+    PIPELINE_GAP_COLUMNS tail: units permitted within 400 m, units completed in
+    the last 24 months within 400 m, the nearest large project's index in
+    `projects` (-1 = none), and the network metres to it (-1 = none).
+
+    A NULL is packed as 0 units / -1 project, never as a missing slot: the flat
+    array's stride has to hold whatever the model wrote, including nothing."""
+    up, d24, pid, pm, punits, pstage, pdate = tail
+    idx = projects.index(pid, punits, pstage, pdate)
+    dist = -1 if (idx < 0 or pm is None) else int(round(float(pm) / NEAR_M_ROUND) * NEAR_M_ROUND)
+    return [int(up or 0), int(d24 or 0), idx, dist]
+
+
 def pack_gaps(rows, boroughs: list[str], cat: str) -> dict:
-    """rows -> one layer dict. `pts` stride 4: lon, lat, borough index,
-    capped units. `ratio` is dropped from the payload deliberately -- the map
-    shows presence/absence, and the continuous score is the model's output,
-    not the map's."""
+    """rows -> one layer dict. `pts` stride 8: lon, lat, borough index,
+    capped units, then the four pipeline slots (`pipe_slots`). `ratio` is
+    dropped from the payload deliberately -- the map shows presence/absence,
+    and the continuous score is the model's output, not the map's.
+
+    The four pipeline slots are APPENDED, never inserted: every reader indexes
+    0..3 by position and a reordering here would silently relabel every dot.
+    """
     bidx = {b: i for i, b in enumerate(boroughs)}
+    projects = _Projects()
     pts, ids = [], []
-    for address_id, lon, lat, boro, units, _ratio, _nearest, _nta in rows:
+    for row in rows:
+        address_id, lon, lat, boro, units = row[:5]
         if lon is None or lat is None or boro not in bidx:
             continue
         pts.extend([lon, lat, bidx[boro], round(float(units or 0))])
+        pts.extend(pipe_slots(projects, row[8:]))
         ids.append(address_id)
-    return {"category": cat, "label": CATEGORIES[cat].label, "stride": 4,
-            "pts": pts, "ids": ids, "n": len(ids)}
+    return {"category": cat, "label": CATEGORIES[cat].label, "stride": 8,
+            "pts": pts, "ids": ids, "n": len(ids),
+            "projects": projects.pack(),
+            "pipelineColumns": list(PIPELINE_GAP_COLUMNS)}
 
 
 def _code_for(borough_name: str | None) -> str | None:
@@ -507,6 +654,196 @@ def collect_alcohol(con, boroughs: list[str]) -> dict:
     return layer
 
 
+# ------------------------------------------------- development pipeline layer
+#
+# One point per DOB job of >= PIPELINE_MIN_UNITS net units, in the drawn
+# stages. Small enough (589 jobs across MN+BK) that nothing here is
+# dictionary-encoded except the NTA name and the three dates: at this size the
+# encoder would cost more in code than it saves in bytes.
+#
+# THE VINTAGE HAS TO RIDE WITH THE DATA. DCP publishes semiannually and 25Q4
+# carries filings and permits only to its own cutoff, so a map that says
+# "40,587 units coming" without saying as-of-when is a map that quietly ages
+# into a lie. `asof` (the run date the 24/60-month windows count back from),
+# `vintage` and `cutoff` are all read from the database, never hardcoded, and
+# the UI is required to print them in the legend.
+
+
+def has_pipeline(con) -> bool:
+    """analysis.dev_pipeline is optional -- `loci ingest-dcp-housing` may not
+    have run, and an export must not fail because of that (same contract as
+    `has_alcohol`)."""
+    schema, table = PIPELINE_TABLE
+    return bool(con.execute(
+        "SELECT count(*) FROM information_schema.tables "
+        "WHERE table_schema = ? AND table_name = ?", [schema, table]).fetchone()[0])
+
+
+def pipeline_asof(con) -> str | None:
+    """The date the address-grain windows were computed against, read from
+    `analysis.address.pipeline_asof` (model/dev_pipeline stamps it once per
+    run). None when `loci pipeline` has never run -- in which case the map's
+    completion window has no anchor and the overlay says so rather than
+    inventing today."""
+    have = con.execute(
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_schema = 'analysis' AND table_name = 'address' "
+        "AND column_name = 'pipeline_asof'").fetchone()[0]
+    if not have:
+        return None
+    row = con.execute("SELECT max(pipeline_asof) FROM analysis.address").fetchone()
+    return None if not row or row[0] is None else str(row[0])[:10]
+
+
+def pipeline_vintage(con) -> dict:
+    """DCP's own release string and the newest FORWARD date it carries.
+
+    `cutoff` is derived -- the newest filing or permit date in the table --
+    rather than transcribed from the release notes, so it cannot drift from the
+    rows actually loaded. It is the honest answer to "how stale is the coming
+    side of this layer?": everything filed or permitted after it is missing,
+    which makes the forward pipeline a floor and never a ceiling (sql/011
+    caveat 1)."""
+    schema, table = PIPELINE_TABLE
+    row = con.execute(
+        f"""SELECT max(source_vintage),
+                   max(greatest(coalesce(date_filed, DATE '1900-01-01'),
+                                coalesce(date_permitted, DATE '1900-01-01'))),
+                   max(source), max(provenance)
+            FROM {schema}.{table}""").fetchone()
+    vintage, cutoff, source, provenance = row if row else (None, None, None, None)
+    return {"vintage": vintage,
+            "cutoff": None if cutoff is None else str(cutoff)[:10],
+            "source": source, "provenance": provenance}
+
+
+def _pipeline_sql(boroughs: list[str], asof: str) -> tuple[str, list]:
+    """Large jobs in the drawn stages. The completion window is evaluated in
+    SQL against `asof` so the month arithmetic lives in one place and cannot
+    disagree with model/dev_pipeline's own windows."""
+    schema, table = PIPELINE_TABLE
+    ph = ", ".join("?" for _ in boroughs)
+    stage_ph = ", ".join("?" for _ in PIPELINE_MAP_STAGES)
+    sql = f"""
+        SELECT job_number, bbl, borough, neighborhood, nta_code, job_type,
+               net_units, stage, co_type,
+               CAST(date_filed AS VARCHAR)     AS filed,
+               CAST(date_permitted AS VARCHAR) AS permitted,
+               CAST(date_complete AS VARCHAR)  AS complete,
+               round(ST_X(geom), {COORD_DP}) AS lon,
+               round(ST_Y(geom), {COORD_DP}) AS lat
+        FROM {schema}.{table}
+        WHERE borough IN ({ph})
+          AND net_units >= ?
+          AND geom IS NOT NULL
+          AND stage IN ({stage_ph})
+          AND (stage <> 'complete'
+               OR (date_complete IS NOT NULL
+                   AND date_complete >= CAST(? AS DATE) - INTERVAL {PIPELINE_COMPLETE_MONTHS} MONTH))
+        ORDER BY job_number
+    """
+    return sql, [*boroughs, PIPELINE_MIN_UNITS, *PIPELINE_MAP_STAGES, asof]
+
+
+def pipeline_band(units: int) -> int:
+    """Index into PIPELINE_BANDS, or -1 below the floor. Python owns the edges;
+    the UI reads them out of the file, so the mark drawn and the count printed
+    come from one definition."""
+    for i, (lo, hi) in enumerate(PIPELINE_BANDS):
+        if units >= lo and (hi is None or units <= hi):
+            return i
+    return -1
+
+
+def pack_pipeline(rows, boroughs: list[str]) -> dict:
+    """rows -> one overlay layer. `pts` is stride 6: lon, lat, borough index,
+    stage index, CO index, net units. The band is NOT a slot -- it is a
+    function of net units and storing it would let a re-banding leave stale
+    numbers behind.
+
+    A row outside PIPELINE_MAP_STAGES or below PIPELINE_MIN_UNITS is DROPPED
+    here as well as in SQL. That is deliberate belt-and-braces: the two filters
+    have to agree, and a test asserts the packed layer holds no filed,
+    withdrawn or sub-50 job whatever the query did."""
+    bidx = {b: i for i, b in enumerate(boroughs)}
+    sidx = {s: i for i, s in enumerate(PIPELINE_MAP_STAGES)}
+    cidx = {c: i for i, c in enumerate(PIPELINE_CO)}
+    nta_v, date_v, type_v = _Vocab(), _Vocab(), _Vocab()
+    pts, ids, bbls, ntas, types = [], [], [], [], []
+    filed, permitted, complete = [], [], []
+    counts = {s: {b: 0 for b in boroughs} for s in PIPELINE_MAP_STAGES}
+    units_by_stage = {s: {b: 0 for b in boroughs} for s in PIPELINE_MAP_STAGES}
+    bands = {lab: {b: 0 for b in boroughs} for lab in PIPELINE_BAND_LABELS}
+    for (job, bbl, boro, nbhd, nta, jtype, net_units, stage, co_type,
+         d_filed, d_perm, d_comp, lon, lat) in rows:
+        if lon is None or lat is None or boro not in bidx or stage not in sidx:
+            continue
+        units = int(net_units or 0)
+        band = pipeline_band(units)
+        if band < 0:
+            continue
+        pts.extend([lon, lat, bidx[boro], sidx[stage],
+                    cidx.get(co_type or "none", cidx["none"]), units])
+        ids.append(job)
+        bbls.append(bbl or "")
+        ntas.append(nta_v.index(nbhd or nta))
+        types.append(type_v.index(jtype))
+        filed.append(date_v.index(d_filed))
+        permitted.append(date_v.index(d_perm))
+        complete.append(date_v.index(d_comp))
+        counts[stage][boro] += 1
+        units_by_stage[stage][boro] += units
+        bands[PIPELINE_BAND_LABELS[band]][boro] += 1
+    return {"stride": 6, "pts": pts, "ids": ids, "bbl": bbls,
+            "nta": ntas, "type": types,
+            "filed": filed, "permitted": permitted, "complete": complete,
+            "vocab": {"nta": nta_v.items, "type": type_v.items, "date": date_v.items},
+            "stages": list(PIPELINE_MAP_STAGES),
+            "stageLabels": [PIPELINE_STAGE_LABELS[s] for s in PIPELINE_MAP_STAGES],
+            "co": list(PIPELINE_CO),
+            "bands": [[lo, hi] for lo, hi in PIPELINE_BANDS],
+            "bandLabels": list(PIPELINE_BAND_LABELS),
+            "minUnits": PIPELINE_MIN_UNITS,
+            "completeMonths": PIPELINE_COMPLETE_MONTHS,
+            "boroughs": boroughs, "counts": counts, "units": units_by_stage,
+            "bandCounts": bands, "n": len(ids)}
+
+
+def empty_pipeline(boroughs: list[str]) -> dict:
+    """The shape `pack_pipeline` returns, with nothing in it -- what an export
+    writes when the ingest has not been run."""
+    return pack_pipeline([], boroughs)
+
+
+def collect_pipeline(con, boroughs: list[str]) -> dict:
+    """Read the development-pipeline overlay. Pure read, and never raises for a
+    missing table or a missing `loci pipeline` run."""
+    if not has_pipeline(con):
+        layer = empty_pipeline(boroughs)
+        layer.update({"available": False, "asof": None, "vintage": None,
+                      "cutoff": None, "source": None, "provenance": None})
+        return layer
+    vint = pipeline_vintage(con)
+    # No `loci pipeline` run means no anchor for the 60-month window. Falling
+    # back to the newest CO in the table is the honest choice -- it is a date
+    # the data can defend -- and `asofSource` says which one was used.
+    asof = pipeline_asof(con)
+    asof_source = "analysis.address.pipeline_asof"
+    if asof is None:
+        schema, table = PIPELINE_TABLE
+        row = con.execute(f"SELECT max(date_complete) FROM {schema}.{table}").fetchone()
+        asof = None if not row or row[0] is None else str(row[0])[:10]
+        asof_source = "max(analysis.dev_pipeline.date_complete)"
+    if asof is None:
+        layer = empty_pipeline(boroughs)
+        layer.update({"available": False, "asof": None, "asofSource": None, **vint})
+        return layer
+    sql, params = _pipeline_sql(boroughs, asof)
+    layer = pack_pipeline(con.execute(sql, params).fetchall(), boroughs)
+    layer.update({"available": True, "asof": asof, "asofSource": asof_source, **vint})
+    return layer
+
+
 # --------------------------------------------------- all opportunities (NTA)
 #
 # THE OWNER'S QUESTION (2026-09-09): "when I zoom in on one neighborhood, can
@@ -546,17 +883,22 @@ RATIO_DP = 2      # "2.14x" -- more precision than that is not a map fact
 SCORE_DP = 3
 
 
-def _nta_gap_sql(boroughs: list[str]) -> tuple[str, list]:
+def _nta_gap_sql(boroughs: list[str], pipeline: bool = True) -> tuple[str, list]:
     """Every eligible address in `boroughs` with its fifteen ratios. The
     missing LIST is assembled in Python rather than by an UNPIVOT: one pass
     over 267k rows beats fifteen self-joins, and the same `ratio > 1` test then
     lives in exactly one place for both the count and the payload."""
     ph = ", ".join("?" for _ in boroughs)
     ratios = ", ".join(f"{c}_ratio" for c in ALLCATS)
+    # The seven pipeline columns sit BETWEEN the head and the ratios so both
+    # slices stay fixed-width from their own end: pack_nta reads the head by
+    # position and the ratios by "everything after the pipeline block".
+    pipe = ", ".join(PIPELINE_GAP_COLUMNS if pipeline
+                     else ["NULL"] * len(PIPELINE_GAP_COLUMNS))
     sql = f"""
         SELECT nta_code, neighborhood, borough, address_id,
                round(lon, {COORD_DP}) AS lon, round(lat, {COORD_DP}) AS lat,
-               units_capped, gap_score, lead_category, {ratios}
+               units_capped, gap_score, lead_category, {pipe}, {ratios}
         FROM analysis.address_gaps
         WHERE eligible AND borough IN ({ph}) AND nta_code IS NOT NULL
         ORDER BY nta_code, address_id
@@ -619,27 +961,34 @@ def pack_nta(gap_rows, poi_rows, supply_set: str = DEFAULT_SUPPLY_SET,
     is a file the picker must never offer. POI rows for such an NTA are
     dropped with it."""
     out: dict[str, dict] = {}
+    projects: dict[str, _Projects] = {}
+    head, npipe = 9, len(PIPELINE_GAP_COLUMNS)
     for row in gap_rows:
-        code, name, boro, address_id, lon, lat, units, score, lead = row[:9]
+        code, name, boro, address_id, lon, lat, units, score, lead = row[:head]
         if lon is None or lat is None:
             continue
-        missing = missing_list(row[9:])
+        missing = missing_list(row[head + npipe:])
         if not missing:
             continue
         layer = out.get(code)
         if layer is None:
+            projects[code] = _Projects()
             layer = out[code] = {
                 "nta": code, "name": name, "boro": boro,
                 "supplySet": supply_set, "supplyHash": supply_hash,
-                "stride": 6, "pts": [], "ids": [], "miss": [],
+                "stride": 10, "pts": [], "ids": [], "miss": [],
                 "gapCounts": {c: 0 for c in ALLCATS},
                 "bounds": [lon, lat, lon, lat], "units": 0,
                 "pois": {"stride": 5, "pts": [], "names": [], "n": 0, "nSet": 0},
+                "pipelineColumns": list(PIPELINE_GAP_COLUMNS),
             }
         u = round(float(units or 0))
+        # Slots 0..5 are UNCHANGED and must stay so: the browser walks the
+        # `miss` array off slot 5 (n_missing) and reads lead/score by position.
         layer["pts"].extend([lon, lat, u,
                              ALLCATS.index(lead) if lead in CATEGORIES else -1,
                              round(float(score or 0), SCORE_DP), len(missing)])
+        layer["pts"].extend(pipe_slots(projects[code], row[head:head + npipe]))
         layer["ids"].append(address_id)
         layer["units"] += u
         for i, ratio in missing:
@@ -657,15 +1006,16 @@ def pack_nta(gap_rows, poi_rows, supply_set: str = DEFAULT_SUPPLY_SET,
                          int(bool(corroborated)), int(bool(in_set))])
         p["names"].append(name or "")
 
-    for layer in out.values():
+    for code, layer in out.items():
         layer["n"] = len(layer["ids"])
+        layer["projects"] = projects[code].pack()
         p = layer["pois"]
         p["n"] = len(p["names"])
         p["nSet"] = sum(p["pts"][4::5])
         # A centre for the sidebar label; the bbox is what the map flies to.
-        pts = layer["pts"]
-        layer["center"] = [round(sum(pts[0::6]) / layer["n"], COORD_DP),
-                           round(sum(pts[1::6]) / layer["n"], COORD_DP)]
+        pts, st = layer["pts"], layer["stride"]
+        layer["center"] = [round(sum(pts[0::st]) / layer["n"], COORD_DP),
+                           round(sum(pts[1::st]) / layer["n"], COORD_DP)]
     return out
 
 
@@ -690,7 +1040,7 @@ def collect_nta(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
                 supply_hash: str | None = None) -> dict[str, dict]:
     """Read the all-opportunities layers. Pure read, same two tables the
     per-category layers come from."""
-    gsql, gparams = _nta_gap_sql(boroughs)
+    gsql, gparams = _nta_gap_sql(boroughs, has_pipeline_columns(con))
     psql, pparams = _nta_poi_sql(boroughs, supply_set)
     return pack_nta(con.execute(gsql, gparams).fetchall(),
                     con.execute(psql, pparams).fetchall(),
@@ -698,6 +1048,19 @@ def collect_nta(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
 
 
 # ------------------------------------------------------------------- export
+
+def _gaps_columns(con) -> set[str]:
+    return {r[0] for r in con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'analysis' AND table_name = 'address_gaps'").fetchall()}
+
+
+def has_pipeline_columns(con) -> bool:
+    """True when analysis.address_gaps exposes all seven PIPELINE_GAP_COLUMNS.
+    A database predating `loci pipeline` exports the slots as nulls rather than
+    failing -- the map degrades to "no pipeline reading", never to a 500."""
+    return set(PIPELINE_GAP_COLUMNS) <= _gaps_columns(con)
+
 
 def gap_provenance(con, boroughs: list[str]) -> dict:
     """The supply set the EXPORTED gap rows were actually measured against,
@@ -711,9 +1074,7 @@ def gap_provenance(con, boroughs: list[str]) -> dict:
     seen, and never raises: a database whose address_gaps predates the D52
     columns reports `supply_set=None`, which is itself the finding.
     """
-    cols = {r[0] for r in con.execute(
-        "SELECT column_name FROM information_schema.columns "
-        "WHERE table_schema = 'analysis' AND table_name = 'address_gaps'").fetchall()}
+    cols = _gaps_columns(con)
     if not {"supply_set", "supply_hash"} <= cols:
         return {"supply_set": None, "supply_hash": None, "variants": [], "mixed": False}
     ph = ", ".join("?" for _ in boroughs)
@@ -775,9 +1136,13 @@ def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET) -> d
     poi_layers = pack_pois(con.execute(sql, params).fetchall(), boroughs, sources,
                            dcats, supply_set)
 
+    # A database built before the pipeline columns landed still exports; the
+    # gap layers then carry the same slots filled with nothing, so the browser
+    # never has to branch on which vintage of file it fetched.
+    pipe_cols = has_pipeline_columns(con)
     gap_layers = {}
     for cat in ALLCATS:
-        sql, params = _gap_sql(cat, boroughs)
+        sql, params = _gap_sql(cat, boroughs, pipe_cols)
         gap_layers[cat] = pack_gaps(con.execute(sql, params).fetchall(), boroughs, cat)
 
     # Navigation bounds, derived from the addresses themselves rather than a
@@ -814,6 +1179,7 @@ def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET) -> d
     return {"boroughs": boroughs, "sources": sources, "detailCats": dcats,
             "pois": poi_layers, "gaps": gap_layers, "neighborhoods": nbhd,
             "boroBounds": boro_bounds, "alcohol": collect_alcohol(con, boroughs),
+            "pipeline": collect_pipeline(con, boroughs),
             "nta": nta,
             "supplySet": supply_set, "supplyProvenance": prov,
             "supplyWarning": supply_warning(supply_set, prov)}
@@ -860,12 +1226,40 @@ def summarize(bundle: dict) -> dict:
                 per[b]["cuisine"] += int(det["cuisine"][j] != -1)
         poi_counts[cat] = per
         exc_counts[cat] = xper
-        gpts = bundle["gaps"][cat]["pts"]
+        glayer = bundle["gaps"][cat]
+        gpts, gst = glayer["pts"], glayer["stride"]
         gper = {b: 0 for b in boroughs}
-        for i in range(0, len(gpts), 4):
+        for i in range(0, len(gpts), gst):
             gper[boroughs[int(gpts[i + 2])]] += 1
         gap_counts[cat] = gper
-    return {"poi": poi_counts, "gap": gap_counts, "excluded": exc_counts}
+    return {"poi": poi_counts, "gap": gap_counts, "excluded": exc_counts,
+            "pipeline": pipeline_summary(bundle.get("pipeline"), boroughs)}
+
+
+def pipeline_summary(layer: dict | None, boroughs: list[str]) -> dict:
+    """Jobs and units per stage and per size band, per borough -- what
+    `--dry-run` prints. Counted off the PACKED layer rather than re-queried, so
+    the numbers on the terminal are the numbers in the file."""
+    if not layer:
+        layer = empty_pipeline(boroughs)
+    per_band = {lab: {b: 0 for b in boroughs} for lab in layer["bandLabels"]}
+    per_band_units = {lab: 0 for lab in layer["bandLabels"]}
+    co = {c: 0 for c in layer["co"]}
+    pts, st = layer["pts"], layer["stride"]
+    for i in range(0, len(pts), st):
+        b = boroughs[int(pts[i + 2])]
+        units = int(pts[i + 5])
+        lab = layer["bandLabels"][pipeline_band(units)]
+        per_band[lab][b] += 1
+        per_band_units[lab] += units
+        co[layer["co"][int(pts[i + 4])]] += 1
+    return {"available": bool(layer.get("available")),
+            "asof": layer.get("asof"), "vintage": layer.get("vintage"),
+            "cutoff": layer.get("cutoff"),
+            "stages": layer["stages"], "stageLabels": layer["stageLabels"],
+            "counts": layer["counts"], "units": layer["units"],
+            "bandLabels": layer["bandLabels"], "bands": per_band,
+            "bandUnits": per_band_units, "co": co, "n": layer["n"]}
 
 
 def write(bundle: dict, out_dir: pathlib.Path) -> dict[str, int]:
@@ -891,6 +1285,11 @@ def write(bundle: dict, out_dir: pathlib.Path) -> dict[str, int]:
     # Its own file, fetched only when the overlay is switched on.
     alcohol = bundle.get("alcohol") or empty_alcohol(bundle["boroughs"])
     _dump("alcohol.json", alcohol)
+
+    # Same contract for the development-pipeline overlay: one small file,
+    # fetched only when the toggle is switched on.
+    pipeline = bundle.get("pipeline") or empty_pipeline(bundle["boroughs"])
+    _dump("pipeline.json", pipeline)
 
     # One file per neighborhood plus a small index. Both are fetched only when
     # the all-opportunities mode is entered, so the single-business view costs
@@ -939,6 +1338,30 @@ def write(bundle: dict, out_dir: pathlib.Path) -> dict[str, int]:
                     "classLabels": alcohol["classLabels"],
                     "counts": alcohol["counts"],
                     "n": alcohol["n"]},
+        # The development-pipeline overlay's legend, its counts, and — the part
+        # the UI is REQUIRED to print — the two dates that bound what it knows:
+        # `asof` (the run the completion window counts back from) and `cutoff`
+        # (the newest filing/permit DCP's release carries). Everything filed or
+        # permitted after `cutoff` is absent, so the coming-units number is a
+        # floor. A legend without those dates ages into a lie.
+        "pipeline": {"available": bool(pipeline.get("available")),
+                     "asof": pipeline.get("asof"),
+                     "asofSource": pipeline.get("asofSource"),
+                     "vintage": pipeline.get("vintage"),
+                     "cutoff": pipeline.get("cutoff"),
+                     "source": pipeline.get("source"),
+                     "provenance": pipeline.get("provenance"),
+                     "minUnits": pipeline["minUnits"],
+                     "completeMonths": pipeline["completeMonths"],
+                     "stages": pipeline["stages"],
+                     "stageLabels": pipeline["stageLabels"],
+                     "bands": pipeline["bands"],
+                     "bandLabels": pipeline["bandLabels"],
+                     "counts": pipeline["counts"],
+                     "units": pipeline["units"],
+                     "bandCounts": pipeline["bandCounts"],
+                     "gapColumns": list(PIPELINE_GAP_COLUMNS),
+                     "n": pipeline["n"]},
         "neighborhoods": bundle["neighborhoods"],
         "boroBounds": bundle["boroBounds"],
         # The all-opportunities mode. `available` false means this export
