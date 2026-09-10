@@ -721,6 +721,7 @@ def select_targets(con, *, borough: str = "BK", neighborhood: str | None = None,
             WHERE g.borough = ? AND g.eligible
               AND g.lead_category = 'laundry' AND g.laundry_ratio > 1
               AND g.units >= ?
+              AND p.address IS NOT NULL AND trim(p.address) <> ''
               {"AND g.neighborhood = ?" if neighborhood else ""}
             ORDER BY g.gap_score DESC
             LIMIT ?
@@ -767,6 +768,11 @@ def select_sweep_targets(con, *, boroughs: tuple[str, ...] = ("MN", "BK"),
             WHERE g.borough IN ({placeholders}) AND g.eligible
               AND g.lead_category = 'laundry' AND g.laundry_ratio > 1
               AND g.units >= ?
+              -- A lot with no PLUTO street address cannot be searched; it
+              -- reached the slug builder as NaN and crashed the sweep before
+              -- its search was logged, so every relaunch hit it again
+              -- (2026-09-10 15:05). Excluded here, never silently coerced.
+              AND p.address IS NOT NULL AND trim(p.address) <> ''
             ORDER BY stratum, g.gap_score DESC
             {"LIMIT ?" if limit else ""}
         """, list(boroughs) + [min_units] + ([limit] if limit else [])).fetchdf()
