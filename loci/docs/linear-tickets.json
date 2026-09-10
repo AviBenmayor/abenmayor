@@ -1398,6 +1398,26 @@
       "Labels": "score,model,rigor",
       "Project": "Loci",
       "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "NYC DOF Storefront Registry: analysis.storefront at storefront\u00d7filing grain, vacancy exposure on analysis.address, webmap overlay",
+      "Description": "Owner asked whether Loci has vacant-storefront and asking-rent data. Research pass: the only address-level public vacancy source is the DOF Storefront Registry (Local Law 157, NYC Open Data 92iy-9c3n); asking rents exist only at corridor grain (REBNY/CBRE PDFs) or inside marketplaces (LoopNet/CoStar, Crexi) whose terms forbid scraping; HUD USPS vacancy is tract-grain and gated. Probe findings: Filing Due Date is the real key (11 filings), five of them vacant-only supplements; pooling annual+supplements reads as 100% vacancy. Inventory (D61 first): ONE new table analysis.storefront at storefront\u00d7filing grain (253,519 MN+BK rows, 31,797 premises, premises_id = BBL|unit stable); derived per-premises fields in VIEW analysis.storefront_latest; seven measures by UPDATE on analysis.address (vacant_storefronts_400m, storefronts_400m denominator, nearest_vacant_storefront_m/_id/_business, nearest_vacant_lease_expired, storefront_asof). Network metres via D62 helper. Snapshot = one filing (full universe wins), pinned by test. Two double-count bugs caught in live run: pooled 2025-06-03 annual with 2025-02-15 supplement (13.79% vacancy), fixed to one (9.93%); same in storefront_latest. Snapshot 2024-12-31: MN 23,411 / 2,607 vacant (11.14%); BK 14,907 / 1,200 (8.05%); total 38,318 / 3,807. Of 177,078 eligible addresses, 109,311 (61.7%) have \u22651 vacant within 400 m, 44,048 (24.9%) have \u22653. Ground truth: 335 E 54 St cluster 26 vacant within 400 m; Fulton Mall 15+; Gowanus/Carroll Gardens up to 14. Caveats: self-reported, non-filing invisible, annual snapshot not listing, NO rent/square footage public, primary_business vacant = \"NO ACTIVITY\", only 36 of 3,806 vacant carry lease expiry. Suite 443 passed. Webmap overlay in progress.\n\nDone 2026-09-10 (CHECKPOINT D67); retroactive ticket 2026-09-10. Pushed to Linear 2026-09-10 as GTM-137.",
+      "Status": "Done",
+      "Priority": 2,
+      "Estimate": 8,
+      "Labels": "ingest,viz",
+      "Project": "Loci",
+      "Milestone": "E1 \u00b7 Ingest and Grid"
+    },
+    {
+      "Title": "Per-category clustering-vs-saturation coefficient for the grade (from the headroom backtest)",
+      "Description": "Owner hypothesis (Gowanus): category exists thinly and residents arriving, so \"more of same type\" could work \u2014 intensive-margin headroom meant to feed fair-price/grade design. Backtest (data-scientist, Opus): headroom_2013 = norm density \u00d7 pop_2013 \u2212 estab_2013 on ZBP ZIP \u00d7 category (MN+BK, ZCTA 2013/2023), outcome \u0394estab 2013\u21922023. Result: no out-of-sample skill \u2014 1 of 14 categories beats baselines, and that one (convenience) is 2017 NAICS reclassification, not demand. Headroom is affine recombination of population and count, adds nothing conditional on them. For bar and cafe_bakery the sign is NEGATIVE: ZIPs above norm added more \u2014 clustering, not slack. Greenpoint 11222 read \"full\" 2013 (\u221213.7/\u22123.2/\u221213.4), added +12/+27/+49. Forward headroom Gowanus (11215/11217/11231, 25,584 pipeline residents): none for bars/caf\u00e9s on headcount, +9\u201313 restaurants, +8\u201318 laundries, +10\u201317 hair, +5\u20138 pharmacies. Age-scaled norm flips Greenpoint restaurants. Ruling for grade: two regimes per category \u2014 chore categories behave like demand\u00f7incumbents; social categories reward proximity and cap at spend per resident, not headcount. Headroom ships as descriptive ratio with interval, in one supply universe, age-scaled for bars \u2014 never a forecast. Next: per-category clustering-vs-saturation coefficient. Backlog; opened from CHECKPOINT D68. Pushed to Linear 2026-09-10 as GTM-138.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 5,
+      "Labels": "model,score,rigor",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
     }
   ]
 }

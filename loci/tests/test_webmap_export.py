@@ -66,6 +66,19 @@ PIPE_TYPES = {
 }
 assert list(PIPE_TYPES) == wx.PIPELINE_GAP_COLUMNS
 
+#: SQL types for wx.STOREFRONT_GAP_COLUMNS, in that order. Same shape and same
+#: reason as PIPE_TYPES: a fixture that declared four of five would let the
+#: export's vacancy reading be skipped by `has_storefront_columns` and every
+#: assertion below would pass against nulls.
+SHOP_TYPES = {
+    "vacant_storefronts_400m": "BIGINT",
+    "storefronts_400m": "BIGINT",
+    "nearest_vacant_storefront_m": "DOUBLE",
+    "nearest_vacant_storefront_id": "VARCHAR",
+    "nearest_vacant_lease_expired": "BOOLEAN",
+}
+assert list(SHOP_TYPES) == wx.STOREFRONT_GAP_COLUMNS
+
 
 @pytest.fixture()
 def con():
@@ -93,20 +106,36 @@ def con():
     # here so the export's pipeline reading is exercised rather than skipped by
     # `has_pipeline_columns`.
     pipe = ", ".join(f"{c} {t}" for c, t in PIPE_TYPES.items())
+    # ...and the five storefront columns model/storefronts.py writes (sql/012),
+    # APPENDED after the pipeline block exactly as the real view exposes them.
+    shop = ", ".join(f"{c} {t}" for c, t in SHOP_TYPES.items())
     c.execute(f"""CREATE TABLE analysis.address_gaps (
         address_id VARCHAR, lon DOUBLE, lat DOUBLE, borough VARCHAR,
         units_capped FLOAT, nta_code VARCHAR, neighborhood VARCHAR,
         eligible BOOLEAN, gap_score FLOAT, lead_category VARCHAR,
-        supply_set VARCHAR, supply_hash VARCHAR, {pipe}, {cols})""")
-    # analysis.address carries the run stamp the completion window counts back
-    # from; analysis.dev_pipeline is the overlay's own table.
-    c.execute("CREATE TABLE analysis.address (address_id VARCHAR, pipeline_asof DATE)")
+        supply_set VARCHAR, supply_hash VARCHAR, {pipe}, {shop}, {cols})""")
+    # analysis.address carries the two run stamps the overlays count from;
+    # analysis.dev_pipeline and analysis.storefront are the overlays' own
+    # tables.
+    c.execute("CREATE TABLE analysis.address (address_id VARCHAR, "
+              "pipeline_asof DATE, storefront_asof DATE)")
     c.execute("""CREATE TABLE analysis.dev_pipeline (
         job_number VARCHAR, bbl VARCHAR, geom GEOMETRY, borough VARCHAR,
         nta_code VARCHAR, neighborhood VARCHAR, job_type VARCHAR,
         net_units INTEGER, stage VARCHAR, date_filed DATE, date_permitted DATE,
         date_complete DATE, co_type VARCHAR, source VARCHAR,
         source_vintage VARCHAR, provenance VARCHAR)""")
+    # Column subset of the real analysis.storefront (sql/012), in the real
+    # relative order. `universe` and `observed_1231` are the two the snapshot
+    # pick turns on: five of DOF's eleven filings are vacant-only, and pooling
+    # one with the annual filing double-counts every premises that filed both.
+    c.execute("""CREATE TABLE analysis.storefront (
+        storefront_id VARCHAR, premises_id VARCHAR, filing_due_date DATE,
+        reporting_year INTEGER, universe VARCHAR, observed_1231 DATE,
+        borough VARCHAR, address VARCHAR, geom GEOMETRY, vacant_1231 BOOLEAN,
+        construction_reported BOOLEAN, primary_business_activity VARCHAR,
+        lease_expiry DATE, source VARCHAR, source_vintage VARCHAR,
+        provenance VARCHAR)""")
     # The REAL supply-set definitions, not a restatement of them: 006 also
     # creates analysis.category_anchor, which is where the corroboration
     # check reads from.
@@ -180,13 +209,48 @@ def _add_job(con, job, boro, net_units=100, stage="permitted", co_type=None,
          "nyc_dcp_housing_db", vintage, "br6q-ssj3@" + vintage])
 
 
-def _set_asof(con, asof="2026-09-09"):
+def _set_asof(con, asof="2026-09-09", sf_asof=None):
+    """The run stamps `loci pipeline` and `loci storefronts` leave on
+    analysis.address. `sf_asof=None` is the state of a database whose
+    `loci storefronts` has never run -- the export then falls back to the
+    newest FULL-universe observation in the registry, which is the path
+    test_storefront_asof_falls_back_to_the_registry exercises."""
     con.execute("DELETE FROM analysis.address")
-    con.execute("INSERT INTO analysis.address VALUES ('a', CAST(? AS DATE))", [asof])
+    con.execute("INSERT INTO analysis.address VALUES ('a', CAST(? AS DATE), CAST(? AS DATE))",
+                [asof, sf_asof])
+
+
+#: DOF's filing calendar, as sql/012 documents it: the 2025-06-03 annual filing
+#: and the 2025-02-15 vacant-only supplement BOTH observe 2024-12-31.
+SNAP_FILING, SNAP_OBSERVED = "2025-06-03", "2024-12-31"
+SUPPLEMENT = "2025-02-15"
+
+
+def _add_storefront(con, premises, boro, seq=1, filing=SNAP_FILING,
+                    universe="full", observed=SNAP_OBSERVED, vacant=True,
+                    address=None, business="NO BUSINESS ACTIVITY IDENTIFIED",
+                    lease=None, construction=None, geom=True,
+                    vintage="2026-04-09"):
+    """One analysis.storefront row, shaped like the real loader's output.
+
+    `premises` is the stable key (BBL||unit); `storefront_id` is premises#seq
+    and is NOT stable across filings, which is why every longitudinal question
+    here is asked at premises level."""
+    lon, lat = PLACES[boro]
+    con.execute(
+        "INSERT INTO analysis.storefront VALUES "
+        "(?, ?, CAST(? AS DATE), ?, ?, CAST(? AS DATE), ?, ?, "
+        + ("ST_Point(?, ?)" if geom else "NULL") +
+        ", ?, ?, ?, CAST(? AS DATE), ?, ?, ?)",
+        [f"{premises}#{seq}", premises, filing, int(observed[:4]), universe,
+         observed, boro, address or f"{premises} MAIN ST"]
+        + ([lon, lat] if geom else [])
+        + [vacant, construction, business, lease,
+           "nyc_dof_storefront_registry", vintage, f"92iy-9c3n@{vintage}"])
 
 
 def _add_gap(con, address_id, boro, cat="laundry", ratio=2.0, eligible=True,
-             extra=(), units=10.0, score=1.5, pipe=None):
+             extra=(), units=10.0, score=1.5, pipe=None, shop=None):
     """One address row. `cat` (plus anything in `extra`) is beyond reach at
     `ratio`; every other category sits at 0.5, comfortably inside it.
 
@@ -209,6 +273,11 @@ def _add_gap(con, address_id, boro, cat="laundry", ratio=2.0, eligible=True,
     pipe = dict(pipe or {})
     cols += list(PIPE_TYPES)
     vals += [pipe.get(c) for c in PIPE_TYPES]
+    # `shop` is the five STOREFRONT_GAP_COLUMNS as a dict; anything not named
+    # stays NULL, the state of a database whose `loci storefronts` has not run.
+    shop = dict(shop or {})
+    cols += list(SHOP_TYPES)
+    vals += [shop.get(c) for c in SHOP_TYPES]
     for c in wx.ALLCATS:
         cols += [f"{c}_ratio", f"{c}_nearest_m"]
         vals += [ratios[c], 100.0]
@@ -298,7 +367,7 @@ def test_write_emits_one_file_per_category_per_layer(con, tmp_path):
     assert set(written) == (
         {f"gaps/{c}.json" for c in wx.ALLCATS}
         | {f"pois/{c}.json" for c in wx.ALLCATS}
-        | {"meta.json", "alcohol.json", "pipeline.json",
+        | {"meta.json", "alcohol.json", "pipeline.json", "storefronts.json",
            "nta/MN0001.json", "nta/index.json"})
     import json
     meta = json.loads((tmp_path / "meta.json").read_text())
@@ -804,7 +873,7 @@ def test_gap_layer_advertises_exactly_the_columns_it_packs(con):
                                    "units_completed_24mo_400m": 40})
     layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
     assert layer["pipelineColumns"] == wx.PIPELINE_GAP_COLUMNS
-    assert layer["stride"] == 8
+    assert layer["stride"] == 12
     assert layer["pts"][:4] == [PLACES["MN"][0], PLACES["MN"][1], 0, 10]
     assert layer["pts"][4:6] == [250, 40]
 
@@ -974,7 +1043,7 @@ def test_nta_layer_carries_pipeline_without_moving_the_missing_walk(con):
                    "nearest_large_project_date": "2026-01-02"})
     layer = wx.collect_nta(con, ["MN"], "principled", "deadbeef1234")["MN0001"]
     st = layer["stride"]
-    assert st == 10
+    assert st == 14
     assert layer["pts"][5] == 2                       # n_missing still slot 5
     assert len(layer["miss"]) == 4                    # two (category, ratio) pairs
     assert layer["pts"][6:10] == [900, 15, 0, 90]
@@ -994,4 +1063,370 @@ def test_export_survives_a_database_without_the_pipeline_columns(con):
         con.execute(f"ALTER TABLE analysis.address_gaps DROP COLUMN {c}")
     assert wx.has_pipeline_columns(con) is False
     layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
-    assert layer["stride"] == 8 and layer["pts"][4:8] == [0, 0, -1, -1]
+    assert layer["stride"] == 12 and layer["pts"][4:8] == [0, 0, -1, -1]
+
+
+# ----------------------------------------------- vacant storefronts (2026-09-10)
+#
+# Four things are load-bearing and every one of them has a documented way of
+# going quietly wrong (sql/012's caveat block):
+#
+#  (a) THE SNAPSHOT IS ONE FILING. Five of DOF's eleven filings hold vacant
+#      rows ONLY, and two filings can observe the same 12/31 -- the 2025-06-03
+#      annual and the 2025-02-15 supplement both observe 2024-12-31. Pooling
+#      them counts the premises that filed both twice and lifts the MN+BK
+#      vacancy rate from 9.94% to 13.79%: a plausible-looking wrong number.
+#
+#  (b) ONE POINT PER PREMISES, NOT PER STOREFRONT. `storefront_id` renumbers
+#      between filings and one premises can file thirty storefronts. Drawing
+#      one square each would show thirty empty buildings where there is one.
+#
+#  (c) PRIOR USE IS NOT THE ROW'S OWN COLUMN. A vacant row necessarily reports
+#      'NO BUSINESS ACTIVITY IDENTIFIED', so a popup reading the row would say
+#      that for every point. The answer is a premises-level ARG_MAX over
+#      EARLIER filings, and where there is none the honest word is "unknown".
+#
+#  (d) THE DENOMINATOR TRAVELS WITH THE COUNT. The registry is self-reported:
+#      "no vacancy within 400 m" and "nobody within 400 m filed" are the same
+#      observation, and only the registered total tells them apart.
+
+
+def _shops(con, boroughs=("MN", "BK")):
+    return wx.collect_storefronts(con, list(boroughs))
+
+
+def _premises(layer):
+    """{premises_id: (band label, construction, vacant storefronts here)}."""
+    st = layer["stride"]
+    return {pid: (layer["bandLabels"][layer["pts"][i * st + 3]],
+                  bool(layer["pts"][i * st + 4]),
+                  layer["storefronts"][i])
+            for i, pid in enumerate(layer["ids"])}
+
+
+def test_storefront_gap_columns_account_for_every_model_column():
+    """DRIFT TEST. The five columns this export carries plus the two it
+    deliberately drops must EXACTLY cover model/storefronts.STOREFRONT_COLUMNS.
+    An eighth column added to the model then fails here until someone decides
+    whether the map should show it -- which is the point."""
+    from loci.model.storefronts import STOREFRONT_COLUMNS
+
+    carried, dropped = set(wx.STOREFRONT_GAP_COLUMNS), set(wx.STOREFRONT_NOT_EXPORTED)
+    assert not carried & dropped, "a column cannot be both exported and not exported"
+    assert carried | dropped == set(STOREFRONT_COLUMNS)
+    # Every dropped column carries a REASON, not just a name.
+    assert all(v.strip() for v in wx.STOREFRONT_NOT_EXPORTED.values())
+
+
+def test_storefront_radius_is_the_projects_own_five_minute_tier():
+    """The legend says "within 400 m" and the model computed the column over
+    THRESHOLDS[5]. The constant is restated in viz/ only because importing
+    score.access would drag osmnx into the exporter, so it has to be pinned."""
+    from loci.model.storefronts import DEFAULT_RADIUS_M
+
+    assert wx.STOREFRONT_RADIUS_M == DEFAULT_RADIUS_M
+
+
+def test_gap_layer_advertises_exactly_the_storefront_columns_it_packs(con):
+    """The four storefront slots are APPENDED after the four pipeline ones:
+    lon/lat/borough/units keep 0..3 and the pipeline block keeps 4..7, or every
+    existing reader silently relabels its dots."""
+    _add_gap(con, "a", "MN",
+             pipe={"units_permitted_400m": 250, "units_completed_24mo_400m": 40},
+             shop={"vacant_storefronts_400m": 3, "storefronts_400m": 48,
+                   "nearest_vacant_storefront_m": 137.0,
+                   "nearest_vacant_storefront_id": "1000#1",
+                   "nearest_vacant_lease_expired": True})
+    layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
+    assert layer["storefrontColumns"] == wx.STOREFRONT_GAP_COLUMNS
+    assert layer["stride"] == 12
+    assert layer["pts"][:4] == [PLACES["MN"][0], PLACES["MN"][1], 0, 10]
+    assert layer["pts"][4:8] == [250, 40, -1, -1]          # pipeline block, untouched
+    assert layer["pts"][8:12] == [3, 48, 0, 140]           # vacancy block, rounded to 10
+
+
+def test_gap_layer_dictionary_encodes_the_nearest_vacant_storefront(con):
+    """~2,750 vacant premises stand behind 282k addresses, so two addresses
+    nearest the same storefront must share ONE entry -- carrying its address,
+    its premises-level prior use and its lease state once."""
+    _add_storefront(con, "1000", "MN", business="RETAIL",
+                    filing="2023-08-15", observed="2022-12-31", vacant=False)
+    _add_storefront(con, "1000", "MN", address="12 SPRING ST")
+    shop = {"vacant_storefronts_400m": 2, "storefronts_400m": 30,
+            "nearest_vacant_storefront_m": 214.0,
+            "nearest_vacant_storefront_id": "1000#1",
+            "nearest_vacant_lease_expired": True}
+    _add_gap(con, "a", "MN", shop=shop)
+    _add_gap(con, "b", "MN", shop=shop)
+    layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
+    v, st = layer["vacants"], layer["stride"]
+    assert v["ids"] == ["1000#1"]                  # ONE entry, two users
+    assert v["addr"] == ["12 SPRING ST"]
+    assert v["business"] == ["RETAIL"]             # the ARG_MAX, not the vacant row
+    assert v["lease"] == [1]
+    for j in (0, 1):
+        assert layer["pts"][j * st + 10] == 0      # dictionary index
+        assert layer["pts"][j * st + 11] == 210    # metres, rounded to 10
+
+
+def test_gap_layer_packs_no_vacancy_as_absence_not_as_zero_metres(con):
+    """An address the model never scored must read as "no vacancy known", never
+    as a storefront at 0 m -- and an unreported lease must be -1, never 0. A
+    filing that reported no lease has NOT told us the lease is running."""
+    _add_gap(con, "a", "MN", shop={"vacant_storefronts_400m": 0,
+                                   "storefronts_400m": 0,
+                                   "nearest_vacant_storefront_id": None})
+    layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
+    assert layer["pts"][8:12] == [0, 0, -1, -1]
+    assert layer["vacants"]["ids"] == []
+    _add_gap(con, "b", "BK", shop={"vacant_storefronts_400m": 1,
+                                   "storefronts_400m": 9,
+                                   "nearest_vacant_storefront_m": 88.0,
+                                   "nearest_vacant_storefront_id": "2000#1",
+                                   "nearest_vacant_lease_expired": None})
+    layer = wx.collect(con, ["MN", "BK"])["gaps"]["laundry"]
+    assert layer["vacants"]["lease"] == [-1]
+
+
+def test_overlay_draws_one_point_per_premises_not_per_storefront(con):
+    """THE FUSION BUG'S MIRROR IMAGE. A premises filing four vacant storefronts
+    is ONE empty building; four coincident squares would read as four."""
+    _set_asof(con, sf_asof=SNAP_OBSERVED)
+    for seq in (1, 2, 3, 4):
+        _add_storefront(con, "1000", "MN", seq=seq)
+    layer = _shops(con)
+    assert layer["ids"] == ["1000"]
+    assert _premises(layer)["1000"][2] == 4      # the count rides in the popup
+
+
+def test_overlay_holds_only_premises_vacant_in_the_snapshot(con):
+    """THE ADVERSARIAL CASE. An occupied premises, a premises vacant only in an
+    OLDER filing, and a premises with no coordinate must none of them reach the
+    map -- the last one is dropped explicitly and counted, never lost."""
+    _set_asof(con, sf_asof=SNAP_OBSERVED)
+    _add_storefront(con, "vacant_now", "MN")
+    _add_storefront(con, "occupied", "MN", vacant=False,
+                    business="FOOD SERVICES")
+    _add_storefront(con, "vacant_then", "BK", filing="2023-08-15",
+                    observed="2022-12-31")
+    _add_storefront(con, "no_geom", "MN", geom=False)
+    layer = _shops(con)
+    assert set(layer["ids"]) == {"vacant_now"}
+    assert layer["totals"]["MN"]["vacantPremises"] == 2      # the no-geom one counts
+    assert layer["totals"]["MN"]["noGeom"] == 1              # ...and is reported
+
+
+def test_overlay_never_pools_the_vacant_only_supplement(con):
+    """THE DOUBLE-COUNT BUG, exactly as sql/012 describes it. The 2025-02-15
+    supplement and the 2025-06-03 annual filing BOTH observe 2024-12-31. The
+    full filing wins; the supplement's rows must add neither a point nor a
+    storefront to the denominator, or the vacancy rate reads 13.79% instead of
+    9.94%."""
+    _set_asof(con, sf_asof=SNAP_OBSERVED)
+    _add_storefront(con, "1000", "MN")
+    _add_storefront(con, "1000", "MN", filing=SUPPLEMENT, universe="vacant_only")
+    _add_storefront(con, "2000", "MN", vacant=False)
+    layer = _shops(con)
+    assert layer["filingDate"] == SNAP_FILING and layer["universe"] == "full"
+    assert layer["ids"] == ["1000"]
+    assert _premises(layer)["1000"][2] == 1
+    assert layer["totals"]["MN"]["storefronts"] == 2          # the filing's universe
+    assert layer["totals"]["MN"]["vacantStorefronts"] == 1
+
+
+def test_consecutive_years_are_counted_back_from_the_snapshot(con):
+    """The run is anchored at the SNAPSHOT year, not at the premises' own last
+    observation (which for many is a 2025 vacant-only supplement answering a
+    different question). A skipped or occupied year ends the run."""
+    _set_asof(con, sf_asof=SNAP_OBSERVED)
+    for yr, filing in (("2022-12-31", "2023-08-15"), ("2023-12-31", "2024-06-03")):
+        _add_storefront(con, "chronic", "MN", filing=filing, observed=yr)
+        _add_storefront(con, "broken", "MN", filing=filing, observed=yr,
+                        vacant=(yr == "2022-12-31"))
+    _add_storefront(con, "chronic", "MN")
+    _add_storefront(con, "broken", "MN")
+    _add_storefront(con, "fresh", "BK")
+    prem = _premises(_shops(con))
+    assert prem["chronic"][0] == wx.STOREFRONT_YEAR_LABELS[1]   # 3 consecutive
+    assert prem["broken"][0] == wx.STOREFRONT_YEAR_LABELS[0]    # 2023 was occupied
+    assert prem["fresh"][0] == wx.STOREFRONT_YEAR_LABELS[0]
+    assert wx.storefront_band(0) == -1
+
+
+def test_vacant_since_is_derived_from_the_run_not_stored(con):
+    """"Vacant since" is the first year of the run rendered as that year's
+    12/31. Deriving it means a re-banding cannot leave a stale date behind."""
+    _set_asof(con, sf_asof=SNAP_OBSERVED)
+    _add_storefront(con, "chronic", "MN", filing="2024-06-03", observed="2023-12-31")
+    _add_storefront(con, "chronic", "MN")
+    layer = _shops(con)
+    since = layer["vocab"]["date"][layer["since"][0]]
+    assert since == "2023-12-31"
+
+
+def test_prior_use_is_the_premises_argmax_and_unknown_when_absent(con):
+    """A vacant row necessarily reports 'NO BUSINESS ACTIVITY IDENTIFIED'
+    (sql/012 caveat 7b), so the popup must read the premises-level ARG_MAX over
+    earlier filings -- and say nothing at all where there is none, rather than
+    printing DOF's placeholder as a business."""
+    _set_asof(con, sf_asof=SNAP_OBSERVED)
+    _add_storefront(con, "known", "MN", filing="2022-08-15", observed="2021-12-31",
+                    vacant=False, business="LAUNDRY SERVICES")
+    _add_storefront(con, "known", "MN", filing="2024-06-03", observed="2023-12-31",
+                    vacant=False, business="FOOD SERVICES")
+    _add_storefront(con, "known", "MN")
+    _add_storefront(con, "never", "BK")
+    layer = _shops(con)
+    biz = {pid: (None if layer["business"][i] < 0
+                 else layer["vocab"]["business"][layer["business"][i]])
+           for i, pid in enumerate(layer["ids"])}
+    assert biz["known"] == "FOOD SERVICES"      # the LATEST non-placeholder use
+    assert biz["never"] is None                 # the UI prints "unknown"
+
+
+def test_construction_is_flagged_not_dropped(con):
+    """A ground floor empty because it is being gut-renovated is still a
+    reported vacancy (sql/012 caveat 6) -- it gets its own mark, not a
+    deletion, so a consumer who wants leasable-now can filter and a consumer
+    counting vacancies still sees it."""
+    _set_asof(con, sf_asof=SNAP_OBSERVED)
+    _add_storefront(con, "building", "MN", construction=True)
+    _add_storefront(con, "empty", "MN")
+    layer = _shops(con)
+    assert set(layer["ids"]) == {"building", "empty"}
+    assert _premises(layer)["building"][1] is True
+    assert layer["construction"]["MN"] == 1
+
+
+def test_storefront_overlay_obeys_the_borough_filter(con):
+    """Every layer on this map obeys the borough selector; a Queens vacancy
+    must not reach a Manhattan+Brooklyn export. Named apart from the pipeline
+    overlay's identical guarantee on purpose -- one `def` shadowing the other
+    would silently delete a test rather than fail one."""
+    _set_asof(con, sf_asof=SNAP_OBSERVED)
+    _add_storefront(con, "mn", "MN")
+    _add_storefront(con, "qn", "QN")
+    assert _shops(con, ("MN", "BK"))["ids"] == ["mn"]
+
+
+def test_storefront_asof_falls_back_to_a_full_filing_never_a_supplement(con):
+    """`loci storefronts` may not have run. The fallback is the newest
+    FULL-universe observation, never simply the newest one: the freshest
+    filings are vacant-only supplements, and taking one as the snapshot gives a
+    numerator with no denominator (sql/012 caveat 4)."""
+    _add_storefront(con, "1000", "MN")
+    _add_storefront(con, "1000", "MN", filing="2026-02-15", universe="vacant_only",
+                    observed="2025-12-31", seq=2)
+    asof, source = wx.storefront_asof(con, ["MN", "BK"])
+    assert asof == SNAP_OBSERVED
+    assert "observed_1231" in source
+    layer = _shops(con)
+    assert layer["asof"] == SNAP_OBSERVED and layer["filingDate"] == SNAP_FILING
+
+
+def test_missing_storefront_table_degrades_to_an_empty_overlay(con):
+    """`loci ingest-storefronts` is optional -- an export must not fail because
+    of it, and the UI must be able to say "not loaded" rather than show a
+    confident zero."""
+    con.execute("DROP TABLE analysis.storefront")
+    layer = _shops(con)
+    assert layer["available"] is False and layer["n"] == 0
+    assert layer["bandLabels"] == list(wx.STOREFRONT_YEAR_LABELS)  # legend renderable
+    assert wx.collect_vacant_detail(con, ["MN", "BK"]) == {}
+
+
+def test_export_survives_a_database_without_the_storefront_columns(con):
+    """A database built before `loci storefronts` still exports: the slots ship
+    empty so the browser never has to branch on which vintage of file it
+    fetched."""
+    _add_gap(con, "a", "MN")
+    for c in wx.STOREFRONT_GAP_COLUMNS:
+        con.execute(f"ALTER TABLE analysis.address_gaps DROP COLUMN {c}")
+    assert wx.has_storefront_columns(con) is False
+    layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
+    assert layer["stride"] == 12 and layer["pts"][8:12] == [0, 0, -1, -1]
+
+
+def test_written_overlay_holds_only_snapshot_vacancies(con, tmp_path):
+    """The same guarantee, asserted against the JSON the browser actually
+    fetches rather than against the object in memory."""
+    _set_asof(con, sf_asof=SNAP_OBSERVED)
+    _add_gap(con, "a", "MN")
+    _add_storefront(con, "keep", "MN")
+    _add_storefront(con, "supplement", "MN", filing=SUPPLEMENT,
+                    universe="vacant_only")
+    _add_storefront(con, "occupied", "BK", vacant=False)
+    wx.write(wx.collect(con, ["MN", "BK"]), tmp_path)
+    layer = json.loads((tmp_path / "storefronts.json").read_text())
+    assert layer["ids"] == ["keep"]
+    st = layer["stride"]
+    for i in range(0, len(layer["pts"]), st):
+        assert 0 <= layer["pts"][i + 3] < len(layer["bandLabels"])
+
+
+def test_meta_carries_the_snapshot_dates_and_the_denominator(con, tmp_path):
+    """THE DATES AND THE DENOMINATOR RIDE WITH THE DATA. A legend saying "2,751
+    empty storefronts" without the observation date, the filing date and the
+    registered total is a legend that ages into a lie inside a year -- and in a
+    self-reported registry a bare count cannot be read as a rate at all."""
+    _set_asof(con, sf_asof=SNAP_OBSERVED)
+    _add_gap(con, "a", "MN")
+    _add_storefront(con, "1000", "MN")
+    _add_storefront(con, "2000", "MN", vacant=False)
+    wx.write(wx.collect(con, ["MN", "BK"]), tmp_path)
+    meta = json.loads((tmp_path / "meta.json").read_text())["storefront"]
+    assert meta["available"] is True
+    assert meta["asof"] == SNAP_OBSERVED
+    assert meta["asofSource"] == "analysis.address.storefront_asof"
+    assert meta["filingDate"] == SNAP_FILING
+    assert meta["universe"] == "full"
+    assert meta["vintage"] == "2026-04-09"
+    assert meta["radiusM"] == wx.STOREFRONT_RADIUS_M
+    assert meta["bandLabels"] == list(wx.STOREFRONT_YEAR_LABELS)
+    assert meta["gapColumns"] == wx.STOREFRONT_GAP_COLUMNS
+    assert meta["totals"]["MN"] == {"storefronts": 2, "premises": 2,
+                                    "vacantStorefronts": 1, "vacantPremises": 1,
+                                    "noGeom": 0}
+    assert meta["counts"][wx.STOREFRONT_YEAR_LABELS[0]]["MN"] == 1
+
+
+def test_dry_run_counts_come_off_the_packed_layer(con):
+    """What `--dry-run` prints is counted off the PACKED overlay, not
+    re-queried, so the terminal and the file cannot disagree."""
+    _set_asof(con, sf_asof=SNAP_OBSERVED)
+    _add_storefront(con, "a", "MN")
+    _add_storefront(con, "b", "MN", construction=True)
+    _add_storefront(con, "c", "BK", filing="2024-06-03", observed="2023-12-31")
+    _add_storefront(con, "c", "BK")
+    summary = wx.summarize(wx.collect(con, ["MN", "BK"]))["storefront"]
+    assert summary["available"] is True and summary["n"] == 3
+    assert summary["bands"][wx.STOREFRONT_YEAR_LABELS[0]]["MN"] == 2
+    assert summary["bands"][wx.STOREFRONT_YEAR_LABELS[1]]["BK"] == 1
+    assert summary["construction"]["MN"] == 1
+    assert summary["totals"]["BK"]["storefronts"] == 1
+    assert summary["asof"] == SNAP_OBSERVED and summary["filingDate"] == SNAP_FILING
+
+
+def test_nta_layer_carries_vacancy_without_moving_the_missing_walk(con):
+    """The all-opportunities layer reads `lead`, `gap_score` and `n_missing` by
+    position and walks its `miss` array off slot 5. Both annotation blocks are
+    APPENDED, so all of that must still hold at a stride of 14."""
+    _add_storefront(con, "1000", "MN", address="7 BOND ST", business="RETAIL",
+                    filing="2023-08-15", observed="2022-12-31", vacant=False)
+    _add_storefront(con, "1000", "MN", address="7 BOND ST")
+    _add_gap(con, "a", "MN", cat="laundry", extra=("bar",),
+             pipe={"units_permitted_400m": 900, "units_completed_24mo_400m": 15},
+             shop={"vacant_storefronts_400m": 4, "storefronts_400m": 61,
+                   "nearest_vacant_storefront_m": 121.0,
+                   "nearest_vacant_storefront_id": "1000#1",
+                   "nearest_vacant_lease_expired": False})
+    layer = wx.collect_nta(con, ["MN"], "principled", "deadbeef1234")["MN0001"]
+    assert layer["stride"] == 14
+    assert layer["pts"][5] == 2                       # n_missing still slot 5
+    assert len(layer["miss"]) == 4                    # two (category, ratio) pairs
+    assert layer["pts"][6:10] == [900, 15, -1, -1]    # pipeline block, untouched
+    assert layer["pts"][10:14] == [4, 61, 0, 120]
+    assert layer["vacants"]["addr"] == ["7 BOND ST"]
+    assert layer["vacants"]["business"] == ["RETAIL"]
+    assert layer["vacants"]["lease"] == [0]
+    assert layer["storefrontColumns"] == wx.STOREFRONT_GAP_COLUMNS

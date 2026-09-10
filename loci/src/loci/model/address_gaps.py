@@ -572,7 +572,20 @@ def address_gaps_view_sql() -> str:
             -- categories has a fitted curve (bar), so a generated pair per
             -- category would add 30 columns, 28 of them always NULL. Query
             -- analysis.address_category directly for the per-category value.
-            a.age_fit_lead, a.age_fit_lead_moe, a.gap_score_fit
+            a.age_fit_lead, a.age_fit_lead_moe, a.gap_score_fit,
+            -- The storefront-vacancy annotation (sql/012, model/storefronts.py).
+            -- APPENDED for the same reason as the two blocks above: every
+            -- positional consumer of the older column order is untouched. All
+            -- NULL until `loci storefronts` has run for the borough.
+            -- `vacant_storefronts_400m` is a SUBSET of `storefronts_400m`, and
+            -- the pair is a rate -- never a sum. The denominator is carried
+            -- here on purpose: the registry is self-reported, so "0 vacant
+            -- within 400 m" and "nobody near here filed" are the same
+            -- observation until you can see how many storefronts filed at all.
+            a.vacant_storefronts_400m, a.storefronts_400m,
+            a.nearest_vacant_storefront_m, a.nearest_vacant_storefront_id,
+            a.nearest_vacant_storefront_business,
+            a.nearest_vacant_lease_expired, a.storefront_asof
         FROM analysis.address a
         LEFT JOIN wide w ON w.address_id = a.address_id AND w.borough = a.borough
     """

@@ -54,6 +54,16 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
 .pipe .k{width:26px;display:flex;justify-content:center;flex:none}
 .pipe .n{margin-left:auto;font-family:"IBM Plex Mono";font-size:11px;color:var(--muted)}
 .pipe.off{opacity:.5}
+/* Vacant storefronts (owner request 2026-09-10). Same legend layout again —
+   a third standalone overlay is the same KIND of thing — but its own mark: a
+   small HOLLOW SQUARE in a muted red. Circles are spent on gaps, known
+   locations and pipeline rings; a filled square is the alcohol overlay's
+   off-premises licence, so this one is deliberately unfilled. */
+.sf{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.sf .row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);padding:3px 0}
+.sf .k{width:18px;display:flex;justify-content:center;flex:none}
+.sf .n{margin-left:auto;font-family:"IBM Plex Mono";font-size:11px;color:var(--muted)}
+.sf.off{opacity:.5}
 .filt{margin-top:9px;padding-top:9px;border-top:1px dashed var(--line)}
 .filt label{display:block;font-size:11.5px;color:var(--ink2);margin-bottom:5px}
 .asof{margin-top:7px;font-family:"IBM Plex Mono";font-size:10.5px;color:var(--muted);line-height:1.5}
@@ -135,6 +145,18 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
       <div class="asof" id="pipeAsof"></div>
       <div class="fine" id="pipeFine"></div>
     </div>
+    <div class="sec" id="sfSec" hidden>
+      <h2>Vacant storefronts <span class="hint">overlay</span></h2>
+      <label class="chk"><input type="checkbox" id="sfTog"> Show vacant storefronts</label>
+      <div class="sf" id="sfLegend"></div>
+      <div class="filt">
+        <label for="sfMin">Gap addresses with</label>
+        <select id="sfMin"></select>
+        <div class="fine" id="sfMinNote"></div>
+      </div>
+      <div class="asof" id="sfAsof"></div>
+      <div class="fine" id="sfFine"></div>
+    </div>
     <div class="sec" id="alcSec" hidden>
       <h2>Alcohol licences <span class="hint">overlay</span></h2>
       <label class="chk"><input type="checkbox" id="alcTog"> Show alcohol licences</label>
@@ -213,9 +235,43 @@ const PIPE_COMING='#e2711d', PIPE_DONE='#26547c';
 // Slot offsets of the four pipeline numbers inside each layer's flat point
 // array. They are APPENDED in the exporter, so everything before them keeps
 // its index; these two constants are the only place the offsets are written.
-const GAP_PIPE=4;     // gaps/<cat>.json  stride 8: lon,lat,boro,units,+4
-const NTA_PIPE=6;     // nta/<code>.json  stride 10: lon,lat,units,lead,score,nMissing,+4
+const GAP_PIPE=4;     // gaps/<cat>.json  stride 12: lon,lat,boro,units,+4pipe,+4sf
+const NTA_PIPE=6;     // nta/<code>.json  stride 14: lon,lat,units,lead,score,nMissing,+4pipe,+4sf
 const pipeColor=stage=>stage==='complete'?PIPE_DONE:PIPE_COMING;
+// ---- Vacant-storefront overlay (owner request 2026-09-10) -----------------
+// The third STANDALONE overlay, and the second that also annotates the gap
+// layer. One point per PREMISES reported vacant in the storefront-registry
+// snapshot — not per storefront: `storefront_id` renumbers between DOF filings
+// and a premises with four empty units is one empty building on a map.
+//
+// Data: data/storefronts.json, written by `loci export-webmap` from
+// analysis.storefront (sql/012). It is ONE FILING — the latest full-universe
+// one — never the union of filings: five of the eleven contain vacant rows
+// ONLY, and pooling them reads as a 100% vacancy rate.
+//
+// SYMBOL: a hollow square. Colour = how long it has been empty (one count vs
+// two or more consecutive years); grey with a slash = the owner reported
+// construction, which is a ground floor that is empty because it is being
+// rebuilt, not one that is available.
+let showSf=false, SF=null, sfLoading=false;
+// Minimum vacant storefronts within 400 m for a gap address to be DRAWN — a
+// filter on the gap layer, not on the overlay: "show me the gaps that have
+// somewhere to actually put the thing". 0 = no filter, the default.
+let sfMin=0;
+const SF_MIN_OPTS=[0,1,3];
+// Slot offsets of the four storefront numbers, APPENDED after the pipeline
+// block in both gap layers. These two constants are the only place they are
+// written down.
+const GAP_SF=8, NTA_SF=10;
+const SF_RECENT='#a05a4e', SF_CHRONIC='#7a2e22', SF_CONSTR='#7d7566';
+// Band index -> style. Index 0 is the file's first band ("vacant at the last
+// count"), 1 its second ("2+ consecutive years"); a file that ever grows a
+// third band still draws, in the chronic colour, rather than vanishing.
+const sfColor=(band,constr)=>constr?SF_CONSTR:(band>=1?SF_CHRONIC:SF_RECENT);
+const sfImg=(band,constr)=>'sf-icon-'+(constr?'constr':(band>=1?'chronic':'recent'));
+const SF_IMGS=[['recent',SF_RECENT,false],['chronic',SF_CHRONIC,false],
+               ['constr',SF_CONSTR,true]];
+const sfTip=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:12});
 // Cuisine + active filters are KNOWN-LOCATION filters only. They are read
 // exclusively by poiFC(); gapFC() never sees them. The gap layer is model
 // output (analysis.address_gaps) and must not be reinterpreted client-side --
@@ -251,6 +307,10 @@ function gapFC(){
     // arrived — because that is the number a lease signed today is a bet on.
     const up=st>GAP_PIPE?p[i+GAP_PIPE]:0;
     if(pipeMin&&up<pipeMin) continue;
+    // The vacancy filter, off the same kind of slot: how many registered
+    // storefronts within 400 m were reported empty on the snapshot date.
+    const vac=st>GAP_SF?p[i+GAP_SF]:0;
+    if(sfMin&&vac<sfMin) continue;
     f.push({type:'Feature',geometry:{type:'Point',coordinates:[p[i],p[i+1]]},
       properties:{u:p[i+3],id:L.ids[i/st],j:i/st}}); }
   return {type:'FeatureCollection',features:f};
@@ -291,6 +351,42 @@ function pipeHTML(x){
   }else h+='<div class="pmi">no project of 50+ homes within 2.4 km</div>';
   if(P.cutoff) h+=`<div class="pmi">coming homes are a floor — DCP ${esc(P.vintage||'')} `+
     `carries permits only to ${esc(P.cutoff)}</div>`;
+  return h;
+}
+// The four storefront numbers for point j of a layer, plus the nearest vacant
+// storefront looked up in that file's own `vacants` dictionary. `null` when the
+// export carried no storefront block at all (a database predating
+// `loci storefronts`), so the popup can say nothing rather than say zero — and
+// "zero vacancies" and "nobody near here filed" are the same number in a
+// self-reported registry, which is why `total` travels with `vac`.
+function sfAt(L,j,off){
+  if(!L||!L.stride||L.stride<=off+3||!L.vacants) return null;
+  const p=L.pts,i=j*L.stride,V=L.vacants,k=p[i+off+2];
+  return {vac:p[i+off],total:p[i+off+1],
+    near:k<0?null:{id:V.ids[k],addr:V.addr[k],business:V.business[k],
+                   lease:V.lease[k],m:p[i+off+3]}};
+}
+// The vacancy reading for one gap address. Explicit about the two ways it can
+// mislead: the denominator can be tiny (nobody filed), and the snapshot is an
+// annual observation, not a live listing — a storefront empty on 31 December
+// may have been let months ago.
+function sfHTML(x){
+  if(!x) return '';
+  const S=META.storefront||{};
+  let h='<div class="pmi" style="margin-top:6px">Vacant storefronts</div>';
+  h+=`<div class="ppop"><b>${(+x.vac).toLocaleString()}</b> vacant of `+
+     `${(+x.total).toLocaleString()} registered within ${S.radiusM||400} m</div>`;
+  if(!x.total) h+='<div class="pmi">no storefront registered within the walk — '+
+    'not evidence of no vacancy, evidence that nobody here filed</div>';
+  if(x.near){
+    const lease=x.near.lease===1?'lease expired':x.near.lease===0?'lease still running'
+      :'lease not reported';
+    h+=`<div class="ppop">nearest vacant: <b>${esc(x.near.addr||'address not recorded')}</b>`+
+       `${x.near.m>=0?' · '+(+x.near.m).toLocaleString()+' m walk':''}</div>`+
+       `<div class="pmi">last known use: ${esc(x.near.business||'unknown')} · ${lease}</div>`;
+  }else if(x.total) h+='<div class="pmi">no vacant storefront within 2.4 km</div>';
+  if(S.asof) h+=`<div class="pmi">DOF storefront registry, observed ${esc(S.asof)}`+
+    `${S.filingDate?' · filed '+esc(S.filingDate):''} — self-reported</div>`;
   return h;
 }
 function poiFC(){
@@ -514,6 +610,118 @@ function pipeHTMLJob(p,full){
   return h;
 }
 
+// ---- Vacant-storefront overlay --------------------------------------------
+// Packed like the other layers: flat stride-5 numbers (lon, lat, borough index,
+// year-band index, construction flag) plus parallel arrays, with the prior use
+// and the two dates dictionary-encoded. See pack_storefronts() in
+// src/loci/viz/webmap_export.py.
+function sfFC(){
+  if(!SF||!showSf) return EMPTY;
+  const f=[],p=SF.pts,st=SF.stride;
+  for(let i=0;i<p.length;i+=st){
+    if(!boroKeep(p[i+2])) continue;      // the overlay obeys the borough selector
+    const constr=!!p[i+4];
+    f.push({type:'Feature',geometry:{type:'Point',coordinates:[p[i],p[i+1]]},
+      properties:{band:p[i+3],constr:constr?1:0,j:i/st,img:sfImg(p[i+3],constr)}});
+  }
+  return {type:'FeatureCollection',features:f};
+}
+function sfVal(key,vkey,j){const i=SF[key][j];return i<0?null:SF.vocab[vkey][i];}
+// A hollow square, drawn at 2x and registered as a map image. Hollow because
+// the filled square already means "off-premises liquor licence" on the alcohol
+// overlay; the slash marks a ground floor that is empty because it is being
+// rebuilt, which is not a leasable space this quarter.
+function sfIcon(color,slash){
+  const s=22,c=document.createElement('canvas');c.width=c.height=s;
+  const g=c.getContext('2d'),m=s/2,r=5.4;
+  g.strokeStyle='#fffdf9';g.lineWidth=3.2;g.lineJoin='miter';
+  g.strokeRect(m-r,m-r,2*r,2*r);                 // halo, so it reads over dots
+  g.strokeStyle=color;g.lineWidth=1.9;
+  g.strokeRect(m-r,m-r,2*r,2*r);
+  if(slash){g.beginPath();g.moveTo(m-r,m+r);g.lineTo(m+r,m-r);g.stroke();}
+  return g.getImageData(0,0,s,s);
+}
+function sfSvg(color,slash){
+  return `<svg width="14" height="14"><rect x="2.5" y="2.5" width="9" height="9" fill="none" `+
+    `stroke="${color}" stroke-width="1.8"></rect>`+
+    (slash?`<path d="M2.5 11.5 L11.5 2.5" stroke="${color}" stroke-width="1.5"></path>`:'')+
+    '</svg>';
+}
+// Vacant premises in a band, in the boroughs currently on screen.
+function sfCount(label){
+  const c=META.storefront&&META.storefront.counts&&META.storefront.counts[label];
+  if(!c) return 0;
+  let n=0; META.boroughs.forEach(b=>{if(boroSel==='ALL'||b===boroSel)n+=c[b]||0;}); return n;
+}
+function sfTotal(key){
+  const t=META.storefront&&META.storefront.totals; if(!t) return 0;
+  let n=0; META.boroughs.forEach(b=>{
+    if(boroSel==='ALL'||b===boroSel)n+=(t[b]&&t[b][key])||0;}); return n;
+}
+function sfConstruction(){
+  const c=META.storefront&&META.storefront.construction; if(!c) return 0;
+  let n=0; META.boroughs.forEach(b=>{if(boroSel==='ALL'||b===boroSel)n+=c[b]||0;}); return n;
+}
+async function loadStorefronts(){
+  if(SF||sfLoading) return; sfLoading=true;
+  try{ SF=await fetch('data/storefronts.json').then(r=>r.json()); }
+  catch(e){ SF=null; }
+  sfLoading=false;
+}
+function refreshSf(){
+  const s=map.getSource('sf'); if(!s) return;
+  s.setData(sfFC()); renderSfLegend();
+}
+// Two colour rows (recent / chronic), one for the construction flag, and — the
+// row that makes the other three readable — the REGISTERED total, so the
+// vacancy rate can be read off the legend instead of guessed.
+function renderSfLegend(){
+  const S=META.storefront, el=document.getElementById('sfLegend');
+  if(!S||!S.available) return;
+  el.className='sf'+(showSf?'':' off');
+  const rows=(S.bandLabels||[]).map((lab,i)=>{
+    const col=i>=1?SF_CHRONIC:SF_RECENT;
+    return `<div class="row"><span class="k">${sfSvg(col,false)}</span>`+
+      `<span>${esc(lab)}</span><span class="n">${sfCount(lab).toLocaleString()}</span></div>`;
+  }).join('');
+  const reg=sfTotal('storefronts'), vac=sfTotal('vacantStorefronts');
+  const rate=reg?(100*vac/reg).toFixed(1)+'%':'n/a';
+  el.innerHTML=rows+
+    `<div class="row"><span class="k">${sfSvg(SF_CONSTR,true)}</span>`+
+      `<span>Construction reported<br><span class="hint">empty because it is being `+
+      `rebuilt — not a space to let</span></span>`+
+      `<span class="n">${sfConstruction().toLocaleString()}</span></div>`+
+    `<div class="row"><span></span><span>Registered storefronts in the filing<br>`+
+      `<span class="hint">${vac.toLocaleString()} of ${reg.toLocaleString()} reported `+
+      `vacant — <b>${rate}</b></span></span>`+
+      `<span class="n">${reg.toLocaleString()}</span></div>`;
+}
+// The premises popup: street address, how long it has been empty, what it last
+// housed (a PREMISES-level answer — DOF records no prior use on a vacant row),
+// the lease state and the filing it came from.
+function sfHTMLPremises(p,full){
+  const j=+p.j;
+  const biz2=sfVal('business','business',j), since=sfVal('since','date',j),
+        lease=sfVal('lease','date',j);
+  const label=(SF.bandLabels||[])[p.band]||'Vacant';
+  const n=SF.storefronts[j]||1;
+  let h=`<div class="pnb">${esc(SF.addr[j]||'Vacant storefront')}</div>`+
+    `<div class="ppop">${esc(label)}${n>1?` · ${n} vacant storefronts at this premises`:''}</div>`;
+  h+=`<div class="pmi">last known use: ${esc(biz2||'unknown')}</div>`;
+  if(since) h+=`<div class="pmi">reported vacant since ${esc(since)}</div>`;
+  h+=lease?`<div class="pmi">most recent lease expired ${esc(lease)}</div>`
+          :`<div class="pmi">no lease expiry reported</div>`;
+  if(p.constr) h+='<div class="warn">Construction reported — this ground floor is '+
+    'empty because it is being rebuilt.</div>';
+  if(full){
+    const S=META.storefront||{};
+    h+=`<div class="pmi">premises ${esc(SF.ids[j])}</div>`+
+       `<div class="pmi">observed ${esc(S.asof||'?')} · filed ${esc(S.filingDate||'?')} `+
+       `· self-reported to DOF</div>`;
+  }
+  return h;
+}
+
 // ---- All opportunities, one neighborhood (owner request 2026-09-09) --------
 // "When I zoom in on one neighborhood, can we show all the opportunities?"
 //
@@ -587,6 +795,7 @@ function allGapFC(){
     // Same pipeline filter as the single-business view, off the same slot —
     // one threshold, both modes, or the sidebar control would mean two things.
     if(pipeMin&&(st<=NTA_PIPE||p[i+NTA_PIPE]<pipeMin)) continue;
+    if(sfMin&&(st<=NTA_SF+3||p[i+NTA_SF]<sfMin)) continue;
     const lead=p[i+3]>=0?META.cats[p[i+3]]:null;
     // `hi` is baked into the feature rather than filtered in the style: the
     // legend highlights addresses MISSING that category, which is not the same
@@ -824,6 +1033,18 @@ map.on('load',async()=>{
       'circle-stroke-width':1.8,'circle-stroke-color':['get','col'],
       'circle-stroke-opacity':0.95}},'cl');
 
+  // Vacant storefronts: same lazy contract, registered above the pipeline
+  // rings and below the gap dots. It sits above the rings because a small
+  // hollow square inside a 30-pixel ring would otherwise be unclickable, and
+  // below the gap dots because the map's subject is still what is missing.
+  SF_IMGS.forEach(([key,color,slash])=>{
+    if(!map.hasImage('sf-icon-'+key)) map.addImage('sf-icon-'+key,sfIcon(color,slash),{pixelRatio:2});
+  });
+  map.addSource('sf',{type:'geojson',data:EMPTY});
+  map.addLayer({id:'sf',type:'symbol',source:'sf',
+    layout:{'icon-image':['get','img'],'icon-allow-overlap':true,'icon-ignore-placement':true,
+      'icon-size':['interpolate',['linear'],['zoom'],10,0.45,13,0.7,17,1.05]}},'cl');
+
   document.getElementById('loading').hidden=true;
   buildUI(); refresh();
 
@@ -837,6 +1058,7 @@ map.on('load',async()=>{
     new maplibregl.Popup({closeButton:false,maxWidth:'285px'}).setLngLat(e.lngLat)
       .setHTML(`<div class="pnb">Gap address</div><div class="ppop">${p.u} homes · no ${label().toLowerCase()} in reach</div>`+
         pipeHTML(pipeAt(CACHE.gaps[biz],+p.j,GAP_PIPE))+
+        sfHTML(sfAt(CACHE.gaps[biz],+p.j,GAP_SF))+
         `<div class="pmi">bbl ${p.id}</div>`).addTo(map);});
   map.on('mouseenter','pt',()=>map.getCanvas().style.cursor='pointer');
   map.on('mouseleave','pt',()=>map.getCanvas().style.cursor='');
@@ -887,6 +1109,7 @@ map.on('load',async()=>{
         `<div style="margin-top:5px">${missHTML(j)}</div>`+
         `<div class="pmi">× is distance to the nearest one ÷ this category's reach tier</div>`+
         pipeHTML(pipeAt(NTA,j,NTA_PIPE))+
+        sfHTML(sfAt(NTA,j,NTA_SF))+
         `<div class="pmi">bbl ${esc(NTA.ids[j])}</div>`).addTo(map);});
   map.on('mouseenter','allpt',e=>{map.getCanvas().style.cursor='pointer';
     const p=e.features[0].properties;
@@ -929,6 +1152,15 @@ map.on('load',async()=>{
     new maplibregl.Popup({closeButton:false,maxWidth:'280px'})
       .setLngLat(e.features[0].geometry.coordinates)
       .setHTML(pipeHTMLJob(e.features[0].properties,true)).addTo(map);});
+
+  map.on('mouseenter','sf',e=>{map.getCanvas().style.cursor='pointer';
+    sfTip.setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(sfHTMLPremises(e.features[0].properties,false)).addTo(map);});
+  map.on('mouseleave','sf',()=>{map.getCanvas().style.cursor='';sfTip.remove();});
+  map.on('click','sf',e=>{
+    new maplibregl.Popup({closeButton:false,maxWidth:'280px'})
+      .setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(sfHTMLPremises(e.features[0].properties,true)).addTo(map);});
 });
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -968,7 +1200,7 @@ function refresh(){
     map.getSource('poi').setData(EMPTY);
     map.getSource('allgap').setData(allGapFC());
     map.getSource('allpoi').setData(allPoiFC());
-    updateBanner(); allLegend(); refreshAlc(); refreshPipe();
+    updateBanner(); allLegend(); refreshAlc(); refreshPipe(); refreshSf();
     return;
   }
   map.getSource('allgap').setData(EMPTY);
@@ -982,7 +1214,7 @@ function refresh(){
   // Only IN-SET features count towards "known locations shown" -- an excluded
   // cross on screen is not a known location and must not inflate the banner.
   updateBanner(pf.features.reduce((n,f)=>n+(f.properties.s?1:0),0),gf.features.length);
-  updateLegend(); refreshAlc(); refreshPipe();
+  updateLegend(); refreshAlc(); refreshPipe(); refreshSf();
 }
 function sumOver(obj,pick){let n=0;META.boroughs.forEach(b=>{if(boroSel==='ALL'||b===boroSel)n+=pick(obj[b]);});return n;}
 function updateBanner(shown,gshown){
@@ -997,12 +1229,13 @@ function updateBanner(shown,gshown){
   const cui=cuiSel==='ALL'?'':cuiSel===CUI_OTHER?' · other cuisines':cuiSel===CUI_NONE?' · cuisine not recorded':` · ${cuiSel}`;
   // Same rule as the cuisine filter: a filtered map must never print an
   // unqualified total, because that is how a screenshot starts lying.
-  const gapTxt=(pipeMin&&gshown!=null)
+  const gapTxt=((pipeMin||sfMin)&&gshown!=null)
     ? `${gshown.toLocaleString()} of ${g.toLocaleString()} gap addresses`
     : `${g.toLocaleString()} gap addresses`;
   document.getElementById('banner').innerHTML=
     `<span class="sw" style="background:${lc()}"></span><div><b>${label()}${esc(cui)}${activeOnly&&det()?' · active only':''}`+
-    `${pipeMin?` · ${pipeMin}+ homes permitted nearby`:''}</b>`+
+    `${pipeMin?` · ${pipeMin}+ homes permitted nearby`:''}`+
+    `${sfMin?` · ${sfMin}+ vacant storefront${sfMin===1?'':'s'} nearby`:''}</b>`+
     `<div class="bsub">${gapTxt} · ${poiTxt} · ${where} · reach ${META.reach_m[biz]} m</div></div>`;
 }
 // The mode's banner says the neighborhood, not the business — and when no
@@ -1163,7 +1396,7 @@ function buildUI(){
   renderSupply();
   document.getElementById('cuiSel').onchange=e=>{cuiSel=e.target.value;refresh();};
   document.getElementById('actTog').onchange=e=>{activeOnly=e.target.checked;refresh();};
-  buildAlcUI(); buildPipeUI();
+  buildAlcUI(); buildPipeUI(); buildSfUI();
 }
 // The pipeline section carries TWO controls with different scopes: the overlay
 // toggle (a standalone layer) and the minimum-permitted-units filter (a filter
@@ -1223,6 +1456,65 @@ function buildPipeUI(){
         fine.textContent='Could not load data/pipeline.json.'; }
     }
     refreshPipe();
+  };
+}
+// The vacancy section carries the same two kinds of control as the pipeline
+// one: an overlay toggle and a filter on the GAP layer. The filter is live
+// whether or not the squares are drawn — "only gaps with somewhere to put it"
+// is a question you can ask without switching the overlay on.
+function renderSfMinNote(){
+  const el=document.getElementById('sfMinNote'); if(!el) return;
+  const S=META.storefront||{};
+  el.innerHTML=sfMin
+    ? `Filters the <b>gap layer</b> only, in both modes. The counts beside each business `+
+      `above stay unfiltered totals; the banner shows how many are drawn.`
+    : `Filters the gap layer by how many registered storefronts within a `+
+      `${S.radiusM||400} m walk their owners reported <b>vacant</b> on `+
+      `${esc(S.asof||'the snapshot date')} — where the thing that is missing could go.`;
+}
+function buildSfUI(){
+  const S=META.storefront, sec=document.getElementById('sfSec'),
+        tog=document.getElementById('sfTog'), sel=document.getElementById('sfMin'),
+        fine=document.getElementById('sfFine'), asof=document.getElementById('sfAsof');
+  if(!S) return;
+  sec.hidden=false;
+  sel.innerHTML=SF_MIN_OPTS.map(v=>`<option value="${v}"${v===sfMin?' selected':''}>`+
+    `${v===0?'any address (no filter)':v===1?'a vacant storefront within '+(S.radiusM||400)+' m'
+      :v+'+ vacant storefronts within '+(S.radiusM||400)+' m'}</option>`).join('');
+  sel.onchange=e=>{sfMin=+e.target.value;renderSfMinNote();refresh();};
+  renderSfMinNote();
+  if(!S.available){
+    tog.disabled=true; sel.disabled=true;
+    fine.textContent='Not loaded — run `loci ingest-storefronts`, `loci storefronts`, '+
+      'then `loci export-webmap`.';
+    return;
+  }
+  tog.checked=false; showSf=false;      // off by default, every load
+  // THE SNAPSHOT DATE IS PART OF THE LAYER. DOF publishes annually and the
+  // registry is self-reported, so a square on this map is an owner's statement
+  // about one 31 December — not a listing, not a rent, not availability today.
+  asof.innerHTML=`storefront registry snapshot <b>${esc(S.asof||'?')}</b> `+
+    `(DOF, filed <b>${esc(S.filingDate||'?')}</b>) · self-reported, small buildings `+
+    `mostly absent`;
+  fine.innerHTML=`Every <b>premises whose owner reported a vacant ground floor</b> on `+
+    `${esc(S.asof||'the snapshot date')}, from the Local Law 157 registry — one square per `+
+    `premises, not per storefront. <b>Non-filing is invisible</b>: a landlord who does not `+
+    `file does not appear as vacant, they do not appear at all, so the legend shows the `+
+    `registered total as the denominator. Only 0.3% of filings sit on a 1–3 family building, `+
+    `so the corner store in a rowhouse base is under-covered. There is <b>no rent and no `+
+    `square footage</b> in this dataset, and an annual snapshot is not a live listing. `+
+    `This is an overlay, not a business category — switching it on cannot open or close a gap.`;
+  renderSfLegend();
+  tog.onchange=async e=>{
+    showSf=e.target.checked;
+    if(showSf&&!SF){
+      const ld=document.getElementById('loading');
+      ld.hidden=false; ld.textContent='Loading vacant storefronts…';
+      await loadStorefronts(); ld.hidden=true;
+      if(!SF){ showSf=false; e.target.checked=false;
+        fine.textContent='Could not load data/storefronts.json.'; }
+    }
+    refreshSf();
   };
 }
 // The mode lives at the TOP of the business list and above a divider: it is
