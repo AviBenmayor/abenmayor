@@ -630,7 +630,24 @@ class TavilyFetcher:
         self.budget.reserve(endpoint, n_urls)
         if self._pace_now and self.budget.calls > 1:
             time.sleep(self._pace_now)
-        r = self.s.post(f"{API}/{endpoint}", json=payload, timeout=240)
+        # 90 s, not 240: an advanced extract that has not answered in 90 s is
+        # throttled, and every extra second is time the sweep spends producing
+        # nothing (2026-09-10: attempts crawled 1-2 h through 240 s waits with
+        # no progress line, then died on the first ConnectionError).
+        try:
+            r = self.s.post(f"{API}/{endpoint}", json=payload, timeout=90)
+        except requests.RequestException as e:
+            # A network failure is a failed, unbilled call -- not the end of
+            # the sweep. Record it, back off, and let the caller see an empty
+            # body (search: no results; extract: every URL failed).
+            self.budget.record(endpoint=endpoint, n_urls=n_urls, credits=0,
+                               http_status=0, n_ok=0, n_failed=n_urls,
+                               note=f"{note} | {type(e).__name__}")
+            if endpoint == "extract":
+                self.failed_urls.extend(str(u).rstrip("/") for u in payload.get("urls", []))
+            self._throttled()
+            return {"results": [], "failed_results": [
+                {"url": u, "error": type(e).__name__} for u in payload.get("urls", [])]}
         body = {}
         try:
             body = r.json()
