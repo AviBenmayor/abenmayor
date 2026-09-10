@@ -11,6 +11,11 @@
     loci address-gaps [--borough ALL] [--reach tiers|p80] [--supply-set principled]
                       [--limit 0] [--dry-run]
     loci address-demand [--borough MNBK|MN|BK|ALL] [--dry-run]  (D49 annotation, GTM-110)
+    loci age-fit fit   [--boroughs MN,BK] [--dry-run]   (D63: re-estimate the
+                                                        supply-revealed bar age curve;
+                                                        exits non-zero on the F2 gate)
+    loci age-fit apply [--boroughs MN,BK] [--dry-run]   (D63: age_fit on bar rows,
+                                                        gap_score_fit beside gap_score)
     loci anchor-coverage [--borough Manhattan,Brooklyn] [--write]   (D52 step 1)
     loci ingest --source overture_places --city nyc [--dry-run]
     loci citywide-income [--refresh]                     (ACS B19025/B11001, read-only)
@@ -241,11 +246,26 @@ def grid(city: str = "nyc", resolution: int = 9) -> None:
 
 
 @app.command()
-def controls(source: str = typer.Option("pluto", help="Control source: pluto.")) -> None:
-    """Build analysis.hex_controls from a control source."""
+def controls(source: str = typer.Option(
+        "pluto", help="Control source: pluto | mta | mta-ridership.")) -> None:
+    """Build analysis.hex_controls from a control source.
+
+    `mta-ridership` fills `subway_riders_2024`, which was NULL on all 8,321
+    rows because nothing ever wrote it (D63): the column landed ahead of its
+    loader. It costs twelve requests to data.ny.gov (~4 min) -- the hourly feed
+    is ~110M rows and a whole-year server-side aggregation times out, so it is
+    chunked by calendar month.
+    """
     con = locidb.connect()
     locidb.init_schema(con)
-    if source == "pluto":
+    if source == "mta-ridership":
+        from loci.grid.mta import RIDERSHIP_YEAR, build_subway_ridership
+        console.print(f"[dim]summing {RIDERSHIP_YEAR} subway ridership by station "
+                      f"complex, month by month (12 requests)…[/]")
+        n, complexes = build_subway_ridership(con)
+        console.print(f"[green]ok[/] subway_riders_2024 for {n:,} hexes "
+                      f"from {complexes:,} station complexes")
+    elif source == "pluto":
         from loci.grid.pluto import build_pluto_controls
         n = build_pluto_controls(con)
         console.print(f"[green]ok[/] PLUTO controls for {n} hexes")
@@ -1354,6 +1374,152 @@ def pipeline(
         raise typer.Exit(0)
     console.print(f"[green]ok[/] annotated {written:,} rows -> analysis.address "
                   f"(pipeline columns; graph {report['graph_version']})")
+
+
+age_fit_app = typer.Typer(add_completion=False, help=(
+    "The D63 age-fit ranking signal: a SUPPLY-REVEALED age multiplier for the "
+    "`bar` category, estimated from New York's own licensed-venue composition "
+    "(docs/bar_age_nyc.md), not from the BLS CEX household survey that "
+    "docs/age_demand_fit.md rejected for bar. BAR ONLY -- every other category "
+    "keeps a NULL age_fit, because no curve exists for it. NON-FILTERING: "
+    "`fit` and `apply` never touch gap_score, ratio, nearest_m, eligible, "
+    "lead_category, n_missing or cluster_id; gap_score_fit is a SECOND ranking "
+    "column beside gap_score. `fit` exits NON-ZERO and writes nothing if the "
+    "curve fails its own F2/F3 criterion."))
+app.add_typer(age_fit_app, name="age-fit")
+
+
+@age_fit_app.command("fit")
+def age_fit_fit(
+    boroughs: str = typer.Option("MN,BK", help="Estimation sample (D48 default MN,BK)."),
+    acs_year: int = typer.Option(None, help="ACS vintage; default the pinned 2023."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Estimate and print; write no JSON."),
+) -> None:
+    """Re-estimate `age_fit_bar` from the warehouse and write the coefficients.
+
+    SUPPLY-REVEALED, BAR ONLY. The specification is the COMPOSITION one
+    (docs/bar_age_nyc.md §7): outcome = bar-type share of on-premises SLA
+    licences within 400 m of the tract's residential centroid; regressors =
+    adult 18-34 share, adult 65+ share, log units, log(1 + CNS07 retail jobs),
+    log walk-to-subway, log median household income, renter share, borough FE;
+    Conley spatial-HAC standard errors (Bartlett, 2 km) because the residuals'
+    Moran's I is ~0.42 and HC3 is unusable.
+
+    THE F2 GATE IS ENFORCED HERE, NOT DOCUMENTED HERE. If the Brooklyn-only
+    Conley CI on the Carnegie-Hill -> East-Village contrast includes 1.0, or the
+    dispersion gate (p90-p10 of the multiplier over the estimation tracts /
+    median MOE) falls below 1.0, this command exits non-zero and writes nothing:
+    the multiplier must not be applied from a curve that fails its own
+    criterion, and Brooklyn is where 98% of the bar-lead gap set lives.
+    """
+    from loci.model import age_fit as af
+
+    boros = _parse_boroughs(boroughs)
+    con = locidb.connect(read_only=True)   # estimation NEVER writes to the database
+    console.print(f"[dim]estimating {af.SPEC_VERSION} on {','.join(boros)} "
+                  f"(ACS {acs_year or af.ACS_YEAR}, Conley {af.CONLEY_CUTOFF_M:.0f} m)…[/]")
+    try:
+        fit, path = af.fit_bar_curve(
+            con, boros, acs_year=acs_year or af.ACS_YEAR, dry_run=dry_run)
+    except af.AgeFitGateFailure as exc:
+        console.print(f"[red]GATE FAILED[/] {exc}")
+        raise typer.Exit(1) from exc
+
+    t = Table(title=f"{fit['spec']} — n = {fit['n_tracts']:,} tracts, "
+                    f"R² = {fit['r_squared']:.3f}")
+    t.add_column("term"); t.add_column("coef", justify="right")
+    t.add_column("Conley se", justify="right"); t.add_column("t", justify="right")
+    t.add_row("w18 (adult 18-34 share)", f"{fit['b18']:+.3f}",
+              f"{fit['b18_se_conley']:.3f}", f"{fit['b18_t_conley']:+.2f}")
+    t.add_row("w65 (adult 65+ share)", f"{fit['b65']:+.3f}",
+              f"{fit['b65_se_conley']:.3f}", f"{fit['b65_t_conley']:+.2f}")
+    console.print(t)
+
+    c = fit["contrast"]["pooled"]
+    console.print(f"Carnegie Hill -> East Village partial effect: "
+                  f"[bold]{c['ratio']:.3f}[/] "
+                  f"Conley 95% CI [{c['ci_low']:.3f}, {c['ci_high']:.3f}] (pooled)")
+    for boro, b in sorted(fit["by_borough"].items()):
+        bc = b["contrast"]
+        console.print(f"  {boro} only (n={b['n_tracts']:,}): b18={b['b18']:+.3f} "
+                      f"b65={b['b65']:+.3f}  ratio {bc['ratio']:.3f} "
+                      f"CI [{bc['ci_low']:.3f}, {bc['ci_high']:.3f}]")
+    m = fit["multiplier"]
+    console.print(f"multiplier over estimation tracts: p10/p50/p90 = "
+                  f"{m['p10']:.3f} / {m['p50']:.3f} / {m['p90']:.3f}; "
+                  f"spread {m['spread']:.3f} vs median MOE {m['median_moe']:.3f} "
+                  f"-> dispersion [bold]{m['dispersion_ratio']:.2f}×[/] "
+                  f"(gate needs >= {af.DISPERSION_GATE_MIN})")
+    console.print(f"[dim]inputs {fit['inputs']['hash']}: supply "
+                  f"{fit['inputs']['supply_hash']}, ACS {fit['inputs']['acs_year']}, "
+                  f"{fit['inputs']['n_bar_licences']:,} bar-type of "
+                  f"{fit['inputs']['n_onprem_licences']:,} on-premises licences[/]")
+    if path is None:
+        console.print("[dim]--dry-run:[/] gates pass, nothing written.")
+    else:
+        console.print(f"[green]ok[/] gates pass -> {path}")
+
+
+@age_fit_app.command("apply")
+def age_fit_apply(
+    boroughs: str = typer.Option("MN,BK", help="Where to apply (D48 default MN,BK)."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Compute and print the summary; write nothing."),
+) -> None:
+    """Write `age_fit` onto bar rows and `gap_score_fit` beside `gap_score`.
+
+    UPDATE-ONLY on analysis.address_category (age_fit, age_fit_moe,
+    age_fit_source) and analysis.address (age_fit_lead, age_fit_lead_moe,
+    gap_score_fit). Both SET lists are asserted disjoint from the screen's own
+    columns before either UPDATE runs, so this command cannot move gap_score,
+    ratio, nearest_m, eligible, lead_category, n_missing or cluster_id -- the
+    gap set is bit-identical before and after, and a test pins that.
+
+    BAR ONLY: every other category's age_fit is NULL (no curve exists), and
+    age_fit_lead is exactly 1.0 wherever the lead category has no fitted curve,
+    so gap_score_fit == gap_score there. Refuses to run if the stored curve was
+    fitted against a different supply set or ACS vintage than the database now
+    holds -- a supply-revealed coefficient is only valid against the supply set
+    it was revealed from.
+    """
+    from loci.model import age_fit as af
+
+    boros = _parse_boroughs(boroughs)
+    con = locidb.connect(read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+    try:
+        fit = af.load_fit()
+    except FileNotFoundError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
+    try:
+        cat_df, addr_df, report = af.apply_age_fit(con, boros, fit=fit, dry_run=dry_run)
+    except af.AgeFitStale as exc:
+        console.print(f"[red]STALE CURVE[/] {exc}")
+        raise typer.Exit(1) from exc
+
+    console.print(f"[dim]{report['spec']}: b18={report['b18']:+.3f} "
+                  f"b65={report['b65']:+.3f}[/]")
+    console.print(f"{report['n_category_rows']:,} fitted (address, category) rows "
+                  f"over {report['n_addresses']:,} addresses; "
+                  f"{report['n_lead_multiplied']:,} addresses have a bar lead and are "
+                  f"actually re-weighted")
+    if report["fitted_p50"] is not None:
+        console.print(f"age_fit p10/p50/p90 = {report['fitted_p10']:.3f} / "
+                      f"{report['fitted_p50']:.3f} / {report['fitted_p90']:.3f}  "
+                      f"(min {report['fitted_min']:.3f}, max {report['fitted_max']:.3f}, "
+                      f"median MOE {report['moe_median']:.3f})")
+    assert report["n_missing_moe"] == 0, "a fitted row without an MOE is a bug"
+    console.print(f"[yellow]{af.AGE_FIT_DISCLAIMER}[/]")
+    if dry_run:
+        console.print("[dim]--dry-run:[/] nothing written.")
+        raise typer.Exit(0)
+    console.print(f"[green]ok[/] {report['written_category_rows']:,} rows -> "
+                  f"analysis.address_category (age_fit columns), "
+                  f"{report['written_address_rows']:,} rows -> analysis.address "
+                  f"(age_fit_lead, gap_score_fit)")
 
 
 if __name__ == "__main__":

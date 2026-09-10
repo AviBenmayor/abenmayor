@@ -731,3 +731,52 @@ ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS nearest_large_project_unit
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS nearest_large_project_stage VARCHAR;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS nearest_large_project_date  DATE;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS pipeline_asof               DATE;
+
+
+-- ==========================================================================
+-- AGE-FIT COLUMNS (D63, 2026-09-10; model/age_fit.py, docs/bar_age_nyc.md).
+-- `age_fit_bar` is a SUPPLY-REVEALED age multiplier for the `bar` category,
+-- estimated from New York's own licensed-venue composition rather than from a
+-- national household budget survey (the BLS CEX predecessor in
+-- docs/age_demand_fit.md was rejected for `bar`: its alcohol line peaks at
+-- reference-person age 45-54 and would have scored the UES ABOVE the East
+-- Village). It is a SECOND ranking column that lives BESIDE gap_score, never a
+-- gate: age_fit is exp(.) of a linear form in two ACS age shares and therefore
+-- strictly positive, so gap_score_fit = gap_score * age_fit_lead is monotone in
+-- gap_score at fixed address. It can reorder; it cannot filter.
+--
+-- Written ONLY by `UPDATE ... SET AGE_FIT_COLUMNS` (address_category) and
+-- `UPDATE ... SET ADDRESS_AGE_FIT_COLUMNS` (address); both SET lists are
+-- asserted disjoint from the screen's own columns in code and pinned by
+-- tests/test_age_fit.py -- the same mechanical guarantee the D57 demand
+-- annotation and the D62 pipeline annotation carry.
+--
+-- NULL vs 1.0 is a real distinction and must not be collapsed. age_fit is NULL
+-- on every category except `bar` because no curve exists for them; a 1.0 would
+-- claim a curve that says "neutral". age_fit_lead IS 1.0 (the identity
+-- multiplier, so gap_score_fit == gap_score exactly) when the address's lead
+-- category has no fitted curve -- there the MOE is NULL, because "no curve" is
+-- not "a curve with no uncertainty".
+--
+-- These ALTERs must run HERE rather than in a later migration: db.init_schema()
+-- creates the generated VIEW analysis.address_gaps immediately after this file
+-- and that view names age_fit_lead / age_fit_lead_moe / gap_score_fit, so on a
+-- database built before they existed the view would bind against columns that
+-- do not exist and every connection would raise (the same class of bug as D61
+-- and D62).
+--
+-- CAVEAT the database cannot enforce: age_fit is supply-revealed, so it is a
+-- statement about where the New York market has historically put bar-type
+-- licences relative to resident age -- demand and residential sorting together.
+-- A low value is NEVER evidence a neighbourhood does not want the service (the
+-- D49/X6 hazard), and resident age here is a proxy for a bundle (young, renter,
+-- transit-rich, commercially active) that adds ~0% out-of-sample once those are
+-- measured directly. model/age_fit.AGE_FIT_DISCLAIMER carries the sentences;
+-- render them untruncated, exactly as demand_caveat_text.
+-- ==========================================================================
+ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS age_fit         REAL;
+ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS age_fit_moe     REAL;
+ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS age_fit_source  VARCHAR;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS age_fit_lead     REAL;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS age_fit_lead_moe REAL;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS gap_score_fit    REAL;

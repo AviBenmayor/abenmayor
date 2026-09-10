@@ -561,7 +561,18 @@ def address_gaps_view_sql() -> str:
             a.units_completed_60mo_400m, a.units_completed_60mo_800m,
             a.nearest_large_project_id, a.nearest_large_project_m,
             a.nearest_large_project_units, a.nearest_large_project_stage,
-            a.nearest_large_project_date, a.pipeline_asof
+            a.nearest_large_project_date, a.pipeline_asof,
+            -- The D63 age-fit ranking columns (model/age_fit.py). APPENDED for
+            -- the same reason: every positional consumer of the older column
+            -- order is untouched. All NULL until `loci age-fit apply` has run.
+            -- `gap_score_fit` sits BESIDE `gap_score`, never in place of it --
+            -- the un-multiplied score is the one the screen owns and the one a
+            -- reader compares against. The PER-CATEGORY `age_fit`/`age_fit_moe`
+            -- are deliberately NOT pivoted in here: exactly one of the fifteen
+            -- categories has a fitted curve (bar), so a generated pair per
+            -- category would add 30 columns, 28 of them always NULL. Query
+            -- analysis.address_category directly for the per-category value.
+            a.age_fit_lead, a.age_fit_lead_moe, a.gap_score_fit
         FROM analysis.address a
         LEFT JOIN wide w ON w.address_id = a.address_id AND w.borough = a.borough
     """

@@ -576,14 +576,26 @@ sources:
     tier: city
     city: nyc
     role: control
-    status: planned
+    status: verified
     url: https://data.ny.gov/Transportation/MTA-Subway-Hourly-Ridership-2020-2024/wujg-7c2s
     dataset_id: wujg-7c2s
     geography: station complex
     temporal: {start: 2020, end: 2024, grain: hourly}
     cost: {amount: 0, unit: total}
     bias: Pandemic-era window; 2020-21 levels are not representative.
-    notes: Transit QUALITY, not mere presence.
+    notes: >
+      Transit QUALITY, not mere presence. Ingested by grid/mta.build_subway_ridership
+      (`loci controls --source mta-ridership`, D63) into
+      analysis.hex_controls.subway_riders_2024, which had been NULL on all 8,321 rows
+      because nothing ever wrote it -- the column landed ahead of its loader.
+      The feed is ~110M hourly rows and a whole-year server-side aggregation TIMES
+      OUT (60 s, measured); chunked by calendar month it returns in ~18 s per
+      request, so the annual total is twelve requests. `transfers` is deliberately
+      not added to `ridership` (a transfer is a rider already counted at their entry
+      complex) and `transit_mode` is pinned to subway (the feed also carries Staten
+      Island Railway and the Roosevelt Island tram). Value per hex is the annual
+      ridership of the NEAREST station complex, the same convention subway_routes
+      uses; gate on walk_m_to_subway, which is NULL beyond 3 km.
 
   - id: mta_bus_gtfs
     name: MTA Bus GTFS static (stops)
