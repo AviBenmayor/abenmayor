@@ -1468,6 +1468,16 @@
       "Labels": "score,model,ingest",
       "Project": "Loci",
       "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "`loci recommend`: evidence-graded recommendation card per area \u00d7 category, with a verdict that cannot say \"act\" while any load-bearing claim is grade D",
+      "Description": "Built by a developer agent on the D72 ruling. src/loci/model/recommend.py + recommend_grades.yaml (owner-adjustable thresholds, load_bearing/context split, cheapest_check text) + `loci recommend --area NAME --bbox lat0,lon0,lat1,lon1 [--nta] [--category c]... [--format md|json] [--out PATH]`; docs/recommendations/ holds the cards. Seven sections per category, each graded A\u2013D: (1) demand now (homes_400m, income vs baseline MOE, 18\u201334 share); (2) arriving homes (units_active_400m / units_stalled_400m split, B \u226570% active, C 40\u201370%, D <40% or NULL); (3) supply thinness (supply_ratio_vs_base on principled set, A if hash matches and n\u2265200, B 50\u2013199, else C); (4) addressable demand (laundry haircut priors, A only if coverage >50%); (5) space (vacant storefronts, B/D); (6) economics (comps cash flow); (7) coverage (anchor + Google validation). Verdict = min grade over load-bearing sections 2,3,4,6,7: \"act\" \u2265B, \"diligence\" C, \"do not act on this data\" any D. Hash drift warns and caps section 3 at C. Tests brute-force all 4^7 grade combinations (38 tests, suite 638 passed / 1 skipped). First card, Gowanus core: 14 of 15 categories \"do not act on this data\" (no cash-flow comps); arriving homes C not B (72% exposure-weighted active); supply ratios per D73. Closes the gap: (a) 3\u20135 P&Ls per category (BizQuest/BizBuySell human collection); (b) Google coverage check pharmacy/convenience/hardware (GTM-48, ~$170); (c) site walk or sign-off on permitted jobs. Done 2026-09-11 (CHECKPOINT D74). Pushed to Linear 2026-09-11 as GTM-144.",
+      "Status": "Done",
+      "Priority": 2,
+      "Estimate": 8,
+      "Labels": "milestone,docs,rigor",
+      "Project": "Loci",
+      "Milestone": "E4 \u00b7 Validation and Artifact"
     }
   ]
 }
