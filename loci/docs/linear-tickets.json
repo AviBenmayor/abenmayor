@@ -1438,6 +1438,26 @@
       "Labels": "ingest,viz,rigor",
       "Project": "Loci",
       "Milestone": "E1 \u00b7 Ingest and Grid"
+    },
+    {
+      "Title": "Construction-activity evidence on the development pipeline (DOB permit issuance + DOB NOW permits): active / lapsed / stalled, units_active_400m and units_stalled_400m",
+      "Description": "Build (data-engineer): sources/cities/nyc/dob_permits.py using ipu4-2q9a (BIS permit issuance; TEXT dates in two formats in one column, byte-identical duplicate rows, parsed both ways, aggregates min/max) and rbx6-tga4 (DOB NOW approved permits; job number = 9-char prefix of job_filing_number); w9ak-ipjd rejected (coarser duplicates). No construction-start date exists in any feed \u2014 job_start_date is the declared start copied onto every renewal \u2014 so the column is activity_status (active = permit issued/renewed within 12 months of asof or expiration in the future; lapsed = expired 0\u201312 months, no CO; stalled = expired >12 months or permitted >5 years with no activity; complete; n/a when no permit row matched, never stalled), NOT an invented under_construction stage. sql/014_dev_pipeline_activity.sql: UPDATE-only columns on analysis.dev_pipeline (last_permit_issued, last_permit_expires, permit_evidence_source, activity_status); `loci pipeline-activity` writes dev_pipeline only; units_active_400m / units_stalled_400m added to PIPELINE_COLUMNS so the concurrent session's canonical re-apply order (`loci pipeline` \u2192 `loci storefronts` \u2192 age-fit) is unchanged; NULL not 0 when no evidence. Bug surfaced: dcp_housing.write_dev_pipeline used a positional INSERT\u2026SELECT that the new columns broke (would have silently mis-mapped type-compatible columns); now a named column list. Live (asof 2026-09-11, backup data/loci.duckdb.bak.20260911-142920): MN+BK 7,364 permitted/partial jobs \u2192 active 2,244 (29,657u), lapsed 616 (1,382u), stalled 4,454 (9,195u), complete 4 (714u), n/a 46 (353u); stalled = 22.3% of permitted units, independently reproducing D62 caveat 3's 23%; validation: unit totals reconcile exactly, 0 addresses with active+stalled > permitted. Gowanus box: 13 active jobs / 3,433u, 7 stalled / 1,673u (33% of units; four never renewed once; B00625252 + B00649561 share BBL 3004710200 \u2014 one site, not two risks); 175 Third St B00680917 active (renewed 2026-03); Gowanus laundry-lead gap addresses: 80% mostly-active exposure. Webmap: the existing pipeline overlay should style dots by dev_pipeline.activity_status (not done; another session held webmap_export.py/index.html); the two gap-layer fields registered in PIPELINE_NOT_EXPORTED. Caveats: a renewal is not a shovel (separates abandoned from not-abandoned only); active + stalled \u2264 permitted, never equal (lapsed and n/a are in neither); last_permit_expires is a MAX over work types; DCP-filed jobs that permitted after 2026-01-21 still read n/a (D62 caveat 1); rbx6-tga4 permit_status 'Signed-off' exists per work type and is deliberately not ingested (ticket it). The `pipeline-activity` CLI block was carried in the concurrent session's commit cdfb46c; the rest landed in this session's commit. Suite 554 passed.\n\nDone 2026-09-11 (CHECKPOINT D72). Pushed to Linear 2026-09-11 as GTM-141.",
+      "Status": "Done",
+      "Priority": 2,
+      "Estimate": 5,
+      "Labels": "ingest",
+      "Project": "Loci",
+      "Milestone": "E1 \u00b7 Ingest and Grid"
+    },
+    {
+      "Title": "Per-work-type permit sign-off (rbx6-tga4 permit_status) as a topping-out / near-CO signal",
+      "Description": "Opened from CHECKPOINT D72. rbx6-tga4 carries permit_status \u2208 {Permit Issued, Signed-off} on 636,322 of 997,137 rows, but sign-off is per WORK TYPE (a signed-off plumbing permit on a job with an open GC permit means nothing), so D72 deliberately did not ingest it. The useful signal would be: all work types signed off except the GC permit, or the GC permit signed off with no CO yet \u2014 a near-completion flag that sits between activity_status='active' and stage='complete'. Requires a per-job roll-up across work types with the rule stated in code and a test on a job with mixed statuses. Cite the D72 caveat that a renewal is not a shovel; this is the closest thing to one in public data. Pushed to Linear 2026-09-11 as GTM-142.",
+      "Status": "Backlog",
+      "Priority": 4,
+      "Estimate": 3,
+      "Labels": "ingest",
+      "Project": "Loci",
+      "Milestone": "E1 \u00b7 Ingest and Grid"
     }
   ]
 }
