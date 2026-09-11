@@ -591,7 +591,27 @@ def address_gaps_view_sql() -> str:
             a.vacant_storefronts_400m, a.storefronts_400m,
             a.nearest_vacant_storefront_m, a.nearest_vacant_storefront_id,
             a.nearest_vacant_storefront_business,
-            a.nearest_vacant_lease_expired, a.storefront_asof
+            a.nearest_vacant_lease_expired, a.storefront_asof,
+            -- The supply-INTENSITY denominators (sql/002 tail,
+            -- model/supply_ratio.py, 2026-09-11 red-team). APPENDED for the
+            -- same reason as every block above: positional consumers of the
+            -- older column order are untouched. NULL until `loci supply-ratio`
+            -- has run for the borough.
+            --
+            -- Only the CATEGORY-INDEPENDENT half is here. `supply_400m`,
+            -- `supply_per_1k` and `supply_ratio_vs_base` are genuinely per
+            -- category and live on analysis.address_category; they are NOT
+            -- pivoted in, for the same reason age_fit is not -- fifteen
+            -- generated triples would add 45 columns to a view whose whole
+            -- purpose is the OLD wide shape. Query address_category directly.
+            --
+            -- `addressable_homes_400m_laundry` is a SUBSET of `homes_400m`
+            -- (homes less the in-unit/in-building laundry haircut,
+            -- model/laundry_haircut.yaml). Never add the two, and never quote
+            -- `homes_400m` as a laundry demand pool.
+            a.homes_400m, a.addressable_homes_400m_laundry,
+            a.supply_ratio_radius_m, a.supply_ratio_supply_hash,
+            a.supply_ratio_run_at
         FROM analysis.address a
         LEFT JOIN wide w ON w.address_id = a.address_id AND w.borough = a.borough
     """

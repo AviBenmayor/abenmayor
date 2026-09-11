@@ -1,0 +1,65 @@
+# In-home laundry haircut -- the share of homes in a building that are NOT in
+# the addressable market for a laundromat, by building size class.
+# HAND-MAINTAINED, owner-adjustable. NOT generated: no command writes this file.
+# Read by src/loci/model/supply_ratio.py (p_inhome / addressable_units).
+#
+# WHY IT EXISTS (red-team finding 3, 2026-09-11)
+# ---------------------------------------------------------------------------
+# "73,335 gap addresses need a laundromat" is a count of HOMES WITHIN REACH,
+# not a count of households that would ever use one. 59% of the homes near a
+# laundry-lead gap address sit in 51+-unit buildings, which in New York almost
+# always have a building laundry room; most of the remainder are 1-5-unit
+# rowhouses, where the NYC Housing and Vacancy Survey finds in-unit washers are
+# the norm. The demand pool has to be discounted before it is quoted, and the
+# discount has to be visible and adjustable rather than buried in a query.
+#
+# WHAT EACH NUMBER IS
+# ---------------------------------------------------------------------------
+#  * `1` and `2`  -- NYCHVS 2023 (US Census Bureau / NYC HPD, New York City
+#    Housing and Vacancy Survey), share of occupied units in 1-unit and 2-unit
+#    structures reporting washer/dryer equipment in the unit. These two are
+#    CITED, not invented.
+#  * `3_5`, `6_50`, `51_plus` -- OWNER-ADJUSTABLE PRIORS. NYCHVS does not
+#    publish laundry equipment at these structure sizes in a form that maps
+#    onto PLUTO unit counts, so these are judgement: small walk-ups rarely have
+#    either in-unit hookups or a laundry room (0.35 falling to 0.15), and large
+#    post-war/new-construction buildings nearly always have a common laundry
+#    room (0.85). Change them here; every number downstream moves with them,
+#    and the YAML's `version` is stamped into the run report.
+#
+# NOT A PROBABILITY MODEL. p is applied as a deterministic FRACTION of a
+# building's units, not sampled: `addressable = units * (1 - p)`. It is a
+# haircut with a stated size, and its uncertainty is not propagated anywhere.
+#
+# EVIDENCE OVERRIDES THE PRIOR, ONE DIRECTION ONLY. When
+# analysis.address_laundry_evidence (D55/D59: LL84 plumbing hookups, StreetEasy
+# advertised amenities) says a BBL has in-building or in-unit laundry, p = 1.0
+# for that building regardless of size. The reverse is NEVER done: a BBL with
+# no evidence, or with an amenity list that is silent, keeps its size-class
+# prior -- LL84 blanks and silent listings are not evidence of absence
+# (sql/005 CAVEAT ZERO, sql/010). Evidence covers ~2% of gap addresses, so it
+# adjusts a handful of large buildings and the priors carry everything else.
+
+version: 1
+asof: '2026-09-11'
+category: laundry
+
+# p_inhome by size class, keyed by the PLUTO residential unit count on
+# analysis.address.units. Bands are inclusive and must cover 1..inf with no
+# gap and no overlap; supply_ratio.py asserts that on load.
+size_class:
+  - {name: '1',       min_units: 1,  max_units: 1,    p_inhome: 0.74,
+     basis: 'NYCHVS 2023, 1-unit structures with in-unit washer'}
+  - {name: '2',       min_units: 2,  max_units: 2,    p_inhome: 0.50,
+     basis: 'NYCHVS 2023, 2-unit structures with in-unit washer'}
+  - {name: '3_5',     min_units: 3,  max_units: 5,    p_inhome: 0.35,
+     basis: 'owner-adjustable prior'}
+  - {name: '6_50',    min_units: 6,  max_units: 50,   p_inhome: 0.15,
+     basis: 'owner-adjustable prior'}
+  - {name: '51_plus', min_units: 51, max_units: null, p_inhome: 0.85,
+     basis: 'owner-adjustable prior; in-building laundry room is the norm'}
+
+# p applied when analysis.address_laundry_evidence positively asserts
+# in-building or in-unit laundry for the BBL. 1.0 = nobody in that building is
+# in the addressable market.
+evidence_p_inhome: 1.0

@@ -897,3 +897,72 @@ ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS under_5_share_moe
 -- ==========================================================================
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS units_active_400m  INTEGER;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS units_stalled_400m INTEGER;
+
+
+-- ==========================================================================
+-- SUPPLY INTENSITY (model/supply_ratio.py, 2026-09-11 red-team findings 1-3).
+--
+-- "Is there a gap" is a statement about the NEAREST business. It is silent
+-- about a category that is PRESENT but THIN -- one pharmacy 380 m away clears
+-- the reach test and stops being a gap, while the same walk in Park Slope
+-- passes eight. These columns measure the other thing: how much supply is
+-- within a 5-minute walk PER 1,000 HOMES within the same walk, and how that
+-- compares with the MN+BK norm.
+--
+-- SPLIT ACROSS TWO TABLES ON PURPOSE (D61).
+--   analysis.address           homes_400m, addressable_homes_400m_laundry
+--                              + the run stamps. CATEGORY-INDEPENDENT: the
+--                              same homes are within 400 m whether the
+--                              question is pharmacies or bars. Putting them on
+--                              address_category would write fifteen identical
+--                              copies -- 11.5M rows to say 767k things, the
+--                              pivot-shaped duplication D61 removed. Same
+--                              reasoning that put storefronts_400m and
+--                              units_permitted_400m here.
+--   analysis.address_category  supply_400m, supply_per_1k,
+--                              supply_ratio_vs_base. Genuinely per category.
+--
+-- COUNTS COME FROM THE PRINCIPLED SET, ALWAYS (red-team finding 1).
+-- analysis.poi_supply WHERE in_principled, never in_all -- the two differ by
+-- more than 2x in bar, nails_beauty and laundry. analysis.poi_supply is a
+-- VIEW, so the set moves when dedup is re-run or an anchor lands; that is why
+-- supply_ratio_supply_hash is stamped on every row and why the baseline YAML
+-- carries the hash it was fitted on. A ratio and a baseline from different
+-- hashes are not comparable.
+--
+-- NULL IS NOT ZERO, in three places:
+--   * supply_per_1k and supply_ratio_vs_base are NULL where homes_400m = 0.
+--     A block of warehouses with no pharmacy is a block with no denominator,
+--     not an under-served block.
+--   * supply_ratio_vs_base is NULL for a category whose baseline is 0 or
+--     absent from the YAML. 0/0 is not 1.0.
+--   * every column is NULL until `loci supply-ratio` has run for the borough.
+--
+-- addressable_homes_400m_laundry IS A SUBSET of homes_400m and is DOUBLE, not
+-- integer: it is homes_400m less a per-building haircut for in-unit and
+-- in-building laundry (model/laundry_haircut.yaml; NYCHVS 2023 for the 1- and
+-- 2-unit shares, owner-adjustable priors above that, and a positive
+-- analysis.address_laundry_evidence assertion overriding the prior to 1.0).
+-- Never add it to homes_400m, and never quote homes_400m as laundry demand:
+-- 59% of the homes near a laundry-lead gap address sit in 51+-unit buildings.
+--
+-- NON-FILTERING (D48). Nothing here can move gap_score, lead_category,
+-- n_missing, eligible, ratio or nearest_m; model/supply_ratio.py issues UPDATE
+-- only on these column lists and tests/test_supply_ratio.py pins them disjoint
+-- from every other module's.
+--
+-- Added at the TAIL of 002 for 011/014's reason: db.init_schema() rebuilds the
+-- generated VIEW analysis.address_gaps immediately after this file and DuckDB
+-- resolves a view's query at CREATE time, so a column added in a later
+-- migration would not exist when the view naming it is created and every
+-- connection would fail with a BinderException.
+-- ==========================================================================
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS homes_400m                     BIGINT;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS addressable_homes_400m_laundry DOUBLE;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS supply_ratio_radius_m          DOUBLE;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS supply_ratio_supply_hash       VARCHAR;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS supply_ratio_run_at            TIMESTAMP;
+
+ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS supply_400m          BIGINT;
+ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS supply_per_1k        DOUBLE;
+ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS supply_ratio_vs_base DOUBLE;

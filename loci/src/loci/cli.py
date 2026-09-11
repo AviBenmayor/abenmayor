@@ -53,8 +53,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 from loci import db as locidb
-from loci import questions, registry, tickets as tickets_mod
+from loci import questions, registry
 from loci import sources as source_adapters
+from loci import tickets as tickets_mod
 from loci.score.supply import DEFAULT_SUPPLY_SET as SUPPLY_DEFAULT
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -633,7 +634,11 @@ def anchor_coverage(
     uncorroborated aggregator record where that coverage reaches
     score/supply.ANCHOR_COVERAGE_MIN -- a registry label is not evidence the
     registry was actually loaded and is dense enough."""
-    from loci.score.supply import ANCHOR_COVERAGE_MIN, build_category_anchor, measure_anchor_coverage
+    from loci.score.supply import (
+        ANCHOR_COVERAGE_MIN,
+        build_category_anchor,
+        measure_anchor_coverage,
+    )
 
     boroughs = None if borough.upper() == "ALL" else tuple(b.strip() for b in borough.split(","))
     con = locidb.connect(read_only=not write)
@@ -653,7 +658,7 @@ def anchor_coverage(
         cov = r["anchor_coverage"]
         cov_s = "n/a" if cov != cov else f"{cov:.2f}"     # NaN-safe
         console.print(f"{r['category']:14} {int(r['anchor_poi']):>10} {int(r['zbp_estab']):>7} "
-                      f"{cov_s:>9} {str(bool(r['qualifies'])):>10}  {r['anchor_sources'] or '-'}",
+                      f"{cov_s:>9} {bool(r['qualifies'])!s:>10}  {r['anchor_sources'] or '-'}",
                       emoji=False)
 
 
@@ -871,8 +876,8 @@ def validate(
     The frame is gap ADDRESSES (D38/D58) — rows of analysis.address_gaps, not hex centroids.
     """
     from loci.categories import CATEGORIES
-    from loci.validation.google_places import GooglePlacesClient
     from loci.validation import sample as smp
+    from loci.validation.google_places import GooglePlacesClient
     con = locidb.connect(); locidb.init_schema(con)
     if recount_local:
         n = smp.recount_local(con)
@@ -924,7 +929,7 @@ def spacing(citywide: bool = typer.Option(False, "--citywide", help="Include the
     business -- is retired with analysis.hex_gaps under D38. Its replacement is
     per address, not per cell: `<lead_category>_nearest_m` and `lead_excess_m`
     on analysis.address_gaps."""
-    from loci.model.spacing import same_type_spacing, _graph, WALK_M_PER_MIN
+    from loci.model.spacing import WALK_M_PER_MIN, _graph, same_type_spacing
     con = locidb.connect(read_only=True)
     console.print("[dim]loading walk graph…[/]")
     graph = _graph()
@@ -2152,6 +2157,194 @@ def density_elasticity_show() -> None:
                   "resident by age/income; no_signal -> residents only; "
                   "not_fitted -> no coefficient (NULL is not 1.0).")
     console.print(f"[yellow]{doc['disclaimer']}[/]")
+
+
+@app.command(name="supply-ratio")
+def supply_ratio(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL (D48 default MN,BK)."),
+    radius_m: float = typer.Option(400.0, "--radius-m",
+                                   help="Catchment radius in NETWORK metres (default 400 = the 5-min tier)."),
+    supply_set: str = typer.Option(SUPPLY_DEFAULT, "--supply-set",
+                                   help="Which POIs count as supply (default: principled, D52/D59)."),
+    fit_baseline: bool = typer.Option(False, "--fit-baseline",
+                                      help="Re-fit and REWRITE model/supply_baseline.yaml from this "
+                                           "run. NOT part of the re-apply path."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """Supply INTENSITY: how much of each category is within reach per 1,000 homes.
+
+    The address screen answers "is the nearest business further than the
+    category's reach". That is the wrong statistic for a category that is
+    PRESENT but THIN -- one pharmacy 380 m away clears the test while the same
+    walk elsewhere passes eight. This measures the other thing, per address:
+
+        supply_400m  principled POIs of the category within 400 m network
+        homes_400m   residential units within the same 400 m
+        supply_per_1k = supply_400m / homes_400m * 1000
+        supply_ratio_vs_base = supply_per_1k / the MN+BK median
+
+    and, for laundry only, `addressable_homes_400m_laundry` -- homes_400m less
+    a per-building haircut for in-unit and in-building laundry
+    (model/laundry_haircut.yaml: NYCHVS 2023 for 1- and 2-unit structures,
+    owner-adjustable priors above that, a positive
+    analysis.address_laundry_evidence assertion overriding to 1.0).
+
+    Counts come from `analysis.poi_supply WHERE in_principled` and NEVER from
+    in_all; the live supply_hash is stamped on every row and compared with the
+    baseline YAML's, because poi_supply is a VIEW and moves under you.
+
+    UPDATE-only on analysis.address (five columns) and analysis.address_category
+    (three), both pinned disjoint from the screen's own columns and from every
+    other annotation. Intensity is a SECOND reading beside the screen, never a
+    filter on it: a thin category does not become a gap and a thick one does
+    not stop being one.
+
+    RE-APPLY after a screen re-run with exactly this, and nothing else:
+
+        loci supply-ratio --boroughs MN,BK
+
+    It rebuilds all eight columns from the warehouse and the committed
+    baseline; it does NOT re-baseline (that would measure every run against
+    itself). Run it after `loci pipeline`, `loci storefronts` and age-fit.
+    """
+    from loci.model import supply_ratio as sr
+
+    boros = _parse_boroughs(boroughs)
+    con = locidb.connect(read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+    if abs(radius_m - sr.DEFAULT_RADIUS_M) > 1e-6:
+        console.print(f"[yellow]warning:[/] --radius-m {radius_m:.0f} differs from the "
+                      f"{sr.DEFAULT_RADIUS_M:.0f} m the COLUMN NAMES encode; the values "
+                      f"will be at {radius_m:.0f} m and the names will still say 400.")
+
+    console.print(f"[dim]supply intensity for {','.join(boros)} at {radius_m:.0f} m "
+                  f"network, supply set '{supply_set}'…[/]")
+    addr, long_df, report = sr.build_supply_ratio(
+        con, boros, radius_m=radius_m, supply_set=supply_set,
+        fit_baseline=fit_baseline, dry_run=dry_run)
+
+    if report.get("baseline_hash") and report["baseline_hash"] != report["supply_hash"]:
+        console.print(f"[yellow]warning:[/] baseline YAML was fitted on supply "
+                      f"{report['baseline_hash']} but the live set is "
+                      f"{report['supply_hash']} — the ratios mix two supply sets. "
+                      f"Re-fit with --fit-baseline once the set has settled.")
+    if not report["have_evidence_table"]:
+        console.print("[yellow]warning:[/] analysis.address_laundry_evidence is absent — "
+                      "every building keeps its size-class prior, which OVERSTATES the "
+                      "addressable laundry pool.")
+
+    console.print(f"{report['pois']:,} POIs in the '{report['supply_set']}' set "
+                  f"(hash {report['supply_hash']}) · {report['home_rows']:,} addresses "
+                  f"carry homes · {report['evidence_bbls']:,} BBLs have positive laundry "
+                  f"evidence · {report['query_nodes']:,} distinct graph nodes swept")
+
+    base = report.get("baselines") or {}
+    t = Table(title=f"supply intensity — {','.join(boros)} @ {radius_m:.0f} m network")
+    for col, j in (("category", "left"), ("supply_400m med", "right"),
+                   ("homes_400m med", "right"), ("per 1k med", "right"),
+                   ("baseline per 1k", "right"), ("aggregate per 1k", "right")):
+        t.add_column(col, justify=j)
+    med_homes = float(addr["homes_400m"].median())
+    for cat in sorted(base) or []:
+        s = long_df[long_df["category"] == cat]
+        b = base[cat] or {}
+        bv = sr.baseline_of(b)
+        t.add_row(cat, f"{s['supply_400m'].median():.0f}", f"{med_homes:.0f}",
+                  "—" if b.get("median") is None else f"{b['median']:.3f}",
+                  "—" if bv is None else f"{bv:.3f} ({b.get('estimator', 'median')})",
+                  "—" if b.get("aggregate_per_1k") is None else f"{b['aggregate_per_1k']:.3f}")
+    console.print(t)
+    n_nodenom = int((addr["homes_400m"] <= 0).sum())
+    console.print(f"addresses with NO homes within {radius_m:.0f} m (supply_per_1k is "
+                  f"NULL there, not 0): {n_nodenom:,} of {len(addr):,}")
+    console.print(f"laundry demand pool: {addr['homes_400m'].sum():,.0f} home-slots within "
+                  f"reach, of which {addr['addressable_homes_400m_laundry'].sum():,.0f} "
+                  f"({100 * addr['addressable_homes_400m_laundry'].sum() / max(addr['homes_400m'].sum(), 1):.0f}%) "
+                  f"survive the in-home haircut (v{report['haircut_version']})")
+
+    if fit_baseline and not dry_run:
+        console.print(f"[green]baseline written[/] -> {report['baseline_written']}")
+    if dry_run:
+        console.print("[dim]--dry-run:[/] nothing written.")
+        raise typer.Exit(0)
+    console.print(f"[green]ok[/] {report['_written_address']:,} rows -> analysis.address · "
+                  f"{report['_written_category']:,} rows -> analysis.address_category "
+                  f"(graph {report['graph_version']})")
+
+
+@app.command(name="supply-ratio-box")
+def supply_ratio_box(
+    lat: str = typer.Option(..., "--lat", help="min,max latitude of the box."),
+    lon: str = typer.Option(..., "--lon", help="min,max longitude of the box."),
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL."),
+    name: str = typer.Option("box", "--name", help="Label for the table title."),
+    all_addresses: bool = typer.Option(False, "--all-addresses",
+                                       help="Include ineligible addresses (default: eligible only)."),
+) -> None:
+    """READ-ONLY: rank a lat/lon box's categories by supply per 1,000 homes
+    versus the MN+BK baseline. Nothing is written.
+
+    The ranking IS the deliverable: it says which categories are thinnest
+    relative to the city norm, which is a different and more useful question
+    than "which categories are absent". Requires `loci supply-ratio` to have
+    run for the boroughs concerned.
+    """
+    from loci.model import supply_ratio as sr
+
+    boros = _parse_boroughs(boroughs)
+    lat_lo, lat_hi = (float(x) for x in lat.split(","))
+    lon_lo, lon_hi = (float(x) for x in lon.split(","))
+    con = locidb.connect(read_only=True)
+    holes = ", ".join("?" for _ in boros)
+    addr_xy = con.execute(
+        f"SELECT address_id, lat, lon, COALESCE(eligible, FALSE) AS eligible, "
+        f"lead_category, homes_400m, addressable_homes_400m_laundry, "
+        f"supply_ratio_supply_hash "
+        f"FROM analysis.address WHERE borough IN ({holes}) "
+        f"AND lat BETWEEN ? AND ? AND lon BETWEEN ? AND ?",
+        [*boros, lat_lo, lat_hi, lon_lo, lon_hi]).fetchdf()
+    if addr_xy.empty:
+        console.print("[yellow]no addresses in that box[/]")
+        raise typer.Exit(1)
+    ids = tuple(addr_xy["address_id"])
+    long_df = con.execute(f"""
+        SELECT address_id, borough, category, supply_400m, supply_per_1k,
+               supply_ratio_vs_base
+        FROM analysis.address_category
+        WHERE borough IN ({holes}) AND address_id IN {ids if len(ids) > 1 else "('" + ids[0] + "')"}
+    """, list(boros)).fetchdf()
+    long_df = long_df.merge(addr_xy[["address_id", "homes_400m"]], on="address_id", how="left")
+
+    doc = sr.load_baselines()
+    out = sr.box_summary(long_df, addr_xy, (lat_lo, lat_hi), (lon_lo, lon_hi),
+                         doc["categories"], eligible_only=not all_addresses)
+    hashes = sorted(set(addr_xy["supply_ratio_supply_hash"].dropna()))
+    t = Table(title=f"{name} — supply per 1,000 homes vs MN+BK baseline "
+                    f"(principled set {', '.join(hashes) or 'NOT RUN'})")
+    for col, j in (("category", "left"), ("tier", "right"), ("supply_400m med", "right"),
+                   ("homes_400m med", "right"), ("per 1k", "right"),
+                   ("baseline", "right"), ("ratio", "right")):
+        t.add_column(col, justify=j)
+    for _, r in out.iterrows():
+        ratio = r["ratio"]
+        colour = "red" if ratio is not None and ratio < 0.5 else (
+            "yellow" if ratio is not None and ratio < 0.9 else "dim")
+        t.add_row(r["category"], str(r["tier"]),
+                  "—" if r["supply_400m_median"] is None else f"{r['supply_400m_median']:.0f}",
+                  "—" if r["homes_400m_median"] is None else f"{r['homes_400m_median']:,.0f}",
+                  "—" if r["supply_per_1k"] is None else f"{r['supply_per_1k']:.3f}",
+                  "—" if r["baseline_per_1k"] is None else f"{r['baseline_per_1k']:.3f}",
+                  "—" if ratio is None else f"[{colour}]{ratio:.2f}×[/]")
+    console.print(t)
+    lp = addr_xy["addressable_homes_400m_laundry"]
+    console.print(f"{len(addr_xy):,} addresses in the box · median homes within 400 m "
+                  f"{addr_xy['homes_400m'].median():,.0f}, of which "
+                  f"{lp.median():,.0f} survive the laundry haircut · "
+                  f"{int((lp >= 1500).sum()):,} addresses clear 1,500 addressable homes")
+    console.print("[yellow]The baseline is REVEALED SUPPLY (D6): what New York built, "
+                  "not what it needs. 1.0× means normal for this city, never "
+                  "'correctly provisioned'.[/]")
 
 
 if __name__ == "__main__":
