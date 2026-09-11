@@ -1,0 +1,123 @@
+# Recommendation-card evidence grades (D72 standing ruling).
+# HAND-MAINTAINED, OWNER-ADJUSTABLE. No command writes this file.
+# Read by src/loci/model/recommend.py; every threshold below is the rule the
+# card cites in its one-line reason, so changing a number here changes both the
+# grade AND the sentence that justifies it.
+#
+# WHY GRADES AND NOT A SCORE
+# ---------------------------------------------------------------------------
+# D72's red-team of the Gowanus reading found the failure mode a composite
+# score cannot express: four claims of wildly different evidential quality --
+# an A-grade permit record, a D-grade timing inference, a supply count taken
+# from the WRONG universe, and a demand pool that had never been discounted --
+# were averaged into one confident sentence. A single number hides which claim
+# is load-bearing and which is a guess. So the card grades each claim on its
+# own evidence and the verdict is the MINIMUM over the load-bearing ones: a
+# chain is as strong as its weakest link, and the weakest link is named.
+#
+# THE RULING THIS ENCODES: a card may not say "act" while any load-bearing
+# claim is at grade D. `verdict.by_grade` is what enforces it;
+# tests/test_recommend.py pins that no combination of inputs can produce "act"
+# with a D anywhere in `load_bearing`.
+
+version: 1
+asof: '2026-09-11'
+
+# Sections 2, 3, 4, 6 and 7 decide whether the recommendation is safe to act
+# on. Sections 1 and 5 are CONTEXT: they describe the site, but no grade of
+# theirs can block or unblock a verdict -- a rich neighbourhood with no comps
+# is still un-actionable, and a poor one with good comps is still actionable.
+load_bearing: [arriving_homes, supply_thinness, addressable_demand, economics, coverage]
+context: [demand_now, space]
+
+verdict:
+  by_grade:
+    A: act
+    B: act
+    C: diligence
+    D: do not act on this data
+  # Printed verbatim under every card. The card reports a supportable rent and
+  # never a profit: comps give a rent ceiling, not an income statement.
+  never_emit: expected profit
+
+# The cheapest thing that would move each load-bearing section off D. Printed
+# as "what would change the verdict" whenever a section grades D.
+cheapest_check:
+  arriving_homes: "site walk -- a renewed permit is not a shovel; look for a hole in the ground"
+  supply_thinness: "re-run `loci supply-ratio` so the ratio and the baseline share one supply hash"
+  addressable_demand: "pull LL84 hookups / listing amenities for the 10 largest buildings in the box"
+  economics: "3-5 P&Ls (or broker setups) for the category in this borough"
+  coverage: "a Google Places check of the box for this category (`loci validate --run`)"
+
+sections:
+
+  # 1. DEMAND NOW -- context. ACS is a survey; the grade is about its margin
+  # of error, not about whether the number is big.
+  demand_now:
+    moe_share_max: 0.20        # A when the income MOE is under 20% of the estimate
+    a_reason: "ACS 5-year + PLUTO units, income MOE {moe_share:.0%} of estimate (< {moe_share_max:.0%})"
+    b_reason: "ACS 5-year + PLUTO units, income MOE {moe_share:.0%} of estimate (>= {moe_share_max:.0%})"
+
+  # 2. ARRIVING HOMES -- D72. `active` means A PERMIT WAS RENEWED, not that
+  # construction was observed; no NYC feed carries a construction-start date.
+  arriving_homes:
+    active_share_b: 0.70       # >= this share of permitted units active -> B
+    active_share_c: 0.40       # 40-70% -> C; below -> D
+    # The exposure-weighted share (sum of units over the area's catchments) and
+    # the median address's own share answer different questions and can land in
+    # different bands. When they do, the card takes the WORSE: the disagreement
+    # means the activity is concentrated in a few big catchments and the
+    # typical site does not see it.
+    disagreement_takes_worse: true
+    null_grade: D              # no permit evidence at all is not "no news"
+
+  # 3. SUPPLY THINNESS -- the ratio only means anything on the principled set
+  # (D52/D59) against a baseline fitted on the SAME supply hash.
+  supply_thinness:
+    n_addresses_a: 200
+    n_addresses_b: 50
+    # A baseline fitted on a different supply set is not comparable to a ratio
+    # computed on this one. The card WARNS and caps this section at C rather
+    # than refusing the whole run: the other six sections are unaffected by
+    # supply drift, and a concurrent warehouse writer is normal here (D69), so
+    # refusing would make the tool unusable exactly when it is most needed.
+    # Capping at C is not a softer choice -- section 3 is load-bearing, so C
+    # already makes "act" unreachable.
+    hash_mismatch_max_grade: C
+    regime_note:
+      saturating: "thin supply is a POSITIVE -- incumbents count against the site (D70)"
+      clustering: "thin supply is a NEGATIVE -- incumbents count in favour (D70)"
+      no_signal: "supply count is NOT evidence either way -- residents only (D70)"
+      not_fitted: "no coefficient exists for this category; NULL is not 1.0 (D70)"
+
+  # 4. ADDRESSABLE DEMAND -- homes within reach are not households in the
+  # market. Only laundry has a haircut today (laundry_haircut.yaml).
+  addressable_demand:
+    haircut_categories: [laundry]
+    prior_grade: B             # a haircut built on priors is B, never A
+    evidence_coverage_a: 0.50  # A only when evidence covers > 50% of the area's buildings
+    no_haircut_grade: C        # every other category: raw homes_400m, unadjusted
+
+  # 5. SPACE -- context. DOF Storefront Registry (Local Law 157), self-reported
+  # and an annual snapshot, never a listing; no rent and no square footage
+  # exist at address grain anywhere public (D67).
+  space:
+    base_grade: B
+    no_registry_grade: D       # median registered storefronts of 0 = nobody filed
+
+  # 6. ECONOMICS -- comps_for(). Today every call returns n_comps=0 (the
+  # BizBuySell collection 403'd), so this section grades D everywhere and the
+  # card is honest that no site in New York is actionable on this data yet.
+  economics:
+    n_comps_min: 5
+    a_level: neighborhood      # >= n_comps_min at this level, WITH cash flow -> A
+    b_level: borough           # >= n_comps_min at this level -> B
+    thin_grade: C              # some comps, but under n_comps_min
+    no_cash_flow_grade: D
+
+  # 7. COVERAGE -- can we even see this category's supply? A category with no
+  # qualifying registry anchor (D52) is counted out of aggregator data alone.
+  coverage:
+    validated_grade: A         # Google ground-truth rows exist for the area
+    anchored_grade: B          # analysis.category_anchor.qualifies
+    unanchored_grade: C        # OSM/Overture only

@@ -2347,5 +2347,110 @@ def supply_ratio_box(
                   "'correctly provisioned'.[/]")
 
 
+@app.command(name="recommend")
+def recommend(
+    area: str = typer.Option(..., "--area", help="Name for the area, e.g. \"Gowanus core\"."),
+    bbox: str = typer.Option(None, "--bbox",
+                             help="lat0,lon0,lat1,lon1 — the area's bounding box."),
+    nta: str = typer.Option(None, "--nta", help="NTA code, e.g. BK0601. Combines with --bbox."),
+    category: list[str] = typer.Option(None, "--category",
+                                       help="Repeatable. Default: all 15, thinnest ratio first."),
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL."),
+    fmt: str = typer.Option("md", "--format", help="md or json."),
+    out: Path = typer.Option(None, "--out", help="Write to this path instead of stdout."),
+    all_addresses: bool = typer.Option(False, "--all-addresses",
+                                       help="Include ineligible addresses (default: eligible only)."),
+) -> None:
+    """READ-ONLY: the recommendation card for an area — seven graded claims per
+    category and a verdict that is the WORST load-bearing grade (D72).
+
+    The card may not say "act" while any load-bearing claim (arriving homes,
+    supply thinness, addressable demand, economics, coverage) is at grade D;
+    every D is printed with the cheapest check that would move it. No expected
+    profit is ever emitted — economics reports a supportable rent only.
+
+    Nothing is written to the warehouse, and the connection retries the lock a
+    concurrent writer holds rather than failing.
+    """
+    import json
+
+    from loci.model import recommend as rec
+
+    if not bbox and not nta:
+        raise typer.BadParameter("give --bbox lat0,lon0,lat1,lon1 and/or --nta CODE")
+    box = None
+    if bbox:
+        parts = [p.strip() for p in bbox.split(",")]
+        if len(parts) != 4:
+            raise typer.BadParameter("--bbox must be lat0,lon0,lat1,lon1")
+        try:
+            lat0, lon0, lat1, lon1 = (float(p) for p in parts)
+        except ValueError as exc:
+            raise typer.BadParameter(f"--bbox is not four numbers: {exc}") from exc
+        box = (lat0, lon0, lat1, lon1)
+    if fmt not in ("md", "json"):
+        raise typer.BadParameter("--format must be md or json")
+
+    boros = tuple(_parse_boroughs(boroughs))
+    cats = list(category) if category else None
+    if cats:
+        from loci.categories import CATEGORIES as _CATS
+        bad = [c for c in cats if c not in _CATS]
+        if bad:
+            raise typer.BadParameter(f"unknown categor(ies) {bad}; expected {sorted(_CATS)}")
+
+    rules = rec.load_rules()
+    con = rec.connect_read_only()
+    try:
+        facts = rec.area_facts(con, area, bbox=box, nta=nta, boroughs=boros,
+                               eligible_only=not all_addresses)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
+
+    warnings: list[str] = []
+    if facts["hash_mismatch"]:
+        # DELIBERATE: warn and cap section 3 at C rather than refusing the run.
+        # The other six sections are unaffected by supply drift, a concurrent
+        # rebuild is the normal state here (D69), and section 3 is load-bearing
+        # — so capping it at C already makes "act" unreachable. Refusing would
+        # throw away six sound readings to punish one stale one.
+        warnings.append(
+            f"supply-hash drift — the baseline was fitted on `{facts['baseline_hash']}` "
+            f"but the live principled set is `{facts['live_hash']}`. Every supply ratio "
+            f"below mixes two supply sets; section 3 is capped at grade C. Re-run "
+            f"`loci supply-ratio --fit-baseline` once the set has settled.")
+        console.print(f"[yellow]warning:[/] {warnings[-1]}")
+
+    cards = rec.build_cards(facts, rules, cats)
+
+    if fmt == "json":
+        text = json.dumps(rec.to_json(cards, facts, rules, warnings), indent=2, default=str)
+    else:
+        text = rec.render_markdown(cards, facts, rules, warnings)
+
+    if out:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(text + "\n")
+        console.print(f"[green]written[/] -> {out}")
+    else:
+        print(text)
+
+    noun = "category" if len(cards) == 1 else "categories"
+    t = Table(title=f"{area} — {len(cards)} {noun}, verdict = worst load-bearing grade")
+    for col, j in (("category", "left"), ("ratio", "right"), ("regime", "left"),
+                   ("grade", "center"), ("verdict", "left"), ("D sections", "left")):
+        t.add_column(col, justify=j)
+    for r in rec.summary_rows(cards):
+        colour = {"A": "green", "B": "green", "C": "yellow", "D": "red"}[r["grade"]]
+        t.add_row(r["category"],
+                  "—" if r["supply_ratio_vs_base"] is None else f"{r['supply_ratio_vs_base']:.2f}×",
+                  r["regime"], f"[{colour}]{r['grade']}[/]",
+                  f"[{colour}]{r['verdict']}[/]", r["blockers"])
+    console.print(t)
+    console.print("[yellow]The supply baseline is REVEALED SUPPLY (D6); permit 'activity' is "
+                  "a renewal, not a shovel; no expected profit is emitted.[/]")
+
+
 if __name__ == "__main__":
     app()
