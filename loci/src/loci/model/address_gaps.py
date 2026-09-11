@@ -562,6 +562,12 @@ def address_gaps_view_sql() -> str:
             a.nearest_large_project_id, a.nearest_large_project_m,
             a.nearest_large_project_units, a.nearest_large_project_stage,
             a.nearest_large_project_date, a.pipeline_asof,
+            -- The construction-progress split of units_permitted_400m
+            -- (sql/014_dev_pipeline_activity.sql, D62 caveats 3 and 9).
+            -- APPENDED, same reason. NOT a partition: active + stalled <=
+            -- permitted, the remainder being `lapsed` and evidence-less jobs.
+            -- NULL (not 0) until `loci pipeline-activity` has run.
+            a.units_active_400m, a.units_stalled_400m,
             -- The D63 age-fit ranking columns (model/age_fit.py). APPENDED for
             -- the same reason: every positional consumer of the older column
             -- order is untouched. All NULL until `loci age-fit apply` has run.

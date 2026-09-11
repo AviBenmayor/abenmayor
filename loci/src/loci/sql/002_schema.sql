@@ -861,3 +861,39 @@ ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS storefront_asof           
 -- ==========================================================================
 ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS under_5_share     FLOAT;
 ALTER TABLE analysis.hex_demographics ADD COLUMN IF NOT EXISTS under_5_share_moe FLOAT;
+
+
+-- ==========================================================================
+-- CONSTRUCTION-PROGRESS EXPOSURE on analysis.address
+-- (sql/014_dev_pipeline_activity.sql, sources/cities/nyc/dob_permits.py,
+--  model/dev_pipeline.PIPELINE_COLUMNS). D62 caveats 3 and 9.
+--
+-- `units_permitted_400m` counts every permitted-not-occupied unit within a
+-- 5-minute network walk. D62 caveat 3 then says 23% of permitted units
+-- citywide are behind permits older than five years that never produced a CO,
+-- so that one number silently mixes "800 neighbours arriving in 18 months"
+-- with "800 neighbours who have not arrived since 2017". These two split it by
+-- the permit-renewal record:
+--   units_active_400m   permitted-not-complete AND activity_status='active'
+--   units_stalled_400m  permitted-not-complete AND activity_status='stalled'
+--
+-- NOT A PARTITION. active + stalled <= permitted, always -- `lapsed` (expired
+-- 0-12 months) and `n/a` (no permit evidence) units are in the permitted total
+-- and in neither column. Never add the three; the remainder is the unclassified
+-- share and it is a real quantity, not a rounding error.
+--
+-- NULL, NOT ZERO, when the evidence is missing. Until `loci pipeline-activity`
+-- has run, analysis.dev_pipeline.activity_status is NULL on every row and
+-- model/dev_pipeline.py writes NULL into both columns rather than 0 -- "no
+-- permit evidence yet" and "every nearby building is abandoned" must not be
+-- the same value on the screen.
+--
+-- Added here rather than in 014 for 011's reason: db.init_schema() rebuilds
+-- the generated VIEW analysis.address_gaps immediately after this file, DuckDB
+-- resolves a view's query at CREATE time, and on an existing database
+-- CREATE TABLE IF NOT EXISTS analysis.address is a no-op -- so a column added
+-- at 014 would not exist when the view naming it is created, and every
+-- connection would fail with a BinderException.
+-- ==========================================================================
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS units_active_400m  INTEGER;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS units_stalled_400m INTEGER;

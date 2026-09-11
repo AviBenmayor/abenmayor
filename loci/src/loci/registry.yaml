@@ -548,6 +548,61 @@ sources:
       is winding down (6,158 COs in 2021 -> 722 in 2026 YTD) as filings move to
       DOB NOW. Verified 2026-09-09.
 
+  # The CONSTRUCTION-PROGRESS axis (sql/014_dev_pipeline_activity.sql). Closes
+  # D62 caveat 9 -- 011 refused to emit `under_construction` because nothing
+  # ingested separated "permit issued" from "topped out" -- and dates D62
+  # caveat 3's zombie permits (23% of permitted units citywide) per job.
+  # Probed 2026-09-11: w9ak-ipjd (DOB NOW Job Application Filings) and the
+  # DOB Complaints/ECB feeds were considered and REJECTED -- w9ak-ipjd's
+  # `signoff_date` / `first_permit_date` duplicate what these two carry at a
+  # coarser grain, and complaints are noise, not progress.
+  - id: nyc_dob_permit_issuance
+    name: NYC DOB Permit Issuance + DOB NOW Approved Permits
+    tier: city
+    city: nyc
+    role: outcome
+    status: verified
+    url: https://data.cityofnewyork.us/Housing-Development/DOB-Permit-Issuance/ipu4-2q9a
+    # NOT `dataset_id`: two datasets, one logical source, split by the same
+    # BIS/DOB NOW namespace boundary as nyc_dob_certificates_of_occupancy.
+    dataset_ids: [ipu4-2q9a, rbx6-tga4]
+    api: https://data.cityofnewyork.us/resource/ipu4-2q9a.json
+    geography: point (building), with BBL and BIN
+    temporal: {start: 1989-01, end: current, grain: permit-dated,
+               bis_verified_to: 2026-09-09, dob_now_start: 2016-06}
+    cost: {amount: 0, unit: total}
+    fields: [job__, job_type, permit_type, permit_status, filing_status,
+             issuance_date, expiration_date, job_start_date,
+             job_filing_number, work_type, filing_reason, issued_date, expired_date]
+    bias: >
+      ACTIVITY SUPPLEMENT to nyc_dcp_housing_db, joined on the DOB job number,
+      never a spine (no unit count, no completion). Both feeds refresh daily
+      and were current to 2026-09-09 when ingested; 7,317 of 7,364 MN+BK
+      permitted/partially-complete jobs matched a permit row, 47 did not and
+      are recorded as 'n/a', never as stalled -- absence of evidence is not
+      evidence of abandonment. A RENEWAL IS NOT A SHOVEL: `active` means
+      somebody paid a renewal fee, so a builder 90% done and a builder keeping
+      a 421-a permit warm look identical; the axis separates abandoned from
+      not-abandoned and is deliberately named activity_status rather than the
+      `under_construction` stage 011 refused to invent. A job has MANY permit
+      rows -- one per WORK TYPE in DOB NOW (job M00528469 has 8 across 4 types)
+      plus a fresh row per renewal -- and ipu4-2q9a additionally contains
+      byte-identical duplicate rows (job 321590532), so rows are collapsed to
+      one per job by min/max and NEVER summed. The DOB NOW key carries a
+      work-type suffix (`M00528469-I1`), so that join is on the 9-character
+      prefix -- a deliberate fan-out, safe only because of the min/max rule.
+      ipu4-2q9a's date columns are TEXT in TWO formats in the same column
+      (`2014-09-09` and `09/30/2013`), parsed explicitly in both shapes.
+      NO CONSTRUCTION-START DATE EXISTS in either feed: `job_start_date` is the
+      date the permittee DECLARED work would begin, equal to the initial
+      permit's issuance date and copied unchanged onto every renewal. A
+      sign-off precursor DOES exist (rbx6-tga4 permit_status 'Signed-off',
+      636,322 of 997,137 rows) and is deliberately not ingested -- sign-off is
+      per work type, so a signed-off Plumbing permit on a job whose General
+      Construction permit is open means nothing. Both endpoints 500/503 under
+      load and are fetched with bounded retry that RAISES rather than skipping
+      a batch. Verified 2026-09-11.
+
   - id: nyc_dof_storefront_registry
     name: NYC DOF Storefronts Reported Vacant or Not (Local Law 157 of 2019)
     tier: city

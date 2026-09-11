@@ -1,13 +1,28 @@
 """Development-pipeline exposure at ADDRESS grain (D38/D56/D61).
 
 Reads analysis.dev_pipeline (one row per DOB job, sql/011_dev_pipeline.sql) and
-writes twelve columns onto analysis.address by UPDATE:
+writes fourteen columns onto analysis.address by UPDATE:
 
     units_permitted_400m / _800m            coming: permitted, not yet occupied
     units_completed_24mo_400m / _800m       arrived: CO in the last 24 months
     units_completed_60mo_400m / _800m       arrived: CO in the last 60 months
     nearest_large_project_{id,m,units,stage,date}   the nearest net>=50 job
     pipeline_asof                           the run date the windows count back from
+    units_active_400m                       of the permitted: permit live/renewed
+    units_stalled_400m                      of the permitted: permit dead >12 mo
+
+THE ACTIVITY SPLIT (D62 caveats 3 and 9, sql/014_dev_pipeline_activity.sql)
+---------------------------------------------------------------------------
+`units_permitted_400m` mixes "800 neighbours arriving in 18 months" with "800
+neighbours who have not arrived since 2017" -- 23% of permitted units citywide
+sit behind permits older than five years that never produced a CO. The last two
+columns split it using analysis.dev_pipeline.activity_status, which
+`loci pipeline-activity` derives from the DOB permit-renewal record.
+
+They are NOT a partition: active + stalled <= permitted, because `lapsed` and
+`n/a` units are in the permitted total and in neither column. Never add the
+three. And when no activity evidence has been ingested they are written NULL,
+never 0 -- see activity_weights().
 
 WHY analysis.address AND NOT analysis.address_category
 ------------------------------------------------------
@@ -96,6 +111,13 @@ RECENT_MONTHS = (24, 60)
 
 BATCH = 64   # job nodes per Dijkstra call; (BATCH, n_nodes) float64 is the peak
 
+#: Activity measures are emitted at the TIGHT radius ONLY. The question they
+#: answer -- "are the neighbours I am underwriting actually coming?" -- is a
+#: 5-minute-walk question; a stalled tower 800 m away is not a leasing input,
+#: and two more columns on 767k rows to say so is the pivot-shaped duplication
+#: D61 removed. Labels in this set get no `_800m` twin.
+TIGHT_ONLY_LABELS = ("active", "stalled")
+
 #: The ONLY columns write_pipeline may name in a SET clause.
 PIPELINE_COLUMNS = [
     "units_permitted_400m", "units_permitted_800m",
@@ -104,6 +126,10 @@ PIPELINE_COLUMNS = [
     "nearest_large_project_id", "nearest_large_project_m",
     "nearest_large_project_units", "nearest_large_project_stage",
     "nearest_large_project_date", "pipeline_asof",
+    # D62 caveats 3/9, sql/014_dev_pipeline_activity.sql. NOT a partition of
+    # units_permitted_400m: active + stalled <= permitted, because `lapsed`
+    # and `n/a` units are in the permitted total and in neither of these.
+    "units_active_400m", "units_stalled_400m",
 ]
 
 #: analysis.address's screen-owned columns (model/address_gaps.ADDRESS_COLUMNS).
@@ -150,6 +176,7 @@ def load_projects(con, boroughs: list[str]) -> pd.DataFrame:
     return con.execute(f"""
         SELECT job_number, borough, stage, net_units,
                date_filed, date_permitted, date_complete, co_type,
+               activity_status,
                neighborhood,
                ST_X(geom) AS lon, ST_Y(geom) AS lat
         FROM analysis.dev_pipeline
@@ -179,6 +206,35 @@ def weight_matrix(projects: pd.DataFrame, asof: dt.date) -> tuple[np.ndarray, li
         rows.append(np.where(inwin, units, 0.0))
         labels.append(f"completed_{months}mo")
     return np.vstack(rows), labels
+
+
+def activity_weights(projects: pd.DataFrame) -> tuple[np.ndarray | None, list[str]]:
+    """(2, n_projects) unit weights for the CONSTRUCTION-PROGRESS split, or
+    (None, []) when analysis.dev_pipeline carries no activity evidence yet.
+
+    Returns weights for `active` and `stalled` restricted to PERMITTED_STAGES,
+    so both are strict subsets of the `permitted` row of weight_matrix(). They
+    do NOT sum to it: a job whose activity_status is 'lapsed' (expired 0-12
+    months) or 'n/a' (no permit row matched) is in the permitted total and in
+    neither of these. Adding active + stalled + permitted triple-counts.
+
+    THE NULL CASE IS THE POINT. `loci pipeline` must run before, after, or
+    without `loci pipeline-activity`. When the column is absent or entirely
+    NULL this returns None and the caller writes NULL into both address
+    columns -- never 0, because "we have not looked" and "every nearby
+    building is abandoned" are different claims and the screen must not
+    conflate them.
+    """
+    if "activity_status" not in projects.columns:
+        return None, []
+    status = projects["activity_status"]
+    if status.isna().all():
+        return None, []
+    units = projects["net_units"].to_numpy(dtype=np.float64)
+    permitted = np.isin(projects["stage"].to_numpy(), PERMITTED_STAGES)
+    rows = [np.where(permitted & (status == label).to_numpy(), units, 0.0)
+            for label in TIGHT_ONLY_LABELS]
+    return np.vstack(rows), list(TIGHT_ONLY_LABELS)
 
 
 # ------------------------------------------------------------- the engine
@@ -270,6 +326,10 @@ def compute_pipeline(con, boroughs: list[str], asof: dt.date | None = None,
             f"a confident false negative, not a missing value."
         )
     W, labels = weight_matrix(projects, asof)
+    Wa, alabels = activity_weights(projects)
+    if Wa is not None:
+        W = np.vstack([W, Wa])
+        labels = labels + alabels
 
     holes = ", ".join("?" for _ in boroughs)
     addr = con.execute(
@@ -290,7 +350,13 @@ def compute_pipeline(con, boroughs: list[str], asof: dt.date | None = None,
     tight, wide = radii
     for li, label in enumerate(labels):
         out[f"units_{label}_{int(tight)}m"] = acc[tight][li][anidx].round().astype("int64")
-        out[f"units_{label}_{int(wide)}m"] = acc[wide][li][anidx].round().astype("int64")
+        if label not in TIGHT_ONLY_LABELS:
+            out[f"units_{label}_{int(wide)}m"] = acc[wide][li][anidx].round().astype("int64")
+    if Wa is None:
+        # No activity evidence in analysis.dev_pipeline: NULL, never 0.
+        for label in TIGHT_ONLY_LABELS:
+            out[f"units_{label}_{int(tight)}m"] = pd.Series(
+                [pd.NA] * len(out), index=out.index, dtype="Int64")
 
     p = near_p[anidx]
     has = p >= 0
@@ -314,6 +380,7 @@ def compute_pipeline(con, boroughs: list[str], asof: dt.date | None = None,
         "addresses": len(addr),
         "units_by_measure": {lab: float(W[i].sum()) for i, lab in enumerate(labels)},
         "addresses_with_large_project": int(has.sum()),
+        "activity_evidence": Wa is not None,
     }
     return out, report
 
@@ -344,6 +411,15 @@ def write_pipeline(con, df: pd.DataFrame, boroughs: list[str]) -> int:
                 list(boroughs))
     if df.empty:
         return 0
+    absent = [c for c in PIPELINE_COLUMNS if c not in df.columns]
+    if absent:
+        raise RuntimeError(
+            f"dev_pipeline: the computed frame is missing {absent}. Every column "
+            f"in PIPELINE_COLUMNS is reset to NULL above, so a partial frame would "
+            f"leave those addresses blank rather than raising -- which reads as "
+            f"'no development near here'. Emit the column (NULL is fine) or drop "
+            f"it from PIPELINE_COLUMNS."
+        )
     con.register("_pl", df)
     try:
         sets = ", ".join(f"{c} = _pl.{c}" for c in PIPELINE_COLUMNS)

@@ -276,6 +276,18 @@ PIPELINE_NOT_EXPORTED = {
     "units_completed_60mo_800m": "same reason as units_completed_60mo_400m",
     "pipeline_asof": "one date for the whole run -- carried once in meta.json and "
                      "once per layer, never 267k times",
+    "units_active_400m": "NOT YET DECIDED, deliberately deferred. The construction-"
+                         "progress split (sql/014) belongs on the PIPELINE OVERLAY, "
+                         "not on the gap layer: the useful map change is colouring "
+                         "the existing dev_pipeline dots by activity_status so a "
+                         "permitted-and-stalled tower reads differently from a "
+                         "permitted-and-building one, which costs one extra packed "
+                         "field on that layer and nothing on the 267k gap addresses. "
+                         "Landing it here instead would ship the number without the "
+                         "picture that makes it legible.",
+    "units_stalled_400m": "same reason as units_active_400m -- style the overlay by "
+                          "activity_status first, then decide whether the gap layer "
+                          "needs the per-address totals at all",
 }
 
 # ----------------------------------------------------------- vacant storefronts

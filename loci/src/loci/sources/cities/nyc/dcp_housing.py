@@ -345,8 +345,21 @@ def write_dev_pipeline(con, df: pd.DataFrame, boroughs: tuple[str, ...]) -> int:
     con.execute(f"DELETE FROM analysis.dev_pipeline WHERE borough IN ({holes})", list(boroughs))
     con.register("_dp", df)
     try:
+        # The column list is NAMED, not positional. It used to be a bare
+        # `INSERT INTO analysis.dev_pipeline SELECT ...`, which binds by
+        # ORDINAL: the moment sql/014_dev_pipeline_activity.sql ALTERed five
+        # activity columns onto the table, every ingest failed with "table
+        # dev_pipeline has 28 columns but 23 values were supplied". Had the
+        # new columns instead been type-compatible with the tail of this list,
+        # it would have silently written dates into the wrong columns. An
+        # UPDATE-only annotation layer must never be able to break the ingest
+        # that owns the row.
         con.execute("""
             INSERT INTO analysis.dev_pipeline
+                (job_number, bbl, bin, geom, borough, nta_code, neighborhood,
+                 job_type, net_units, units_init, units_prop, stage, dcp_status,
+                 date_filed, date_permitted, date_complete, co_type, co_source,
+                 units_complete, source, source_vintage, provenance, ingested_at)
             SELECT job_number, bbl, bin,
                    CASE WHEN lon IS NULL OR lat IS NULL THEN NULL
                         ELSE ST_Point(lon, lat) END AS geom,

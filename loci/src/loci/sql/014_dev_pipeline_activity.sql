@@ -1,0 +1,136 @@
+-- ---------------------------------------------------------------------------
+-- 014_dev_pipeline_activity.sql -- the CONSTRUCTION-PROGRESS axis on
+-- analysis.dev_pipeline: which permitted buildings are actually being built.
+--
+-- Closes two things sql/011_dev_pipeline.sql left open by name:
+--   caveat 9 / STAGE VOCABULARY -- no `under_construction`, because nothing
+--     ingested separated "permit issued" from "topped out";
+--   caveat 3 -- 23% of permitted units sit behind permits older than five
+--     years that never produced a CO ("zombie permits"), and 011 could not
+--     tell you WHICH ones.
+--
+-- The occasion is Gowanus. Every large permitted job in the owner's box was
+-- permitted in 2022, the 421-a vesting year, so `stage='permitted'` there is
+-- one cohort whose members either have been building for three years or have
+-- been sitting on a vested permit. `stage` cannot separate them; the permit
+-- RENEWAL record can.
+--
+-- ---------------------------------------------------------------------------
+-- NO NEW TABLE (D61 inventory rule), AND NO CHANGE TO `stage`
+-- ---------------------------------------------------------------------------
+-- This is the SAME GRAIN as analysis.dev_pipeline -- one row per DOB job -- so
+-- it EXTENDS that table by `UPDATE ... SET` (sources/cities/nyc/dob_permits.py,
+-- `write_activity`), exactly as model/dev_pipeline.py extends analysis.address.
+-- No dev_pipeline_activity table, no view, no second copy of net_units.
+--
+-- `stage` IS NOT TOUCHED and must never be touched by this layer. It stays
+-- DCP-derived (011's STAGE VOCABULARY). `activity_status` is an ORTHOGONAL
+-- AXIS on the same row: stage is what City Planning's QA believes about the
+-- job, activity_status is what the permit record says about the last twelve
+-- months. "Permitted and building" is `stage='permitted' AND
+-- activity_status='active'` -- a two-column read, deliberately, so that
+-- neither source's verdict is silently overwritten by the other's.
+--
+-- ---------------------------------------------------------------------------
+-- SOURCES
+-- ---------------------------------------------------------------------------
+--   ipu4-2q9a  DOB Permit Issuance (BIS jobs)          daily, 1989-
+--   rbx6-tga4  DOB NOW: Build - Approved Permits       daily, 2016-
+--
+-- JOIN KEY. DCP `job_number` carries two shapes (011's JOIN KEY block).
+--   BIS     ipu4-2q9a `job__` IS the job number. Equality.
+--   DOB NOW rbx6-tga4 `job_filing_number` is the job number PLUS a work-type
+--           suffix -- `M00528469-I1`, `-S1`, `-S2`. The join is
+--           substring(job_filing_number, 1, 9) = job_number, a deliberate
+--           FAN-OUT: one permit row per work type, renewed on its own clock.
+--
+-- THE DEDUP RULE, AGAIN. The fan-out is safe ONLY because every aggregate is
+-- min()/max(). ipu4-2q9a additionally contains byte-identical duplicate rows
+-- (job 321590532 appears twice). min/max are idempotent under duplication; a
+-- sum is not. Nothing here sums permit rows, and nothing downstream multiplies
+-- units by `n_permit_rows`.
+--
+-- ---------------------------------------------------------------------------
+-- THE RULE (mirrored in dob_permits.classify_activity; first match wins)
+-- ---------------------------------------------------------------------------
+--   complete  stage = 'complete', or date_complete IS NOT NULL (a CO exists).
+--             Permit activity is irrelevant once people have moved in.
+--   n/a       stage IN ('filed','withdrawn'), or no permit evidence at all and
+--             no DCP permit date old enough to call. ABSENCE OF EVIDENCE IS
+--             NOT EVIDENCE OF ABANDONMENT -- an unmatched job lands 'n/a', it
+--             never lands 'stalled' by default.
+--   active    last_permit_issued >= asof - 12 months  OR
+--             last_permit_expires >= asof (a live authorisation).
+--   lapsed    all permits expired, latest expiry within the last 12 months.
+--             Renewal is routine and cheap; 0-12 months expired is a gap, not
+--             yet a verdict.
+--   stalled   latest expiry more than 12 months ago and no CO, OR no expiry
+--             known and the latest permit evidence (DOB issuance, else DCP
+--             date_permitted) is older than 5 years. This is caveat 3's zombie
+--             permit, now dated per job.
+--
+-- ---------------------------------------------------------------------------
+-- CAVEATS THE DATABASE CANNOT ENFORCE
+-- ---------------------------------------------------------------------------
+-- 1. A RENEWAL IS NOT A SHOVEL. `active` means somebody paid a renewal fee, not
+--    that concrete was poured. A builder 90% done and a builder keeping a
+--    421-a permit warm both renew. The rule separates ABANDONED from NOT
+--    ABANDONED -- the falsifiable half of the timing question -- which is why
+--    the column is `activity_status` and not the `under_construction` stage
+--    011 refused to invent. 011's objection stands unchanged.
+-- 2. NO CONSTRUCTION-START DATE EXISTS. ipu4-2q9a's `job_start_date` is the
+--    date the permittee DECLARED work would begin; on every probed job it
+--    equals the initial permit's issuance_date and is then copied unchanged
+--    onto every renewal. DOB NOW publishes no equivalent. Nothing in NYC Open
+--    Data observes the start of construction.
+-- 3. A SIGN-OFF PRECURSOR EXISTS AND IS NOT INGESTED. rbx6-tga4's
+--    `permit_status` IN ('Permit Issued','Signed-off') and w9ak-ipjd's
+--    job-level `signoff_date` would give a genuine "topped out, awaiting CO"
+--    signal. Not built: sign-off is PER WORK TYPE, so a signed-off Plumbing
+--    permit on a job whose General Construction permit is still open means
+--    nothing, and a fifth status has no consumer yet. Ticketed, not smuggled.
+-- 4. BIS DATE COLUMNS ARE TEXT IN TWO FORMATS. ipu4-2q9a's issuance_date /
+--    expiration_date hold both `2014-09-09` and `09/30/2013` in the same
+--    column. dob_permits._to_date_mixed parses both shapes EXPLICITLY rather
+--    than letting pandas infer per chunk, because an inferred flip between
+--    `09/10` and `10/09` decides whether a building is called abandoned.
+-- 5. SCOPE. Evidence is fetched only for stage IN ('permitted',
+--    'partially_complete') -- the stages the axis is about. A DCP-'filed' job
+--    that quietly pulled a permit after DCP's cutoff therefore still reads
+--    'n/a' here and still contributes zero to units_permitted_400m (011's
+--    PERMITTED_STAGES). That is 011 caveat 1's vintage lag, unchanged, not a
+--    new bias introduced here.
+-- 6. last_permit_expires IS A MAX OVER ALL WORK TYPES -- "is ANY authorisation
+--    live", not "is every work type current". A job with a current General
+--    Construction permit and a long-expired Plumbing permit is `active`, which
+--    is the correct reading of the building but the wrong reading of the
+--    plumbing. Never interpret these two dates as being about one permit.
+-- 7. provenance is APPENDED to, not replaced: the row keeps its DCP + CO
+--    provenance string and gains ' + ipu4-2q9a + rbx6-tga4 ...'. Re-running is
+--    idempotent (the appender checks for its own substring first).
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE analysis.dev_pipeline ADD COLUMN IF NOT EXISTS last_permit_issued     DATE;
+ALTER TABLE analysis.dev_pipeline ADD COLUMN IF NOT EXISTS last_permit_expires    DATE;
+ALTER TABLE analysis.dev_pipeline ADD COLUMN IF NOT EXISTS permit_evidence_source VARCHAR;
+ALTER TABLE analysis.dev_pipeline ADD COLUMN IF NOT EXISTS activity_status        VARCHAR;
+ALTER TABLE analysis.dev_pipeline ADD COLUMN IF NOT EXISTS permit_activity_asof   DATE;
+
+-- ---------------------------------------------------------------------------
+-- THE ADDRESS-GRAIN EXTENSION lives at the TAIL OF 002_schema.sql, not here,
+-- for the reason 011's closing block gives: db.init_schema() creates the
+-- generated VIEW analysis.address_gaps immediately after 002 and before
+-- 003..014, DuckDB resolves a view's query at CREATE time, and on a database
+-- built before this landed analysis.address already exists -- so a column
+-- added at 014 would not exist when the view naming it is rebuilt, and every
+-- connection would fail with a BinderException. `units_active_400m` and
+-- `units_stalled_400m` are therefore ALTERed onto analysis.address at the end
+-- of 002 and written only by model/dev_pipeline.PIPELINE_COLUMNS.
+--
+-- THE ARITHMETIC THOSE TWO COLUMNS OBEY:
+--   units_active_400m + units_stalled_400m <= units_permitted_400m, ALWAYS,
+--   because `lapsed` and `n/a` units are in the permitted total and in
+--   neither of the two. The three are NOT a partition and the two must never
+--   be added to the permitted total -- the same trap 011 flags for the 24mo /
+--   60mo completion windows.
+-- ---------------------------------------------------------------------------

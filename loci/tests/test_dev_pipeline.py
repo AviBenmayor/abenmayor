@@ -236,7 +236,7 @@ def test_pipeline_columns_are_disjoint_from_the_screens_own_columns():
     list in model/address_gaps.py, so the two cannot drift apart silently."""
     assert ADDRESS_SCREEN_COLUMNS == ADDRESS_COLUMNS
     assert not (set(PIPELINE_COLUMNS) & set(ADDRESS_SCREEN_COLUMNS))
-    assert len(set(PIPELINE_COLUMNS)) == len(PIPELINE_COLUMNS) == 12
+    assert len(set(PIPELINE_COLUMNS)) == len(PIPELINE_COLUMNS) == 14
 
 
 def test_write_pipeline_is_update_only_and_leaves_the_screen_byte_identical():
@@ -264,6 +264,9 @@ def test_write_pipeline_is_update_only_and_leaves_the_screen_byte_identical():
         "nearest_large_project_id": "B1", "nearest_large_project_m": 120.0,
         "nearest_large_project_units": 300, "nearest_large_project_stage": "permitted",
         "nearest_large_project_date": dt.date(2025, 1, 1), "pipeline_asof": ASOF,
+        # sql/014: written NULL, not 0, when no permit-activity evidence
+        # has been ingested -- "we have not looked" is not "abandoned".
+        "units_active_400m": pd.NA, "units_stalled_400m": pd.NA,
     }])
     assert write_pipeline(con, df, ["MN"]) == 1
 
@@ -276,6 +279,9 @@ def test_write_pipeline_is_update_only_and_leaves_the_screen_byte_identical():
                        "WHERE address_id='A1'").fetchone()[0] == 500
     assert con.execute("SELECT units_permitted_400m FROM analysis.address "
                        "WHERE address_id='A2'").fetchone()[0] is None
+    assert con.execute("SELECT units_active_400m FROM analysis.address "
+                       "WHERE address_id='A1'").fetchone()[0] is None, \
+        "no activity evidence must land as NULL, never as 0"
 
     # the RESET pass: an address that had exposure and no longer does must go
     # back to NULL, not keep last run's number
@@ -284,9 +290,11 @@ def test_write_pipeline_is_update_only_and_leaves_the_screen_byte_identical():
                        "WHERE address_id='A1'").fetchone()[0] is None
 
 
-def test_fresh_schema_carries_all_twelve_pipeline_columns_on_analysis_address():
-    """002_schema.sql's CREATE and 011's ALTER must agree, or a fresh test
-    database and the live database diverge."""
+def test_fresh_schema_carries_all_fourteen_pipeline_columns_on_analysis_address():
+    """002_schema.sql's CREATE and the 011/014 ALTERs must agree, or a fresh
+    test database and the live database diverge. Fourteen since
+    sql/014_dev_pipeline_activity.sql added units_active_400m /
+    units_stalled_400m."""
     con = locidb.connect(":memory:")
     locidb.init_schema(con)
     cols = {r[0] for r in con.execute(
