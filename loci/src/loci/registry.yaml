@@ -395,6 +395,11 @@ sources:
     url: https://www.census.gov/data/developers/data-sets/acs-5year.html
     api: https://api.census.gov/data/2023/acs/acs5
     geography: tract
+    # Also pulled at ZCTA geography (same API, same key, B01003_001E +
+    # B19013_001E only) for the D68/GTM-138 density-elasticity ZIP panel,
+    # cached to data/raw/acs/zcta_{2013,2023}.json by
+    # src/loci/model/density_elasticity.py. Not a new source: same acs5
+    # dataset, different `for=` clause. 2018 and earlier need `in=state:36`.
     temporal: {start: 2013, end: 2024, grain: annual-5yr-window}
     cost: {amount: 0, unit: total}
     requires_key: CENSUS_API_KEY

@@ -1869,5 +1869,134 @@ def age_fit_apply(
                   f"(age_fit_lead, gap_score_fit)")
 
 
+density_elasticity_app = typer.Typer(add_completion=False, help=(
+    "The per-category clustering-vs-saturation coefficient (D68 -> GTM-138). "
+    "One `beta` per category from the ZIP x category ZBP panel 2013->2023 on "
+    "MN+BK ZIPs with 2013 population >= 5,000: beta > 0 means ZIPs already "
+    "dense in the category added MORE of it (CLUSTERING), beta < 0 means they "
+    "added less (SATURATION). It tells the grade which categories reward "
+    "proximity to incumbents and which are punished by it. It is NOT a "
+    "forecast -- D68 established headroom has no out-of-sample skill -- and "
+    "it is not causal: the 2013 count sits on both sides of the equation, so "
+    "the bias runs toward `saturating` and a clustering verdict is the "
+    "conservative one. `fit` exits NON-ZERO and writes nothing unless the "
+    "estimate clears its own gate."))
+app.add_typer(density_elasticity_app, name="density-elasticity")
+
+
+def _de_table(cats: dict, title: str) -> Table:
+    """One form's coefficients, with everything the classification read."""
+    t = Table(title=title)
+    for col, just in (("category", "left"), ("beta", "right"), ("beta_std", "right"),
+                      ("Conley t", "right"), ("HC3 t", "right"), ("n", "right"),
+                      ("regime", "left"), ("LOZO", "right"), ("placebo p90", "right"),
+                      ("Moran I", "right")):
+        t.add_column(col, justify=just)
+    for cat, v in sorted(cats.items()):
+        colour = {"clustering": "green", "saturating": "yellow"}.get(v["regime"], "dim")
+        t.add_row(cat, f"{v['beta']:+.3f}", f"{v['beta_std']:+.3f}",
+                  f"{v['t_conley']:+.2f}", f"{v['t_hc3']:+.2f}", f"{v['n_zips']}",
+                  f"[{colour}]{v['regime']}[/]", f"{v['lozo']['stability']:.2f}",
+                  "—" if v["placebo"]["p90"] is None else f"{v['placebo']['p90']:.3f}",
+                  "—" if v["moran"]["i"] is None
+                  else f"{v['moran']['i']:+.3f}"
+                       + ("*" if v["moran"]["p_perm"] < 0.05 else ""))
+    t.caption = ("beta_std = beta x sd(regressor), the scale on which the placebo "
+                 "is compared; * = Moran's I permutation p < 0.05 (residuals "
+                 "spatially autocorrelated, which is why the gate reads the "
+                 "Conley t and not the HC3 one)")
+    return t
+
+
+@density_elasticity_app.command("fit")
+def density_elasticity_fit(
+    bandwidth_km: float = typer.Option(3.0, "--bandwidth-km",
+                                       help="Conley spatial-HAC bandwidth on ZCTA "
+                                            "centroids (Bartlett kernel)."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Estimate and print both forms; write nothing."),
+) -> None:
+    """Re-estimate beta per category and write src/loci/model/density_elasticity.yaml.
+
+    Reads `analysis.zip_category_establishments` READ ONLY (retrying the lock a
+    concurrent writer holds) plus the cached ZCTA ACS and ZBP base-year pulls
+    under data/raw/; it deliberately touches neither analysis.address nor
+    analysis.address_category.
+
+    BOTH functional forms are estimated every run -- the log form (the stated
+    primary) and the level form -- each with HC3 and Conley SEs, Moran's I on
+    the residuals, leave-one-ZIP-out sign stability and a placebo distribution
+    built from every OTHER category's 2013 density. The log form is adopted
+    unless it fails its gate, in which case the level form is promoted and the
+    reason is recorded in the YAML. Gates first, write second: if no form
+    clears, this exits NON-ZERO and leaves the previous YAML untouched, so a
+    failed re-fit degrades to "yesterday's coefficients, explicitly stale"
+    rather than "today's, quietly invalid".
+    """
+    from loci.model import density_elasticity as de
+
+    try:
+        doc, result, _ = de.fit(bandwidth_m=bandwidth_km * 1000.0, dry_run=True)
+    except de.DensityElasticityGateFailure as exc:   # pragma: no cover
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
+    for form in de.FORM_ORDER:
+        mark = " [green](ADOPTED)[/]" if form == result["adopted_form"] else ""
+        console.print(_de_table(result["forms"][form]["categories"],
+                                f"{form} form — {de.FORMS[form]['label']}{mark}"))
+        bad = result["form_gate"].get(form) or []
+        if bad:
+            console.print(f"  [yellow]form `{form}` not admissible:[/] " + "; ".join(bad))
+    for cat, why in sorted(result["skipped"].items()):
+        console.print(f"[dim]not fitted:[/] {cat} — {why}")
+    console.print(f"[yellow]{de.DISCLAIMER}[/]")
+
+    bad = de.gate_failures(result)
+    if bad:
+        console.print("[red]GATE FAILED — nothing written:[/] " + "; ".join(bad))
+        console.print("[dim]The gate requires a category in every regime "
+                      f"({', '.join(de.REQUIRED_REGIMES)}). Relaxing "
+                      "REQUIRED_REGIMES is an owner decision with a decision-log "
+                      "entry, not a quiet edit.[/]")
+        raise typer.Exit(1)
+    if dry_run:
+        console.print("[dim]--dry-run:[/] gate passes; nothing written.")
+        raise typer.Exit(0)
+    written = de.write_if_gate_passes(doc, result)
+    console.print(f"[green]ok[/] adopted `{result['adopted_form']}` form -> {written}")
+
+
+@density_elasticity_app.command("show")
+def density_elasticity_show() -> None:
+    """Print the shipped coefficients and what each regime means for the grade."""
+    from loci.model import density_elasticity as de
+
+    try:
+        doc = de.load()
+    except FileNotFoundError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
+    t = Table(title=f"density elasticity — {doc['adopted_form']} form, "
+                    f"fitted {doc['fitted_at']}")
+    for col in ("category", "beta", "Conley t", "n", "regime", "LOZO", "placebo p90"):
+        t.add_column(col, justify="left" if col in ("category", "regime") else "right")
+    for cat, v in sorted(doc["categories"].items()):
+        if v["regime"] == "not_fitted":
+            t.add_row(cat, "—", "—", "—", "[dim]not fitted[/]", "—", "—")
+            continue
+        colour = {"clustering": "green", "saturating": "yellow"}.get(v["regime"], "dim")
+        t.add_row(cat, f"{v['beta']:+.3f}", f"{v['t_conley']:+.2f}", str(v["n_zips"]),
+                  f"[{colour}]{v['regime']}[/]", f"{v['lozo_sign_stability']:.2f}",
+                  "—" if v["placebo_p90"] is None else f"{v['placebo_p90']:.3f}")
+    console.print(t)
+    console.print(f"form: {doc['form']}\nbeta units: {doc['beta_units']}")
+    console.print(f"inference: {doc['inference']}\nrule: {doc['rule']['text']}")
+    console.print("[bold]for the grade:[/] saturating -> demand pool ÷ incumbents; "
+                  "clustering -> incumbents count in favour, cap from spend per "
+                  "resident by age/income; no_signal -> residents only; "
+                  "not_fitted -> no coefficient (NULL is not 1.0).")
+    console.print(f"[yellow]{doc['disclaimer']}[/]")
+
+
 if __name__ == "__main__":
     app()
