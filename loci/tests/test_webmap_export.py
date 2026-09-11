@@ -139,7 +139,8 @@ def con():
     # The REAL supply-set definitions, not a restatement of them: 006 also
     # creates analysis.category_anchor, which is where the corroboration
     # check reads from.
-    for name in ("003_supply_sets.sql", "006_principled_supply.sql"):
+    for name in ("003_supply_sets.sql", "006_principled_supply.sql",
+                 "013_floor_anchor.sql"):
         c.execute((db.SQL_DIR / name).read_text())
     for code, (lon, lat) in PLACES.items():
         c.execute("INSERT INTO analysis.hex VALUES (?, ?, ?)",
@@ -162,9 +163,12 @@ def _anchor(con, cat, qualifies=True):
     uncorroborated aggregator record -- what score/supply.build_category_anchor
     measures. Only an ANCHORED category can exclude anything: for an unanchored
     one PRINCIPLED is ALL by construction (sql/006)."""
-    con.execute("INSERT INTO analysis.category_anchor VALUES "
-                "(?, 'nyc_dohmh_restaurants', 100, 100, 5, 1.0, 0.7, ?, 2023, "
-                "'Manhattan,Brooklyn', now())", [cat, qualifies])
+    con.execute(
+        "INSERT INTO analysis.category_anchor (category, anchor_sources, anchor_poi, "
+        "zbp_estab, n_zips, anchor_coverage, threshold, qualifies, anchor_is_floor, "
+        "year, boroughs, run_at) VALUES "
+        "(?, 'nyc_dohmh_restaurants', 100, 100, 5, 1.0, 0.7, ?, FALSE, 2023, "
+        "'Manhattan,Brooklyn', now())", [cat, qualifies])
 
 
 def _set_provenance(con, supply_set="principled", supply_hash="deadbeef1234"):

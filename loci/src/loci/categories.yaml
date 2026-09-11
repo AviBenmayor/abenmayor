@@ -229,6 +229,20 @@ categories:
     naics_2022: ["624410"]
     naics_2017: ["624410"]   # unchanged (title text-only tweak: "Child Day
                              # Care Services" -> "Child Care Services")
+    # D69 (owner, 2026-09-11) — amendment to the D52 supply-set principle.
+    # The DOHMH roster gy3q-4tzp that anchors this category covers GROUP
+    # settings only: Health Code Article 47 centres and Article 43 school-based
+    # programmes. Home-based Family and Group Family Day Care is licensed by
+    # NYS OCFS and appears in NO NYC feed, so the registry CANNOT corroborate a
+    # home-based provider — not because the provider is a ghost, but by
+    # construction. D52's lone-aggregator veto would therefore delete supply
+    # exactly where home-based care dominates (it fell 6,066 -> 2,657 when the
+    # anchor qualified at coverage 0.85), manufacturing the childcare deserts
+    # this project exists to avoid. Marking the anchor a FLOOR keeps those
+    # records in `in_principled`; the anchor still ranks first for canonical
+    # geometry and name (score/dedup.source_rank), still feeds anchor_coverage
+    # and still qualifies. Read by score/supply.floor_anchor_categories().
+    anchor_is_floor: true
     sources:
       osm: ["amenity=kindergarten", "amenity=childcare"]
       overture: [child_care_and_day_care, day_care_preschool, preschool]

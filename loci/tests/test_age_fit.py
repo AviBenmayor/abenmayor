@@ -89,6 +89,7 @@ from loci.model.age_fit import (
     AgeFitGateFailure,
     AgeFitStale,
     apply_age_fit,
+    brooklyn_primary,
     check_fit_is_current,
     failed_gates,
     inputs_hash,
@@ -116,7 +117,12 @@ FIT = {
     "b18": 0.4, "b65": -0.5,
     "anchor_w18": 0.30, "anchor_w65": 0.20,
     "cov_age_conley": [[0.040, 0.005], [0.005, 0.080]],
+    # Deliberately left in D63's FLATTENED per-borough schema (b18/b65 rather
+    # than the coefs/se_conley dicts every later fit writes), so the F2b gate's
+    # back-compat path is exercised by a test rather than assumed. The SEs are
+    # bar's real Brooklyn magnitudes: b18 = +0.6 on se 0.244 is t +2.46.
     "by_borough": {"BK": {"n_tracts": 770, "b18": 0.6, "b65": -0.7,
+                          "b18_se_conley": 0.244, "b65_se_conley": 0.39,
                           "contrast": {"ratio": 1.45, "ci_low": 1.20,
                                        "ci_high": 1.76, "se_log": 0.10}}},
     "multiplier": {"p10": 0.90, "p50": 0.99, "p90": 1.10, "spread": 0.20,
@@ -594,6 +600,10 @@ CC_FIT = {
                  "from_nta": "MN0303", "to_nta": "BK1202"},
     "by_borough": {"BK": {"n_tracts": 770,
                           "coefs": {"under_18_share": 0.9, "w18": -0.1, "w65": -0.2},
+                          # F2b (D69) reads the PRIMARY term's own Brooklyn CI:
+                          # +0.9 on se 0.30 is t +3.00, so it clears zero.
+                          "se_conley": {"under_18_share": 0.30, "w18": 0.24,
+                                        "w65": 0.39},
                           "contrast": {"ratio": 1.60, "ci_low": 1.25,
                                        "ci_high": 2.05, "se_log": 0.12}}},
     "multiplier": {"p10": 0.93, "p50": 1.00, "p90": 1.09, "spread": 0.16,
@@ -884,9 +894,12 @@ def test_the_childcare_ordering_on_the_live_curve():
 
 # --- (i) THE D6x PHARMACY CURVE ---------------------------------------------
 #
-# The third registry entry, and the first one whose F2 gate PASSES on a
-# contrast the primary demand regressor did not drive. A synthetic curve again:
-# these tests are the plumbing and the gate, not the coefficients.
+# The third registry entry. D66 shipped it on a contrast its primary demand
+# regressor did not drive; D69 tightened F2 so that can no longer pass, and the
+# live curve is now refused (see
+# test_a_pharmacy_curve_that_passes_on_the_wrong_coefficient_is_refused). This
+# fixture is the curve pharmacy would need in order to ship -- a synthetic one
+# again: these tests are the plumbing and the gate, not the coefficients.
 #
 # `age_65_plus_share` is the primary demand variable, un-renormalized, and it
 # is the SAME variable the contrast ranks NTAs on -- for pharmacy the direct
@@ -904,8 +917,13 @@ PH_FIT = {
                  "require_sign": 1, "min_addresses": 500,
                  "from_nta": "BK0102", "to_nta": "MN0802"},
     "by_borough": {"BK": {"n_tracts": 770,
-                          "coefs": {"age_65_plus_share": 0.264,
+                          # +0.55 on se 0.18 is t +3.06 -- what F2b (D69)
+                          # requires and what the LIVE curve does not have
+                          # (+0.264 on se 0.293, t +0.90).
+                          "coefs": {"age_65_plus_share": 0.55,
                                     "age_18_34_share": -1.234},
+                          "se_conley": {"age_65_plus_share": 0.18,
+                                        "age_18_34_share": 0.41},
                           "contrast": {"ratio": 1.585, "ci_low": 1.236,
                                        "ci_high": 2.032, "se_log": 0.127}}},
     "multiplier": {"p10": 0.880, "p50": 1.050, "p90": 1.144, "spread": 0.264,
@@ -947,6 +965,68 @@ def test_a_pharmacy_contrast_that_ranks_old_neighbourhoods_down_is_refused(tmp_p
     with pytest.raises(AgeFitGateFailure, match="F2"):
         write_fit_if_gates_pass(bad, out)
     assert not out.exists()
+
+
+def test_a_pharmacy_curve_that_passes_on_the_wrong_coefficient_is_refused(tmp_path):
+    """F2b (D69), on the numbers that motivated it. These are pharmacy's LIVE
+    D66 Brooklyn estimates: the age-block CONTRAST clears F2a at
+    1.585 [1.236, 2.032], and it is untouched here -- but b(age_65_plus_share)
+    is +0.264 on a Conley se of 0.293 (t +0.90), so roughly five-sixths of the
+    log-contrast is "fewer 18-34s" and the curve does not pass on the variable
+    its label names. A column that clears its gate on a different regressor is
+    the GTM-109 defect, so the gate now reads the stated driver directly."""
+    bad = json.loads(json.dumps(PH_FIT))
+    bad["by_borough"]["BK"]["coefs"]["age_65_plus_share"] = 0.264
+    bad["by_borough"]["BK"]["se_conley"]["age_65_plus_share"] = 0.293
+    out = tmp_path / "age_fit_pharmacy.json"
+
+    gates = failed_gates(bad)
+    assert not any(g.startswith("F2a") for g in gates), (
+        "the CONTRAST half must still pass -- otherwise this test proves "
+        "nothing about the primary-regressor half", gates)
+    assert any(g.startswith("F2b") for g in gates), gates
+    assert any("age_65_plus_share" in g for g in gates), gates
+    with pytest.raises(AgeFitGateFailure, match="F2b"):
+        write_fit_if_gates_pass(bad, out)
+    assert not out.exists(), "a curve that fails its own criterion must leave no file"
+
+
+def test_a_primary_regressor_with_the_wrong_sign_is_refused(tmp_path):
+    """The sign half of F2b. A significantly NEGATIVE b(under_18_share) would
+    rank the neighbourhoods with the most children DOWN -- D64's reading of
+    childcare's pre-anchor fit, and the D49/X6 hazard verbatim. Excluding zero
+    is not enough; it has to exclude zero from the right side."""
+    bad = json.loads(json.dumps(CC_FIT))
+    bad["by_borough"]["BK"]["coefs"]["under_18_share"] = -0.769
+    bad["by_borough"]["BK"]["se_conley"]["under_18_share"] = 0.20
+    out = tmp_path / "age_fit_childcare.json"
+    gates = failed_gates(bad)
+    assert any(g.startswith("F2b") and "WRONG SIGN" in g for g in gates), gates
+    with pytest.raises(AgeFitGateFailure, match="F2b"):
+        write_fit_if_gates_pass(bad, out)
+    assert not out.exists()
+
+
+def test_a_fit_with_no_brooklyn_standard_error_cannot_pass_f2b(tmp_path):
+    """FAIL CLOSED. A gate that silently skips when its input is missing is not
+    a gate -- and "the fit JSON predates F2b" is exactly the state in which a
+    refused curve could otherwise slip through on a re-apply."""
+    bad = json.loads(json.dumps(CC_FIT))
+    del bad["by_borough"]["BK"]["se_conley"]
+    gates = failed_gates(bad)
+    assert any(g.startswith("F2b") and "cannot be evaluated" in g for g in gates), gates
+    with pytest.raises(AgeFitGateFailure, match="F2b"):
+        write_fit_if_gates_pass(bad, tmp_path / "age_fit_childcare.json")
+
+
+def test_f2b_reads_the_primary_term_through_both_fit_schemas():
+    """`brooklyn_primary` has to find the coefficient in D63's flattened
+    bar-only block (b18 / b18_se_conley) as well as in the coefs/se_conley dicts
+    every later fit writes. If it silently returned None for the old shape, an
+    existing bar fit would fail a gate it actually passes."""
+    assert brooklyn_primary(FIT) == ("w18", 0.6, 0.244)
+    assert brooklyn_primary(CC_FIT) == ("under_18_share", 0.9, 0.30)
+    assert brooklyn_primary(PH_FIT) == ("age_65_plus_share", 0.55, 0.18)
 
 
 def test_a_passing_pharmacy_curve_is_written(tmp_path):
@@ -1016,9 +1096,31 @@ def test_the_pharmacy_specification_is_the_composition_one():
     assert "adult_shares" in spec.robustness_outcomes
 
 
+def test_pharmacy_carries_no_applied_multiplier_while_it_has_no_curve():
+    """D69's other half, pinned on the live warehouse: pharmacy is REFUSED on
+    F2b (b(age_65_plus_share) +0.264, Conley t +0.90 in Brooklyn), so no curve
+    is on disk -- and while none is, no pharmacy row may carry an `age_fit`. A
+    multiplier left behind by a retired curve is worse than no multiplier: it
+    reads on the map as evidence, and nothing says which curve it came from.
+    The skip is the escape hatch for the day a NYS pharmacy-registry anchor
+    lands and the category passes on its own regressor."""
+    if spec_for("pharmacy").fit_path.exists():
+        pytest.skip("pharmacy has a fitted curve again; the ordering test below "
+                    "is the one that applies")
+    if not locidb.DEFAULT_PATH.exists():
+        pytest.skip("no live warehouse (data/ is gitignored)")
+    con = locidb.connect(read_only=True)
+    n = con.execute("SELECT count(age_fit) FROM analysis.address_category "
+                    "WHERE category = 'pharmacy'").fetchone()[0]
+    assert n == 0, (f"{n:,} pharmacy rows still carry an age_fit with no curve "
+                    "on disk; run `loci age-fit apply --category all`")
+
+
 @pytest.mark.skipif(not spec_for("pharmacy").fit_path.exists(),
-                    reason="pharmacy has no fitted curve; run "
-                           "`loci age-fit fit --category pharmacy` first")
+                    reason="pharmacy has no fitted curve -- D69 refuses it on "
+                           "F2b (b(age_65_plus_share) +0.396, Conley se 0.284, "
+                           "t +1.39 in Brooklyn; CI [-0.161, +0.954]); a "
+                           "registry anchor is the fix, not a relaxed gate")
 def test_the_pharmacy_ordering_on_the_live_curve():
     """F4 for pharmacy, the twin of the East-Village test, on the live fitted
     curve and the live warehouse. The contrast's HIGH-65+ endpoint must carry a

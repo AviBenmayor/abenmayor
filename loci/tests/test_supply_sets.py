@@ -284,11 +284,12 @@ def test_principled_equals_all_when_no_category_is_anchored(supply_db):
     assert all(a == p for _, a, p in rows)
 
 
-def _anchor(con, category, qualifies):
+def _anchor(con, category, qualifies, is_floor: bool = False):
     con.execute(
         "INSERT OR REPLACE INTO analysis.category_anchor (category, anchor_poi, zbp_estab, "
-        "anchor_coverage, threshold, qualifies, run_at) VALUES (?, 1, 1, 1.0, ?, ?, now())",
-        [category, supply.ANCHOR_COVERAGE_MIN, qualifies])
+        "anchor_coverage, threshold, qualifies, anchor_is_floor, run_at) "
+        "VALUES (?, 1, 1, 1.0, ?, ?, ?, now())",
+        [category, supply.ANCHOR_COVERAGE_MIN, qualifies, is_floor])
 
 
 def test_principled_drops_only_the_lone_aggregator_in_an_anchored_category(supply_db):
@@ -337,14 +338,96 @@ def test_nesting_corroborated_subset_principled_subset_all(supply_db):
 
 
 def test_aggregator_list_matches_the_sql_view():
-    """score/supply.AGGREGATOR_SOURCES and the literal list inside
-    sql/006_principled_supply.sql are two copies of one fact. Drift would make
-    has_registry_member disagree with the Python that measures coverage."""
-    sql = (pathlib.Path(supply.__file__).resolve().parents[1]
-           / "sql" / "006_principled_supply.sql").read_text()
-    block = sql.split("NOT IN", 1)[1].split(")", 1)[0]
-    in_sql = {tok.strip().strip("'") for tok in block.strip(" \n(").split(",")}
-    assert in_sql == set(supply.AGGREGATOR_SOURCES)
+    """score/supply.AGGREGATOR_SOURCES and the literal list inside EVERY
+    migration that restates the view are copies of one fact. Drift would make
+    has_registry_member disagree with the Python that measures coverage; 013
+    restates 006's SELECT to add the floor disjunct, so it carries a second
+    copy and is checked here rather than being taken on trust."""
+    sql_dir = pathlib.Path(supply.__file__).resolve().parents[1] / "sql"
+    for name in ("006_principled_supply.sql", "013_floor_anchor.sql"):
+        sql = (sql_dir / name).read_text()
+        block = sql.split("NOT IN", 1)[1].split(")", 1)[0]
+        in_sql = {tok.strip().strip("'") for tok in block.strip(" \n(").split(",")}
+        assert in_sql == set(supply.AGGREGATOR_SOURCES), name
+
+
+# -------------------------------------------- the FLOOR-ANCHOR exception (D69)
+def test_childcare_is_the_declared_floor_anchor():
+    """The flag is CONFIG, not a constant in the scorer, and it is declared for
+    exactly one category today. If a second one is added, this test is the place
+    the addition has to be argued for."""
+    assert supply.floor_anchor_categories() == frozenset({"childcare"})
+
+
+def test_the_veto_still_applies_to_a_category_that_is_not_a_floor(supply_db):
+    """FLAG OFF -> D52 UNCHANGED. Pinned on the same fixture as the flag-on
+    case, so "the exception is narrow" is a test rather than a claim: fitness
+    is anchored and not a floor, and its lone-aggregator clusters still go."""
+    _anchor(supply_db, "fitness", True, is_floor=False)
+    got = dict(supply_db.execute(
+        "SELECT poi_id, in_principled FROM analysis.poi_supply").fetchall())
+    assert got["ovt:3"] is False
+    assert got["ovt:4a"] is False
+
+
+def test_a_floor_anchor_retains_the_lone_aggregator_record(supply_db):
+    """FLAG ON (D69). The DOHMH childcare roster covers group settings only and
+    OCFS home-based care is in no NYC feed, so "no registry member" carries no
+    information for this category and the veto would delete supply exactly where
+    home-based care dominates. The anchor still QUALIFIES -- only the veto is
+    suspended."""
+    _anchor(supply_db, "fitness", True, is_floor=True)
+    got = {r[0]: (r[1], r[2], r[3]) for r in supply_db.execute(
+        "SELECT poi_id, in_principled, is_anchored_category, anchor_is_floor "
+        "FROM analysis.poi_supply").fetchall()}
+    assert got["ovt:3"] == (True, True, True)
+    assert got["ovt:4a"] == (True, True, True)
+
+
+def test_a_floor_anchor_makes_principled_equal_all_for_that_category(supply_db):
+    """The whole content of the exception, stated as one identity -- and the
+    nesting CORROBORATED subset PRINCIPLED subset ALL survives it, because the
+    flag can only ADD rows to the middle set."""
+    _anchor(supply_db, "fitness", True, is_floor=True)
+    _anchor(supply_db, "restaurant", True, is_floor=False)
+    same = supply_db.execute(
+        "SELECT count(*) FROM analysis.poi_supply "
+        "WHERE category = 'fitness' AND in_all <> in_principled").fetchone()[0]
+    assert same == 0
+    bad = supply_db.execute("""
+        SELECT count(*) FROM analysis.poi_supply
+        WHERE (is_corroborated AND NOT in_principled) OR (in_principled AND NOT in_all)
+    """).fetchone()[0]
+    assert bad == 0
+
+
+def test_a_floor_flag_without_a_loaded_anchor_is_refused():
+    """DRIFT CHECK. A floor is a floor UNDER a roster. Flagging a category whose
+    registry was never ingested would declare "the veto does not apply here" for
+    a category where the veto could not fire anyway -- and would then go on
+    being silently wrong the day an anchor did land."""
+    measured = [{"category": "childcare", "anchor_sources": None, "anchor_poi": 0}]
+    with pytest.raises(ValueError, match="no registry anchor loaded"):
+        supply.check_floor_anchors(measured)
+    with pytest.raises(ValueError, match="not measured at all"):
+        supply.check_floor_anchors([{"category": "bar", "anchor_sources": "x",
+                                     "anchor_poi": 9}])
+    # the same measurement WITH the roster ingested passes
+    supply.check_floor_anchors(
+        [{"category": "childcare", "anchor_sources": "nyc_dohmh_childcare",
+          "anchor_poi": 1362}])
+
+
+def test_supply_hash_distinguishes_a_floor_anchor_from_a_veto(supply_db):
+    """Two runs whose supply differs must be distinguishable once written. The
+    per-category counts alone would catch this one, but the RULE belongs in the
+    hash for the same reason the qualifying-anchor set already is: a config edge
+    that changes nothing today must still change the stamp."""
+    _anchor(supply_db, "fitness", True, is_floor=False)
+    veto = supply.supply_hash(supply_db)
+    _anchor(supply_db, "fitness", True, is_floor=True)
+    floor = supply.supply_hash(supply_db)
+    assert veto != floor
 
 
 def test_qualifies_as_anchor_rule():

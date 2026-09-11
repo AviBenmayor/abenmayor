@@ -81,21 +81,27 @@ comparable to the docs/bar_age_nyc.md §5c table (childcare -0.574 there).
 THE CAVEAT THAT IS SPECIFIC TO `childcare`, AND IS NOT SMALL
 --------------------------------------------------------------------------
 Bar's outcome is measured on NYS SLA licences -- a registry feed the address
-screen does NOT read. Childcare has NO registry anchor loaded (see
-`analysis.category_anchor`: `anchor_sources` is NULL and `anchor_coverage` is
-0.00, so `in_principled` degrades to `in_all` and all 4,302 canonical childcare
-POIs come from Overture and Foursquare alone). Its outcome is therefore built
-from the SAME canonical supply the screen already reads. The composition form
-blunts this -- the screen reads a per-category NETWORK DISTANCE to the nearest
-childcare POI, not a 640 m share of all storefronts -- but it does not remove
-it, and it is the tightest form of the D1 trap that D63's §7.2 test 8 pins for
-bar. Loading a childcare registry anchor (DOHMH child-care-centre inspections,
-`dsg6-ifza` -- NOT currently ingested, despite what `score/supply.py`'s prose
-implies) is the fix; until then this column is weaker evidence than bar's.
+screen does NOT read. Childcare's outcome is built from the SAME canonical
+supply the screen already reads, which is the tightest form of the D1 trap that
+D63's §7.2 test 8 pins for bar. The composition form blunts it -- the screen
+reads a per-category NETWORK DISTANCE to the nearest childcare POI, not a 640 m
+share of all storefronts -- but does not remove it.
+
+UPDATED D65/D69. The anchor D64 asked for is now loaded: the LIVE DOHMH roster
+`gy3q-4tzp` (not the "(Historical)" `dsg6-ifza`, which is a 2019 snapshot with
+no coordinates), which took canonical childcare from 4,302 to 6,066 and
+`anchor_coverage` from 0.000 to 0.85. That anchor is a FLOOR, not a census: it
+covers Article 47 and Article 43 GROUP settings, while OCFS-licensed home-based
+care is in no NYC feed. So `childcare` carries `anchor_is_floor: true` in
+categories.yaml (D69) and `in_principled` stays equal to `in_all` for it -- the
+D52 veto is suspended for this category alone, because a registry that cannot
+list home-based providers cannot be used to veto them. The asymmetry to reason
+with is unchanged: a gap the anchor CLOSES was aggregator under-coverage; a gap
+that SURVIVES it is still not proof of a desert.
 
 THE `pharmacy` SPECIFICATION (`poi_composition_v1`, D6x / QUESTIONS D15)
 --------------------------------------------------------------------------
-The third registry entry, and the first whose gate PASSES.
+The third registry entry, and the one the gate REFUSES (D66 -> D69).
 
     pharmacy_share_800 = log(1 + canonical pharmacy POIs within 800 m)
                        - log(1 + ALL canonical POIs within 800 m)
@@ -111,20 +117,21 @@ of older residents, not the age of the adult population net of children -- and
 other divided by (1 - under_18_share). A test refuses any spec that carries
 both.
 
-The gate passes, and the honest reading of HOW it passes is part of the
-column. Pooled b(age_65_plus_share) is -0.300 (Conley se 0.319, t -0.94) --
-insignificant and, on its face, the wrong sign; Brooklyn +0.264 (se 0.293,
-t +0.90), Manhattan -0.424 (se 0.304, t -1.40). What carries the contrast is
-the OTHER band: b(age_18_34_share) = -1.128 pooled (se 0.304, t -3.71),
-Brooklyn -1.234 (t -3.02). F2 is a contrast over the whole age block, so the
-Brooklyn ratio of 1.585 [1.236, 2.032] on Williamsburg -> UES-Carnegie Hill is
-roughly five-sixths "fewer 18-34s" and one-sixth "more 65+". The curve is
-therefore evidence that pharmacy composition falls where the young are, which
-is a real and category-specific finding -- it is the mirror image of bar, on
-the same tracts and the same controls -- but it is NOT evidence that pharmacy
-composition rises where the old are. Anyone reading the column as "older
-neighbourhood, more pharmacy demand" is reading a coefficient that is not
-there.
+D66 shipped it under the gate AS THEN WRITTEN, and the honest reading of HOW it
+passed is what retired it. Pooled b(age_65_plus_share) was -0.300 (Conley se
+0.319, t -0.94) -- insignificant and, on its face, the wrong sign; Brooklyn
++0.264 (se 0.293, t +0.90), Manhattan -0.424 (t -1.40). What carried the
+contrast was the OTHER band: b(age_18_34_share) = -1.128 pooled (t -3.71),
+Brooklyn -1.234 (t -3.02). F2a is a contrast over the whole age block, so the
+Brooklyn ratio of 1.585 [1.236, 2.032] on Williamsburg -> UES-Carnegie Hill was
+roughly five-sixths "fewer 18-34s" and one-sixth "more 65+". That is a real and
+category-specific finding -- the mirror image of bar, on the same tracts and
+controls -- but it is NOT evidence that pharmacy composition rises where the
+old are, and the column's own label said it was. D69 tightened F2 accordingly
+(F2b above) and pharmacy is now REFUSED: on the D69 supply its Brooklyn
+b(age_65_plus_share) is +0.396 (Conley se 0.284, t +1.39), CI [-0.161, +0.954].
+No curve is written, the category's `age_fit` rows are NULL, and the fix is an
+anchor, not a relaxed gate.
 
 Pharmacy has NO registry anchor loaded either (`analysis.category_anchor`:
 anchor_sources NULL, anchor_coverage 0.000), so `in_principled` degrades to
@@ -179,8 +186,11 @@ WITHOUT relaxation (QUESTIONS D15: "two independent sources agreeing on a sign
 is corroboration, not a licence to skip the gate"). So `fit_curve` refuses to
 WRITE anything at all unless:
 
-  F2  the BROOKLYN-ONLY Conley CI on the category's own low-age -> high-age
-      contrast excludes 1.0, and the point estimate has the demanded SIGN; and
+  F2a the BROOKLYN-ONLY Conley CI on the category's own low-age -> high-age
+      contrast excludes 1.0, and the point estimate has the demanded SIGN;
+  F2b the BROOKLYN-ONLY Conley CI on the PRIMARY demand regressor's own
+      coefficient excludes ZERO with that same sign (D69, owner, 2026-09-11);
+      and
   F3  the dispersion gate passes: (p90 - p10 of the multiplier over the
       estimation tracts) / median(age_fit_moe) >= 1.0 -- the same derived gate
       `docs/age_demand_fit.md` §5 defined and the CEX multiplier failed at 0.10.
@@ -188,6 +198,20 @@ WRITE anything at all unless:
 A curve that fails its own criterion must not reach the ranking, so the command
 exits non-zero and leaves the previous fit JSON untouched rather than
 half-writing a fit nobody may apply.
+
+WHY F2b EXISTS (D66 -> D69). F2a is a contrast over the WHOLE age block, so a
+category can clear it on a coefficient other than the one its label claims.
+Pharmacy did: its Brooklyn contrast passed at 1.585 [1.236, 2.032] while
+b(age_65_plus_share) carried a Conley t of +0.90 -- five-sixths of the
+log-contrast was "fewer 18-34s", not "more 65+". That is a real finding (the
+mirror image of bar on the same tracts) but it is NOT evidence that pharmacy
+demand rises with age, and a column that passes on a variable other than its
+stated demand driver is the GTM-109 defect: a number wearing a label it did not
+earn. F2b tests the stated driver directly. It is a TIGHTENING applied to every
+category alike: bar keeps b(w18) t +2.44 in Brooklyn and childcare
+b(under_18_share) far above that, so the two shipped curves are unaffected and
+pharmacy is refused -- at t +1.39 on the D69 supply, +0.90 on D66's; the point
+estimate moves with the denominator, the verdict does not.
 
 WHAT THE COLUMN MAY NOT BE READ AS (AGE_FIT_DISCLAIMER)
 --------------------------------------------------------------------------
@@ -212,8 +236,10 @@ SCOPE
 specification with all fifteen categories as the outcome: `bar` has the largest
 positive b(w18) of the fifteen and `pharmacy` the most negative, which is what
 rules out "b(w18) is a generic urbanity coefficient". Those are the two ENDS of
-that table and they are the two entries whose gate passes; `childcare`, from
-the middle of it, is refused. Every category NOT in `CURVES` keeps a NULL
+that table, and the registry holds all three -- but membership of `CURVES` is
+not a licence to ship: after D65 (the childcare anchor) and D69 (F2b) the two
+curves that PASS are `bar` and `childcare`, and `pharmacy` is refused with no
+file on disk. Every category NOT in `CURVES` keeps a NULL
 `age_fit`, not 1.0. NULL means "no curve exists here"; 1.0 would mean "a curve
 exists and says neutral", and the two must not be confused.
 """
@@ -1261,6 +1287,29 @@ def inputs_hash(supply_hash: str | None, acs_year: int, n_target: int) -> str:
 
 # --------------------------------------------------------------- the F2 gate
 
+def brooklyn_primary(fit: dict) -> tuple[str, float | None, float | None]:
+    """(term, Brooklyn coefficient, Brooklyn Conley SE) for the PRIMARY demand
+    regressor -- what F2b is evaluated on.
+
+    Tolerant of D63's flattened bar-only schema, where the per-borough block
+    carried `b18`/`b18_se_conley` instead of the `coefs`/`se_conley` dicts every
+    later fit writes. Returns None for a missing coefficient or SE rather than
+    raising, so `failed_gates` can report "the gate cannot be evaluated" as a
+    FAILURE -- a gate that silently skips is not a gate."""
+    terms = list(fit.get("age_terms") or ["w18", "w65"])
+    term = str(fit.get("primary_age_term") or terms[0])
+    bk = (fit.get("by_borough") or {}).get("BK") or {}
+    coefs = dict(bk.get("coefs") or {})
+    ses = dict(bk.get("se_conley") or {})
+    if "b18" in bk:                                   # D63's flattened schema
+        coefs.setdefault("w18", bk.get("b18"))
+        coefs.setdefault("w65", bk.get("b65"))
+        ses.setdefault("w18", bk.get("b18_se_conley"))
+        ses.setdefault("w65", bk.get("b65_se_conley"))
+    c, s = coefs.get(term), ses.get(term)
+    return term, (None if c is None else float(c)), (None if s is None else float(s))
+
+
 def failed_gates(fit: dict) -> list[str]:
     """Which of the published failure criteria this curve fails. Empty == ship.
 
@@ -1270,7 +1319,7 @@ def failed_gates(fit: dict) -> list[str]:
     criteria are enforced here because they are the two that decide whether the
     multiplier may be APPLIED at all:
 
-      F2  the Brooklyn-only Conley CI on the category's low-age -> high-age
+      F2a the Brooklyn-only Conley CI on the category's low-age -> high-age
           contrast must EXCLUDE 1.0, and (where the spec demands a sign) the
           point estimate must carry it. This is the criterion the note names as
           binding: it is the only reason the composition spec is preferred over
@@ -1278,6 +1327,17 @@ def failed_gates(fit: dict) -> list[str]:
           2.178]. Brooklyn, not the pooled sample, because 98.2% of the
           bar-lead gap set is in Brooklyn -- calibrating where the signal is and
           shipping where it isn't is the failure this test exists to catch.
+      F2b the Brooklyn-only Conley CI on the PRIMARY demand regressor's OWN
+          coefficient must exclude ZERO with the same demanded sign (D69,
+          owner, 2026-09-11). F2a is a contrast over the whole age block and a
+          category can therefore clear it on a coefficient other than its
+          stated demand driver -- pharmacy did, at a b(age_65_plus_share) whose
+          Conley t is +0.90 (D66) to +1.39 (D69), with five-sixths of the
+          contrast coming from b(age_18_34_share) either way. A column that
+          passes on a variable other than the one its label names is the
+          GTM-109 defect. Bar (b(w18) t +2.44 in
+          Brooklyn) and childcare are unaffected; the tightening is applied to
+          every category alike, not aimed at one.
       F3  the dispersion gate: p90 - p10 of the multiplier must exceed its own
           median MOE. The CEX predecessor failed this at 0.10 and that failure
           is what retired it; a successor that cannot clear its own noise floor
@@ -1289,22 +1349,45 @@ def failed_gates(fit: dict) -> list[str]:
     """
     bad: list[str] = []
     bk = (fit.get("by_borough") or {}).get("BK")
+    want = int((fit.get("contrast") or {}).get("require_sign", 0))
     if not bk:
-        bad.append("F2 (no Brooklyn-only fit -- the gate cannot be evaluated)")
+        bad.append("F2a (no Brooklyn-only fit -- the gate cannot be evaluated)")
+        bad.append("F2b (no Brooklyn-only fit -- the gate cannot be evaluated)")
     else:
         lo, hi = bk["contrast"]["ci_low"], bk["contrast"]["ci_high"]
         if lo <= 1.0 <= hi:
-            bad.append(f"F2 (Brooklyn Conley CI [{lo:.3f}, {hi:.3f}] includes 1.0)")
+            bad.append(f"F2a contrast (Brooklyn Conley CI [{lo:.3f}, {hi:.3f}] "
+                       "includes 1.0)")
         else:
-            want = int((fit.get("contrast") or {}).get("require_sign", 0))
             ratio = bk["contrast"]["ratio"]
             if want > 0 and ratio < 1.0:
                 bad.append(
-                    f"F2 (Brooklyn contrast {ratio:.3f} is the WRONG SIGN: the "
-                    "high-demand endpoint has LESS of the category, so the CI "
-                    "excludes 1.0 by rejecting the hypothesis, not confirming it)")
+                    f"F2a contrast (Brooklyn contrast {ratio:.3f} is the WRONG "
+                    "SIGN: the high-demand endpoint has LESS of the category, so "
+                    "the CI excludes 1.0 by rejecting the hypothesis, not "
+                    "confirming it)")
             if want < 0 and ratio > 1.0:
-                bad.append(f"F2 (Brooklyn contrast {ratio:.3f} is the wrong sign)")
+                bad.append(f"F2a contrast (Brooklyn contrast {ratio:.3f} is the "
+                           "wrong sign)")
+        # --- F2b: the stated demand driver, on its own (D69) ----------------
+        term, coef, se = brooklyn_primary(fit)
+        if coef is None or se is None or not (se > 0):
+            bad.append(f"F2b primary regressor (no Brooklyn Conley coefficient/SE "
+                       f"for {term!r} -- the gate cannot be evaluated)")
+        else:
+            clo, chi = coef - CI_Z * se, coef + CI_Z * se
+            t = coef / se
+            if clo <= 0.0 <= chi:
+                bad.append(
+                    f"F2b primary regressor ({term} Brooklyn {coef:+.3f}, Conley "
+                    f"se {se:.3f}, t {t:+.2f}; 95% CI [{clo:+.3f}, {chi:+.3f}] "
+                    "includes 0 -- the curve does not pass on its own stated "
+                    "demand driver)")
+            elif (want > 0 and coef < 0) or (want < 0 and coef > 0):
+                bad.append(
+                    f"F2b primary regressor ({term} Brooklyn {coef:+.3f}, t "
+                    f"{t:+.2f}, is the WRONG SIGN: the CI excludes 0 by "
+                    "rejecting the hypothesis, not confirming it)")
     ratio = fit["multiplier"]["dispersion_ratio"]
     if not (ratio >= DISPERSION_GATE_MIN):
         bad.append(f"F3 (dispersion spread/MOE = {ratio:.2f} < {DISPERSION_GATE_MIN})")

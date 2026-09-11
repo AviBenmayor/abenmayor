@@ -48,11 +48,37 @@ deliberate — a missing measurement must never silently delete supply.
   substantive reading of "a LONE aggregator record" — two independent feeds
   agreeing is corroboration, and dropping such a record would be STRICTER
   than the CORROBORATED set it is supposed to relax.
+
+--------------------------------------------------------------------------
+3. THE FLOOR-ANCHOR EXCEPTION (D69, owner, 2026-09-11)
+--------------------------------------------------------------------------
+D52's veto rests on one assumption: that a dense registry which never listed a
+record is EVIDENCE the record is not a business. That assumption fails for a
+registry whose scope is narrower than the category — one that could not have
+listed the record however real it is. For `childcare` the DOHMH roster covers
+GROUP settings only (Health Code Article 47 and Article 43); home-based Family
+and Group Family Day Care is licensed by NYS OCFS and is in no NYC feed. So
+"no registry member" there carries no information at all, and the veto deletes
+supply precisely where home-based care dominates.
+
+A category may therefore declare `anchor_is_floor: true` in categories.yaml.
+Its anchor still ranks first for canonical geometry and name, still counts
+toward anchor_coverage and still qualifies — the ONLY thing that changes is
+that its lone-aggregator records are RETAINED in `in_principled`. Every other
+category is untouched; this is an exception per category, declared in the
+config a human reads, not a softening of the rule.
+
+The flag is only meaningful where an anchor is actually loaded (a floor is a
+floor UNDER something), so `check_floor_anchors` refuses a flagged category
+with no registry source measured in it — the drift check for someone who
+flags a category and forgets to ingest its roster.
 """
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
+import pathlib
 
 #: Coverage a registry source must reach, per category, to earn the right to
 #: veto an uncorroborated aggregator record. 0.70 is a judgement, and it is a
@@ -66,6 +92,11 @@ import json
 #: and the unloaded categories sit at 0.0 — so no category is near the line and
 #: the exact level is not load-bearing. If a future category lands in 0.5-0.9,
 #: that is the signal to load a better anchor, not to move this number.
+#: AMENDED 2026-09-11 (D69): childcare landed in that band at 0.85 and there IS
+#: no better anchor — the half the DOHMH roster misses (OCFS home-based care) is
+#: published by nobody. That is what `anchor_is_floor` below is for, and it is
+#: the only sanctioned answer to "the band says load a better anchor and none
+#: exists". Moving this number is still never the answer.
 ANCHOR_COVERAGE_MIN = 0.70
 
 #: Feeds that infer business existence from crowdsourced / scraped / licensed
@@ -85,6 +116,61 @@ AGGREGATOR_SOURCES = frozenset({
     "osm_overpass",
     "foursquare_os_places",
 })
+
+#: The categories.yaml key that declares a category's anchor a FLOOR (D69).
+#: The flag lives with the rest of the per-category config, beside the NAICS
+#: codes and the source vocabularies, because it is a statement about what the
+#: category's registry COVERS — not a tuning knob for the screen.
+FLOOR_ANCHOR_KEY = "anchor_is_floor"
+
+_CATEGORIES_YAML = pathlib.Path(__file__).resolve().parents[1] / "categories.yaml"
+
+
+@functools.cache
+def floor_anchor_categories(path: pathlib.Path | None = None) -> frozenset[str]:
+    """Categories whose registry anchor is a FLOOR, from categories.yaml.
+
+    A floor anchor closes gaps but never opens them: absence from the registry
+    is not evidence of absence, because the registry's scope is narrower than
+    the category by construction (see §3). Cached, because the view is rebuilt
+    per run and the file cannot change mid-process."""
+    import yaml
+
+    with open(path or _CATEGORIES_YAML) as f:
+        cats = yaml.safe_load(f)["categories"]
+    return frozenset(slug for slug, entry in cats.items()
+                     if bool((entry or {}).get(FLOOR_ANCHOR_KEY)))
+
+
+def check_floor_anchors(coverage, floors: frozenset[str] | None = None) -> None:
+    """Refuse a floor flag on a category with no registry anchor measured.
+
+    Pure, so the drift check can run against a synthetic measurement. A floor
+    is a floor UNDER something: flagging a category whose roster was never
+    ingested would silently declare "the veto does not apply here" for a
+    category where the veto was never going to fire anyway (an unanchored
+    category already keeps everything), and would then go on being wrong once
+    an anchor DID land. `coverage` is measure_anchor_coverage's frame or any
+    iterable of mappings carrying `category`, `anchor_sources` and
+    `anchor_poi`."""
+    floors = floor_anchor_categories() if floors is None else floors
+    rows = (coverage.to_dict("records") if hasattr(coverage, "to_dict")
+            else list(coverage))
+    seen = {str(r["category"]): r for r in rows}
+    bad: list[str] = []
+    for cat in sorted(floors):
+        row = seen.get(cat)
+        if row is None:
+            bad.append(f"{cat} (not measured at all)")
+        elif not row.get("anchor_sources") or not (row.get("anchor_poi") or 0) > 0:
+            bad.append(f"{cat} (no registry source in staging.poi)")
+    if bad:
+        raise ValueError(
+            f"{FLOOR_ANCHOR_KEY} is set in categories.yaml for a category with "
+            "no registry anchor loaded, which is meaningless — a floor anchor "
+            "is a floor UNDER a roster: " + "; ".join(bad)
+            + ". Ingest the anchor, or drop the flag.")
+
 
 #: Named supply sets -> the boolean column on analysis.poi_supply
 #: (sql/003_supply_sets.sql, extended by sql/006_principled_supply.sql).
@@ -209,16 +295,23 @@ def build_category_anchor(con, year: int | None = None,
     import datetime
 
     df = measure_anchor_coverage(con, year, boroughs)
+    # D69: the flag is config, but it is PERSISTED beside the measurement so
+    # sql/013's view stays self-contained SQL and so a written row says which
+    # rule produced the supply it describes.
+    check_floor_anchors(df)
+    floors = floor_anchor_categories()
     used_year = con.execute(
         "SELECT max(year) FROM analysis.zip_category_establishments"
     ).fetchone()[0] if year is None else year
     out = df.copy()
+    out["anchor_is_floor"] = out["category"].isin(floors)
     out["year"] = used_year
     out["boroughs"] = ",".join(boroughs) if boroughs else "ALL"
     out["threshold"] = ANCHOR_COVERAGE_MIN
     out["run_at"] = datetime.datetime.now(datetime.timezone.utc)
     out = out[["category", "anchor_sources", "anchor_poi", "zbp_estab", "n_zips",
-               "anchor_coverage", "threshold", "qualifies", "year", "boroughs", "run_at"]]
+               "anchor_coverage", "threshold", "qualifies", "anchor_is_floor",
+               "year", "boroughs", "run_at"]]
     con.execute("DELETE FROM analysis.category_anchor")
     con.register("_ca", out)
     try:
@@ -245,11 +338,19 @@ def supply_hash(con, supply_set: str = DEFAULT_SUPPLY_SET) -> str:
     counts = dict(con.execute(
         f"SELECT category, count(*) FROM analysis.poi_supply WHERE {pred} GROUP BY 1"
     ).fetchall())
-    try:
-        anchors = sorted(r[0] for r in con.execute(
-            "SELECT category FROM analysis.category_anchor WHERE qualifies").fetchall())
-    except Exception:                     # table not yet created -> no anchors
-        anchors = []
+    def _cats(predicate: str) -> list[str]:
+        try:
+            return sorted(r[0] for r in con.execute(
+                f"SELECT category FROM analysis.category_anchor WHERE {predicate}"
+            ).fetchall())
+        except Exception:                 # table/column not yet created
+            return []
+
+    anchors = _cats("qualifies")
+    # Read from the TABLE, not from categories.yaml: the hash has to describe
+    # the rule the view actually applied on this database, and a config edit
+    # that has not been re-measured has not applied anything.
+    floors = _cats("anchor_is_floor")
     blob = json.dumps({
         "supply_set": supply_set,
         "match_m": MATCH_METERS,
@@ -258,6 +359,7 @@ def supply_hash(con, supply_set: str = DEFAULT_SUPPLY_SET) -> str:
         "aggregators": sorted(AGGREGATOR_SOURCES),
         "anchor_min": ANCHOR_COVERAGE_MIN,
         "anchored": anchors,
+        "floor_anchors": floors,
         "counts": {k: int(v) for k, v in sorted(counts.items())},
     }, sort_keys=True)
     return hashlib.sha256(blob.encode()).hexdigest()[:12]
