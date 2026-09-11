@@ -260,17 +260,61 @@ sources:
     name: NYS Office of Professions — registered pharmacies
     tier: city
     city: nyc
-    role: poi
-    status: planned
-    url: https://www.op.nysed.gov/professions/pharmacy
+    role: excluded
+    status: excluded
+    url: https://eservices.nysed.gov/professions/verification-search
     geography: address
     temporal: {start: null, end: current, grain: snapshot}
     cost: {amount: 0, unit: total}
     bias: Registered establishments; address-only, needs geocoding.
     notes: >
-      Candidate anchor for the pharmacy category. Bulk access NOT verified —
-      the site is a licence-verification lookup; check data.ny.gov for a bulk
-      file before ticketing.
+      EXCLUDED 2026-09-11 — bulk access verified ABSENT, not merely
+      unverified. NYSED Office of the Professions publishes establishment
+      registration status only through a one-record-at-a-time verification
+      form; there is no export, no API and no bulk file (op.nysed.gov/data
+      404s), and neither data.ny.gov nor health.data.ny.gov carries a pharmacy
+      establishment dataset. Superseded as the pharmacy anchor by
+      nys_medicaid_pharmacies, which stands in for it: Medicaid enrolment
+      requires a current NYSED establishment registration.
+
+  - id: nys_medicaid_pharmacies
+    name: NYS Medicaid Enrolled Provider Listing — retail pharmacies
+    tier: city
+    city: nyc
+    role: poi
+    status: verified
+    url: https://health.data.ny.gov/d/keti-qx5t
+    dataset_id: keti-qx5t
+    geography: point
+    temporal: {start: null, end: current, grain: snapshot}
+    cost: {amount: 0, unit: total}
+    bias: >
+      ANCHOR for the pharmacy category (was 0.000 coverage vs 1,330 MN+BK ZBP
+      establishments). Active FFS enrolments only, so a pharmacy that serves no
+      Medicaid patient at all — concierge, compounding, brand-new — is absent
+      by construction; that slice is small and skews AFFLUENT, the opposite of
+      the bias that makes a D52 veto dangerous. Excludes hospital, clinic and
+      specialty (infusion/mail-order) pharmacies by design, and the individual
+      SUPERVISING PHARMACIST enrolments. `mmis_name` is the legal entity, not
+      the awning, so ~925 of 2,415 records sit within 40 m of an aggregator
+      record that the dedup name rule refuses to fuse; 421 of those survive
+      D52's veto as corroborated aggregator clusters and are counted twice.
+    notes: >
+      Verified live 2026-09-11. NYC extract: 6,758 rows whose
+      profession_or_service contains PHARM — 2,424 PHARMACY, 2,911 SUPERVISING
+      PHARMACIST, 1,270 HOSPITAL PHARMACY, 142 CLINIC PHARMACY, 11 SPECIALTY
+      PHARMACY. Lat/lon published by the State on 100% of PHARMACY rows, of
+      which 8 are (0,0) null-island and are dropped. File date 2026-09-07,
+      refreshed weekly. `mmis_id` is per-PROVIDER, not per-storefront (Ideal
+      Care Pharmacy enrols two Avenue U locations under one id), so the record
+      key is mmis_id@address-slug. Defensible as a pharmacy roster in NY
+      specifically because of the NYRx carve-out (2023-04-01): the pharmacy
+      benefit for ALL Medicaid members, managed care included, runs through
+      FFS, so a pharmacy serving any Medicaid member must be enrolled here.
+      Rejected alternative: CMS NPPES taxonomy 3336C0003X — no coordinates,
+      1,200-record API enumeration cap (Brooklyn truncates), and a lifetime
+      enumeration with no usable deactivation signal (status 'A' on 100% of
+      returns, ~1.6-2x the active Medicaid count).
   - id: google_places
     name: Google Places API — Nearby Search
     tier: universal

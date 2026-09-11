@@ -114,6 +114,20 @@ def source_rank(category: str, source_id: str) -> int:
         # would keep an aggregator's name and geometry for a cluster the
         # registry anchors -- the opposite of what source authority is for.
         order = ["nyc_dohmh_childcare"] + _TAIL
+    elif category == "pharmacy":
+        # The NYS Medicaid enrolled-pharmacy roster is a government enrolment
+        # registry (and enrolment requires a current NYSED establishment
+        # registration), so it wins canonical selection over the aggregators
+        # exactly as DOHMH does for food. Same trap as childcare in D65:
+        # without this branch the source falls through to the `else` and
+        # scores WORSE than Overture (rank 5 vs 0), so an aggregator's name
+        # and geometry would stay canonical for every cluster the registry
+        # anchors.
+        #
+        # Note this branch does NOT help where the legal name and the trade
+        # name disagree -- those never enter the same cluster at all; see
+        # sources/cities/nyc/nys_medicaid_pharmacy.py.
+        order = ["nys_medicaid_pharmacies"] + _TAIL
     else:
         order = _TAIL
     return order.index(source_id) if source_id in order else len(order)

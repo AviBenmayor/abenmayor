@@ -79,6 +79,17 @@ SHOP_TYPES = {
 }
 assert list(SHOP_TYPES) == wx.STOREFRONT_GAP_COLUMNS
 
+#: SQL types for wx.AGE_FIT_GAP_COLUMNS (D63/D69), in that order. Same shape
+#: and same reason again: a fixture declaring two of three would let
+#: `has_age_fit_columns` skip the whole ranking block and every assertion
+#: below would pass against nulls it never had to produce.
+AGE_TYPES = {
+    "age_fit_lead": "REAL",
+    "age_fit_lead_moe": "REAL",
+    "gap_score_fit": "REAL",
+}
+assert list(AGE_TYPES) == wx.AGE_FIT_GAP_COLUMNS
+
 
 @pytest.fixture()
 def con():
@@ -109,11 +120,22 @@ def con():
     # ...and the five storefront columns model/storefronts.py writes (sql/012),
     # APPENDED after the pipeline block exactly as the real view exposes them.
     shop = ", ".join(f"{c} {t}" for c, t in SHOP_TYPES.items())
+    # ...and the three age-fit ranking columns model/age_fit.py writes onto
+    # analysis.address (sql/002 D63 block), APPENDED after the storefront block
+    # exactly as the real view exposes them.
+    age = ", ".join(f"{c} {t}" for c, t in AGE_TYPES.items())
     c.execute(f"""CREATE TABLE analysis.address_gaps (
         address_id VARCHAR, lon DOUBLE, lat DOUBLE, borough VARCHAR,
         units_capped FLOAT, nta_code VARCHAR, neighborhood VARCHAR,
         eligible BOOLEAN, gap_score FLOAT, lead_category VARCHAR,
-        supply_set VARCHAR, supply_hash VARCHAR, {pipe}, {shop}, {cols})""")
+        supply_set VARCHAR, supply_hash VARCHAR, {pipe}, {shop}, {age}, {cols})""")
+    # The per-category table the LEAD category's `age_fit_source` is joined
+    # from. Column subset of the real analysis.address_category (sql/002) in
+    # the real relative order -- `age_fit_source` is per CATEGORY, so it cannot
+    # be read off the address_gaps view.
+    c.execute("CREATE TABLE analysis.address_category (address_id VARCHAR, "
+              "borough VARCHAR, category VARCHAR, age_fit REAL, "
+              "age_fit_moe REAL, age_fit_source VARCHAR)")
     # analysis.address carries the two run stamps the overlays count from;
     # analysis.dev_pipeline and analysis.storefront are the overlays' own
     # tables.
@@ -254,7 +276,8 @@ def _add_storefront(con, premises, boro, seq=1, filing=SNAP_FILING,
 
 
 def _add_gap(con, address_id, boro, cat="laundry", ratio=2.0, eligible=True,
-             extra=(), units=10.0, score=1.5, pipe=None, shop=None):
+             extra=(), units=10.0, score=1.5, pipe=None, shop=None,
+             age=None, age_source=None, lead=None):
     """One address row. `cat` (plus anything in `extra`) is beyond reach at
     `ratio`; every other category sits at 0.5, comfortably inside it.
 
@@ -270,7 +293,7 @@ def _add_gap(con, address_id, boro, cat="laundry", ratio=2.0, eligible=True,
     cols = ["address_id", "lon", "lat", "borough", "units_capped", "nta_code",
             "neighborhood", "eligible", "gap_score", "lead_category"]
     vals = [address_id, lon, lat, boro, units, boro + "0001",
-            "Somewhere in " + boro, eligible, score, cat]
+            "Somewhere in " + boro, eligible, score, lead or cat]
     # `pipe` is the seven PIPELINE_GAP_COLUMNS as a dict; anything not named
     # stays NULL, which is the state of a database whose `loci pipeline` has
     # not run for that address.
@@ -282,11 +305,24 @@ def _add_gap(con, address_id, boro, cat="laundry", ratio=2.0, eligible=True,
     shop = dict(shop or {})
     cols += list(SHOP_TYPES)
     vals += [shop.get(c) for c in SHOP_TYPES]
+    # `age` is the three AGE_FIT_GAP_COLUMNS as a dict; anything not named
+    # stays NULL, the state of a category with no live curve. NULL is the
+    # DEFAULT here on purpose -- eleven of the fifteen categories are in it.
+    age = dict(age or {})
+    cols += list(AGE_TYPES)
+    vals += [age.get(c) for c in AGE_TYPES]
     for c in wx.ALLCATS:
         cols += [f"{c}_ratio", f"{c}_nearest_m"]
         vals += [ratios[c], 100.0]
     con.execute(f"INSERT INTO analysis.address_gaps ({', '.join(cols)}) "
                 f"VALUES ({', '.join('?' * len(vals))})", vals)
+    # The per-category row the lead category's age_fit_source is joined from.
+    # Written only when asked: an address with no address_category row is the
+    # normal state for a category that was never fitted.
+    if age_source is not None:
+        con.execute("INSERT INTO analysis.address_category "
+                    "(address_id, borough, category, age_fit_source) VALUES (?, ?, ?, ?)",
+                    [address_id, boro, lead or cat, age_source])
 
 
 def test_borough_filter_excludes_other_boroughs(con):
@@ -870,16 +906,26 @@ def test_pipeline_gap_columns_account_for_every_model_column():
 
 
 def test_gap_layer_advertises_exactly_the_columns_it_packs(con):
-    """The exported layer names its own pipeline contract, and the four slots
-    are APPENDED to the original four -- lon/lat/borough/units keep indices
-    0..3 or every existing reader breaks silently."""
+    """The exported layer names every contract it carries -- pipeline,
+    storefront and age-fit -- and the pipeline slots are APPENDED to the
+    original four: lon/lat/borough/units keep indices 0..3 or every existing
+    reader breaks silently.
+
+    The D63/D69 ranking block must NOT have moved the stride: it rides in its
+    own parallel arrays precisely so `pts` stays a pure numeric array of 12."""
     _add_gap(con, "a", "MN", pipe={"units_permitted_400m": 250,
                                    "units_completed_24mo_400m": 40})
     layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
     assert layer["pipelineColumns"] == wx.PIPELINE_GAP_COLUMNS
+    assert layer["storefrontColumns"] == wx.STOREFRONT_GAP_COLUMNS
+    assert layer["ageFitColumns"] == wx.AGE_FIT_GAP_COLUMNS
     assert layer["stride"] == 12
     assert layer["pts"][:4] == [PLACES["MN"][0], PLACES["MN"][1], 0, 10]
     assert layer["pts"][4:6] == [250, 40]
+    # One entry per point in every ranking array, and no ranking value in pts.
+    fit = layer["ageFit"]
+    for key in ("score", "value", "moe", "scoreFit", "lead", "source"):
+        assert len(fit[key]) == layer["n"], key
 
 
 def test_gap_layer_carries_the_pipeline_reading(con):
@@ -1434,3 +1480,235 @@ def test_nta_layer_carries_vacancy_without_moving_the_missing_walk(con):
     assert layer["vacants"]["business"] == ["RETAIL"]
     assert layer["vacants"]["lease"] == [0]
     assert layer["storefrontColumns"] == wx.STOREFRONT_GAP_COLUMNS
+
+
+# ------------------------------------------------ age fit (D63/D64/D69, 2026-09-11)
+#
+# The age-fit multiplier is a SEPARATE RANKING COLUMN, never a filter, and
+# three of its failure modes are silent:
+#
+#  (a) NULL BECOMING 1.0. Eleven of the fifteen categories have no curve at
+#      all. `age_fit_lead IS NULL` means "never fitted"; 1.0 means "fitted, and
+#      neutral". Collapsing the two would let the map claim a curve the model
+#      never estimated -- and `float(None or 0)` / a numeric stride slot is
+#      exactly how it happens. The block therefore rides in parallel arrays and
+#      the written JSON must contain literal nulls.
+#
+#  (b) A MULTIPLIER WITHOUT ITS MOE. Childcare's F4 band is three times bar's
+#      (D69), so the MOE travels with the value in the file. A file that
+#      shipped the value alone would let a renderer show 2.31 as if it were
+#      2.31 +/- 0.06.
+#
+#  (c) A CAVEAT THAT IS NOT THE MODEL'S. The text in meta.json must be
+#      model/age_fit.AGE_FIT_DISCLAIMER VERBATIM -- a paraphrase is how a
+#      caveat gets softer than the finding it guards.
+
+
+def _write_curve(d, category, spec="poi_composition_v1",
+                 fitted_at="2026-09-11T15:11:46+00:00", supply_hash="06bb6f357cc1",
+                 median_moe=0.178):
+    """One `data/interim/age_fit_<category>.json`, shaped like the real fit
+    writer's output -- the keys the export actually reads."""
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"age_fit_{category}.json").write_text(json.dumps({
+        "category": category, "spec": spec, "fitted_at": fitted_at,
+        "radius_m": 400.0, "primary_age_term": "under_18_share",
+        "inputs": {"acs_year": 2023, "supply_hash": supply_hash,
+                   "screen_supply_hash": supply_hash, "n_target": 2657,
+                   "hash": "9be7c7581046"},
+        "multiplier": {"median_moe": median_moe, "p10": 0.9, "p50": 1.03, "p90": 1.21},
+    }))
+    return d
+
+
+def test_age_fit_gap_columns_match_the_model_writer():
+    """DRIFT TEST. The three columns this export carries are exactly the three
+    model/age_fit.py writes onto analysis.address, and the directory it reads
+    curves from is the one the fitter writes them to. Both are held as literals
+    here because model/age_fit.py pulls in osmnx and this module must stay
+    importable without it -- so the only thing keeping them honest is this."""
+    from loci.model import age_fit as af
+
+    assert wx.AGE_FIT_GAP_COLUMNS == af.ADDRESS_AGE_FIT_COLUMNS
+    assert wx.AGE_FIT_DIR == af.INTERIM_DIR
+    assert wx.AGE_FIT_SOURCE_COLUMN in af.AGE_FIT_COLUMNS
+    # One score, two views: the gap layer and the all-opportunities layer must
+    # round gap_score the same way or the same address reads two values.
+    assert wx.GAP_SCORE_DP == wx.SCORE_DP
+
+
+def test_gap_layer_carries_the_age_adjusted_ranking(con):
+    """Both scores, the multiplier, its MOE, whose curve it is and what spec
+    that curve was fitted under, all for one address.
+
+    The lead category is deliberately NOT the file's category: in
+    `gaps/laundry.json` an address's age_fit_lead can belong to `bar`, and the
+    export has to carry the lead so the popup can say so."""
+    _add_gap(con, "a", "MN", cat="laundry", lead="bar", score=2.0,
+             age={"age_fit_lead": 1.2345, "age_fit_lead_moe": 0.0554,
+                  "gap_score_fit": 2.469},
+             age_source="sla_composition_v1")
+    layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
+    fit = layer["ageFit"]
+    assert fit["score"] == [2.0]
+    assert fit["value"] == [1.235]          # rounded to AGE_FIT_DP, never truncated
+    assert fit["moe"] == [0.055]            # the MOE travels with the value
+    assert fit["scoreFit"] == [2.469]
+    assert fit["lead"] == [wx.ALLCATS.index("bar")]
+    assert fit["sources"] == ["sla_composition_v1"]
+    assert fit["source"] == [0]
+
+
+def test_null_age_fit_exports_as_json_null_never_a_neutral_one(con, tmp_path):
+    """THE ADVERSARIAL CASE. An address in a category with no curve must export
+    `null` for the multiplier, its MOE and the age-adjusted score -- never 1.0
+    (which would claim a curve that says "neutral"), never 0 (which would claim
+    a curve that says "nobody here"), and never the un-multiplied gap_score
+    under an age-adjusted label.
+
+    Asserted against the WRITTEN FILE as well as the packed layer, because the
+    distinction only survives if `json.dumps` emits a literal null."""
+    _add_gap(con, "a", "MN", score=1.5)              # no age= at all
+    bundle = wx.collect(con, ["MN"])
+    fit = bundle["gaps"]["laundry"]["ageFit"]
+    assert fit["value"] == [None] and fit["moe"] == [None]
+    assert fit["scoreFit"] == [None]
+    assert fit["source"] == [None] and fit["sources"] == []
+    assert fit["score"] == [1.5]                     # the un-adjusted score still ships
+    wx.write(bundle, tmp_path)
+    raw = (tmp_path / "gaps" / "laundry.json").read_text()
+    assert '"value":[null]' in raw and '"moe":[null]' in raw
+    assert '"scoreFit":[null]' in raw
+    on_disk = json.loads(raw)["ageFit"]
+    assert on_disk["value"] == [None] and on_disk["scoreFit"] == [None]
+
+
+def test_meta_age_fit_lists_exactly_the_live_curves_and_the_caveat(con, tmp_path):
+    """A curve is LIVE when its JSON is on disk -- that is the state D69 used
+    to retire pharmacy's, by MOVING the file out rather than editing a flag. So
+    the block must list exactly the files present, carry each one's fit
+    timestamp and supply hash, and carry the caveat VERBATIM."""
+    from loci.model.age_fit import AGE_FIT_DISCLAIMER
+
+    curves = _write_curve(tmp_path / "interim", "childcare")
+    _write_curve(curves, "bar", spec="sla_composition_v1",
+                 fitted_at="2026-09-11T15:11:45+00:00", median_moe=0.055)
+    _add_gap(con, "a", "MN")
+    _set_provenance(con, supply_hash="06bb6f357cc1")
+    out = tmp_path / "out"
+    wx.write(wx.collect(con, ["MN"], curve_dir=curves), out)
+    meta = json.loads((out / "meta.json").read_text())["ageFit"]
+
+    assert meta["categories"] == ["bar", "childcare"]      # exactly the files present
+    assert "pharmacy" not in meta["curves"]                # retired == no file
+    assert meta["curves"]["childcare"]["fittedAt"] == "2026-09-11T15:11:46+00:00"
+    assert meta["curves"]["childcare"]["supplyHash"] == "06bb6f357cc1"
+    assert meta["curves"]["childcare"]["spec"] == "poi_composition_v1"
+    # The band the D69 next action is about: childcare's is three times bar's,
+    # and a renderer that cannot read it cannot obey "never without its MOE".
+    assert meta["curves"]["childcare"]["medianMoe"] == 0.178
+    assert meta["curves"]["bar"]["medianMoe"] == 0.055
+    assert meta["caveat"] == AGE_FIT_DISCLAIMER            # verbatim, not a paraphrase
+    assert meta["available"] is True and meta["stale"] == [] and meta["warning"] is None
+
+
+def test_meta_age_fit_is_empty_when_no_curve_is_live(con, tmp_path):
+    """No file on disk means no category may be offered the age-adjusted
+    ranking -- and the caveat still ships, because the columns can still hold a
+    multiplier a previous run applied."""
+    from loci.model.age_fit import AGE_FIT_DISCLAIMER
+
+    _add_gap(con, "a", "MN")
+    meta = wx.collect(con, ["MN"], curve_dir=tmp_path / "nothing-here")["ageFit"]
+    assert meta["categories"] == [] and meta["curves"] == {}
+    assert meta["available"] is False
+    assert meta["caveat"] == AGE_FIT_DISCLAIMER
+
+
+def test_meta_age_fit_warns_when_the_curve_was_fitted_on_another_supply(con, tmp_path):
+    """Same class of error as the D52 supply-set mismatch: a multiplier
+    estimated on one supply, applied to gaps measured against another, is a
+    number the model never fitted for these addresses. The map has to say so on
+    its own face, not only in a terminal nobody kept."""
+    curves = _write_curve(tmp_path / "interim", "childcare", supply_hash="deadbeef0000")
+    _add_gap(con, "a", "MN")
+    _set_provenance(con, supply_hash="06bb6f357cc1")
+    meta = wx.collect(con, ["MN"], curve_dir=curves)["ageFit"]
+    assert meta["stale"] == ["childcare"]
+    assert "AGE-FIT SUPPLY MISMATCH" in meta["warning"]
+    assert "06bb6f357cc1" in meta["warning"]
+
+
+def test_export_survives_a_database_without_the_age_fit_columns(con, tmp_path):
+    """A database built before `loci age-fit apply` still exports: the ranking
+    arrays ship null so the browser never has to branch on which vintage of
+    file it fetched -- and `columnsPresent` false says WHY they are null, so a
+    reader cannot mistake "never applied" for "every curve says neutral"."""
+    _add_gap(con, "a", "MN", score=1.5)
+    for c in wx.AGE_FIT_GAP_COLUMNS:
+        con.execute(f"ALTER TABLE analysis.address_gaps DROP COLUMN {c}")
+    assert wx.has_age_fit_columns(con) is False
+    bundle = wx.collect(con, ["MN"])
+    layer = bundle["gaps"]["laundry"]
+    assert layer["stride"] == 12                     # unchanged, as ever
+    fit = layer["ageFit"]
+    assert fit["value"] == [None] and fit["moe"] == [None] and fit["scoreFit"] == [None]
+    assert fit["score"] == [1.5]                     # gap_score is not an age-fit column
+    assert bundle["ageFit"]["columnsPresent"] is False
+    assert bundle["ageFit"]["available"] is False
+    wx.write(bundle, tmp_path)                       # and the whole export still writes
+
+
+def test_export_survives_a_database_with_no_address_category_table(con):
+    """`age_fit_source` is per CATEGORY, so it is joined rather than read off
+    the view. A database with no analysis.address_category must export a null
+    source and SAY the join was skipped -- never fail the whole map on a
+    missing table."""
+    _add_gap(con, "a", "MN", age={"age_fit_lead": 1.1, "age_fit_lead_moe": 0.2,
+                                  "gap_score_fit": 1.65})
+    con.execute("DROP TABLE analysis.address_category")
+    assert wx.has_age_fit_source(con) is False
+    bundle = wx.collect(con, ["MN"])
+    fit = bundle["gaps"]["laundry"]["ageFit"]
+    assert fit["value"] == [1.1] and fit["moe"] == [0.2]     # the multiplier survives
+    assert fit["source"] == [None] and fit["sources"] == []
+    assert bundle["ageFit"]["sourceJoined"] is False
+
+
+def test_age_fit_is_never_a_filter(con):
+    """D63's non-filtering rule, at the export. Two addresses with the same
+    ratio, one with a curve and one without, must BOTH be drawn -- a
+    multiplier changes the order of the gap layer, never its membership."""
+    _add_gap(con, "with_curve", "MN", age={"age_fit_lead": 0.4,
+                                           "age_fit_lead_moe": 0.1,
+                                           "gap_score_fit": 0.6})
+    _add_gap(con, "no_curve", "MN")
+    layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
+    assert sorted(layer["ids"]) == ["no_curve", "with_curve"]
+    assert layer["n"] == 2
+
+
+def test_identity_multiplier_is_distinguishable_from_a_fitted_neutral_one(con):
+    """THE SECOND ADVERSARIAL CASE, and the reason the source is joined at all.
+
+    sql/002's D63 block writes `age_fit_lead = 1.0` with a NULL MOE when the
+    address's LEAD category has no fitted curve -- the identity multiplier, so
+    gap_score_fit == gap_score exactly. That is NOT a curve that says "this
+    block is exactly average", and the file has to let a renderer tell the two
+    apart. `age_fit_source` is that discriminator: absent on the identity row,
+    present on the fitted one."""
+    _add_gap(con, "identity", "MN", score=1.5,
+             age={"age_fit_lead": 1.0, "age_fit_lead_moe": None,
+                  "gap_score_fit": 1.5})                       # no age_source
+    _add_gap(con, "fitted", "MN", score=1.5, lead="bar",
+             age={"age_fit_lead": 1.0, "age_fit_lead_moe": 0.06,
+                  "gap_score_fit": 1.5},
+             age_source="sla_composition_v1")
+    fit = wx.collect(con, ["MN"])["gaps"]["laundry"]["ageFit"]
+    j = {a: i for i, a in enumerate(wx.collect(con, ["MN"])["gaps"]["laundry"]["ids"])}
+    assert fit["value"][j["identity"]] == 1.0
+    assert fit["moe"][j["identity"]] is None
+    assert fit["source"][j["identity"]] is None       # "no curve", not "neutral curve"
+    assert fit["value"][j["fitted"]] == 1.0
+    assert fit["moe"][j["fitted"]] == 0.06
+    assert fit["source"][j["fitted"]] == 0            # a real curve that reads 1.0

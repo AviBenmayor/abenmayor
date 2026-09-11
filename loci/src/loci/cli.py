@@ -28,6 +28,10 @@
     loci ingest-alcohol [--limit N] [--dry-run]         (SLA alcohol overlay, not a category)
     loci ingest-dcwp [--limit N] [--apply]              (DCWP retail-laundry anchor, D55;
                                                         defaults to pending/dry, --apply promotes)
+    loci ingest-nys-medicaid-pharmacy [--limit N] [--apply]
+                                                       (NYS Medicaid retail-pharmacy
+                                                        anchor; defaults to pending/dry,
+                                                        --apply promotes)
     loci zbp-compare [--year] [--by-source] [--supply-set all|principled|corroborated|
                      registry_anchored|active|active_corroborated] [--supply-sets]
                      [--borough Manhattan,Brooklyn]
@@ -1259,6 +1263,86 @@ def ingest_dohmh_childcare(
                   f"(replaced {deleted:,}). Re-run `loci dedup` before any score.")
 
 
+@app.command(name="ingest-nys-medicaid-pharmacy")
+def ingest_nys_medicaid_pharmacy(
+    limit: int = typer.Option(None, help="Cap rows fetched (for smoke tests)."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+        help="Fetch + normalize and print the summary; write nothing at all."),
+    apply: bool = typer.Option(False, "--apply",
+        help="Promote staging.poi_nys_medicaid_pharmacy_pending into staging.poi. "
+             "Run `loci dedup` after."),
+    stage: bool = typer.Option(True, "--stage/--no-stage",
+        help="Fetch and land into the pending table. --no-stage --apply promotes "
+             "what is already staged."),
+) -> None:
+    """Land the pharmacy anchor — the registry source `pharmacy` lacked (D66/D69).
+
+    DEFAULTS TO PENDING, like `loci ingest-dcwp` and `loci
+    ingest-dohmh-childcare`: the ingest writes
+    staging.poi_nys_medicaid_pharmacy_pending, never staging.poi, so it cannot
+    race `loci dedup` reading the supply universe. `--apply` is the separate,
+    explicit promotion step.
+
+    Dataset is health.data.ny.gov `keti-qx5t`, the NYS Medicaid Enrolled
+    Provider Listing, filtered to `profession_or_service = 'PHARMACY'`. It is
+    NOT the NYSED Board of Pharmacy registry the registry originally planned
+    against — that one has no bulk download at all, only a one-record
+    verification form — and it stands in for it because Medicaid enrolment
+    requires a current NYSED establishment registration. Full reasoning, the
+    rejected NPPES alternative, the (0,0) null-island drop, the composite
+    record key, and the legal-name-vs-trade-name double count are in
+    sources/cities/nyc/nys_medicaid_pharmacy.py."""
+    from loci.sources.cities.nyc import nys_medicaid_pharmacy as rx
+
+    def _summary(recs, dropped) -> None:
+        boros = Counter(r.attrs.get("borough") for r in recs)
+        console.print(f"  by borough      "
+                      f"{dict(sorted(boros.items(), key=lambda kv: -kv[1]))}")
+        console.print(f"  MN+BK           "
+                      f"{sum(v for k, v in boros.items() if k in ('MN', 'BK')):,}")
+        console.print(f"  of which active {sum(1 for r in recs if r.attrs.get('active')):,}")
+        # Every drop is printed. A drop nobody can see is how a silent zero
+        # gets ingested -- `null_island` in particular is a failed State
+        # geocode, not an absent pharmacy.
+        console.print(f"  dropped         {dict(sorted(dropped.items())) or '{}'}")
+
+    if dry_run:
+        ad = rx.NysMedicaidPharmacyAdapter()
+        recs = ad.load(None, limit=limit, dry_run=True)
+        console.print(f"[dim]--dry-run:[/] {len(recs):,} retail-pharmacy records, "
+                      f"nothing written.")
+        _summary(recs, ad.dropped)
+        raise typer.Exit(0)
+
+    con = locidb.connect()
+    locidb.init_schema(con)
+
+    if stage:
+        recs, dropped = rx.stage_pending(con, limit=limit)
+        table = Table(title="NYS Medicaid pharmacies -> "
+                            "staging.poi_nys_medicaid_pharmacy_pending")
+        table.add_column("borough")
+        table.add_column("staged", justify="right")
+        boros = Counter(r.attrs.get("borough") for r in recs)
+        for b in sorted(x for x in boros if x):
+            table.add_row(b, f"{boros[b]:,}")
+        table.add_row("[bold]total[/]", f"[bold]{len(recs):,}[/]")
+        console.print(table)
+        _summary(recs, dropped)
+
+    if not apply:
+        n = con.execute(f"SELECT count(*) FROM {rx.PENDING_TABLE}").fetchone()[0]
+        console.print(f"[green]ok[/] {n:,} rows pending in {rx.PENDING_TABLE}. "
+                      f"Nothing written to staging.poi.")
+        console.print("[dim]to promote:  loci ingest-nys-medicaid-pharmacy "
+                      "--no-stage --apply  &&  loci dedup[/]")
+        raise typer.Exit(0)
+
+    deleted, inserted = rx.apply_pending(con)
+    console.print(f"[green]ok[/] promoted {inserted:,} rows into staging.poi "
+                  f"(replaced {deleted:,}). Re-run `loci dedup` before any score.")
+
+
 # ======================================================================
 # GTM-110 region (address-level demand annotation). Appended by the
 # GTM-110 session; keep edits inside this delimited block.
@@ -1478,6 +1562,78 @@ def pipeline(
         raise typer.Exit(0)
     console.print(f"[green]ok[/] annotated {written:,} rows -> analysis.address "
                   f"(pipeline columns; graph {report['graph_version']})")
+    if not report.get("activity_evidence"):
+        console.print("[yellow]note:[/] analysis.dev_pipeline carries no permit-activity "
+                      "evidence, so units_active_400m / units_stalled_400m were written "
+                      "NULL (not 0). Run `loci pipeline-activity` then re-run this.")
+
+
+@app.command(name="pipeline-activity")
+def pipeline_activity(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL (D48 default MN,BK)."),
+    asof: str = typer.Option(None, help="Date the 12-month / 5-year rule counts back from (YYYY-MM-DD; default today)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Fetch, classify and report; write nothing."),
+) -> None:
+    """Split `permitted` into permitted-and-building vs permitted-and-stalled.
+
+    Fetches DOB permit issuance and RENEWAL dates (`ipu4-2q9a` for BIS jobs,
+    `rbx6-tga4` for DOB NOW jobs, both daily) for every analysis.dev_pipeline
+    job in stage permitted / partially_complete, and UPDATEs five columns on
+    that table: last_permit_issued, last_permit_expires, permit_evidence_source,
+    activity_status and permit_activity_asof.
+
+    `stage` IS NOT TOUCHED -- it stays DCP-derived. activity_status is an
+    orthogonal axis: "permitted AND building" is a two-column read. The rule
+    (active <= 12 months, lapsed 0-12 months expired, stalled > 12 months
+    expired or > 5 years quiet) and every caveat live in the header of
+    sql/014_dev_pipeline_activity.sql. A renewed permit is evidence somebody
+    paid a fee, NOT that concrete was poured; this separates abandoned from
+    not-abandoned, which is the falsifiable half of the question.
+
+    The address-grain measures (units_active_400m, units_stalled_400m) are
+    written by `loci pipeline`, not here -- run this first, then `loci pipeline`.
+    """
+    import datetime as _dt
+
+    from loci.sources.cities.nyc import dob_permits as dobp
+
+    boros = tuple(_parse_boroughs(boroughs))
+    when = _dt.date.fromisoformat(asof) if asof else _dt.date.today()
+
+    con = locidb.connect(read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+
+    console.print(f"[dim]permit activity for {','.join(boros)} as of {when} "
+                  f"({dobp.BIS_DATASET} + {dobp.NOW_DATASET})…[/]")
+    out, report = dobp.build(con, boros, asof=when, dry_run=dry_run)
+    written = report.pop("_written", None)
+
+    console.print(f"{report['jobs_in_scope']:,} jobs in scope "
+                  f"({report['bis_jobs']:,} BIS + {report['now_jobs']:,} DOB NOW"
+                  + (f" + {report['other_shape']:,} unrecognised" if report["other_shape"] else "")
+                  + f") · {report['bis_permit_rows']:,} + {report['now_permit_rows']:,} permit rows "
+                  f"-> {report['jobs_with_evidence']:,} jobs with evidence, "
+                  f"{report['jobs_without_evidence']:,} without")
+    console.print(f"{report['renewed_last_12mo']:,} jobs issued or renewed a permit in the "
+                  f"last {dobp.ACTIVE_MONTHS} months")
+
+    t = Table(title=f"activity_status — {','.join(boros)} {'/'.join(dobp.ACTIVITY_STAGES)}")
+    t.add_column("activity_status"); t.add_column("jobs", justify="right")
+    t.add_column("net units", justify="right")
+    for status in dobp.ACTIVITY_STATUSES:
+        row = report["by_status"].get(status)
+        if row:
+            t.add_row(status, f"{int(row['count']):,}", f"{int(row['sum'] or 0):,}")
+    console.print(t)
+
+    if dry_run:
+        console.print("[dim]--dry-run:[/] nothing written.")
+        raise typer.Exit(0)
+    console.print(f"[green]ok[/] {written:,} jobs annotated -> analysis.dev_pipeline "
+                  f"(activity columns; `stage` untouched)")
+    console.print("[dim]next:[/] `loci pipeline` to push units_active_400m / "
+                  "units_stalled_400m onto analysis.address.")
 
 
 @app.command(name="ingest-storefronts")

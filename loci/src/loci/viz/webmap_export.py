@@ -157,6 +157,39 @@ between "a category is missing here" and "here is the door".
   filings at premises level that sql/012's header documents, and says "unknown"
   for the 16% with none.
 
+AGE FIT (D63/D64/D69, close-out 2026-09-11). NO NEW FILE -- a SECOND RANKING
+COLUMN on the gap layer. `gap_score` is the screen's own output; `gap_score_fit
+= gap_score * age_fit_lead` sits BESIDE it, and the map offers a toggle between
+the two orderings for the categories that have a live curve. It is never a
+filter: the same addresses are drawn either way, in a different order.
+
+  NULL IS A VALUE HERE, AND SO IS 1.0. Eleven of the fifteen categories have no
+  curve. `age_fit_lead IS NULL` means "never applied"; `1.0` with a NULL MOE
+  and a NULL source means "applied, but this address's LEAD category has no
+  curve, so the identity multiplier was used". Neither is "fitted, and neutral"
+  -- a claim the model never made. The block therefore rides in parallel arrays
+  where JSON `null` survives, not in `pts`, it carries the lead category's
+  `age_fit_source` as the discriminator, and the UI draws a point with no
+  fitted curve as UNRANKED rather than as mid-scale.
+
+  THE MULTIPLIER NEVER RENDERS WITHOUT ITS MOE. Childcare's F4 band is three
+  times bar's (Borough Park 2.306 +/- 0.811 against East Village 0.718 +/-
+  0.120, D69), so `age_fit_lead_moe` travels with the value everywhere, and the
+  popup prints the +/- whenever the value is non-null.
+
+  THE CAVEAT IS CARRIED VERBATIM, NOT PARAPHRASED. `age_fit_caveat()` returns
+  model/age_fit.AGE_FIT_DISCLAIMER unchanged and meta.json carries it; the UI
+  renders it UNTRUNCATED behind a one-line "supply-revealed; see caveat"
+  expander -- the same rule `demand_caveat_text` carries (D49/D57). The curve is
+  fitted on where the category's supply ALREADY is, so a low multiplier is
+  never evidence that a neighbourhood does not want the service.
+
+  LIVE MEANS A FILE ON DISK. `data/interim/age_fit_<category>.json` is written
+  only by a fit that passed its own F2/F3 gate, and D69 retired pharmacy's by
+  MOVING the stale JSON out of that directory. The meta block lists exactly the
+  categories with a file, each one's fit timestamp and the supply hash it was
+  estimated on, and warns when that hash disagrees with the gaps'.
+
 BOROUGH. `analysis.address_gaps.borough` carries two-letter codes ("MN");
 `analysis.hex.borough` carries full names ("Manhattan"). POIs have no borough
 column at all, so they are labelled the same way the address layer labels
@@ -293,6 +326,57 @@ STOREFRONT_RADIUS_M = 400
 #: silently re-scale the pipeline's distances too.
 VACANT_M_ROUND = 10
 
+# ---------------------------------------------------------------- age fit
+# D63/D64/D69. `age_fit_lead` is a SUPPLY-REVEALED multiplier on the LEAD
+# category's gap score, fitted on where that category's supply already sits
+# relative to resident age. It is a SEPARATE RANKING COLUMN and NEVER a filter:
+# `gap_score` is still the screen's own output, `gap_score_fit = gap_score *
+# age_fit_lead` sits beside it, and no address is added to or removed from the
+# gap layer by either number.
+#
+# THREE THINGS THIS EXPORT MUST NOT DO, each of which was a live risk:
+#
+#  (a) TURN NULL INTO 1.0. Eleven of the fifteen categories have no curve at
+#      all, and `age_fit_lead IS NULL` means "this category was never fitted".
+#      1.0 means "fitted, and the curve says neutral" -- a claim the model
+#      never made. So these ride in their OWN arrays, parallel to `pts`, where
+#      a JSON `null` survives; a stride slot cannot carry one, because every
+#      reader of `pts` expects a number and would coerce it to zero.
+#
+#  (b) RENDER A MULTIPLIER WITHOUT ITS MOE. Childcare's F4 ordering clears with
+#      a band THREE TIMES bar's (Borough Park 2.306 +/- 0.811 against East
+#      Village 0.718 +/- 0.120), so `age_fit_lead_moe` travels with
+#      `age_fit_lead` in the file and in the popup, always (D69).
+#
+#  (c) SHIP THE NUMBER WITHOUT THE CAVEAT. `age_fit_caveat()` is
+#      model/age_fit.AGE_FIT_DISCLAIMER verbatim, carried once in meta.json and
+#      rendered UNTRUNCATED by the UI -- the same rule `demand_caveat_text`
+#      already carries (D49/D57).
+#
+#: The analysis.address columns model/age_fit.py writes, in its own order. A
+#: drift test pins this to age_fit.ADDRESS_AGE_FIT_COLUMNS, so a fourth column
+#: added there forces a decision here instead of quietly never shipping.
+AGE_FIT_GAP_COLUMNS = ["age_fit_lead", "age_fit_lead_moe", "gap_score_fit"]
+#: `age_fit_source` is PER CATEGORY (analysis.address_category), not per
+#: address, so the lead category's value is joined in rather than read off the
+#: address_gaps view -- which deliberately does not pivot 30 mostly-NULL
+#: per-category columns. A database with no address_category (or one predating
+#: the column) exports `null` and the meta block says the join was skipped.
+AGE_FIT_SOURCE_TABLE = ("analysis", "address_category")
+AGE_FIT_SOURCE_COLUMN = "age_fit_source"
+#: Where `loci age-fit fit` writes its curves. Held as a literal rather than
+#: imported because model/age_fit.py pulls in osmnx (via model/address_gaps)
+#: and this module must stay importable without it; a drift test pins the two.
+AGE_FIT_DIR = pathlib.Path(__file__).resolve().parents[3] / "data" / "interim"
+AGE_FIT_GLOB = "age_fit_*.json"
+#: The multiplier and its MOE both sit in roughly [0.5, 2.0] and the popup
+#: prints two decimals, so three is one more than anything is read at.
+AGE_FIT_DP = 3
+#: gap_score / gap_score_fit rounding on the gap layer. Deliberately identical
+#: to the all-opportunities layer's SCORE_DP -- one score, two views, and a
+#: test pins them equal so a change in one cannot quietly rescale the other.
+GAP_SCORE_DP = 3
+
 # DOHMH is the detail source; the two cuisine-ish fallbacks each store their
 # taxonomy under a different attrs key, so the extraction is per source.
 DOHMH_SOURCE = "nyc_dohmh_restaurants"
@@ -412,40 +496,63 @@ def _poi_sql(boroughs: list[str], dcats: list[str],
 
 
 def _gap_sql(cat: str, boroughs: list[str], pipeline: bool = True,
-             storefront: bool = True) -> tuple[str, list]:
+             storefront: bool = True, age_fit: bool = True,
+             age_source: bool = True) -> tuple[str, list]:
     """Eligible addresses whose `cat` is beyond its reach tier (ratio > 1) --
     model/address_gaps.py's own `n_missing` definition, one category at a
     time.
 
-    `pipeline` selects the seven PIPELINE_GAP_COLUMNS and `storefront` the five
-    STOREFRONT_GAP_COLUMNS. Both are NULL-safe here on purpose: a database
-    whose `loci pipeline` or `loci storefronts` has not run still exports, it
-    just exports zeros and no nearest project or vacancy, and the UI hides the
-    reading rather than printing a confident "0 homes coming" / "no empty
-    storefront anywhere"."""
+    `pipeline` selects the seven PIPELINE_GAP_COLUMNS, `storefront` the five
+    STOREFRONT_GAP_COLUMNS and `age_fit` the three AGE_FIT_GAP_COLUMNS. All
+    three are NULL-safe here on purpose: a database whose `loci pipeline`,
+    `loci storefronts` or `loci age-fit apply` has not run still exports, it
+    just exports zeros and no nearest project or vacancy, and no multiplier,
+    and the UI hides the reading rather than printing a confident "0 homes
+    coming" / "no empty storefront anywhere" / a neutral 1.0 age fit.
+
+    `age_source` adds the LEFT JOIN that fetches the lead category's
+    `age_fit_source`; it is skipped when analysis.address_category does not
+    carry the column, and the meta block records that it was."""
     placeholders = ", ".join("?" for _ in boroughs)
-    pipe = (", " + ", ".join(PIPELINE_GAP_COLUMNS)) if pipeline else \
+    pipe = (", " + ", ".join(f"g.{c}" for c in PIPELINE_GAP_COLUMNS)) if pipeline else \
            ", " + ", ".join("NULL" for _ in PIPELINE_GAP_COLUMNS)
-    # APPENDED after the pipeline block, never inserted: both tails are read by
-    # position from their own end.
-    shop = (", " + ", ".join(STOREFRONT_GAP_COLUMNS)) if storefront else \
+    # APPENDED after the pipeline block, never inserted: every tail is read by
+    # position from its own end.
+    shop = (", " + ", ".join(f"g.{c}" for c in STOREFRONT_GAP_COLUMNS)) if storefront else \
            ", " + ", ".join("NULL" for _ in STOREFRONT_GAP_COLUMNS)
+    # ...and the D63/D69 ranking tail after that, in the same appended spirit.
+    # `gap_score` and `lead_category` lead it because the age-fit reading is
+    # meaningless without them: gap_score is what the multiplier multiplies,
+    # and lead_category is WHOSE curve it is -- in `gaps/laundry.json` an
+    # address's age_fit_lead can belong to `bar`, and a popup that did not say
+    # so would attribute one category's curve to another.
+    age = (", " + ", ".join(f"g.{c}" for c in AGE_FIT_GAP_COLUMNS)) if age_fit else \
+          ", " + ", ".join("NULL" for _ in AGE_FIT_GAP_COLUMNS)
+    src = f", ac.{AGE_FIT_SOURCE_COLUMN}" if age_source else ", NULL"
+    join = f"""
+        LEFT JOIN {'.'.join(AGE_FIT_SOURCE_TABLE)} ac
+               ON ac.address_id = g.address_id
+              AND ac.borough = g.borough
+              AND ac.category = g.lead_category
+    """ if age_source else ""
     sql = f"""
-        SELECT address_id,
-               round(lon, {COORD_DP}) AS lon,
-               round(lat, {COORD_DP}) AS lat,
-               borough,
-               units_capped,
-               {cat}_ratio AS ratio,
-               {cat}_nearest_m AS nearest_m,
-               neighborhood
+        SELECT g.address_id,
+               round(g.lon, {COORD_DP}) AS lon,
+               round(g.lat, {COORD_DP}) AS lat,
+               g.borough,
+               g.units_capped,
+               g.{cat}_ratio AS ratio,
+               g.{cat}_nearest_m AS nearest_m,
+               g.neighborhood
                {pipe}
                {shop}
-        FROM analysis.address_gaps
-        WHERE eligible
-          AND borough IN ({placeholders})
-          AND {cat}_ratio > 1
-        ORDER BY address_id
+               , g.gap_score, g.lead_category {age} {src}
+        FROM analysis.address_gaps g
+        {join}
+        WHERE g.eligible
+          AND g.borough IN ({placeholders})
+          AND g.{cat}_ratio > 1
+        ORDER BY g.address_id
     """
     return sql, list(boroughs)
 
@@ -680,6 +787,86 @@ def sf_slots(vacants: _Vacants, tail) -> list[int]:
     return [int(vac or 0), int(total or 0), idx, dist]
 
 
+def _num(value, dp: int):
+    """`round(value, dp)` that keeps NULL as None. The whole age-fit block
+    turns on this: a missing multiplier is not 1.0 and a missing score is not
+    0, and `float(None or 0)` is exactly how that distinction gets lost."""
+    return None if value is None else round(float(value), dp)
+
+
+class _AgeFit:
+    """The D63/D69 age-fit ranking block for one gap layer.
+
+    PARALLEL ARRAYS, NOT STRIDE SLOTS. `pts` is a flat numeric array whose
+    every reader indexes by position and treats as numbers; a NULL multiplier
+    dropped into it would arrive in the browser as 0 or 1 depending on who
+    coerced it. These six arrays are indexed by the same point number and carry
+    a literal JSON `null` where the model wrote nothing. They are null-dense
+    for the eleven categories with no curve, which costs five bytes a point
+    uncompressed and essentially nothing over the server's gzip -- a cheaper
+    price than a sentinel that reads as a real value. On the largest file
+    (gaps/bar.json, 105k points, every one of them fitted) the whole block
+    costs 947 KB -> 1,089 KB over the wire.
+
+    `source` is dictionary-encoded against `sources` because there is one
+    `age_fit_source` per CURVE (`sla_composition_v1`, `poi_composition_v1`),
+    not one per address.
+
+    THREE STATES, AND THE UI MUST TELL THEM APART (sql/002's D63 block):
+
+      value NULL                     nothing was ever applied -- a database
+                                     predating `loci age-fit apply`.
+      value 1.0, moe and source NULL the IDENTITY multiplier: the address's
+                                     lead category has no fitted curve, so
+                                     gap_score_fit == gap_score exactly. "No
+                                     curve" is not "a curve with no
+                                     uncertainty", which is why the MOE stays
+                                     NULL here.
+      value set, source set          a real curve. `moe` is then the band D69
+                                     requires beside every rendered value.
+
+    `source` is therefore the discriminator the UI keys on, and the reason this
+    export joins address_category at all: a 1.0 with no source must never be
+    drawn as "the age curve says this block is exactly average".
+    """
+
+    def __init__(self) -> None:
+        self.score: list = []
+        self.value: list = []
+        self.moe: list = []
+        self.score_fit: list = []
+        self.lead: list = []
+        self.source: list = []
+        self.sources: list[str] = []
+        self._idx: dict[str, int] = {}
+
+    def add(self, tail) -> None:
+        """One row's ranking tail: gap_score, lead_category, then the three
+        AGE_FIT_GAP_COLUMNS in order, then the lead category's
+        age_fit_source."""
+        score, lead, value, moe, score_fit, source = tail
+        self.score.append(_num(score, GAP_SCORE_DP))
+        self.value.append(_num(value, AGE_FIT_DP))
+        self.moe.append(_num(moe, AGE_FIT_DP))
+        self.score_fit.append(_num(score_fit, GAP_SCORE_DP))
+        # A lead category outside the fifteen is not a category this map can
+        # name, so it reads as "no lead" rather than as a bad index.
+        self.lead.append(ALLCATS.index(lead) if lead in CATEGORIES else None)
+        self.source.append(None if not source else self._src(source))
+
+    def _src(self, source: str) -> int:
+        i = self._idx.get(source)
+        if i is None:
+            i = self._idx[source] = len(self.sources)
+            self.sources.append(source)
+        return i
+
+    def pack(self) -> dict:
+        return {"score": self.score, "value": self.value, "moe": self.moe,
+                "scoreFit": self.score_fit, "lead": self.lead,
+                "source": self.source, "sources": self.sources}
+
+
 def pack_gaps(rows, boroughs: list[str], cat: str,
               vacant_detail: dict[str, tuple] | None = None) -> dict:
     """rows -> one layer dict. `pts` stride 12: lon, lat, borough index,
@@ -690,11 +877,17 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
 
     Both slot blocks are APPENDED, never inserted: every reader indexes 0..3 by
     position and a reordering here would silently relabel every dot.
+
+    The D63/D69 ranking block does NOT ride in `pts` and does not move the
+    stride -- see `_AgeFit` for why a NULL multiplier cannot live in a numeric
+    stride slot.
     """
     bidx = {b: i for i, b in enumerate(boroughs)}
     projects = _Projects()
     vacants = _Vacants(vacant_detail)
+    fit = _AgeFit()
     npipe, nshop = len(PIPELINE_GAP_COLUMNS), len(STOREFRONT_GAP_COLUMNS)
+    tail = 8 + npipe + nshop        # where the ranking block starts in a row
     pts, ids = [], []
     for row in rows:
         address_id, lon, lat, boro, units = row[:5]
@@ -702,14 +895,17 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
             continue
         pts.extend([lon, lat, bidx[boro], round(float(units or 0))])
         pts.extend(pipe_slots(projects, row[8:8 + npipe]))
-        pts.extend(sf_slots(vacants, row[8 + npipe:8 + npipe + nshop]))
+        pts.extend(sf_slots(vacants, row[8 + npipe:tail]))
+        fit.add(row[tail:tail + 6])
         ids.append(address_id)
     return {"category": cat, "label": CATEGORIES[cat].label, "stride": 12,
             "pts": pts, "ids": ids, "n": len(ids),
             "projects": projects.pack(),
             "pipelineColumns": list(PIPELINE_GAP_COLUMNS),
             "vacants": vacants.pack(),
-            "storefrontColumns": list(STOREFRONT_GAP_COLUMNS)}
+            "storefrontColumns": list(STOREFRONT_GAP_COLUMNS),
+            "ageFit": fit.pack(),
+            "ageFitColumns": list(AGE_FIT_GAP_COLUMNS)}
 
 
 def _code_for(borough_name: str | None) -> str | None:
@@ -1571,6 +1767,125 @@ def has_storefront_columns(con) -> bool:
     return set(STOREFRONT_GAP_COLUMNS) <= _gaps_columns(con)
 
 
+def has_age_fit_columns(con) -> bool:
+    """True when analysis.address_gaps exposes all three AGE_FIT_GAP_COLUMNS.
+    A database predating `loci age-fit apply` exports them as nulls rather than
+    failing -- the map degrades to "no age-adjusted score", never to a 500 and
+    never to a neutral 1.0."""
+    return set(AGE_FIT_GAP_COLUMNS) <= _gaps_columns(con)
+
+
+def has_age_fit_source(con) -> bool:
+    """True when analysis.address_category exists AND carries
+    `age_fit_source`. False is the state of a database that has never run the
+    per-category age-fit writer, and of the fixtures that do not build the
+    table at all; the join is then skipped and `ageFit.sourceJoined` in
+    meta.json says so, rather than the export failing on a missing table."""
+    rows = con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = ? AND table_name = ?",
+        list(AGE_FIT_SOURCE_TABLE)).fetchall()
+    return AGE_FIT_SOURCE_COLUMN in {r[0] for r in rows}
+
+
+def age_fit_caveat() -> str:
+    """model/age_fit.AGE_FIT_DISCLAIMER, VERBATIM.
+
+    Imported lazily because that module pulls in osmnx (via
+    model/address_gaps) and this one must stay importable without it. One
+    source of truth on purpose: a map carrying a paraphrase of a caveat the
+    model owns is how a caveat quietly gets softer than the finding it guards.
+    """
+    from loci.model.age_fit import AGE_FIT_DISCLAIMER
+
+    return AGE_FIT_DISCLAIMER
+
+
+def age_fit_curves(curve_dir: pathlib.Path | None = None) -> dict[str, dict]:
+    """{category: summary} for every curve `loci age-fit fit` has left on disk.
+
+    A curve file on disk is the definition of LIVE: a fit that fails its own
+    F2/F3 gate is never written, and D69 retired pharmacy's by MOVING the stale
+    JSON out of this directory. So the presence of the file -- not a registry
+    entry, not a non-null column -- is what the map may say it has a curve for.
+
+    Never raises on a malformed or unreadable file: a curve this function
+    cannot parse is simply not live, which is the safe direction."""
+    out: dict[str, dict] = {}
+    d = AGE_FIT_DIR if curve_dir is None else pathlib.Path(curve_dir)
+    if not d.is_dir():
+        return out
+    for p in sorted(d.glob(AGE_FIT_GLOB)):
+        try:
+            fit = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if not isinstance(fit, dict):
+            continue
+        cat = fit.get("category") or p.stem.replace("age_fit_", "")
+        inputs = fit.get("inputs") or {}
+        mult = fit.get("multiplier") or {}
+        out[cat] = {
+            "spec": fit.get("spec"),
+            "fittedAt": fit.get("fitted_at"),
+            "supplyHash": inputs.get("supply_hash"),
+            "screenSupplyHash": inputs.get("screen_supply_hash"),
+            "acsYear": inputs.get("acs_year"),
+            "nTarget": inputs.get("n_target"),
+            "radiusM": fit.get("radius_m"),
+            "primaryAgeTerm": fit.get("primary_age_term"),
+            # The band, carried because D69 requires the multiplier never to
+            # render without its MOE -- childcare's is three times bar's, and a
+            # legend that cannot say so invites the reader to compare them.
+            "medianMoe": mult.get("median_moe"),
+            "p10": mult.get("p10"), "p50": mult.get("p50"), "p90": mult.get("p90"),
+        }
+    return out
+
+
+def age_fit_meta(prov: dict | None = None, curve_dir: pathlib.Path | None = None,
+                 source_joined: bool = True, columns_present: bool = True) -> dict:
+    """The `ageFit` block meta.json carries: which categories have a LIVE
+    curve, what each was fitted on and when, and the caveat verbatim.
+
+    `stale` is the same check `supply_warning` makes for the supply set: a
+    curve fitted against one supply and applied to gaps measured against
+    another is a multiplier the model never estimated on these addresses. It is
+    reported rather than enforced here -- `model/age_fit.check_fit_is_current`
+    is the gate; this is the map saying on its own face what it is drawing."""
+    curves = age_fit_curves(curve_dir)
+    gaps_hash = (prov or {}).get("supply_hash")
+    stale = sorted(c for c, v in curves.items()
+                   if gaps_hash and v["supplyHash"] and v["supplyHash"] != gaps_hash)
+    warning = None
+    if stale:
+        warning = (
+            f"AGE-FIT SUPPLY MISMATCH: {', '.join(stale)} "
+            f"{'curves were' if len(stale) > 1 else 'curve was'} fitted against a "
+            f"different supply than the gaps on this map (gaps {gaps_hash}). The "
+            f"age-adjusted ranking is a multiplier estimated on a supply these "
+            f"addresses were not screened against. Re-run `loci age-fit fit` then "
+            f"`loci age-fit apply`.")
+    return {
+        "available": bool(curves) and columns_present,
+        "categories": sorted(curves),
+        "curves": curves,
+        "columns": list(AGE_FIT_GAP_COLUMNS),
+        # False here means the three columns are absent from address_gaps
+        # entirely: every multiplier in every gap file is null because nothing
+        # was ever applied, NOT because the curves say neutral.
+        "columnsPresent": bool(columns_present),
+        "sourceJoined": bool(source_joined),
+        "gapsSupplyHash": gaps_hash,
+        "stale": stale,
+        "warning": warning,
+        # Rendered UNTRUNCATED by the UI, same rule as demand_caveat_text
+        # (D49/D57). Three sentences; dropping the third is dropping the one
+        # that says resident age is a proxy for a bundle.
+        "caveat": age_fit_caveat(),
+    }
+
+
 def collect_vacant_detail(con, boroughs: list[str]) -> dict[str, tuple]:
     """The {storefront_id: (address, prior use)} lookup the gap layers' vacancy
     popups hang off, or {} when there is no snapshot to read. Never raises: a
@@ -1643,7 +1958,8 @@ def supply_warning(supply_set: str, prov: dict) -> str | None:
     return None
 
 
-def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET) -> dict:
+def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
+            curve_dir: pathlib.Path | None = None) -> dict:
     """Read both layers out of the database. Pure read -- writes nothing, so
     `--dry-run` and a real export share this one code path and can never
     disagree about the counts."""
@@ -1664,12 +1980,16 @@ def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET) -> d
     # never has to branch on which vintage of file it fetched.
     pipe_cols = has_pipeline_columns(con)
     shop_cols = has_storefront_columns(con)
+    # Same contract for the D63/D69 ranking columns and for the per-category
+    # `age_fit_source` they are labelled with.
+    age_cols = has_age_fit_columns(con)
+    age_src = has_age_fit_source(con)
     # One read of the vacant-storefront lookup for all sixteen gap files: the
     # same ~3,800 rows stand behind every category.
     vacants = collect_vacant_detail(con, boroughs)
     gap_layers = {}
     for cat in ALLCATS:
-        sql, params = _gap_sql(cat, boroughs, pipe_cols, shop_cols)
+        sql, params = _gap_sql(cat, boroughs, pipe_cols, shop_cols, age_cols, age_src)
         gap_layers[cat] = pack_gaps(con.execute(sql, params).fetchall(), boroughs,
                                     cat, vacants)
 
@@ -1711,7 +2031,9 @@ def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET) -> d
             "storefronts": collect_storefronts(con, boroughs),
             "nta": nta,
             "supplySet": supply_set, "supplyProvenance": prov,
-            "supplyWarning": supply_warning(supply_set, prov)}
+            "supplyWarning": supply_warning(supply_set, prov),
+            "ageFit": age_fit_meta(prov, curve_dir, source_joined=age_src,
+                                   columns_present=age_cols)}
 
 
 def summarize(bundle: dict) -> dict:
@@ -1946,6 +2268,14 @@ def write(bundle: dict, out_dir: pathlib.Path) -> dict[str, int]:
                        "totals": shops["totals"],
                        "gapColumns": list(STOREFRONT_GAP_COLUMNS),
                        "n": shops["n"]},
+        # The D63/D69 age-fit ranking signal. `categories` is what the map may
+        # offer the age-adjusted ranking for -- a category with no live curve
+        # gets a disabled toggle, never a silent fallback to gap_score under an
+        # age-adjusted label. `caveat` is rendered UNTRUNCATED wherever a
+        # multiplier appears, and every multiplier shows its MOE (D69).
+        "ageFit": bundle.get("ageFit") or age_fit_meta(
+            bundle.get("supplyProvenance"), source_joined=False,
+            columns_present=False),
         "neighborhoods": bundle["neighborhoods"],
         "boroBounds": bundle["boroBounds"],
         # The all-opportunities mode. `available` false means this export

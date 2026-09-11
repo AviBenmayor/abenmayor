@@ -106,6 +106,32 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
    came from different supply sets is not a validation surface, so when the
    export says they disagree the page has to say so on its own face — not only
    in a terminal nobody kept. */
+/* Age-adjusted ranking (D63/D69). The ramp is SEQUENTIAL — one hue, the
+   category's own colour, light to dark — because the thing encoded is
+   magnitude, not identity; the category colour keeps doing the identity job it
+   already does everywhere else on this map. The fifth key is "unranked", and
+   it is a key rather than an absence because a point with no fitted curve is
+   still drawn: age_fit reorders the gap layer, it never filters it. */
+.rank{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+.rank .row{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink2);padding:2px 0}
+.rank .k{width:16px;display:flex;justify-content:center;flex:none}
+.rank .n{margin-left:auto;font-family:"IBM Plex Mono";font-size:10.5px;color:var(--muted)}
+.rank.off{opacity:.5}
+.chk input:disabled{cursor:default}
+.chk.off{opacity:.5;cursor:default}
+/* The caveat expander. One line closed, the WHOLE text open — no max-height,
+   no ellipsis, no line clamp. Same rule as demand_caveat_text (D49/D57): a
+   supply-revealed multiplier whose caveat can be cut off is a multiplier that
+   will be read as demand. */
+.cav{margin-top:7px}
+.cav summary{font-size:11px;color:var(--accent);cursor:pointer;list-style:none}
+.cav summary::-webkit-details-marker{display:none}
+.cav summary::before{content:"▸ ";font-size:9px}
+.cav[open] summary::before{content:"▾ "}
+.cavtx{margin-top:5px;font-size:11px;line-height:1.5;color:var(--ink2);
+       border-left:2px solid var(--line);padding-left:8px;white-space:normal;
+       max-height:none;overflow:visible}
+.afm{font-family:"IBM Plex Mono";font-size:10.5px;color:var(--muted)}
 .supok{font-family:"IBM Plex Mono";font-size:11px;color:var(--muted)}
 .supbad{background:#fdece9;border:1px solid #e8b3a8;color:#8c2f18;border-radius:8px;
         padding:7px 10px;font-size:11.5px;line-height:1.45;max-width:70ch}
@@ -132,6 +158,14 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
       <label class="chk"><input type="checkbox" id="soloTog" checked> Include single-source records</label>
       <label class="chk"><input type="checkbox" id="excTog"> Show excluded records</label>
       <div class="fine" id="supFine"></div>
+    </div>
+    <div class="sec" id="rankSec" hidden>
+      <h2>Rank <span class="hint">how the dots are shaded</span></h2>
+      <label class="chk" id="rankLbl"><input type="checkbox" id="rankTog"> Age-adjusted score</label>
+      <div class="rank" id="rankLegend"></div>
+      <details class="cav" id="rankCav" hidden><summary>supply-revealed; see caveat</summary>
+        <div class="cavtx" id="rankCavTx"></div></details>
+      <div class="fine" id="rankFine"></div>
     </div>
     <div class="sec" id="pipeSec" hidden>
       <h2>Development pipeline <span class="hint">overlay</span></h2>
@@ -311,8 +345,14 @@ function gapFC(){
     // storefronts within 400 m were reported empty on the snapshot date.
     const vac=st>GAP_SF?p[i+GAP_SF]:0;
     if(sfMin&&vac<sfMin) continue;
+    // `sc`/`rk` are the ACTIVE ranking score and whether the point has one.
+    // They are baked into the feature rather than read in the style because
+    // MapLibre expressions cannot index a parallel array — and `rk` is a
+    // separate flag rather than a negative `sc` sentinel so that a legitimate
+    // score can never be mistaken for "no reading".
+    const r=rankOf(L,i/st);
     f.push({type:'Feature',geometry:{type:'Point',coordinates:[p[i],p[i+1]]},
-      properties:{u:p[i+3],id:L.ids[i/st],j:i/st}}); }
+      properties:{u:p[i+3],id:L.ids[i/st],j:i/st,sc:r==null?-1:r,rk:r==null?0:1}}); }
   return {type:'FeatureCollection',features:f};
 }
 // The four pipeline numbers for point j of a layer, plus the nearest large
@@ -389,6 +429,163 @@ function sfHTML(x){
     `${S.filingDate?' · filed '+esc(S.filingDate):''} — self-reported</div>`;
   return h;
 }
+// ---- Age-adjusted ranking (D63/D64/D69) -----------------------------------
+//
+// `gap_score` is the screen's own output. `gap_score_fit = gap_score ×
+// age_fit_lead` is a SECOND ordering of the same addresses, using a
+// SUPPLY-REVEALED age curve fitted on where the category's supply already
+// sits. Switching between them reorders the map; it never adds or removes a
+// dot. Three rules this code exists to keep:
+//
+//  1. NULL IS NOT 1.0, AND NEITHER IS THE IDENTITY MULTIPLIER. The export
+//     carries three states (see viz/webmap_export._AgeFit): value null =
+//     never applied; value 1.0 with a null MOE and a null SOURCE = the
+//     address's lead category has no curve, so the identity was used; value
+//     with a source = a real curve. `af.fitted` keys on the SOURCE, because
+//     only that tells a fitted 1.00 from an un-fitted one.
+//  2. THE MULTIPLIER NEVER RENDERS WITHOUT ITS MOE. Childcare's band is three
+//     times bar's (Borough Park 2.31 ± 0.81 against East Village 0.72 ± 0.12),
+//     so the ± is printed whenever the export carried one, and its absence is
+//     called out rather than hidden.
+//  3. THE CAVEAT RENDERS UNTRUNCATED, same rule as demand_caveat_text
+//     (D49/D57). `cavHTML` prints meta.json's `ageFit.caveat` whole.
+let scoreFit=false;                       // default stays gap_score
+const AF=()=>META.ageFit||{};
+const curveLive=c=>((AF().categories)||[]).indexOf(c)>=0;
+const curveOf=c=>((AF().curves)||{})[c]||null;
+// The ranking block for point j of a gap layer, or null when the export
+// carried none (a file written before this landed).
+function afAt(L,j){
+  const f=L&&L.ageFit; if(!f) return null;
+  const s=f.source[j], lead=f.lead[j];
+  return {score:f.score[j], value:f.value[j], moe:f.moe[j], scoreFit:f.scoreFit[j],
+          lead:lead==null?null:META.cats[lead],
+          source:s==null?null:f.sources[s], fitted:s!=null};
+}
+// The number the dots are shaded by, in the ACTIVE mode. In age-adjusted mode
+// a point whose lead category has no fitted curve returns null — it is drawn
+// UNRANKED rather than folded into the ramp on its un-adjusted score, which
+// would silently mix two scales under one legend.
+function rankOf(L,j){
+  const f=L&&L.ageFit; if(!f) return null;
+  if(!scoreFit) return f.score[j];
+  return f.source[j]==null?null:f.scoreFit[j];
+}
+// Quartiles of the ranked points in the CURRENT file, recomputed when the
+// category or the mode changes. Quartiles of the data rather than fixed cuts
+// because gap_score has no natural units and its spread differs by category.
+let rankCuts=null, rankSig='';
+function rankBreaks(L){
+  const sig=biz+'|'+(scoreFit?'fit':'base');
+  if(sig===rankSig) return rankCuts;
+  const v=[]; for(let j=0;j<((L&&L.n)||0);j++){const r=rankOf(L,j); if(r!=null) v.push(r);}
+  v.sort((a,b)=>a-b);
+  const q=p=>v[Math.min(v.length-1,Math.floor(p*v.length))];
+  rankSig=sig; rankCuts=v.length>=4?[q(.25),q(.5),q(.75)]:null;
+  return rankCuts;
+}
+const RANK_OP=[0.30,0.52,0.74,0.95], UNRANKED_OP=0.13;
+// Sequential: one hue (the category's own), light → dark. The unranked step is
+// not part of the ramp — it is the absence of a reading, and is keyed as such.
+function rankPaint(){
+  const b=rankCuts;
+  if(!b) return 0.9;
+  return ['case',['==',['get','rk'],0],UNRANKED_OP,
+    ['step',['get','sc'],RANK_OP[0],b[0],RANK_OP[1],b[1],RANK_OP[2],b[2],RANK_OP[3]]];
+}
+function clusterPaint(){
+  const b=rankCuts;
+  if(!b) return 0.78;
+  // A cluster is shaded by its BEST member: the question the map answers is
+  // "is there anything worth looking at in here", not "what is the average".
+  return ['case',['<',['get','s'],0],0.34,
+    ['step',['get','s'],0.45,b[0],0.6,b[1],0.75,b[2],0.9]];
+}
+const fmt2=v=>v==null?'—':(+v).toFixed(2);
+// The caveat, whole. No clamp, no ellipsis, no "…" — see rule 3 above.
+function cavHTML(){
+  const t=AF().caveat; if(!t) return '';
+  return '<details class="cav"><summary>supply-revealed; see caveat</summary>'+
+    `<div class="cavtx">${esc(t)}</div></details>`;
+}
+// The two scores for one gap address, and — when there is a multiplier — what
+// it is, whose curve it came from, and its margin of error.
+function afHTML(L,j){
+  const x=afAt(L,j); if(!x) return '';
+  let h='';
+  if(x.score!=null) h+=`<div class="ppop">Rank score <b>${fmt2(x.score)}</b></div>`;
+  if(x.value==null)
+    return h+(x.score!=null?'<div class="pmi">no age-adjusted score — '+
+      '<code>loci age-fit apply</code> has not run for this address</div>':'');
+  const moe=x.moe==null?'':` ± ${fmt2(x.moe)}`;
+  h+=`<div class="ppop">Age-adjusted rank score <b>${fmt2(x.scoreFit)}</b><br>`+
+     `<span class="afm">age fit ${fmt2(x.value)}${moe}`+
+     `${x.lead?' · '+esc(catLabel(x.lead)):''}</span></div>`;
+  if(!x.fitted) return h+'<div class="pmi">identity multiplier — this address’s lead '+
+    `category${x.lead?' ('+esc(catLabel(x.lead))+')':''} has no fitted curve, so the `+
+    'age-adjusted score is the rank score unchanged</div>';
+  if(x.moe==null) h+='<div class="warn">No margin of error recorded for this '+
+    'multiplier — do not read it as precise.</div>';
+  return h+cavHTML();
+}
+// The section is per-CATEGORY: the toggle is offered only where a curve is
+// live, and it is DISABLED rather than hidden so the reader learns that the
+// ordering exists and that this category has not earned one. A category whose
+// curve failed its own F2/F3 gate (pharmacy, D69) has no fit file and lands
+// here, which is the state the ruling intends.
+function syncRankUI(){
+  const sec=document.getElementById('rankSec');
+  if(allMode()||!AF().caveat){sec.hidden=true;return;}
+  sec.hidden=false;
+  const live=curveLive(biz), tog=document.getElementById('rankTog'),
+        lbl=document.getElementById('rankLbl');
+  tog.disabled=!live; tog.checked=scoreFit;
+  lbl.className='chk'+(live?'':' off');
+  lbl.title=live?'Shade and order the gap dots by gap_score × age_fit_lead instead of gap_score.'
+    :`No age curve is live for ${label()}. A curve ships only when it passes its own `+
+     `F2/F3 gate, and one that fails is retired rather than relaxed (D69) — so this `+
+     `ordering is not available here.`;
+  renderRankLegend(live);
+}
+function renderRankLegend(live){
+  const el=document.getElementById('rankLegend'), b=rankCuts, L=CACHE.gaps[biz];
+  el.className='rank'+(b?'':' off');
+  const c=lc();
+  let n=0, un=0;
+  for(let j=0;j<((L&&L.n)||0);j++) (rankOf(L,j)==null?un++:n++);
+  const sw=o=>`<svg width="14" height="14"><circle cx="7" cy="7" r="6" fill="${c}" `+
+    `opacity="${o}" stroke="#fff"></circle></svg>`;
+  const lab=b?['lowest quarter',`${fmt2(b[0])} – ${fmt2(b[1])}`,
+               `${fmt2(b[1])} – ${fmt2(b[2])}`,`top quarter (${fmt2(b[2])}+)`]
+             :['','','',''];
+  el.innerHTML=(b?RANK_OP.map((o,i)=>
+    `<div class="row"><span class="k">${sw(o)}</span><span>${esc(lab[i])}</span></div>`).join(''):'')+
+    (un?`<div class="row"><span class="k">${sw(UNRANKED_OP)}</span>`+
+        `<span>unranked — no fitted curve</span><span class="n">${un.toLocaleString()}</span></div>`:'');
+  const cav=document.getElementById('rankCav'), tx=document.getElementById('rankCavTx');
+  cav.hidden=!scoreFit; tx.textContent=AF().caveat||'';
+  const cv=curveOf(biz), af=AF();
+  const fine=document.getElementById('rankFine');
+  if(!live){
+    fine.innerHTML=`Dots are shaded by <b>gap score</b>, the screen's own ranking. `+
+      `No age curve is live for ${esc(label())}`+
+      (af.categories&&af.categories.length
+        ? ` — only ${af.categories.map(c=>esc(catLabel(c))).join(' and ')} `+
+          `${af.categories.length>1?'have':'has'} one.`
+        : '.');
+    return;
+  }
+  fine.innerHTML=(scoreFit
+    ? `Dots are shaded by <b>gap score × age fit</b>. `
+    : `Dots are shaded by <b>gap score</b>. Switch on to reorder by `+
+      `gap score × age fit. `)+
+    `The curve for ${esc(label())} was fitted ${esc((cv&&cv.fittedAt||'').slice(0,10))}`+
+    `${cv&&cv.supplyHash?` on supply <code>${esc(cv.supplyHash)}</code>`:''}`+
+    `${cv&&cv.medianMoe!=null?`, median margin of error <b>± ${fmt2(cv.medianMoe)}</b>`:''}. `+
+    `<b>It reorders the gap layer and never filters it</b> — the same addresses are drawn either way.`+
+    (af.warning?`<br><b>⚠ ${esc(af.warning)}</b>`:'');
+}
+
 function poiFC(){
   const L=CACHE.pois[biz]; if(!L||!showPois) return {type:'FeatureCollection',features:[]};
   const f=[],p=L.pts,d=det(),st=L.stride||5;
@@ -944,8 +1141,11 @@ map.on('load',async()=>{
   META=await fetch('data/meta.json').then(r=>r.json());
   await loadCat(biz);
 
+  // `s` is the best ranking score in the cluster, so a bubble shades by its
+  // best member. Declared HERE because clusterProperties are fixed when the
+  // source is created; the toggle changes what `sc` holds, never the schema.
   map.addSource('gap',{type:'geojson',data:gapFC(),cluster:true,clusterRadius:46,clusterMaxZoom:15,
-    clusterProperties:{u:['+',['get','u']]}});
+    clusterProperties:{u:['+',['get','u']],s:['max',['get','sc']]}});
   map.addSource('poi',{type:'geojson',data:poiFC()});
 
   map.addLayer({id:'cl',type:'circle',source:'gap',filter:['has','point_count'],
@@ -1054,9 +1254,12 @@ map.on('load',async()=>{
     clTip.setLngLat(e.lngLat).setHTML(`<div class="pnb">${p.point_count.toLocaleString()} gap addresses</div>`+
       `<div class="ppop">${(+p.u).toLocaleString()} homes with no ${label().toLowerCase()} in reach</div>`).addTo(map);});
   map.on('mouseleave','cl',()=>{map.getCanvas().style.cursor='';clTip.remove();});
+  // maxWidth is 320 rather than 285 because the age-fit caveat expands INSIDE
+  // this popup and has to arrive whole — see cavHTML.
   map.on('click','pt',e=>{const p=e.features[0].properties;
-    new maplibregl.Popup({closeButton:false,maxWidth:'285px'}).setLngLat(e.lngLat)
+    new maplibregl.Popup({closeButton:false,maxWidth:'320px'}).setLngLat(e.lngLat)
       .setHTML(`<div class="pnb">Gap address</div><div class="ppop">${p.u} homes · no ${label().toLowerCase()} in reach</div>`+
+        afHTML(CACHE.gaps[biz],+p.j)+
         pipeHTML(pipeAt(CACHE.gaps[biz],+p.j,GAP_PIPE))+
         sfHTML(sfAt(CACHE.gaps[biz],+p.j,GAP_SF))+
         `<div class="pmi">bbl ${p.id}</div>`).addTo(map);});
@@ -1200,17 +1403,29 @@ function refresh(){
     map.getSource('poi').setData(EMPTY);
     map.getSource('allgap').setData(allGapFC());
     map.getSource('allpoi').setData(allPoiFC());
-    updateBanner(); allLegend(); refreshAlc(); refreshPipe(); refreshSf();
+    updateBanner(); allLegend(); syncRankUI(); refreshAlc(); refreshPipe(); refreshSf();
     return;
   }
   map.getSource('allgap').setData(EMPTY);
   map.getSource('allpoi').setData(EMPTY);
+  // Never leave a dead mode on: switching to a category with no live curve
+  // drops back to gap_score BEFORE the features are built, or the map would
+  // draw every dot unranked under an age-adjusted legend.
+  if(scoreFit&&!curveLive(biz)){scoreFit=false;rankSig='';}
+  // Breaks BEFORE the features: gapFC bakes the active ranking score into each
+  // point, and the paint expression reads the quartiles of exactly that set.
+  rankBreaks(CACHE.gaps[biz]);
   const gf=gapFC();
   map.getSource('gap').setData(gf);
   const pf=poiFC();
   map.getSource('poi').setData(pf);
   map.setPaintProperty('cl','circle-color',lc());
   map.setPaintProperty('pt','circle-color',lc());
+  // Shading is MAGNITUDE (the rank score); the hue stays the category's, which
+  // is the only thing on this map that carries identity.
+  map.setPaintProperty('cl','circle-opacity',clusterPaint());
+  map.setPaintProperty('pt','circle-opacity',rankPaint());
+  syncRankUI();
   // Only IN-SET features count towards "known locations shown" -- an excluded
   // cross on screen is not a known location and must not inflate the banner.
   updateBanner(pf.features.reduce((n,f)=>n+(f.properties.s?1:0),0),gf.features.length);
@@ -1282,6 +1497,9 @@ function updateLegend(){
       `<span>Known location — single source, kept</span><span class="n">${sing.toLocaleString()}</span></div>`+
     `<div class="row"><span class="k">${EXC_SVG}</span>`+
       `<span>Excluded — single aggregator record, no licence</span><span class="n">${exc.toLocaleString()}</span></div>`+
+    // The gap dot's SHADE is a second reading on the same mark (D63/D69), so
+    // the key above shows one dot and the Rank section below shows the ramp.
+    (AF().caveat?`<div class="fine">Gap dots are shaded light to dark by <b>rank score</b> — the ramp, and the age-adjusted alternative, are in <b>Rank</b> below.</div>`:'')+
     `<div class="fine">The first two are the <b>${(corr+sing).toLocaleString()} known locations</b> the gaps `+
       `were measured against. The third was dropped by the <b>${esc(supplySet())}</b> supply set and counts `+
       `towards nothing — shown here so the drop can be judged by eye, off by default so the map matches the model.</div>`+
@@ -1394,6 +1612,11 @@ function buildUI(){
     `category whose licence registry is dense enough to have listed them; they are exported `+
     `and drawn on request, never counted.`;
   renderSupply();
+  // The ranking toggle. It changes the ORDER the gap layer is shaded in and
+  // nothing else — no dot appears or disappears — so it lives beside the
+  // legend rather than with the two filters above.
+  document.getElementById('rankTog').onchange=e=>{
+    scoreFit=e.target.checked; rankSig=''; refresh();};
   document.getElementById('cuiSel').onchange=e=>{cuiSel=e.target.value;refresh();};
   document.getElementById('actTog').onchange=e=>{activeOnly=e.target.checked;refresh();};
   buildAlcUI(); buildPipeUI(); buildSfUI();
