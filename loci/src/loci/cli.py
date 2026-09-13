@@ -4227,6 +4227,22 @@ def address_character_stats(
     console.print("[dim]rule overlap (why LABEL_ORDER is load-bearing): "
                   + " · ".join(f"{c}={int(ov[c].iloc[0]):,}" for c in ov.columns) + "[/]")
 
+    sup = con.execute(ac.SUPPRESSION_SQL).fetchdf()
+    if len(sup):
+        t7 = Table(title="SUPPRESSED NTAs — label withheld (D82)")
+        for c in ("borough", "nta_code", "neighborhood", "addresses", "reason"):
+            t7.add_column(c, justify="right" if c == "addresses" else "left")
+        for r in sup.itertuples(index=False):
+            t7.add_row(str(r.borough), str(r.nta_code), str(r.neighborhood),
+                       f"{r.addresses:,}", str(r.reason))
+        console.print(t7)
+        console.print("[dim]A suppressed address keeps every stored measure and its "
+                      "retail_index; only the four-way label and its intensity are withheld, "
+                      "because a share over nine addresses in Calvert Vaux Park is arithmetic "
+                      "rather than geography. Suppression matches on the NTA CODE (last two "
+                      "digits >= 70 = cemetery/park/airport) and never on the name — 'Park "
+                      "Slope' and 'Borough Park' are real neighbourhoods.[/]")
+
     if deciles:
         d = ac.deciles(con, boros)
         t4 = Table(title=f"share deciles — {','.join(boros)}")
@@ -4240,8 +4256,11 @@ def address_character_stats(
                       f"{ac.CORPORATE_JOBS_OFFICE_SHARE} with >= "
                       f"{ac.CORPORATE_JOBS_FLOOR:,} jobs; industrial factory_area_share >= "
                       f"{ac.INDUSTRIAL_FACTORY_AREA_SHARE}; retail_mixed retail_area_share >= "
-                      f"{ac.RETAIL_AREA_SHARE} or jobs_retail_share >= {ac.RETAIL_JOBS_SHARE}; "
-                      f"else residential. Order: {' -> '.join(ac.LABEL_ORDER)}.[/]")
+                      f"{ac.RETAIL_AREA_SHARE} or (jobs_retail_share >= "
+                      f"{ac.RETAIL_JOBS_SHARE} with >= {ac.RETAIL_JOBS_FLOOR:,} retail-facing "
+                      f"jobs) or >= {ac.COMMERCIAL_OVERLAY_MIN_LOTS} commercially-zoned lot "
+                      f"within {ac.COMMERCIAL_OVERLAY_RADIUS_M:.0f} m; else residential. "
+                      f"Order: {' -> '.join(ac.LABEL_ORDER)}.[/]")
 
     amp = ac.am_pm_corroboration(con)
     t6 = Table(title="corroboration — AM share of subway entries by label (D76)")

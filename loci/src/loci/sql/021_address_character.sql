@@ -104,15 +104,68 @@
 --    not a partition of the city.
 -- ---------------------------------------------------------------------------
 
+-- ---------------------------------------------------------------------------
+-- D82 ADDITIONS (urban-planner review of the first build). Four corrections,
+-- three of which are new columns here:
+--
+--   office_area_400m  CHANGED MEANING, NOT NAME. It now EXCLUDES institutional
+--                     lots -- PLUTO BldgClass starting I (health), M
+--                     (religious), P (public assembly), W (educational), or
+--                     LandUse 08 (public facilities & institutions). MapPLUTO
+--                     books a hospital's floor area as OfficeArea, which is
+--                     how the Brooklyn VA Medical Center gave Bay Ridge 47
+--                     'corporate' addresses and Kings County / Kingsbrook gave
+--                     East Flatbush-Rugby 134. A hospital campus is a large
+--                     weekday population and is NOT a central business
+--                     district. ANY QUERY WRITTEN AGAINST THIS COLUMN BEFORE
+--                     D82 NOW MEANS SOMETHING DIFFERENT.
+--   office_area_incl_inst_400m  the RAW OfficeArea sum over the same lots, so
+--                     the size of the exclusion is visible rather than
+--                     asserted. It is one more weight column in the SAME
+--                     Dijkstra, so it costs nothing.
+--   commercial_overlay_100m  COUNT of lots within 100 m NETWORK metres whose
+--                     overlay1/overlay2 starts 'C1-' or 'C2-', or whose
+--                     zonedist1 starts C1/C2/C4/C5/C6/C8. The ZONING witness:
+--                     a C1/C2 commercial overlay is the instrument New York
+--                     uses to permit ground-floor local retail on a
+--                     residential street, and unlike RetailArea it cannot be
+--                     under-reported by an assessor. >= 1 is an OR-route into
+--                     'retail_mixed'.
+--                     CAVEAT: this is a SECOND sweep of the same engine at a
+--                     second radius; neither end's SNAP OFFSET is counted, so
+--                     the effective radius is 100 m plus the lot's and the
+--                     address's distance to their nearest graph nodes
+--                     (typically 10-40 m on a dense grid). Read it as "on or
+--                     beside this block", never as a metric buffer.
+--   commercial_lots_400m / lots_400m  the numerator and denominator of
+--                     commercial_overlay_share_400m, which is computed ON THE
+--                     VIEW like every other share. Stored as counts so the
+--                     share has no second definition.
+--   character_near_radius_m  the radius the 100 m count actually used.
+--
+-- ALSO CHANGED, in Python constants and therefore in the VIEW, with no column
+-- to alter: RETAIL_JOBS_FLOOR 1,000 -> 300 and RETAIL_JOBS_SHARE 0.40 -> 0.35
+-- (a 1,000-job floor is a Manhattan number and erased 7th Ave Park Slope,
+-- Cortelyou Rd and Pitkin Ave); CORPORATE_JOBS_FLOOR now guards BOTH corporate
+-- routes; park/cemetery/airport NTAs and NTAs under 50 addresses get a NULL
+-- label (`suppressed` on both views); and `retail_index` (0-1) is the
+-- continuous retail measure the map should shade by.
+-- ---------------------------------------------------------------------------
+
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS retail_area_400m        DOUBLE;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS office_area_400m        DOUBLE;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS office_area_incl_inst_400m DOUBLE;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS res_area_400m           DOUBLE;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS factory_area_400m       DOUBLE;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS bldg_area_400m          DOUBLE;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS jobs_retail_400m        BIGINT;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS jobs_office_400m        BIGINT;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS jobs_other_400m         BIGINT;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS commercial_overlay_100m BIGINT;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS commercial_lots_400m    BIGINT;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS lots_400m               BIGINT;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS character_radius_m      REAL;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS character_near_radius_m REAL;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS character_pluto_version VARCHAR;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS character_jobs_vintage  SMALLINT;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS character_run_at        TIMESTAMP;

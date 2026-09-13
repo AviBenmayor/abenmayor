@@ -213,6 +213,111 @@ OTHER_SECTORS: tuple[str, ...] = (
 JOBS_TOTAL_COLUMN = "C000"
 
 
+# ------------------------------------------------------- the zoning route
+#
+# D82 (urban-planner review of the first build). The floor-area and payroll
+# routes BOTH miss prewar outer-borough retail: a 1-2 storey taxpayer or a
+# rowhouse with a store underneath folds its ground floor into ComArea and
+# never reaches RetailArea (caveat 1), and a strip of thirty tiny owner-run
+# shops carries fewer than 300 payroll jobs. Brighton Beach Avenue, Cortelyou
+# Road, Fulton Street and Pitkin Avenue all read 0.000 retail_mixed on a first
+# build, which is false on the ground.
+#
+# ZONING is the third, independent witness, and it is the one that cannot be
+# under-reported by an assessor: a C1/C2 COMMERCIAL OVERLAY on a residential
+# district is the instrument New York uses to permit exactly this -- local
+# retail on the ground floor of a residential street -- and the City Planning
+# Commission maps it ONTO THE CORRIDOR, lot by lot. Where an overlay is mapped,
+# retail is legal, was intended, and (because overlays are mapped over existing
+# strips far more often than ahead of them) is usually already there.
+#
+# WHAT COUNTS AS A COMMERCIAL LOT:
+#   overlay1 / overlay2 starting 'C1-' or 'C2-'   the commercial overlay itself
+#   zonedist1 starting C1, C2, C4, C5, C6, C8     a mapped commercial DISTRICT
+# C3 (waterfront recreation) and C7 (amusement, Coney Island's Bowery) are
+# deliberately NOT in the list: neither is a daily-needs retail street.
+# Only zonedist1 is read. A split-zoned lot whose commercial half is zonedist2
+# is missed, which makes the count a FLOOR -- the same direction of error as
+# RetailArea, and preferable to counting a lot whose commercial sliver is 3% of
+# its area.
+COMMERCIAL_OVERLAY_PREFIXES: tuple[str, ...] = ("C1-", "C2-")
+COMMERCIAL_DISTRICT_PREFIXES: tuple[str, ...] = ("C1", "C2", "C4", "C5", "C6", "C8")
+
+#: Radius for the OVERLAY COUNT, in NETWORK metres on the same walk graph.
+#: 100 m is "this block and the corners at either end of it" -- an address is
+#: ON a commercial corridor, not merely within a five-minute walk of one. It is
+#: a SECOND sweep of the same engine at a second radius, not a straight-line
+#: buffer: `catchment_sums` takes the radius as an argument and the only cost
+#: is one more bounded Dijkstra per batch over the same CSR.
+#: CAVEAT THE DATABASE CANNOT ENFORCE: neither end's SNAP OFFSET is counted
+#: (the lot's distance to its nearest graph node, and the address's), so at
+#: 100 m the effective radius is 100 m plus two offsets -- typically 10-40 m on
+#: a dense street grid. At 400 m that slack is 5% and ignorable; at 100 m it is
+#: not, and the count should be read as "on or beside this block", never as a
+#: metric buffer.
+COMMERCIAL_OVERLAY_RADIUS_M = 100.0
+
+#: How many commercially-zoned lots within that 100 m make the OR-route fire.
+#: ONE, as the D82 review specified. An overlay is mapped in RUNS along a
+#: corridor, never on an isolated lot, so a single C1-2 lot within a block is
+#: the end of a corridor rather than an accident.
+#:
+#: THE COST, MEASURED AND STATED RATHER THAN HIDDEN. C1/C2 overlays are mapped
+#: along very nearly every Brooklyn avenue, and Brooklyn's cross-street spacing
+#: is ~80 m, so 46.8% of BK addresses have at least one commercially-zoned lot
+#: within 100 m network metres (only 5 points of that are in the 1-2 lot band,
+#: so this is real corridor geography and not snap slack). The OR-route at 1
+#: therefore takes BK retail_mixed to 52%, against the ~20% the review's own
+#: ground truth expects -- and the floor/share correction ALONE already
+#: delivers 20.5%. Measured on the 2026-09-13 MN+BK build, share of addresses
+#: labelled retail_mixed:
+#:
+#:     rule                                            BK      MN
+#:     floor-area OR payroll (pre-D82: 1,000 / 0.40)   8.4%   37.7%
+#:     ... payroll at 300 / 0.35 (D82, no zoning)     20.5%   52.6%
+#:     ... + zoning OR-route at >= 1 lot   (current)  53.1%   89.2%
+#:     ... + zoning OR-route at >= 10 lots            41.8%   78.6%
+#:     ... + zoning OR-route at >= 20 lots            35.5%   67.5%
+#:     ... + zoning OR-route at >= 30 lots            30.8%   59.0%
+#:
+#: All twelve corridors the review named flip at every one of those settings
+#: (see the D82 report), so the threshold buys DISCRIMINATION, not coverage.
+#: If the four-way label is wanted as a discriminator rather than as "is retail
+#: legal near here", this is the one number to move -- and note that
+#: `retail_index` carries the zoning witness CONTINUOUSLY either way, so
+#: raising this constant costs the map nothing.
+COMMERCIAL_OVERLAY_MIN_LOTS = 20
+
+#: The overlay share at which `retail_index` reads 1.0 on the zoning route --
+#: a quarter of every lot within the five-minute walk commercially zoned. For
+#: scale: a two-sided avenue overlay through an otherwise residential grid runs
+#: 0.10-0.20 at 400 m; Fifth Avenue Bay Ridge and Fulton Street sit near 0.25.
+RETAIL_INDEX_OVERLAY_SHARE_FULL = 0.25
+
+
+# ------------------------------------------------- institutional floor area
+#
+# D82. `office_area_400m` was the VA hospital problem: MapPLUTO books a
+# hospital's, a university's and a diocese's floor area as OfficeArea, so
+# Bay Ridge (the Brooklyn VA Medical Center) took 47 'corporate' addresses and
+# East Flatbush-Rugby (Kings County / Kingsbrook) took 134. A hospital campus
+# is a large weekday daytime population and it is NOT a business district: its
+# staff do not leave the building for lunch the way a trading floor does, and
+# nothing about its retail demand resembles Midtown's.
+#
+# So the CORPORATE route's office floor area EXCLUDES institutional lots:
+#   BldgClass I  hospitals and health facilities
+#   BldgClass M  churches, synagogues, religious buildings
+#   BldgClass P  public assembly and cultural
+#   BldgClass W  educational structures
+#   LandUse  08  public facilities and institutions
+# The RAW sum is kept beside it as `office_area_incl_inst_400m` -- it is one
+# more weight column in the SAME Dijkstra and therefore free -- so the size of
+# the exclusion is visible instead of asserted.
+INSTITUTIONAL_BLDGCLASS_PREFIXES: tuple[str, ...] = ("I", "M", "P", "W")
+INSTITUTIONAL_LANDUSE: tuple[str, ...] = ("08",)
+
+
 # ------------------------------------------------------------- the thresholds
 #
 # ONE definition, used by the generated view SQL below and by the tests. Tuned
@@ -233,8 +338,12 @@ CORPORATE_OFFICE_AREA_SHARE = 0.35
 #: (SoHo, DUMBO) carries the jobs without the PLUTO office split, and a
 #: half-empty new tower carries the floor area without the jobs.
 CORPORATE_JOBS_OFFICE_SHARE = 0.55
-#: A FLOOR on the jobs route, so a rowhouse block with 11 jobs -- six of them a
-#: title company -- cannot be "corporate" on a 55% share of nearly nothing.
+#: A FLOOR on BOTH corporate routes (D82), so a rowhouse block with 11 jobs --
+#: six of them a title company -- cannot be "corporate" on a 55% share of
+#: nearly nothing, AND a converted warehouse block with a big OfficeArea entry
+#: and no employment cannot be one either. Before D82 the floor guarded only
+#: the payroll route, which is how a hospital's OfficeArea alone could label a
+#: catchment corporate.
 CORPORATE_JOBS_FLOOR = 5_000
 
 #: RETAIL floor-area share at which the catchment reads as a shopping street.
@@ -245,24 +354,38 @@ CORPORATE_JOBS_FLOOR = 5_000
 RETAIL_AREA_SHARE = 0.12
 #: ...or the payroll route: two in five jobs within the walk are the shops,
 #: restaurants and services themselves.
-RETAIL_JOBS_SHARE = 0.40
+#: LOWERED 0.40 -> 0.35 at D82. 0.40 was set from the MN+BK distribution with
+#: no outer-borough ground truth in front of it, and it sat just above the
+#: observed share on real Brooklyn shopping streets: Cortelyou Road runs 0.384,
+#: Graham Avenue 0.384, Fulton Street 0.329, Church Avenue 0.302. A cut that
+#: excludes Cortelyou Road is measuring Manhattan, not retail.
+RETAIL_JOBS_SHARE = 0.35
 #: ...but only where there is enough of it to be a commercial district. This
-#: floor is on the retail-facing COUNT, not on total jobs, and it is the single
-#: most consequential tuning decision here. Without it the payroll route labels
-#: 28% of MN+BK retail_mixed and 74% of PARK SLOPE, because in a quiet
-#: residential catchment the few jobs that exist are disproportionately the
-#: corner deli and the nail salon -- a high share of almost nothing, which is a
-#: data gap wearing a costume. At 1,000 retail-facing jobs (roughly 100-200
-#: establishments within a five-minute walk) Park Slope falls to 25% -- its
-#: avenues, not its side streets -- and Bay Ridge to 5%, while Williamsburg
-#: (54%), the East Village (59%) and the West Village (74%) are untouched.
-#: The COST, stated rather than hidden: outer-borough strips built of very small
-#: shops (Flatbush Avenue, Church Avenue) have real retail and few payroll jobs,
-#: so they clear this only via the floor-area route and their NTA reads
-#: residential-dominant with a retail_mixed minority ON the strip. That is the
-#: honest reading of an address-grain measure, but it means `share_retail_mixed`
-#: UNDERSTATES small-shop retail geography relative to Manhattan.
-RETAIL_JOBS_FLOOR = 1_000
+#: floor is on the retail-facing COUNT, not on total jobs.
+#:
+#: LOWERED 1,000 -> 300 at D82, and this is the review's central correction.
+#: 1,000 retail-facing payroll jobs inside a five-minute walk is a MANHATTAN
+#: number. It was defended above on the grounds that without a floor the
+#: payroll route labelled 74% of Park Slope -- true, and the answer to that is
+#: a floor, not THIS floor. At 1,000 the rule silently required the shops to be
+#: BIG: 7th Avenue Park Slope (732 retail-facing jobs, share 0.448) failed,
+#: Cortelyou Road (311) failed, Pitkin Avenue (93-329) failed, and every one of
+#: them is an unmistakable shopping street. Outer-borough retail is built of
+#: owner-operated shops with two or three people on the payroll -- the same
+#: storefront count as a Manhattan block at a third of the payroll -- so a
+#: COUNT floor calibrated on Manhattan is a systematic outer-borough erasure,
+#: not a noise filter.
+#: At 300 (roughly 30-100 small establishments within a five-minute walk) the
+#: share-of-almost-nothing failure the floor exists to stop is still stopped:
+#: 300 retail-facing jobs is well above what a purely residential catchment's
+#: corner deli and nail salon produce.
+#: The COST, stated rather than hidden: more of Park Slope's and Bay Ridge's
+#: near-avenue side streets now clear the rule. That is the honest reading of a
+#: 400 m catchment -- a side street one block off 7th Avenue IS within a
+#: five-minute walk of 7th Avenue -- and it is the direction the map should err
+#: in, since the measure is "what is around this address", not "is this address
+#: itself a storefront".
+RETAIL_JOBS_FLOOR = 300
 
 #: FACTORY floor-area share at which the catchment reads as a working
 #: industrial district (IBZ, waterfront manufacturing, Industry City).
@@ -284,6 +407,122 @@ INDUSTRIAL_FACTORY_AREA_SHARE = 0.15
 #: district with shops in it, not a shopping district with offices above.
 LABEL_ORDER: tuple[str, ...] = ("corporate", "industrial", "retail_mixed", "residential")
 
+
+# ------------------------------------------------------------- suppression
+#
+# D82. Two kinds of NTA row are arithmetic rather than geography, and both take
+# top slots on any share ranking if they are left in.
+#
+#  * TINY DENOMINATORS. Calvert Vaux Park holds 9 residential lots and came out
+#    100% retail_mixed. That is not a finding about Calvert Vaux Park.
+#  * PARK, CEMETERY AND AIRPORT POLYGONS. The 2020 NTA layer covers the whole
+#    city, so Green-Wood Cemetery, Holy Cross Cemetery, Prospect Park, Central
+#    Park and Dyker Beach Park are NTAs. The residential lots inside them are
+#    real addresses on the fringe, but their NTA aggregate is not a
+#    neighbourhood anybody can act on.
+#
+# The 2020 NTA CODE carries the type in its last two digits: 01-59 is a
+# residential neighbourhood, 61-69 "other" non-residential (Brooklyn Navy Yard,
+# the United Nations, Fort Hamilton), 71-79 cemetery, 91-99 park or airport.
+# The type rule below is >= 70 -- cemeteries, parks and airports, exactly what
+# the review asked for. The 61-69 codes are left to the size rule, which in
+# MN+BK catches all three of them (Navy Yard 47 addresses, Fort Hamilton 21,
+# United Nations 20). NO NAME MATCHING: 'Park Slope', 'Borough Park', 'Sunset
+# Park' and 'Ozone Park' are residential NTAs, and a name rule would suppress
+# four real neighbourhoods to catch polygons the code already identifies.
+#
+# Suppression NULLs the per-address `character` and `character_intensity` (a
+# label nobody should read is worse than no label) but leaves every stored
+# measure and `retail_index` intact, so the continuous map shade still renders
+# the fringe of Prospect Park honestly.
+MIN_NTA_ADDRESSES = 50
+#: Last-two-digits of the NTA code at or above which the polygon is a park,
+#: cemetery or airport rather than a neighbourhood.
+NON_NEIGHBOURHOOD_NTA_SUFFIX = 70
+
+
+# ------------------------------------------------- the continuous measure
+#
+# D82. The review's strongest point about the MAP (not the rules): four
+# categorical classes force a binary call on a continuum, and the call lands
+# wrong exactly where the inputs are weakest. `retail_index` is the shade the
+# map should carry, with corporate and industrial as sparse overlays on top of
+# it rather than as competing fills.
+#
+# It is a MAX over the three independent witnesses, each normalised to its own
+# rule threshold and capped at 1.0:
+#
+#   retail_area_share / RETAIL_AREA_SHARE                       (assessment)
+#   jobs_retail_share / RETAIL_JOBS_SHARE, gated on the floor   (payroll)
+#   commercial_overlay_share_400m / 0.25                        (zoning)
+#
+# MAX and not a mean, for the same reason the label takes any route as
+# sufficient: each witness fails in a different place and each failure is a
+# FALSE ZERO, never a false positive. Averaging three numbers of which two are
+# known-zero by construction on a prewar retail street would reproduce the
+# exact erasure this index exists to fix. The cost is that the index cannot
+# fall below its most generous witness -- it is an upper envelope of retail
+# evidence, and should be read as "how much evidence of retail character",
+# never as "what fraction of this catchment is retail".
+RETAIL_INDEX_TERMS = ("retail_area", "jobs_retail", "commercial_overlay")
+
+
+# ------------------------------------------------------------ display copy
+#
+# D82. Rule: the CODE renames nothing -- `corporate` stays `corporate` in the
+# label column, in LABEL_ORDER, in every share column and in every downstream
+# join. What changes is what a HUMAN is shown, and it changes here, in one
+# place, so a card and a map legend cannot drift apart.
+CHARACTER_COPY: dict[str, str] = {
+    "corporate":    "weekday-office catchment",
+    "retail_mixed": "retail / mixed-use",
+    "industrial":   "working industrial",
+    "residential":  "residential",
+}
+
+#: The one-line caveat that must travel with the corporate copy, because the
+#: label's plain-English reading ("nobody lives here, don't open a laundromat")
+#: is the opposite of what the data says. From the D82 review: a weekday-office
+#: catchment adds weekday demand ON TOP OF a resident base that is usually
+#: LARGER than the borough median. The figures below are the 2026-09-13 MN+BK
+#: build (5,682 vs 2,284 on the pre-D82 label set); `am_pm_corroboration()`
+#: prints the current pair, and the copy should be re-read off it whenever the
+#: rules move. What limits daily-needs retail in these catchments is
+#: ground-floor supply, rent and loading, NOT absent customers.
+CHARACTER_CAVEAT: dict[str, str] = {
+    "corporate": (
+        "A weekday-office catchment adds weekday demand on top of a resident "
+        "base that is usually larger than the borough median: corporate-labelled "
+        "addresses have a median 6,029 homes within 400 m against 1,759 for "
+        "residential-labelled ones (5,682 vs 2,284 before D82). What limits "
+        "daily-needs retail here is rent, loading and ground-floor supply -- "
+        "not absent customers."),
+    "retail_mixed": (
+        "Retail character is an UPPER ENVELOPE of three witnesses (PLUTO "
+        "RetailArea, LODES retail-facing payroll, C1/C2 commercial zoning); any "
+        "one of them firing is enough, because each fails to zero in a different "
+        "place."),
+    "industrial": (
+        "A working industrial catchment has weekday employment and very few "
+        "residents; it is tested BEFORE retail, so an IBZ edge with a brewery "
+        "taproom still reads industrial."),
+    "residential": (
+        "No route fired. This is the absence of evidence of the other three, "
+        "not evidence of absence -- read `retail_index` beside it."),
+}
+
+#: A note the copy layer must not lose. `transit_am_pm_share_400m` (the D76
+#: addendum) is NULL, not zero, for the ~61% of MN+BK addresses with no
+#: profiled subway station within 400 m. A card that prints "AM share 0%" for a
+#: Marine Park address is reporting the absence of a subway as a fact about
+#: commuters. Render NULL as "no station within 400 m" and never as a number,
+#: and never average it across a set without saying how many rows it rests on
+#: (`n_am_pm` on analysis.nta_character).
+TRANSIT_AM_PM_NOTE = (
+    "transit_am_pm_share_400m is NULL outside the subway shed (~61% of MN+BK "
+    "addresses have no profiled station within 400 m). NULL means 'no station', "
+    "not 'no morning commuters' -- never render it as 0.")
+
 #: Degrees of padding on the SCOPE bounding box when selecting weight points.
 #: A lot or block more than this far outside the box holding the scored
 #: addresses cannot be within 400 m NETWORK metres of any of them, because
@@ -299,21 +538,32 @@ SCOPE_PAD_DEG = BBOX_PAD_DEG            # 0.02
 #: The weight columns of the single sweep, in the order `catchment_sums`
 #: returns them. Adding a lot-derived measure is one more entry here.
 LOT_WEIGHTS: tuple[str, ...] = (
-    "retail_area", "office_area", "res_area", "factory_area", "bldg_area")
+    "retail_area", "office_area", "office_area_incl_inst", "res_area",
+    "factory_area", "bldg_area", "comm_lots", "lots")
 JOB_WEIGHTS: tuple[str, ...] = ("jobs_retail", "jobs_office", "jobs_total")
 SWEEP_KEYS: tuple[str, ...] = (*LOT_WEIGHTS, *JOB_WEIGHTS)
+
+#: The weights of the SECOND sweep, at COMMERCIAL_OVERLAY_RADIUS_M. One column,
+#: because the 100 m radius answers exactly one question ("is this address on a
+#: commercially-zoned block"). Same CSR, same query nodes, same engine.
+NEAR_WEIGHTS: tuple[str, ...] = ("comm_lots",)
 
 #: The ONLY columns write_character may name in a SET clause.
 CHARACTER_COLUMNS = [
     "retail_area_400m",
     "office_area_400m",
+    "office_area_incl_inst_400m",
     "res_area_400m",
     "factory_area_400m",
     "bldg_area_400m",
     "jobs_retail_400m",
     "jobs_office_400m",
     "jobs_other_400m",
+    "commercial_overlay_100m",
+    "commercial_lots_400m",
+    "lots_400m",
     "character_radius_m",
+    "character_near_radius_m",
     "character_pluto_version",
     "character_jobs_vintage",
     "character_run_at",
@@ -322,11 +572,49 @@ CHARACTER_COLUMNS = [
 
 # ----------------------------------------------------------------- the reads
 
+def _commercial_lot_sql(alias: str = "") -> str:
+    """The zoning predicate, as SQL over MapPLUTO's raw VARCHAR columns.
+
+    Uppercased and trimmed before matching because the export is not
+    case-consistent across versions. A blank overlay is the empty string in
+    some vintages and NULL in others; both fail every LIKE, which is correct.
+    """
+    p = f"{alias}." if alias else ""
+    def up(col: str) -> str:
+        return f"UPPER(TRIM(COALESCE({p}{col}, '')))"
+    tests = []
+    for ov in ("overlay1", "overlay2"):
+        tests += [f"{up(ov)} LIKE '{pre}%'" for pre in COMMERCIAL_OVERLAY_PREFIXES]
+    tests += [f"{up('zonedist1')} LIKE '{pre}%'"
+              for pre in COMMERCIAL_DISTRICT_PREFIXES]
+    return "(" + " OR ".join(tests) + ")"
+
+
+def _institutional_lot_sql(alias: str = "") -> str:
+    """The institutional predicate (D82): hospitals, religious buildings,
+    public assembly, schools, and DCP LandUse 08 public facilities. These lots'
+    OfficeArea is excluded from the corporate route -- a hospital campus is not
+    a central business district."""
+    p = f"{alias}." if alias else ""
+    cls = f"UPPER(TRIM(COALESCE({p}bldgclass, '')))"
+    lu = f"LPAD(TRIM(COALESCE({p}landuse, '')), 2, '0')"
+    tests = [f"{cls} LIKE '{pre}%'" for pre in INSTITUTIONAL_BLDGCLASS_PREFIXES]
+    tests += [f"{lu} = '{code}'" for code in INSTITUTIONAL_LANDUSE]
+    return "(" + " OR ".join(tests) + ")"
+
+
 def load_lot_points(con, bbox: tuple[float, float, float, float],
                     pluto_csv: pathlib.Path | str = PLUTO_CSV) -> pd.DataFrame:
     """One row per MapPLUTO tax lot inside `bbox` with usable coordinates:
-    (bbl, lon, lat, retail_area, office_area, res_area, factory_area,
-    bldg_area, unitsres, version). SQUARE FEET.
+    (bbl, lon, lat, retail_area, office_area, office_area_incl_inst, res_area,
+    factory_area, bldg_area, is_commercial, is_institutional, unitsres,
+    version). SQUARE FEET.
+
+    `office_area` EXCLUDES institutional lots (D82) and
+    `office_area_incl_inst` is the raw column, so the size of the exclusion
+    stays visible. `is_commercial` is the C1/C2 overlay + C1/C2/C4/C5/C6/C8
+    district test; it is a 0/1 weight, so summing it over a catchment counts
+    LOTS, not floor area.
 
     EVERY lot, not only UnitsRes > 0 -- see the module docstring on why reusing
     `homes_400m`'s set would zero out the Financial District. `unitsres` rides
@@ -348,15 +636,20 @@ def load_lot_points(con, bbox: tuple[float, float, float, float],
             f"every address would read as 'New York has no buildings'.")
     minlon, minlat, maxlon, maxlat = bbox
     df = con.execute(
-        """
+        f"""
         SELECT BBL                                             AS bbl,
                TRY_CAST(longitude AS DOUBLE)                   AS lon,
                TRY_CAST(latitude  AS DOUBLE)                   AS lat,
                COALESCE(TRY_CAST(retailarea AS DOUBLE), 0)     AS retail_area,
-               COALESCE(TRY_CAST(officearea AS DOUBLE), 0)     AS office_area,
+               CASE WHEN {_institutional_lot_sql()} THEN 0
+                    ELSE COALESCE(TRY_CAST(officearea AS DOUBLE), 0)
+               END                                             AS office_area,
+               COALESCE(TRY_CAST(officearea AS DOUBLE), 0)     AS office_area_incl_inst,
                COALESCE(TRY_CAST(resarea    AS DOUBLE), 0)     AS res_area,
                COALESCE(TRY_CAST(factryarea AS DOUBLE), 0)     AS factory_area,
                COALESCE(TRY_CAST(bldgarea   AS DOUBLE), 0)     AS bldg_area,
+               CASE WHEN {_commercial_lot_sql()} THEN 1 ELSE 0 END AS is_commercial,
+               CASE WHEN {_institutional_lot_sql()} THEN 1 ELSE 0 END AS is_institutional,
                COALESCE(TRY_CAST(unitsres   AS DOUBLE), 0)     AS unitsres,
                version                                         AS version
         FROM read_csv_auto(?, ALL_VARCHAR=TRUE)
@@ -449,6 +742,7 @@ def compute_character(
     con,
     boroughs: list[str] | None,
     radius_m: float = DEFAULT_RADIUS_M,
+    near_radius_m: float = COMMERCIAL_OVERLAY_RADIUS_M,
     graph_path: pathlib.Path = GRAPH_PATH,
     jobs_vintage: int = DEFAULT_JOBS_VINTAGE,
     pluto_csv: pathlib.Path | str = PLUTO_CSV,
@@ -488,9 +782,16 @@ def compute_character(
     weights = {
         "retail_area": lots["retail_area"].to_numpy(dtype=np.float64),
         "office_area": lots["office_area"].to_numpy(dtype=np.float64),
+        "office_area_incl_inst": lots["office_area_incl_inst"].to_numpy(dtype=np.float64),
         "res_area": lots["res_area"].to_numpy(dtype=np.float64),
         "factory_area": lots["factory_area"].to_numpy(dtype=np.float64),
         "bldg_area": lots["bldg_area"].to_numpy(dtype=np.float64),
+        # 0/1 lot weights: summed over a catchment these COUNT LOTS. `lots` is
+        # the denominator of commercial_overlay_share_400m and is deliberately
+        # every lot in the bbox, so the share is "of the lots around me, how
+        # many may legally hold a shop" and not a share of anything smaller.
+        "comm_lots": lots["is_commercial"].to_numpy(dtype=np.float64),
+        "lots": np.ones(len(lots), dtype=np.float64),
     }
     for k in JOB_WEIGHTS:
         nodes_of[k] = j_nidx
@@ -509,6 +810,14 @@ def compute_character(
     # tell two doorways on one block apart -- so the sweep runs once per NODE.
     uniq, inv = np.unique(a_nidx, return_inverse=True)
     acc = catchment_sums(A, uniq, W, radius_m=radius_m, batch=batch)[inv]
+
+    # SECOND sweep, same engine, same query nodes, at the 100 m "on this block"
+    # radius (D82). Only the commercial-lot indicator is carried, so the weight
+    # matrix is one column wide and the Dijkstra is bounded at a quarter of the
+    # radius -- it costs a small fraction of the 400 m pass.
+    Wn = node_weights(idx, {"comm_lots": l_nidx},
+                      {"comm_lots": weights["comm_lots"]}, n_nodes)
+    near = catchment_sums(A, uniq, Wn, radius_m=near_radius_m, batch=batch)[inv]
 
     col = {k: acc[:, keys.index(k)] for k in keys}
     # LODES values are integers and the catchment is a 0/1 matrix product over
@@ -532,13 +841,21 @@ def compute_character(
         "borough": addr["borough"].to_numpy(),
         "retail_area_400m": col["retail_area"],
         "office_area_400m": col["office_area"],
+        "office_area_incl_inst_400m": col["office_area_incl_inst"],
         "res_area_400m": col["res_area"],
         "factory_area_400m": col["factory_area"],
         "bldg_area_400m": col["bldg_area"],
         "jobs_retail_400m": j_ret,
         "jobs_office_400m": j_off,
         "jobs_other_400m": j_oth,
+        # Lot COUNTS, so integer. rint before the cast because these are exact
+        # sums of a 0/1 matrix product in float64 and a bare astype would
+        # truncate a 3.0000000000000004 to 3 by luck rather than by rule.
+        "commercial_overlay_100m": np.rint(near[:, 0]).astype("int64"),
+        "commercial_lots_400m": np.rint(col["comm_lots"]).astype("int64"),
+        "lots_400m": np.rint(col["lots"]).astype("int64"),
         "character_radius_m": float(radius_m),
+        "character_near_radius_m": float(near_radius_m),
         "character_pluto_version": version,
         "character_jobs_vintage": int(jobs_vintage),
         "character_run_at": run_at,
@@ -553,9 +870,13 @@ def compute_character(
         "query_nodes": int(uniq.size),
         "lots": len(lots),
         "lots_residential": int((lots["unitsres"] > 0).sum()),
+        "lots_commercial_zoned": int(lots["is_commercial"].sum()),
+        "lots_institutional": int(lots["is_institutional"].sum()),
         "lot_bldg_area_total": float(lots["bldg_area"].sum()),
         "lot_office_area_total": float(lots["office_area"].sum()),
+        "lot_office_area_incl_inst_total": float(lots["office_area_incl_inst"].sum()),
         "lot_retail_area_total": float(lots["retail_area"].sum()),
+        "near_radius_m": float(near_radius_m),
         "pluto_version": version,
         "job_blocks": len(jobs),
         "job_total_in_bbox": float(jobs["jobs_total"].sum()),
@@ -569,6 +890,12 @@ def compute_character(
         "addresses_with_office_area": int((out["office_area_400m"] > 0).sum()),
         "addresses_with_retail_area": int((out["retail_area_400m"] > 0).sum()),
         "addresses_with_factory_area": int((out["factory_area_400m"] > 0).sum()),
+        "addresses_on_commercial_block": int(
+            (out["commercial_overlay_100m"] >= COMMERCIAL_OVERLAY_MIN_LOTS).sum()),
+        "office_area_excluded_pct": (
+            1.0 - float(lots["office_area"].sum())
+            / float(lots["office_area_incl_inst"].sum())
+            if float(lots["office_area_incl_inst"].sum()) > 0 else None),
     }
     return out, report
 
@@ -639,6 +966,7 @@ def build_character(
     con,
     boroughs: list[str] | None,
     radius_m: float = DEFAULT_RADIUS_M,
+    near_radius_m: float = COMMERCIAL_OVERLAY_RADIUS_M,
     graph_path: pathlib.Path = GRAPH_PATH,
     jobs_vintage: int = DEFAULT_JOBS_VINTAGE,
     pluto_csv: pathlib.Path | str = PLUTO_CSV,
@@ -647,8 +975,8 @@ def build_character(
     """compute + write, then (re)create the two views so a tuned threshold
     takes effect without a schema re-init."""
     df, report = compute_character(
-        con, boroughs, radius_m=radius_m, graph_path=graph_path,
-        jobs_vintage=jobs_vintage, pluto_csv=pluto_csv)
+        con, boroughs, radius_m=radius_m, near_radius_m=near_radius_m,
+        graph_path=graph_path, jobs_vintage=jobs_vintage, pluto_csv=pluto_csv)
     if not dry_run:
         report["_written"] = write_character(con, df, boroughs)
         create_views(con)
@@ -669,9 +997,13 @@ def _share(num: str, den: str) -> str:
 
 
 def _corporate_rule(prefix: str = "") -> str:
-    return (f"COALESCE({prefix}office_area_share, 0) >= {CORPORATE_OFFICE_AREA_SHARE} "
-            f"OR (COALESCE({prefix}jobs_office_share, 0) >= {CORPORATE_JOBS_OFFICE_SHARE} "
-            f"AND COALESCE({prefix}jobs_three_400m, 0) >= {CORPORATE_JOBS_FLOOR})")
+    """D82: the jobs floor now guards BOTH routes. Before, a hospital's
+    OfficeArea alone could label a catchment corporate with no employment test
+    at all -- and `office_area_400m` itself no longer contains institutional
+    floor area, so the two corrections are independent."""
+    return (f"COALESCE({prefix}jobs_three_400m, 0) >= {CORPORATE_JOBS_FLOOR} "
+            f"AND (COALESCE({prefix}office_area_share, 0) >= {CORPORATE_OFFICE_AREA_SHARE} "
+            f"OR COALESCE({prefix}jobs_office_share, 0) >= {CORPORATE_JOBS_OFFICE_SHARE})")
 
 
 def _industrial_rule(prefix: str = "") -> str:
@@ -679,17 +1011,56 @@ def _industrial_rule(prefix: str = "") -> str:
 
 
 def _retail_rule(prefix: str = "") -> str:
+    """Three routes, any one sufficient (D82 added the third). Each witness
+    fails to ZERO in a different place -- assessment on prewar taxpayers,
+    payroll on owner-operated strips, zoning on new-build retail condos in a
+    residential district -- so OR is the only combination that does not
+    inherit every one of those blind spots."""
     return (f"COALESCE({prefix}retail_area_share, 0) >= {RETAIL_AREA_SHARE} "
             f"OR (COALESCE({prefix}jobs_retail_share, 0) >= {RETAIL_JOBS_SHARE} "
-            f"AND COALESCE({prefix}jobs_retail_400m, 0) >= {RETAIL_JOBS_FLOOR})")
+            f"AND COALESCE({prefix}jobs_retail_400m, 0) >= {RETAIL_JOBS_FLOOR}) "
+            f"OR COALESCE({prefix}commercial_overlay_100m, 0) "
+            f">= {COMMERCIAL_OVERLAY_MIN_LOTS}")
+
+
+def _retail_index_sql(prefix: str = "") -> str:
+    """`retail_index` in [0, 1]: the MAX of three witnesses, each normalised to
+    its own rule threshold and capped. See RETAIL_INDEX_TERMS on why MAX.
+
+    NULL only where the build has not run -- the callers wrap this in the same
+    `character_run_at IS NULL` test the label uses. A catchment with no built
+    area and no jobs reads 0.0, which is an observation (D75: zero is a
+    measurement, NULL is not a thing here)."""
+    return (
+        f"GREATEST("
+        f"LEAST(1.0, COALESCE({prefix}retail_area_share, 0) / {RETAIL_AREA_SHARE}), "
+        f"CASE WHEN COALESCE({prefix}jobs_retail_400m, 0) >= {RETAIL_JOBS_FLOOR} "
+        f"THEN LEAST(1.0, COALESCE({prefix}jobs_retail_share, 0) / {RETAIL_JOBS_SHARE}) "
+        f"ELSE 0 END, "
+        f"LEAST(1.0, COALESCE({prefix}commercial_overlay_share_400m, 0) "
+        f"/ {RETAIL_INDEX_OVERLAY_SHARE_FULL}))")
+
+
+def _suppressed_sql(prefix: str = "") -> str:
+    """TRUE where the NTA is too small to quote or is a park, cemetery or
+    airport polygon rather than a neighbourhood (D82). See MIN_NTA_ADDRESSES.
+    `nta_addresses` is supplied by the view's own CTE, not stored."""
+    return (f"(COALESCE({prefix}nta_addresses, 0) < {MIN_NTA_ADDRESSES} "
+            f"OR TRY_CAST(substr({prefix}nta_code, 5, 2) AS INTEGER) "
+            f">= {NON_NEIGHBOURHOOD_NTA_SUFFIX})")
 
 
 def address_character_view_sql() -> str:
-    """analysis.address_character -- shares, label, intensity.
+    """analysis.address_character -- shares, label, intensity, retail_index.
 
-    Every in-scope address gets a label. NULL appears in exactly one case,
-    `character_run_at IS NULL`, which means the build has not run for that
-    borough; a NULL there is honest and a fabricated 'residential' would not be.
+    `character` is NULL in exactly two cases, and both are refusals to state
+    something the data cannot support:
+      * `character_run_at IS NULL` -- the build has not run for that borough;
+      * `suppressed` -- the address sits in an NTA with fewer than
+        MIN_NTA_ADDRESSES addresses, or in a park / cemetery / airport polygon
+        (D82). Every stored measure and `retail_index` survive suppression;
+        only the four-way label and its intensity are withheld.
+    A fabricated 'residential' in either case would not be honest.
     """
     # `character_intensity` answers "how far past the line", 0..1, so a map can
     # shade instead of flood-filling four colours. For a triggered label it is
@@ -707,43 +1078,68 @@ def address_character_view_sql() -> str:
                 f"/ {round(1 - CORPORATE_JOBS_OFFICE_SHARE, 10)} ELSE -1 END)")
     ind_int = (f"(COALESCE(factory_area_share, 0) - {INDUSTRIAL_FACTORY_AREA_SHARE}) "
                f"/ {round(1 - INDUSTRIAL_FACTORY_AREA_SHARE, 10)}")
+    # The zoning route is a COUNT with a threshold of one, so "how far past the
+    # line" has no meaning on it; the continuous quantity that goes with it is
+    # the 400 m overlay SHARE, which is what the third term reads.
     ret_int = (f"GREATEST("
                f"(COALESCE(retail_area_share, 0) - {RETAIL_AREA_SHARE}) "
                f"/ {round(1 - RETAIL_AREA_SHARE, 10)}, "
                f"CASE WHEN COALESCE(jobs_retail_400m, 0) >= {RETAIL_JOBS_FLOOR} "
                f"THEN (COALESCE(jobs_retail_share, 0) - {RETAIL_JOBS_SHARE}) "
-               f"/ {round(1 - RETAIL_JOBS_SHARE, 10)} ELSE -1 END)")
+               f"/ {round(1 - RETAIL_JOBS_SHARE, 10)} ELSE -1 END, "
+               f"CASE WHEN COALESCE(commercial_overlay_100m, 0) "
+               f">= {COMMERCIAL_OVERLAY_MIN_LOTS} "
+               f"THEN LEAST(1.0, COALESCE(commercial_overlay_share_400m, 0) "
+               f"/ {RETAIL_INDEX_OVERLAY_SHARE_FULL}) ELSE -1 END)")
     res_int = (f"1.0 - GREATEST("
-               f"COALESCE(office_area_share, 0) / {CORPORATE_OFFICE_AREA_SHARE}, "
+               f"CASE WHEN COALESCE(jobs_three_400m, 0) >= {CORPORATE_JOBS_FLOOR} "
+               f"THEN COALESCE(office_area_share, 0) / {CORPORATE_OFFICE_AREA_SHARE} "
+               f"ELSE 0 END, "
                f"COALESCE(factory_area_share, 0) / {INDUSTRIAL_FACTORY_AREA_SHARE}, "
                f"COALESCE(retail_area_share, 0) / {RETAIL_AREA_SHARE}, "
                f"CASE WHEN COALESCE(jobs_retail_400m, 0) >= {RETAIL_JOBS_FLOOR} "
                f"THEN COALESCE(jobs_retail_share, 0) / {RETAIL_JOBS_SHARE} "
                f"ELSE 0 END, "
+               f"COALESCE(commercial_overlay_share_400m, 0) "
+               f"/ {RETAIL_INDEX_OVERLAY_SHARE_FULL}, "
                f"CASE WHEN COALESCE(jobs_three_400m, 0) >= {CORPORATE_JOBS_FLOOR} "
                f"THEN COALESCE(jobs_office_share, 0) / {CORPORATE_JOBS_OFFICE_SHARE} "
                f"ELSE 0 END)")
     return f"""
 CREATE OR REPLACE VIEW analysis.address_character AS
-WITH base AS (
-    SELECT address_id, borough, nta_code, neighborhood, lon, lat,
-           homes_400m, jobs_400m, transit_entries_400m, transit_am_pm_share_400m,
-           retail_area_400m, office_area_400m, res_area_400m, factory_area_400m,
-           bldg_area_400m,
-           jobs_retail_400m, jobs_office_400m, jobs_other_400m,
-           character_radius_m, character_pluto_version, character_jobs_vintage,
-           character_run_at,
+WITH nta_size AS (
+    -- The suppression denominator (D82). Counted over BUILT addresses only,
+    -- so a borough that has not been run does not suppress itself to nothing.
+    SELECT borough, nta_code, count(*) AS nta_addresses
+    FROM analysis.address
+    WHERE character_run_at IS NOT NULL
+    GROUP BY borough, nta_code
+), base AS (
+    SELECT a.address_id, a.borough, a.nta_code, a.neighborhood, a.lon, a.lat,
+           a.homes_400m, a.jobs_400m, a.transit_entries_400m,
+           a.transit_am_pm_share_400m,
+           a.retail_area_400m, a.office_area_400m, a.office_area_incl_inst_400m,
+           a.res_area_400m, a.factory_area_400m, a.bldg_area_400m,
+           a.jobs_retail_400m, a.jobs_office_400m, a.jobs_other_400m,
+           a.commercial_overlay_100m, a.commercial_lots_400m, a.lots_400m,
+           a.character_radius_m, a.character_near_radius_m,
+           a.character_pluto_version, a.character_jobs_vintage,
+           a.character_run_at,
+           COALESCE(s.nta_addresses, 0) AS nta_addresses,
            -- The share DENOMINATOR is the four NAMED uses, not BldgArea:
            -- garage, storage, "other" and unclassified floor area are ~18% of
            -- BldgArea citywide and dividing by it would make every share read
            -- systematically low for no gain in meaning. bldg_area_400m stays on
            -- the view so a reader can see how much was left out.
-           (COALESCE(retail_area_400m, 0) + COALESCE(office_area_400m, 0)
-            + COALESCE(res_area_400m, 0) + COALESCE(factory_area_400m, 0))
+           (COALESCE(a.retail_area_400m, 0) + COALESCE(a.office_area_400m, 0)
+            + COALESCE(a.res_area_400m, 0) + COALESCE(a.factory_area_400m, 0))
                AS area_four_400m,
-           (COALESCE(jobs_retail_400m, 0) + COALESCE(jobs_office_400m, 0)
-            + COALESCE(jobs_other_400m, 0)) AS jobs_three_400m
-    FROM analysis.address
+           (COALESCE(a.jobs_retail_400m, 0) + COALESCE(a.jobs_office_400m, 0)
+            + COALESCE(a.jobs_other_400m, 0)) AS jobs_three_400m
+    FROM analysis.address a
+    LEFT JOIN nta_size s
+           ON s.borough = a.borough
+          AND s.nta_code IS NOT DISTINCT FROM a.nta_code
 ), shares AS (
     SELECT base.*,
            {_share('retail_area_400m', 'area_four_400m')}  AS retail_area_share,
@@ -752,12 +1148,25 @@ WITH base AS (
            {_share('factory_area_400m', 'area_four_400m')} AS factory_area_share,
            {_share('jobs_retail_400m', 'jobs_three_400m')} AS jobs_retail_share,
            {_share('jobs_office_400m', 'jobs_three_400m')} AS jobs_office_share,
-           {_share('jobs_other_400m', 'jobs_three_400m')}  AS jobs_other_share
+           {_share('jobs_other_400m', 'jobs_three_400m')}  AS jobs_other_share,
+           -- The ZONING witness (D82). Denominator is EVERY lot within 400 m,
+           -- so this is "of the lots around me, what fraction may legally hold
+           -- a shop". NULL where the catchment contains no lot at all, which
+           -- on this graph means an address on a pier or a bridge approach.
+           {_share('commercial_lots_400m', 'lots_400m')}    AS commercial_overlay_share_400m
     FROM base
+), flagged AS (
+    SELECT shares.*,
+           {_suppressed_sql()} AS suppressed,
+           CASE WHEN character_run_at IS NULL THEN NULL
+                ELSE LEAST(1.0, GREATEST(0.0, {_retail_index_sql()})) END
+               AS retail_index
+    FROM shares
 )
-SELECT shares.*,
+SELECT flagged.*,
        CASE
            WHEN character_run_at IS NULL THEN NULL
+           WHEN suppressed           THEN NULL
            WHEN {_corporate_rule()}  THEN 'corporate'
            WHEN {_industrial_rule()} THEN 'industrial'
            WHEN {_retail_rule()}     THEN 'retail_mixed'
@@ -765,12 +1174,13 @@ SELECT shares.*,
        END AS character,
        CASE
            WHEN character_run_at IS NULL THEN NULL
+           WHEN suppressed           THEN NULL
            WHEN {_corporate_rule()}  THEN LEAST(1.0, GREATEST(0.0, {corp_int}))
            WHEN {_industrial_rule()} THEN LEAST(1.0, GREATEST(0.0, {ind_int}))
            WHEN {_retail_rule()}     THEN LEAST(1.0, GREATEST(0.0, {ret_int}))
            ELSE LEAST(1.0, GREATEST(0.0, {res_int}))
        END AS character_intensity
-FROM shares
+FROM flagged
 """
 
 
@@ -791,17 +1201,36 @@ def nta_character_view_sql() -> str:
     It is NULL for the ~61% of MN+BK addresses with no profiled station within
     400 m, so `n_am_pm` says how many addresses the median rests on.
     """
-    return """
+    #: D82: the row now survives suppression, flagged rather than dropped, so a
+    #: reader asking "what about Green-Wood Cemetery" gets an explicit
+    #: `suppressed = true` with NULL shares instead of a missing row they must
+    #: guess the meaning of. The four share columns use a NULL-PRESERVING CASE
+    #: (`WHEN character IS NULL THEN NULL`): the naive `ELSE 0` would report a
+    #: suppressed NTA as 0% corporate, 0% retail and 0% residential, which
+    #: reads as a finding rather than as a refusal.
+    return f"""
 CREATE OR REPLACE VIEW analysis.nta_character AS
 SELECT borough,
        nta_code,
        any_value(neighborhood)                                        AS neighborhood,
        count(*)                                                       AS addresses,
+       bool_or(suppressed)                                            AS suppressed,
        mode(character)                                                AS dominant_character,
-       avg(CASE WHEN character = 'corporate'    THEN 1 ELSE 0 END)    AS share_corporate,
-       avg(CASE WHEN character = 'retail_mixed' THEN 1 ELSE 0 END)    AS share_retail_mixed,
-       avg(CASE WHEN character = 'industrial'   THEN 1 ELSE 0 END)    AS share_industrial,
-       avg(CASE WHEN character = 'residential'  THEN 1 ELSE 0 END)    AS share_residential,
+       avg(CASE WHEN character IS NULL THEN NULL
+                WHEN character = 'corporate'    THEN 1 ELSE 0 END)    AS share_corporate,
+       avg(CASE WHEN character IS NULL THEN NULL
+                WHEN character = 'retail_mixed' THEN 1 ELSE 0 END)    AS share_retail_mixed,
+       avg(CASE WHEN character IS NULL THEN NULL
+                WHEN character = 'industrial'   THEN 1 ELSE 0 END)    AS share_industrial,
+       avg(CASE WHEN character IS NULL THEN NULL
+                WHEN character = 'residential'  THEN 1 ELSE 0 END)    AS share_residential,
+       -- The CONTINUOUS measure (D82). Computed for suppressed NTAs too: it is
+       -- an evidence score, not a claim about a neighbourhood's identity.
+       avg(retail_index)                                              AS mean_retail_index,
+       median(retail_index)                                           AS med_retail_index,
+       avg(commercial_overlay_share_400m)                             AS mean_overlay_share,
+       avg(CASE WHEN commercial_overlay_100m >= {COMMERCIAL_OVERLAY_MIN_LOTS}
+                THEN 1 ELSE 0 END)                                    AS share_on_commercial_block,
        avg(retail_area_share)                                         AS mean_retail_area_share,
        avg(office_area_share)                                         AS mean_office_area_share,
        avg(res_area_share)                                            AS mean_res_area_share,
@@ -815,7 +1244,7 @@ SELECT borough,
        median(transit_am_pm_share_400m)                               AS am_pm_share_median,
        count(transit_am_pm_share_400m)                                AS n_am_pm
 FROM analysis.address_character
-WHERE character IS NOT NULL
+WHERE character_run_at IS NOT NULL
 GROUP BY borough, nta_code
 """
 
@@ -854,9 +1283,18 @@ SELECT borough,
        sum(CASE WHEN jobs_retail_400m + jobs_office_400m + jobs_other_400m
                      <> jobs_400m THEN 1 ELSE 0 END)             AS jobs_sum_mismatch,
        sum(CASE WHEN jobs_other_400m < 0 THEN 1 ELSE 0 END)      AS jobs_other_negative,
-       sum(CASE WHEN retail_area_400m + office_area_400m + res_area_400m
+       sum(CASE WHEN retail_area_400m + office_area_incl_inst_400m + res_area_400m
                      + factory_area_400m > bldg_area_400m + 1
                 THEN 1 ELSE 0 END)                               AS area_exceeds_bldg,
+       -- D82: the institutional exclusion can only REMOVE office floor area,
+       -- and the commercial lots are a subset of all lots. Either inequality
+       -- flipping means the weight vectors were mis-ordered in the sweep.
+       sum(CASE WHEN office_area_400m > office_area_incl_inst_400m + 1
+                THEN 1 ELSE 0 END)                               AS office_excl_exceeds_raw,
+       sum(CASE WHEN commercial_lots_400m > lots_400m
+                THEN 1 ELSE 0 END)                               AS comm_lots_exceed_lots,
+       sum(CASE WHEN commercial_overlay_100m > commercial_lots_400m
+                THEN 1 ELSE 0 END)                               AS near_exceeds_far,
        count(DISTINCT character_radius_m)                        AS n_radii,
        count(DISTINCT character_pluto_version)                   AS n_pluto_versions,
        count(DISTINCT character_jobs_vintage)                    AS n_jobs_vintages
@@ -866,19 +1304,45 @@ ORDER BY borough NULLS LAST
 """
 
 LABEL_VALIDATION_SQL = """
--- Every in-scope address carries a label, and every intensity is in [0, 1].
+-- Every in-scope, UNSUPPRESSED address carries a label; every intensity and
+-- every retail_index is in [0, 1]; and a NULL label is accounted for by one of
+-- the two reasons a NULL is allowed (D82: not built, or suppressed). If
+-- `unexplained_null_label` is ever non-zero the CASE has a hole in it.
 SELECT borough,
        count(*)                                                   AS addresses,
        count(character)                                           AS labelled,
+       sum(CASE WHEN suppressed THEN 1 ELSE 0 END)                AS suppressed,
        sum(CASE WHEN character IS NULL THEN 1 ELSE 0 END)         AS null_label,
-       sum(CASE WHEN character_intensity IS NULL THEN 1 ELSE 0 END) AS null_intensity,
+       sum(CASE WHEN character IS NULL AND NOT suppressed
+                     AND character_run_at IS NOT NULL
+                THEN 1 ELSE 0 END)                                AS unexplained_null_label,
+       sum(CASE WHEN character IS NOT NULL AND character_intensity IS NULL
+                THEN 1 ELSE 0 END)                                AS null_intensity,
        sum(CASE WHEN character_intensity < 0 OR character_intensity > 1
                 THEN 1 ELSE 0 END)                                AS intensity_out_of_range,
+       sum(CASE WHEN retail_index < 0 OR retail_index > 1
+                THEN 1 ELSE 0 END)                                AS retail_index_out_of_range,
+       sum(CASE WHEN character_run_at IS NOT NULL AND retail_index IS NULL
+                THEN 1 ELSE 0 END)                                AS null_retail_index,
        sum(CASE WHEN area_four_400m = 0 THEN 1 ELSE 0 END)        AS zero_built_area,
        sum(CASE WHEN jobs_three_400m = 0 THEN 1 ELSE 0 END)       AS zero_jobs
 FROM analysis.address_character
 GROUP BY ROLLUP(borough)
 ORDER BY borough NULLS LAST
+"""
+
+SUPPRESSION_SQL = """
+-- WHICH NTAs were suppressed and why (D82). Printed rather than asserted: a
+-- suppression rule nobody can see the victims of is a silent filter.
+SELECT borough, nta_code, substr(any_value(neighborhood), 1, 40) AS neighborhood,
+       count(*) AS addresses,
+       CASE WHEN TRY_CAST(substr(nta_code, 5, 2) AS INTEGER) >= 70
+            THEN 'park/cemetery/airport polygon'
+            ELSE 'fewer than 50 addresses' END                     AS reason
+FROM analysis.address_character
+WHERE suppressed AND character_run_at IS NOT NULL
+GROUP BY borough, nta_code
+ORDER BY addresses DESC
 """
 
 
@@ -935,7 +1399,14 @@ def rule_overlap(con) -> pd.DataFrame:
                sum(CASE WHEN ({_industrial_rule()}) AND ({_retail_rule()})
                         THEN 1 ELSE 0 END)                            AS ind_and_retail,
                sum(CASE WHEN ({_corporate_rule()}) AND ({_industrial_rule()})
-                        THEN 1 ELSE 0 END)                            AS corp_and_ind
+                        THEN 1 ELSE 0 END)                            AS corp_and_ind,
+               sum(CASE WHEN commercial_overlay_100m >= {COMMERCIAL_OVERLAY_MIN_LOTS}
+                        THEN 1 ELSE 0 END)                            AS overlay_fires,
+               sum(CASE WHEN commercial_overlay_100m >= {COMMERCIAL_OVERLAY_MIN_LOTS}
+                         AND COALESCE(retail_area_share, 0) < {RETAIL_AREA_SHARE}
+                         AND NOT (COALESCE(jobs_retail_share, 0) >= {RETAIL_JOBS_SHARE}
+                              AND COALESCE(jobs_retail_400m, 0) >= {RETAIL_JOBS_FLOOR})
+                        THEN 1 ELSE 0 END)                            AS overlay_only
         FROM analysis.address_character
         WHERE character IS NOT NULL
     """).fetchdf()
@@ -987,6 +1458,9 @@ def nta_table(con, boroughs: list[str] | None = None,
         clauses.append(f"borough IN ({', '.join('?' for _ in boroughs)})")
         params += list(boroughs)
     clauses.append(f"addresses >= {int(min_addresses)}")
+    # D82: suppressed NTAs carry NULL shares, so they would sort to the bottom
+    # anyway -- excluded explicitly so nobody has to rely on that.
+    clauses.append("NOT suppressed")
     where = "WHERE " + " AND ".join(clauses)
     direction = "ASC" if ascending else "DESC"
     lim = f"LIMIT {int(limit)}" if limit else ""
@@ -1004,6 +1478,9 @@ def nta_table(con, boroughs: list[str] | None = None,
                round(mean_factory_area_share, 3) AS fac_area,
                round(mean_jobs_office_share, 3) AS off_jobs,
                round(mean_jobs_retail_share, 3) AS ret_jobs,
+               round(mean_overlay_share, 3)     AS ovl_share,
+               round(mean_retail_index, 3)      AS ret_idx,
+               round(med_retail_index, 3)       AS ret_idx_p50,
                med_jobs_400m                    AS jobs_p50,
                round(am_pm_share_median, 2)     AS am_pm
         FROM analysis.nta_character
