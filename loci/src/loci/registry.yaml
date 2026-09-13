@@ -835,6 +835,32 @@ sources:
       2026-06-01..2026-08-31, 64 weekdays, 424 complexes, 4,037,494 entries per
       average weekday citywide (MTA's own published average weekday subway
       ridership for the period is the same order, which is the sanity check).
+      TWO PULL SHAPES as of 2026-09-13 (owner: "per day and time of day, not a
+      single daily total"). (a) the incumbent WEEKDAY pull, grouped by complex
+      only, one number per complex per month, ~67 KB per month; (b) the PROFILE
+      pull, grouped by complex x date_extract_dow x date_extract_hh -- 71,221
+      rows / ~5 MB / ~24 s per month -- which keeps the hour the feed actually
+      publishes and which the earlier build was discarding at the query. Note
+      the SoQL spelling is `date_extract_hh`; `date_extract_hour` is a 400 from
+      the query coordinator. dow is 0=Sunday..6=Saturday, verified against
+      August 2026's calendar. A third one-row-per-dow request supplies the
+      DIVISOR (distinct dates present per day-of-week); it is pulled citywide,
+      not per complex, because the number of Tuesdays in a window is a property
+      of the window and a per-complex count would turn a genuine zero-ridership
+      hour into a higher average. Day types are weekday / saturday / sunday
+      (holidays excluded entirely: every entry in the observed-holiday list is
+      Mon-Fri, so the exclusion touches the weekday mean only). Dayparts are
+      early 00-06, am_peak 06-10, midday 10-15, pm_peak 15-19, evening 19-24,
+      half-open and partitioning the day, chosen so each DOT count window
+      (nyc_dot_pedestrian_counts: AM 07-09, MD 12-14, PM 16-19) falls strictly
+      inside one of them. The two pulls are independent server-side
+      aggregations of the same rows, so summing the five weekday dayparts must
+      reproduce the incumbent per-complex weekday total: asserted at build time
+      (2026-09-13 run: exact, worst relative error 0.0 over 424 complexes) and
+      again against analysis.address.transit_entries_400m on every address.
+      Consumed by sources/cities/nyc/mta_ridership.build_profile ->
+      model/address_transit_profile.py (`loci transit-profile`) into
+      analysis.address_transit_profile and analysis.address_entrance.
 
   - id: nyc_dot_pedestrian_counts
     name: NYC DOT Bi-Annual Pedestrian Counts
@@ -867,6 +893,16 @@ sources:
       homes_400m rank real sidewalk volume. The tabular id is cqsj-cfgu; the
       catalogue also publishes a map view `2de2-6x2h` which returns empty
       objects for every row.
+      PER-WINDOW as of 2026-09-13: the three count windows are no longer summed
+      away. Each is correlated against the daypart that CONTAINS it (AM 07-09 c
+      am_peak 06-10, MD 12-14 c midday 10-15, PM 16-19 c pm_peak 15-19), for
+      all on-street points and for Brooklyn alone, and the OFF-DIAGONAL is
+      reported beside it: if the AM count is ranked as well by pm_peak as by
+      am_peak, the daypart split is carrying no information and the measure is
+      a station on/off flag with extra steps. The count of points at transit=0
+      is reported too, because a tie block is where a rank correlation hides.
+      DOT counts WEEKDAYS, so the saturday and sunday dayparts have no
+      counterpart here and are explicitly UNVALIDATED.
 
   - id: mta_bus_gtfs
     name: MTA Bus GTFS static (stops)

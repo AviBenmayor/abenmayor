@@ -161,6 +161,11 @@ def on_street_counts(rows: list[dict], year: int, month: int
         if vals is None:
             dropped_incomplete += 1
             continue
+        # The three windows are kept SEPARATELY as well as summed. `count` is
+        # the incumbent whole-round total; dot_am / dot_md / dot_pm are what
+        # the per-daypart validation needs, and summing them away was the only
+        # thing stopping this file from answering "does the AM measure rank the
+        # AM count" rather than only "does the day rank the day".
         out.append({
             "loc": loc,
             "lon": float(coords[0]),
@@ -168,6 +173,9 @@ def on_street_counts(rows: list[dict], year: int, month: int
             "borough": r.get("borough"),
             "street": r.get("street_nam"),
             "from_street": r.get("from_stree"),
+            "dot_am": vals[0],
+            "dot_md": vals[1],
+            "dot_pm": vals[2],
             "count": sum(vals),
         })
     report = {
@@ -245,8 +253,16 @@ def measure_at_points(con, points: list[dict], radius_m: float | None = None,
     A, idx = _to_csr(Gp)
     n_nodes = A.shape[0]
 
-    transit_pts, transit_rep = mr.build_entry_points(
+    # build_profile, not build_entry_points: it returns the (complex x day_type
+    # x daypart) grid AND asserts that the five weekday dayparts re-sum to the
+    # incumbent average-weekday total, so `transit_entries_400m` below is the
+    # same number the old code path produced, by construction rather than by
+    # hope. The even split across entry-allowed entrances is applied here,
+    # exactly as `entry_points` applies it.
+    profile, entrances, transit_rep = mr.build_profile(
         months=months, use_entrances=use_entrances, refresh=refresh)
+    transit_pts = [(e["complex_id"], e["lon"], e["lat"], e["n_doors"])
+                   for e in entrances]
     jobs = load_job_points(con, graph_bbox(Gp), vintage=jobs_vintage)
     homes = con.execute(
         "SELECT lon, lat, COALESCE(units, 0) AS units FROM analysis.address "
@@ -256,39 +272,97 @@ def measure_at_points(con, points: list[dict], radius_m: float | None = None,
         nodes = ox.distance.nearest_nodes(Gp, X=list(lons), Y=list(lats))
         return np.array([idx[n] for n in np.atleast_1d(nodes)], dtype=np.int64)
 
-    keys = ["transit", "jobs", "homes"]
-    W = node_weights(
-        idx,
-        {"transit": _nidx([p[1] for p in transit_pts], [p[2] for p in transit_pts]),
-         "jobs": _nidx(jobs["lon"], jobs["lat"]),
-         "homes": _nidx(homes["lon"], homes["lat"])},
-        {"transit": np.array([p[3] for p in transit_pts], dtype=np.float64),
-         "jobs": jobs["jobs"].to_numpy(dtype=np.float64),
-         "homes": homes["units"].to_numpy(dtype=np.float64)},
-        n_nodes)
+    # One weight column per (day_type, daypart) cell, each carrying that
+    # complex's entries for that cell divided evenly over its entry-allowed
+    # doors -- the SAME arithmetic model/address_transit_profile.py applies,
+    # so a DOT point and an address 10 m away get the same number.
+    e_nidx = _nidx([p[1] for p in transit_pts], [p[2] for p in transit_pts])
+    cells = [(d, p) for d in mr.DAY_TYPES for p in mr.DAYPART_NAMES]
+    nodes_of = {f"{d}/{p}": e_nidx for d, p in cells}
+    weights = {f"{d}/{p}": np.array([profile[c][(d, p)] / n
+                                     for c, _, _, n in transit_pts], dtype=np.float64)
+               for d, p in cells}
+    nodes_of["jobs"] = _nidx(jobs["lon"], jobs["lat"])
+    weights["jobs"] = jobs["jobs"].to_numpy(dtype=np.float64)
+    nodes_of["homes"] = _nidx(homes["lon"], homes["lat"])
+    weights["homes"] = homes["units"].to_numpy(dtype=np.float64)
+    keys = list(weights)
+    W = node_weights(idx, nodes_of, weights, n_nodes)
 
     df = pd.DataFrame(points)
     q = _nidx(df["lon"], df["lat"])
     acc = catchment_sums(A, q, W, radius_m=float(radius_m))
-    df["transit_entries_400m"] = acc[:, keys.index("transit")]
+    for i, k in enumerate(keys):
+        if k in ("jobs", "homes"):
+            continue
+        df[f"transit_{k.replace('/', '_')}_400m"] = acc[:, i]
+    # The incumbent column, DERIVED rather than separately computed: the five
+    # weekday dayparts partition the day, so their sum is the average-weekday
+    # total the old code path returned.
+    df["transit_entries_400m"] = sum(
+        df[f"transit_weekday_{p}_400m"] for p in mr.DAYPART_NAMES)
     df["jobs_400m"] = np.rint(acc[:, keys.index("jobs")]).astype("int64")
     df["homes_400m"] = np.rint(acc[:, keys.index("homes")]).astype("int64")
     return df, {"radius_m": float(radius_m), "transit": transit_rep,
                 "job_blocks": len(jobs), "jobs_vintage": int(jobs_vintage),
-                "home_rows": len(homes), "points": len(df)}
+                "home_rows": len(homes), "points": len(df),
+                "daypart_bounds": {n: [a, b] for n, a, b in mr.DAYPARTS},
+                "dot_windows": dict(mr.DOT_WINDOWS),
+                "dot_window_daypart": dict(mr.DOT_WINDOW_DAYPART)}
 
 
 def run_validation(con, radius_m: float | None = None, months: int = 3,
                    use_entrances: bool = True, refresh: bool = False):
     """Fetch -> latest round -> on-street points -> sweep -> Spearman.
     Returns (DataFrame, report). Writes nothing, anywhere."""
+    from loci.sources.cities.nyc import mta_ridership as mr
+
     rows = fetch_points()
     year, month = latest_round(rows)
     pts, rep = on_street_counts(rows, year, month)
     df, srep = measure_at_points(con, pts, radius_m=radius_m, months=months,
                                  use_entrances=use_entrances, refresh=refresh)
+    bk = df["borough"].astype(str).str.strip().str.lower() == "brooklyn"
     corr = {}
     for col in ("transit_entries_400m", "jobs_400m", "homes_400m"):
         rho, n = spearman(df["count"], df[col])
-        corr[col] = {"spearman_rho": rho, "n": n}
-    return df, {**rep, **srep, "correlations": corr}
+        rho_bk, n_bk = spearman(df.loc[bk, "count"], df.loc[bk, col])
+        corr[col] = {"spearman_rho": rho, "n": n,
+                     "spearman_rho_bk": rho_bk, "n_bk": n_bk}
+
+    # PER-WINDOW: each DOT count window against the daypart that CONTAINS it.
+    # This is the comparison the whole-day rho could not make. It is also the
+    # sharper test: a measure that is really just "is there a subway here" has
+    # no reason to rank the AM count better with the AM measure than with the
+    # PM one, so the OFF-DIAGONAL is reported too -- if AM-count vs pm_peak is
+    # as strong as AM-count vs am_peak, the daypart split is carrying no
+    # information and the number is a station on/off flag with extra steps.
+    by_window = {}
+    for win, part in mr.DOT_WINDOW_DAYPART.items():
+        col = f"transit_weekday_{part}_400m"
+        obs = f"dot_{win}"
+        rho, n = spearman(df[obs], df[col])
+        rho_bk, n_bk = spearman(df.loc[bk, obs], df.loc[bk, col])
+        off = {p: spearman(df[obs], df[f"transit_weekday_{p}_400m"])[0]
+               for p in mr.DAYPART_NAMES}
+        by_window[win] = {
+            "dot_window_hours": list(mr.DOT_WINDOWS[win]),
+            "daypart": part,
+            "daypart_hours": next([a, b] for n, a, b in mr.DAYPARTS if n == part),
+            "spearman_rho": rho, "n": n,
+            "spearman_rho_bk": rho_bk, "n_bk": n_bk,
+            "off_diagonal": off,
+        }
+
+    # Saturday midday, reported with NO DOT counterpart on purpose: DOT counts
+    # weekdays, so there is nothing to validate it against. It is here so a
+    # reader can see the weekend measure exists and is UNVALIDATED, rather than
+    # discovering that later.
+    zero = int((df["transit_entries_400m"] <= 0).sum())
+    return df, {**rep, **srep,
+                "correlations": corr,
+                "by_window": by_window,
+                "points_with_zero_transit": zero,
+                "points_with_zero_transit_bk": int((df.loc[bk, "transit_entries_400m"] <= 0).sum()),
+                "brooklyn_points": int(bk.sum()),
+                "saturday_midday_validated": False}

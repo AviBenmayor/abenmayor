@@ -238,16 +238,10 @@ def fetch_month(year: int, month: int, *, refresh: bool = False) -> list[dict]:
     an explicit NOT IN on the date, not with a client-side pass, so the row the
     server returns is already the number that goes in the divisor's numerator.
     """
-    first, last = month_bounds(year, month)
-    hol = [d for d in HOLIDAYS if first <= d <= last and d.weekday() < 5]
-    where = [
-        f"transit_timestamp >= '{first.isoformat()}T00:00:00'",
-        f"transit_timestamp < '{(last + dt.timedelta(days=1)).isoformat()}T00:00:00'",
-        "transit_mode = 'subway'",
-        "date_extract_dow(transit_timestamp) between 1 and 5",   # Mon..Fri
-    ]
-    for d in hol:
-        where.append(f"date_trunc_ymd(transit_timestamp) <> '{d.isoformat()}T00:00:00'")
+    # Shares `_month_where` with fetch_month_profile so the conservation check
+    # compares the same population; the only difference is this Mon-Fri filter.
+    where = [*_month_where(year, month),
+             "date_extract_dow(transit_timestamp) between 1 and 5"]   # Mon..Fri
     rows = _get(RIDERSHIP_URL, {
         "$select": ("station_complex_id, station_complex, "
                     "sum(ridership) as riders, "
@@ -339,23 +333,7 @@ def entry_points(entries: dict[str, dict], entrances: list[dict] | None,
     is the complex's entries_per_weekday, never more and never less. Pure: no
     network, no database, so the split arithmetic is tested on fixtures.
     """
-    by_complex: dict[str, list[tuple[float, float]]] = {}
-    if entrances:
-        for e in entrances:
-            if (e.get("entry_allowed") or "").strip().upper() != "YES":
-                continue
-            cid = str(e.get("complex_id") or "").strip()
-            if not cid:
-                continue
-            try:
-                lon = float(e["entrance_longitude"])
-                lat = float(e["entrance_latitude"])
-            except (KeyError, TypeError, ValueError):
-                continue
-            if lon == 0.0 or lat == 0.0:       # null island, not a location
-                continue
-            by_complex.setdefault(cid, []).append((lon, lat))
-
+    by_complex = entrances_by_complex(entrances)
     matched = sum(1 for cid in entries if cid in by_complex)
     if entrances and matched < min_match_share * len(entries):
         raise RuntimeError(
@@ -412,3 +390,465 @@ def build_entry_points(*, months: int = DEFAULT_MONTHS, asof: dt.date | None = N
             f"double-counting or losing complexes.")
     return pts, {**rep, **rep2, "feed_max_date": asof.isoformat(),
                  "source_id": SOURCE_ID}
+
+
+# ===========================================================================
+# DAY TYPE x DAYPART (GTM-146 follow-up, owner request 2026-09-13)
+# ===========================================================================
+# "Foot traffic must be available per day and time of day, not a single daily
+# total." A single average-weekday total mixes two populations the screen
+# cares about separately: the resident commuter base that taps IN during the
+# morning, and the CBD worker who taps IN at the end of the day. The
+# contrarian memo (section 3) made the same point and asked for the AM/PM
+# SHARE as a classifier of station TYPE rather than another level.
+#
+# THE FEED IS HOURLY AND WE WERE THROWING THE HOUR AWAY. `fetch_month` groups
+# by complex only, so the cached files under data/raw/mta carried a single
+# weekday number per complex per month. `fetch_month_profile` below keeps
+# `date_extract_dow` and `date_extract_hh` in the GROUP BY, which the Socrata
+# backend supports server-side (probed 2026-09-13: 71,221 rows and ~24 s for
+# one calendar month, 424 complexes x 7 dow x 24 hours). Note the SoQL
+# spelling is `date_extract_hh`, NOT `date_extract_hour` -- the latter is a
+# 400 from the query coordinator.
+#
+# WHY dow x hh AND NOT day_type x daypart SERVER-SIDE
+# ---------------------------------------------------------------------------
+# The boundaries below are a MODELLING CHOICE, and a choice belongs in code
+# that can be tested and changed without re-pulling 32 MB of feed. The cache
+# keeps the raw 7x24 grid, so moving a daypart edge is a local re-aggregation,
+# not a new window of requests. It also means one cache serves any future
+# question about the hour (a 24-hour curve, a late-night flag) for free.
+#
+# dow ENCODING, verified on the live feed
+# ---------------------------------------------------------------------------
+# `date_extract_dow` returns 0 = Sunday ... 6 = Saturday. Verified against
+# August 2026 (Aug 1 is a Saturday): the feed's distinct-date counts came back
+# Sun 5, Mon 5, Tue-Fri 4, Sat 5, which is exactly that month's calendar. The
+# incumbent `fetch_month` already relies on this encoding (`between 1 and 5`
+# for Mon-Fri); this is the check that it is right.
+#
+# HOLIDAYS are excluded by DATE exactly as `fetch_month` excludes them. Every
+# entry in HOLIDAYS is an OBSERVED federal holiday and they are all Mon-Fri, so
+# the exclusion removes weekdays only; the saturday and sunday day types are
+# untouched by it. That asymmetry is deliberate and not a bug: a Saturday is a
+# Saturday, whereas Thanksgiving is not a Thursday observation.
+# ===========================================================================
+
+#: The five dayparts, as [start_hour, end_hour) on the local clock. They
+#: PARTITION the 24-hour day -- asserted below -- which is what makes the
+#: conservation check (sum over dayparts == the all-day total) meaningful.
+#:
+#: The edges are chosen so that each of NYC DOT's three bi-annual count windows
+#: falls STRICTLY INSIDE exactly one daypart, so `loci validate-pedestrian` can
+#: match a counted window to a measured one without interpolating:
+#:
+#:     DOT AM 07:00-09:00  c  am_peak 06:00-10:00
+#:     DOT MD 12:00-14:00  c  midday  10:00-15:00
+#:     DOT PM 16:00-19:00  c  pm_peak 15:00-19:00
+#:
+#: They are wider than DOT's windows on purpose. A daypart narrowed to DOT's
+#: two hours would be a hand count's convenience imposed on a ridership feed
+#: whose peaks genuinely run four hours, and would make `early` and `evening`
+#: absorb hours that are plainly peak. The containment is what validation
+#: needs; equality is not.
+DAYPARTS: tuple[tuple[str, int, int], ...] = (
+    ("early",    0,  6),
+    ("am_peak",  6, 10),
+    ("midday",  10, 15),
+    ("pm_peak", 15, 19),
+    ("evening", 19, 24),
+)
+DAYPART_NAMES: tuple[str, ...] = tuple(d[0] for d in DAYPARTS)
+
+#: Day types. Holidays are excluded entirely (see above), so there is no
+#: 'holiday' member: an excluded date contributes to no day type at all.
+DAY_TYPES: tuple[str, ...] = ("weekday", "saturday", "sunday")
+
+#: Socrata `date_extract_dow`: 0 = Sunday .. 6 = Saturday.
+DOW_SUNDAY, DOW_SATURDAY = 0, 6
+
+#: NYC DOT bi-annual pedestrian count windows, [start_hour, end_hour), and the
+#: daypart each one is compared against. Lives here, beside the boundaries it
+#: constrains, so a future edit to DAYPARTS trips the containment test rather
+#: than silently breaking the validation's meaning.
+DOT_WINDOWS: dict[str, tuple[int, int]] = {"am": (7, 9), "md": (12, 14), "pm": (16, 19)}
+DOT_WINDOW_DAYPART: dict[str, str] = {"am": "am_peak", "md": "midday", "pm": "pm_peak"}
+
+#: Relative tolerance on the conservation check (sum over dayparts of the
+#: weekday profile == the incumbent weekday daily total). The two numbers come
+#: from two INDEPENDENT server-side aggregations of the same rows, so they
+#: agree to float rounding and nothing else; 1e-6 is rounding, not slack.
+CONSERVATION_RTOL = 1e-6
+
+
+def _assert_dayparts_partition_the_day() -> None:
+    edges = [(a, b) for _, a, b in DAYPARTS]
+    if edges[0][0] != 0 or edges[-1][1] != 24:
+        raise RuntimeError(f"DAYPARTS must cover 00:00-24:00, got {edges}")
+    for (_, b), (a2, _) in zip(edges, edges[1:]):
+        if b != a2:
+            raise RuntimeError(f"DAYPARTS must be contiguous, gap/overlap at {b} vs {a2}")
+
+
+_assert_dayparts_partition_the_day()
+
+
+def daypart_of(hour: int) -> str:
+    """Clock hour (0-23) -> daypart name."""
+    h = int(hour)
+    if not 0 <= h <= 23:
+        raise ValueError(f"hour {hour} is not a clock hour")
+    for name, a, b in DAYPARTS:
+        if a <= h < b:
+            return name
+    raise AssertionError(f"unreachable: {hour}")            # pragma: no cover
+
+
+def day_type_of(dow: int) -> str:
+    """Socrata day-of-week (0=Sun..6=Sat) -> day type."""
+    d = int(dow)
+    if d == DOW_SUNDAY:
+        return "sunday"
+    if d == DOW_SATURDAY:
+        return "saturday"
+    if 1 <= d <= 5:
+        return "weekday"
+    raise ValueError(f"dow {dow} is not 0-6")
+
+
+def _month_where(year: int, month: int) -> list[str]:
+    """The shared WHERE for both the weekday and the profile pulls: the month,
+    subway only, federal holidays removed BY DATE. Identical text in both so
+    the conservation check compares the same population."""
+    first, last = month_bounds(year, month)
+    hol = [d for d in HOLIDAYS if first <= d <= last]
+    where = [
+        f"transit_timestamp >= '{first.isoformat()}T00:00:00'",
+        f"transit_timestamp < '{(last + dt.timedelta(days=1)).isoformat()}T00:00:00'",
+        "transit_mode = 'subway'",
+    ]
+    for d in hol:
+        where.append(f"date_trunc_ymd(transit_timestamp) <> '{d.isoformat()}T00:00:00'")
+    return where
+
+
+def fetch_month_profile(year: int, month: int, *, refresh: bool = False) -> list[dict]:
+    """Server-side sum(ridership) per (complex, day-of-week, clock hour) for one
+    calendar month, holidays excluded, ALL seven days kept.
+
+    ~71k rows / ~11 MB / ~24 s per month. Cached under data/raw/mta as
+    `ridership_profile_YYYYMM.json`. Deliberately carries no station name and
+    no coordinates: those are one value per complex, not one per 168 cells, and
+    `weekday_entries` already returns them.
+    """
+    rows = _get(RIDERSHIP_URL, {
+        "$select": ("station_complex_id, "
+                    "date_extract_dow(transit_timestamp) as dow, "
+                    "date_extract_hh(transit_timestamp) as hh, "
+                    "sum(ridership) as riders"),
+        "$where": " AND ".join(_month_where(year, month)),
+        "$group": "station_complex_id, dow, hh",
+        "$limit": 500_000,
+    }, cache=CACHE_DIR / f"ridership_profile_{year}{month:02d}.json", refresh=refresh)
+    if not rows:
+        raise RuntimeError(
+            f"{RIDERSHIP_URL}: no hourly subway rows for {year}-{month:02d}. A silent "
+            f"zero month would deflate every daypart mean; refusing to write.")
+    return rows
+
+
+def fetch_month_daycounts(year: int, month: int, *, refresh: bool = False
+                          ) -> dict[int, int]:
+    """{dow: number of DISTINCT DATES the feed actually carries} for one month,
+    under the same WHERE as `fetch_month_profile`.
+
+    This is the DIVISOR, and it is pulled separately and citywide on purpose. A
+    per-complex distinct-date count would shrink the divisor for any complex
+    that happened to have an hour with no riders, turning a genuine zero hour
+    into a higher average. The number of Tuesdays in the window is a property
+    of the window, not of the station.
+    """
+    rows = _get(RIDERSHIP_URL, {
+        "$select": ("date_extract_dow(transit_timestamp) as dow, "
+                    "count(distinct date_trunc_ymd(transit_timestamp)) as n_days"),
+        "$where": " AND ".join(_month_where(year, month)),
+        "$group": "dow",
+        "$limit": 100,
+    }, cache=CACHE_DIR / f"ridership_daycount_{year}{month:02d}.json", refresh=refresh)
+    if not rows:
+        raise RuntimeError(
+            f"{RIDERSHIP_URL}: no distinct-date counts for {year}-{month:02d}; the "
+            f"divisor is unknown and a guessed one would be a silent scale error.")
+    return {int(r["dow"]): int(float(r["n_days"])) for r in rows}
+
+
+def profile_entries(months: list[tuple[int, int]], *, refresh: bool = False
+                    ) -> tuple[dict[str, dict[tuple[str, str], float]], dict]:
+    """{complex_id: {(day_type, daypart): entries per AVERAGE DAY of that type}}.
+
+    Same mean-not-sum convention as `weekday_entries`: riders summed over the
+    window and divided by the number of distinct DATES of that day type the
+    feed carries, so the number is per average Saturday / per average weekday
+    and does not depend on how many months were pulled.
+
+    A (complex, day_type, daypart) cell absent from the feed is a TRUE ZERO --
+    nobody entered -- and is materialised as 0.0 rather than dropped, so every
+    complex carries the full 3 x 5 grid and a downstream sum over dayparts is
+    guaranteed to be the all-day total.
+    """
+    tot: dict[str, dict[tuple[str, str], float]] = {}
+    days: dict[str, int] = {d: 0 for d in DAY_TYPES}
+    per_month = []
+    for (y, m) in months:
+        rows = fetch_month_profile(y, m, refresh=refresh)
+        dc = fetch_month_daycounts(y, m, refresh=refresh)
+        md: dict[str, int] = {d: 0 for d in DAY_TYPES}
+        for dow, n in dc.items():
+            md[day_type_of(dow)] += n
+        exp_wd = len(weekday_dates(*month_bounds(y, m)))
+        if md["weekday"] != exp_wd:
+            raise RuntimeError(
+                f"{y}-{m:02d}: the feed carries {md['weekday']} non-holiday weekday "
+                f"dates but the calendar has {exp_wd}. A short month would inflate "
+                f"every per-day mean; refusing to write.")
+        for k, v in md.items():
+            days[k] += v
+        per_month.append({"year": y, "month": m, "cells": len(rows), **md})
+        for r in rows:
+            cid = str(r["station_complex_id"])
+            key = (day_type_of(int(r["dow"])), daypart_of(int(r["hh"])))
+            cell = tot.setdefault(cid, {})
+            cell[key] = cell.get(key, 0.0) + float(r["riders"])
+    for d in DAY_TYPES:
+        if days[d] <= 0:
+            raise RuntimeError(f"profile_entries: zero {d} dates in the window")
+
+    out = {cid: {(d, p): cell.get((d, p), 0.0) / days[d]
+                 for d in DAY_TYPES for p in DAYPART_NAMES}
+           for cid, cell in tot.items()}
+    report = {
+        "dataset_id": RIDERSHIP_DATASET_ID,
+        "months": [f"{y}-{m:02d}" for y, m in months],
+        "window_start": month_bounds(*months[0])[0].isoformat(),
+        "window_end": month_bounds(*months[-1])[1].isoformat(),
+        "n_days_by_type": dict(days),
+        "per_month": per_month,
+        "complexes": len(out),
+        "dayparts": list(DAYPART_NAMES),
+        "daypart_bounds": {n: [a, b] for n, a, b in DAYPARTS},
+        "day_types": list(DAY_TYPES),
+        "total_by_type_daypart": {
+            f"{d}/{p}": sum(v[(d, p)] for v in out.values())
+            for d in DAY_TYPES for p in DAYPART_NAMES},
+    }
+    return out, report
+
+
+def check_conservation(profile: dict[str, dict[tuple[str, str], float]],
+                       entries: dict[str, dict],
+                       rtol: float = CONSERVATION_RTOL) -> dict:
+    """The daypart profile must reproduce the incumbent weekday daily total.
+
+    Two INDEPENDENT server-side aggregations of the same rows under the same
+    WHERE: `fetch_month` groups by complex, `fetch_month_profile` groups by
+    complex x dow x hour. Summing the five weekday dayparts must return the
+    first to float rounding. A mismatch means a daypart edge is dropping hours,
+    a dow is being mis-classified, or the two pulls saw different days --
+    every one of which is a silent scale error on `transit_entries_400m`.
+    """
+    worst_cid, worst_rel, n = None, 0.0, 0
+    missing = sorted(set(entries) - set(profile))
+    extra = sorted(set(profile) - set(entries))
+    for cid, v in entries.items():
+        if cid not in profile:
+            continue
+        got = sum(profile[cid][("weekday", p)] for p in DAYPART_NAMES)
+        want = float(v["entries_per_weekday"])
+        rel = abs(got - want) / max(abs(want), 1.0)
+        n += 1
+        if rel > worst_rel:
+            worst_cid, worst_rel = cid, rel
+    tot_got = sum(sum(profile[c][("weekday", p)] for p in DAYPART_NAMES)
+                  for c in profile)
+    tot_want = sum(float(v["entries_per_weekday"]) for v in entries.values())
+    rep = {
+        "complexes_checked": n,
+        "complexes_missing_from_profile": missing,
+        "complexes_only_in_profile": extra,
+        "worst_complex": worst_cid,
+        "worst_relative_error": worst_rel,
+        "weekday_total_from_profile": tot_got,
+        "weekday_total_incumbent": tot_want,
+        "rtol": rtol,
+    }
+    if missing or extra:
+        raise RuntimeError(
+            f"conservation: the daypart pull and the weekday pull disagree on WHICH "
+            f"complexes exist (missing={missing[:5]}, extra={extra[:5]}). One of the "
+            f"two windows is not the window it says it is.")
+    if worst_rel > rtol:
+        raise RuntimeError(
+            f"conservation FAILED: complex {worst_cid} sums to a weekday total that is "
+            f"{worst_rel:.3%} off the incumbent number (tolerance {rtol:.1e}). The five "
+            f"dayparts are not partitioning the day, or the divisors differ.")
+    return rep
+
+
+def am_pm_share(cell: dict[tuple[str, str], float],
+                day_type: str = "weekday") -> float | None:
+    """am_peak / pm_peak entries -- a classifier of STATION TYPE, not a level.
+
+    > 1 means more people tap IN in the morning than in the evening: a
+    RESIDENTIAL station, where the population is leaving for work. < 1 means
+    the evening is bigger: a JOB-CENTRE station, where the population arrived
+    in the morning (invisible to an entries feed) and is leaving at night.
+
+    NULL, never 0 or inf, when the denominator is zero: a station with no
+    pm_peak entries at all has no share, and substituting a number would invent
+    one. The contrarian's point (section 3) is that a LEVEL is the wrong object
+    here -- PM entries are the small side at exactly the residential stations
+    whose evening return flow matters most -- so this ratio ships instead.
+    """
+    am = float(cell.get((day_type, "am_peak"), 0.0))
+    pm = float(cell.get((day_type, "pm_peak"), 0.0))
+    if pm <= 0.0:
+        return None
+    return am / pm
+
+
+# ------------------------------------------------------- the entrance table
+
+def entrances_by_complex(entrances: list[dict] | None) -> dict[str, list[tuple[float, float]]]:
+    """{complex_id: [(lon, lat), ...]} over ENTRY-ALLOWED entrances only.
+
+    Factored out of `entry_points` so the weight-point build and the persisted
+    entrance table below can never disagree about which doors exist: an
+    exit-only stair is not a way into the system, and null-island rows are not
+    locations.
+    """
+    by_complex: dict[str, list[tuple[float, float]]] = {}
+    if not entrances:
+        return by_complex
+    for e in entrances:
+        if (e.get("entry_allowed") or "").strip().upper() != "YES":
+            continue
+        cid = str(e.get("complex_id") or "").strip()
+        if not cid:
+            continue
+        try:
+            lon = float(e["entrance_longitude"])
+            lat = float(e["entrance_latitude"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if lon == 0.0 or lat == 0.0:            # null island, not a location
+            continue
+        by_complex.setdefault(cid, []).append((lon, lat))
+    return by_complex
+
+
+def entrance_id(complex_id: str, lon: float | None, lat: float | None) -> str:
+    """A deterministic id for an entrance. i9wp-a4ja publishes NO stable key --
+    no objectid, no entrance_id -- so the identity is the complex plus the
+    published coordinate to 6 dp (~0.1 m). Stable across pulls as long as MTA
+    does not move the point; if they do, the id changes and the persisted
+    reachable set is refused rather than silently re-pointed.
+
+    `complex:<id>` is the pseudo-entrance a complex with no entrance rows falls
+    back to -- the same fallback `entry_points` makes, named so it is obvious
+    in the warehouse which rows are the fallback.
+    """
+    if lon is None or lat is None:
+        return f"complex:{complex_id}"
+    return f"{complex_id}@{lon:.6f},{lat:.6f}"
+
+
+def entrance_table(entries: dict[str, dict], entrances: list[dict] | None,
+                   *, min_match_share: float = MIN_MATCH_SHARE
+                   ) -> tuple[list[dict], dict]:
+    """[{entrance_id, complex_id, lon, lat, n_doors}] -- the point set the
+    address sweep snaps to, with the EVEN-SPLIT denominator carried beside each
+    row rather than pre-multiplied into it.
+
+    That separation is the whole point of persisting this: a per-address
+    reachable list plus (complex, day_type, daypart) totals plus `n_doors` can
+    answer any future question about window, daypart or split convention in
+    SQL, without a second 40-minute Dijkstra. Pre-multiplying the weight in
+    would freeze the split and the window into the persisted artefact.
+
+    Same guards as `entry_points`: exit-only doors excluded, null island
+    excluded, an ID-space divergence between the two feeds RAISES, and a
+    complex with no entrance row falls back to its published point instead of
+    vanishing (a dropped complex reads downstream as "no subway here").
+    """
+    by_complex = entrances_by_complex(entrances)
+    matched = sum(1 for cid in entries if cid in by_complex)
+    if entrances and matched < min_match_share * len(entries):
+        raise RuntimeError(
+            f"only {matched} of {len(entries)} ridership complexes matched an entrance "
+            f"complex_id ({matched / max(len(entries), 1):.1%} < {min_match_share:.0%}) "
+            f"-- 5wq4-mkjj.station_complex_id and i9wp-a4ja.complex_id have diverged; "
+            f"do not write.")
+    rows: list[dict] = []
+    no_entrance: list[str] = []
+    for cid, v in entries.items():
+        doors = by_complex.get(cid) or []
+        if doors:
+            for lon, lat in doors:
+                rows.append({"entrance_id": entrance_id(cid, lon, lat),
+                             "complex_id": cid, "lon": lon, "lat": lat,
+                             "n_doors": len(doors)})
+        else:
+            lon, lat = v.get("lon"), v.get("lat")
+            if lon is None or lat is None:
+                raise RuntimeError(
+                    f"complex {cid} ({v.get('name')}) has neither an entrance nor a "
+                    f"published point; dropping it would read as 'no subway here'.")
+            no_entrance.append(cid)
+            rows.append({"entrance_id": entrance_id(cid, None, None),
+                         "complex_id": cid, "lon": float(lon), "lat": float(lat),
+                         "n_doors": 1})
+    ids = [r["entrance_id"] for r in rows]
+    if len(set(ids)) != len(ids):
+        raise RuntimeError(
+            "entrance_table: duplicate entrance_id -- two doors of one complex share a "
+            "published coordinate, so the even split would credit that point twice.")
+    report = {
+        "snap": "entrances" if entrances else "complex",
+        "entrances_dataset_id": ENTRANCES_DATASET_ID if entrances else None,
+        "complexes": len(entries),
+        "complexes_with_entrances": matched,
+        "complexes_without_entrances": len(no_entrance),
+        "complexes_without_entrances_ids": sorted(no_entrance),
+        "entrances": len(rows),
+    }
+    return rows, report
+
+
+def build_profile(*, months: int = DEFAULT_MONTHS, asof: dt.date | None = None,
+                  use_entrances: bool = True, refresh: bool = False
+                  ) -> tuple[dict[str, dict[tuple[str, str], float]], list[dict], dict]:
+    """The one call model/address_transit_profile.py makes.
+
+    Returns (profile, entrance rows, report). Raises unless the five weekday
+    dayparts reproduce the incumbent average-weekday total per complex.
+    """
+    asof = asof or feed_max_timestamp(refresh=refresh)
+    window = latest_full_months(asof, months)
+    entries, rep_w = weekday_entries(window, refresh=refresh)
+    profile, rep_p = profile_entries(window, refresh=refresh)
+    cons = check_conservation(profile, entries)
+    ent = fetch_entrances(refresh=refresh) if use_entrances else None
+    rows, rep_e = entrance_table(entries, ent)
+    shares = [am_pm_share(profile[c]) for c in profile]
+    shares = [s for s in shares if s is not None]
+    report = {
+        **rep_p, **rep_e,
+        "feed_max_date": asof.isoformat(),
+        "source_id": SOURCE_ID,
+        "n_weekdays": rep_w["n_weekdays"],
+        "total_entries_per_weekday": rep_w["total_entries_per_weekday"],
+        "conservation": cons,
+        "complexes_with_am_pm_share": len(shares),
+        "complexes_am_pm_share_gt_1": sum(1 for s in shares if s > 1.0),
+    }
+    return profile, rows, report

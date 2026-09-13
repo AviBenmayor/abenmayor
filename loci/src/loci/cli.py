@@ -15,6 +15,11 @@
                                                        (transit_entries_400m + jobs_400m
                                                         beside homes_400m; UPDATE-only,
                                                         never a filter on the screen)
+    loci transit-profile [--boroughs MN,BK] [--months 3] [--re-sweep] [--dry-run]
+                                                       (subway entries per day type x
+                                                        daypart at address grain; reuses
+                                                        analysis.address_entrance so a
+                                                        rebuild is SQL, not Dijkstra)
     loci age-fit fit   [--category <registry category>|all] [--boroughs MN,BK] [--dry-run]
                                                        (D63/D64: re-estimate the
                                                         supply-revealed age curves;
@@ -2405,6 +2410,131 @@ def address_access(
     console.print(f"[green]ok[/] {report['_written']:,} rows -> analysis.address")
 
 
+@app.command(name="transit-profile")
+def transit_profile(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL."),
+    radius_m: float = typer.Option(400.0, "--radius-m",
+                                   help="Catchment radius in NETWORK metres (default 400)."),
+    months: int = typer.Option(3, "--months",
+                               help="How many of the ridership feed's latest FULL months "
+                                    "to average."),
+    complex_point: bool = typer.Option(False, "--complex-point",
+                                       help="Snap each complex to its published point "
+                                            "instead of splitting over entrances."),
+    re_sweep: bool = typer.Option(False, "--re-sweep",
+                                  help="Force the Dijkstra sweep even when "
+                                       "analysis.address_entrance already covers the "
+                                       "scope. Needed after a new walk graph or a "
+                                       "changed radius, and after `loci address-gaps` "
+                                       "(which destroys the rows)."),
+    refresh: bool = typer.Option(False, "--refresh",
+                                 help="Re-pull the MTA feeds instead of using data/raw/mta."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """Walkable subway ENTRIES by DAY TYPE and TIME OF DAY, at address grain.
+
+        analysis.address_transit_profile   one row per address per day_type per
+                                           daypart (3 x 5 = 15 cells)
+        analysis.address_entrance          the persisted reachable-entrance set
+        analysis.address.transit_am_pm_share_400m
+
+    A single average-weekday total mixes populations a retail lead needs
+    separated: the resident tapping in at 8am and the office worker tapping in
+    at 6pm are the same number today. Day types are weekday / saturday /
+    sunday (federal holidays excluded entirely, as before). Dayparts are
+    early 00-06, am_peak 06-10, midday 10-15, pm_peak 15-19, evening 19-24 --
+    chosen so each NYC DOT count window (AM 07-09, MD 12-14, PM 16-19) falls
+    strictly inside one of them, which is what lets `loci validate-pedestrian`
+    compare a counted window to a measured one.
+
+    CONSERVATION IS ASSERTED TWICE. The five weekday dayparts must re-sum to
+    the incumbent per-complex average-weekday total (two independent
+    server-side aggregations of the same rows), and then again to
+    `analysis.address.transit_entries_400m` on every address. A failure raises
+    and writes nothing: the scalar column and the profile must never disagree.
+
+    THE SWEEP RUNS ONCE. `analysis.address_entrance` persists (address_id,
+    entrance_id, dist_m) so a different window, a sixth daypart or a non-even
+    split is a JOIN, not another hour of Dijkstra. This command reuses it
+    automatically; `--re-sweep` forces the sweep.
+
+    `transit_am_pm_share_400m` is am_peak / pm_peak entries: > 1 is a
+    RESIDENTIAL (morning-outbound) catchment, < 1 a job-centre one. A TYPE
+    classifier, not a level, and NULL where pm_peak is zero.
+
+    Requires `loci address-access` to have run for the same boroughs. Nothing
+    here enters gap_score, supply_ratio_vs_base or any recommendation grade.
+    """
+    from loci.model import address_transit_profile as atp
+    from loci.sources.cities.nyc import mta_ridership as mr
+
+    boros = _parse_boroughs(boroughs)
+    con = locidb.connect(read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+
+    reach = None if re_sweep else atp.load_reachable(con, boros)
+    if reach is not None:
+        console.print(f"[dim]reusing analysis.address_entrance: {len(reach):,} "
+                      f"(address, entrance) pairs -- no Dijkstra sweep.[/]")
+    else:
+        console.print("[dim]no persisted reachable set for this scope; sweeping the "
+                      "walk graph (this is the slow path, tens of minutes)…[/]")
+
+    long_df, reach, report = atp.build_transit_profile(
+        con, boros, radius_m=radius_m, months=months,
+        use_entrances=not complex_point, refresh=refresh, reachable=reach,
+        dry_run=dry_run)
+
+    t = report["transit"]
+    console.print(f"ridership {t['dataset_id']} · window [bold]{report['window']}[/] · "
+                  f"weekdays {t['n_days_by_type']['weekday']}, saturdays "
+                  f"{t['n_days_by_type']['saturday']}, sundays "
+                  f"{t['n_days_by_type']['sunday']} (federal holidays excluded) · "
+                  f"{t['complexes']:,} complexes · {t['entrances']:,} entry-allowed doors")
+    c = report["conservation"]
+    console.print(f"[green]conservation[/] weekday dayparts re-sum to the incumbent "
+                  f"complex total: {c['weekday_total_from_profile']:,.1f} vs "
+                  f"{c['weekday_total_incumbent']:,.1f} entries/weekday, worst relative "
+                  f"error {c['worst_relative_error']:.2e} over {c['complexes_checked']} "
+                  f"complexes")
+    r = report["rebuild"]
+    console.print(f"[green]conservation[/] and to analysis.address.transit_entries_400m "
+                  f"on {r['addresses_compared']:,} addresses: worst relative error "
+                  f"{r['worst_relative_error']:.2e}")
+    console.print(f"{report['addresses_with_an_entrance']:,} addresses have >=1 entrance "
+                  f"within {report['radius_m']:.0f} m ({report['pairs']:,} pairs, source: "
+                  f"{report['source']}); every other address is 0.0 in all 15 cells")
+
+    wide = long_df.pivot_table(index="address_id", columns=["day_type", "daypart"],
+                               values="transit_entries_400m", aggfunc="sum").fillna(0.0)
+    tab = Table(title=f"walkable subway entries per average day — {','.join(boros)} "
+                      f"@ {report['radius_m']:.0f} m network "
+                      f"(addresses with >=1 entrance only)")
+    for col, j in (("day type", "left"), ("daypart", "left"), ("hours", "left"),
+                   ("p50", "right"), ("p90", "right"), ("max", "right")):
+        tab.add_column(col, justify=j)
+    bounds = {n: (a, b) for n, a, b in mr.DAYPARTS}
+    for d in mr.DAY_TYPES:
+        for pnm in mr.DAYPART_NAMES:
+            if (d, pnm) not in wide.columns:
+                continue
+            v = wide[(d, pnm)]
+            a, b = bounds[pnm]
+            tab.add_row(d, pnm, f"{a:02d}-{b:02d}", f"{v.median():,.0f}",
+                        f"{v.quantile(0.9):,.0f}", f"{v.max():,.0f}")
+    console.print(tab)
+
+    if dry_run:
+        console.print("[dim]--dry-run:[/] nothing written.")
+        raise typer.Exit(0)
+    w = report["_written"]
+    console.print(f"[green]ok[/] {w['address_transit_profile_rows']:,} rows -> "
+                  f"analysis.address_transit_profile · "
+                  f"{w['address_entrance_rows']:,} rows -> analysis.address_entrance · "
+                  f"{w['addresses_with_share']:,} addresses carry an AM/PM share")
+
+
 @app.command(name="validate-pedestrian")
 def validate_pedestrian(
     radius_m: float = typer.Option(400.0, "--radius-m", help="Catchment radius, NETWORK metres."),
@@ -2442,11 +2572,41 @@ def validate_pedestrian(
                   f"{report['transit']['window_end']} · LODES WAC "
                   f"{report['jobs_vintage']} · radius {report['radius_m']:.0f} m")
 
-    t = Table(title="Spearman rho vs DOT observed pedestrian count")
-    t.add_column("measure"); t.add_column("rho", justify="right"); t.add_column("N", justify="right")
+    t = Table(title="Spearman rho vs DOT observed whole-round count (AM+MD+PM)")
+    for c, j in (("measure", "left"), ("rho (all)", "right"), ("N", "right"),
+                 ("rho (Brooklyn)", "right"), ("N", "right")):
+        t.add_column(c, justify=j)
     for k, v in report["correlations"].items():
-        t.add_row(k, f"{v['spearman_rho']:+.3f}", str(v["n"]))
+        t.add_row(k, f"{v['spearman_rho']:+.3f}", str(v["n"]),
+                  f"{v['spearman_rho_bk']:+.3f}", str(v["n_bk"]))
     console.print(t)
+
+    t2 = Table(title="Per-window: each DOT count window vs the daypart that CONTAINS it")
+    for c, j in (("DOT window", "left"), ("hours", "left"), ("daypart", "left"),
+                 ("hours", "left"), ("rho (all)", "right"), ("N", "right"),
+                 ("rho (Brooklyn)", "right"), ("N", "right"), ("best off-diagonal", "left")):
+        t2.add_column(c, justify=j)
+    for win, v in report["by_window"].items():
+        off = {k: r for k, r in v["off_diagonal"].items() if k != v["daypart"]}
+        bk = max(off, key=lambda k: off[k])
+        t2.add_row(win.upper(), f"{v['dot_window_hours'][0]:02d}-{v['dot_window_hours'][1]:02d}",
+                   v["daypart"],
+                   f"{v['daypart_hours'][0]:02d}-{v['daypart_hours'][1]:02d}",
+                   f"{v['spearman_rho']:+.3f}", str(v["n"]),
+                   f"{v['spearman_rho_bk']:+.3f}", str(v["n_bk"]),
+                   f"{bk} {off[bk]:+.3f}")
+    console.print(t2)
+    console.print("[dim]the off-diagonal is the sharper test: if the AM count is ranked "
+                  "as well by pm_peak as by am_peak, the daypart split is carrying no "
+                  "information and the measure is a station on/off flag.[/]")
+    console.print(f"[yellow]{report['points_with_zero_transit']} of "
+                  f"{report['points']}[/] count points have transit = 0 "
+                  f"(no entrance within {report['radius_m']:.0f} m network) — a tie block "
+                  f"that lands wherever ties land; "
+                  f"{report['points_with_zero_transit_bk']} of "
+                  f"{report['brooklyn_points']} Brooklyn points")
+    console.print("[dim]saturday and sunday dayparts are UNVALIDATED: DOT counts "
+                  "weekdays, so there is no counterpart to correlate them against.[/]")
     if out:
         df.to_csv(out, index=False)
         console.print(f"[green]ok[/] per-point table -> {out}")
