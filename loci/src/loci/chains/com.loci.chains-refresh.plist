@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  TEMPLATE -- launchd job for the monthly chain refresh.
+
+  Replace __REPO__ with the absolute path to the loci repo (it has no
+  variables; launchd does not expand ~ or $HOME in ProgramArguments), then:
+
+      mkdir -p __REPO__/data/chains/logs
+      sed 's|__REPO__|'"$PWD"'|g' \
+        src/loci/chains/com.loci.chains-refresh.plist \
+        > ~/Library/LaunchAgents/com.loci.chains-refresh.plist
+      launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.loci.chains-refresh.plist
+      launchctl kickstart -p gui/$(id -u)/com.loci.chains-refresh   # test it now
+
+  To remove:
+      launchctl bootout gui/$(id -u)/com.loci.chains-refresh
+
+  WHY 03:10 ON THE 1st, and why `make` rather than `loci` directly:
+    * a Day/Hour/Minute StartCalendarInterval with no Weekday fires monthly;
+    * 03:10 keeps it clear of the midnight rollover, so `--month` defaults to
+      the month that has actually begun;
+    * running `make chains-refresh` means the cron and the human run the same
+      command, which is the only way the cron stays correct as the pipeline
+      changes.
+
+  IF THE MACHINE IS ASLEEP at 03:10 launchd runs the job at next wake. A run
+  that slips by days is harmless: `detect` is idempotent per month, and the
+  press window is 45 days precisely so a slipped run leaves no hole.
+
+  ENVIRONMENT: launchd agents get a minimal PATH and do NOT read your shell
+  profile. `uv` must be reachable, hence the explicit PATH below; adjust it if
+  uv is installed elsewhere (`which uv`). TAVILY_API_KEY is read from
+  __REPO__/.env by the CLI itself, not from here -- do not paste a key into
+  this file, it would end up in a world-readable LaunchAgent.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.loci.chains-refresh</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/make</string>
+        <string>chains-refresh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__REPO__</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Day</key>
+        <integer>1</integer>
+        <key>Hour</key>
+        <integer>3</integer>
+        <key>Minute</key>
+        <integer>10</integer>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__REPO__/data/chains/logs/chains-refresh.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__REPO__/data/chains/logs/chains-refresh.err.log</string>
+
+    <key>RunAtLoad</key>
+    <false/>
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

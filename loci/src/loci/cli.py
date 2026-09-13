@@ -2619,5 +2619,282 @@ def recommend(
                   "a renewal, not a shovel; no expected profit is emitted.[/]")
 
 
+# ---------------------------------------------------------------------------
+# loci chains -- the NYC chain watchlist (detect / research / import / render)
+# ---------------------------------------------------------------------------
+chains_app = typer.Typer(add_completion=False, help=(
+    "Retail and consumer brands expanding in NYC. Two uses: companies to sell "
+    "to, and -- later -- the \"brand X is opening nearby\" signal on a recommend "
+    "card (nothing consumes that yet; `loci_category` is the join key that will "
+    "make it possible). THREE LAYERS, deliberately separate: `detect` is open "
+    "data only and deterministic; `research` costs Tavily credits and is "
+    "budgeted in code; `watchlist.yaml` is hand-maintained and OUTRANKS both. "
+    "`render` writes docs/CHAINS.md, which is generated and never hand-edited."))
+app.add_typer(chains_app, name="chains")
+
+#: Mirrors loci.chains.research.MAX_QUERIES. Duplicated here only because Typer
+#: evaluates option defaults at import time and cli.py imports the analysis
+#: packages lazily; `loci chains research --help` asserts they agree.
+_CHAINS_DEFAULT_BUDGET = 60
+
+
+def _chains_connect(read_only: bool):
+    """Open the warehouse, retrying the lock a concurrent writer holds (D69:
+    another session rebuilding is the normal state here, not an error)."""
+    from loci.model.recommend import connect_read_only
+
+    if read_only:
+        return connect_read_only()
+    con = locidb.connect()
+    from loci.chains.detect import ensure_schema
+    ensure_schema(con)
+    return con
+
+
+@chains_app.command("detect")
+def chains_detect(
+    month: str = typer.Option(None, "--month", help="Snapshot month YYYY-MM; "
+                                                    "default the current month."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Compute and print; write no snapshot."),
+    limit: int = typer.Option(25, "--limit", help="Rows to print (0 = all flagged)."),
+) -> None:
+    """Detect chains from the warehouse and write one month of snapshot.
+
+    Reads `analysis.poi_supply` at the DEDUPED LOCATION grain, groups by
+    `loci.chains.normalize.brand_key`, and flags brands that are growing.
+    Idempotent: re-running a month DELETEs and re-INSERTs it.
+
+    `locations_new_12m` is a FLOOR -- only four of the nine POI sources carry a
+    usable first-seen date, so it is counted over `locations_dated`, which is
+    printed beside it. The date-independent measure is the difference between
+    two monthly snapshots, which is why this command exists as a cron job and
+    not only as a query."""
+    from loci.chains import detect as det
+
+    con = _chains_connect(read_only=dry_run)
+    try:
+        result, rows = det.build(con, month=month, dry_run=dry_run)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
+
+    flagged = [r for r in rows if r["flagged"]]
+    shown = flagged if not limit else flagged[:limit]
+    t = Table(title=f"chains detect {result.snapshot_month} — "
+                    f"{result.n_flagged:,} flagged of {result.n_brands:,} "
+                    f"multi-location brands")
+    for col, j in (("brand", "left"), ("loci_category", "left"), ("total", "right"),
+                   ("dated", "right"), ("new 12m", "right"), ("new 3m", "right"),
+                   ("boro", "right"), ("src", "right"), ("why", "left")):
+        t.add_column(col, justify=j)
+    for r in shown:
+        t.add_row(str(r.get("display_name") or r["brand_key"])[:40],
+                  str(r.get("loci_category") or "—"),
+                  f"{r['locations_total']:,}", f"{r['locations_dated']:,}",
+                  f"{r['locations_new_12m']:,}", f"{r['locations_new_3m']:,}",
+                  str(r["n_boroughs"]), str(r["n_sources"]),
+                  str(r.get("flag_reason") or ""))
+    console.print(t)
+    console.print(f"[dim]{result.n_locations:,} brand-locations, "
+                  f"{result.n_dated:,} ({result.n_dated / max(result.n_locations, 1):.0%}) "
+                  f"carry a first-seen date — `new 12m` is a floor over that subset.[/]")
+    if dry_run:
+        console.print("[yellow]--dry-run: nothing written.[/]")
+    else:
+        console.print(f"[green]ok[/] chains.brand_snapshot / chains.brand_location "
+                      f"@ {result.snapshot_month}")
+
+
+@chains_app.command("research")
+def chains_research(
+    month: str = typer.Option(None, "--month", help="Snapshot to take brands from."),
+    max_queries: int = typer.Option(None, "--max-queries",
+                                    help=f"Hard budget; default "
+                                         f"{_CHAINS_DEFAULT_BUDGET}."),
+    days: int = typer.Option(None, "--days", help="Press window in days."),
+    detected: int = typer.Option(0, "--detected",
+                                 help="Also query the top N flagged brands from "
+                                      "the snapshot, not just the watchlist."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Print the exact queries; spend nothing. "
+                                      "Needs no API key."),
+) -> None:
+    """Press enrichment via Tavily. Budgeted in code; --dry-run spends nothing.
+
+    Discovery queries run FIRST so that a truncated budget keeps the channel
+    that finds brands nobody listed. A hit is a headline in a reading queue,
+    not evidence: promoting one to the watchlist is a human decision."""
+    from loci.chains import detect as det
+    from loci.chains import research as res
+    from loci.chains import watchlist as wl
+
+    budget = max_queries if max_queries is not None else res.MAX_QUERIES
+    window = days if days is not None else res.DEFAULT_DAYS
+    if budget <= 0:
+        raise typer.BadParameter("--max-queries must be positive")
+
+    rows = wl.brands()
+    keys = [r["brand_key"] for r in rows if r.get("brand_key")]
+    names = {r["brand_key"]: r.get("brand") for r in rows if r.get("brand_key")}
+
+    con = _chains_connect(read_only=dry_run)
+    if detected:
+        for r in det.flagged_brands(con, month, limit=detected):
+            if r["brand_key"] not in names:
+                keys.append(r["brand_key"])
+                names[r["brand_key"]] = r.get("display_name")
+
+    plan = res.build_plan(keys, names, max_queries=budget)
+    t = Table(title=f"chains research — {plan.n_queries} queries of a {budget} budget"
+                    + (f", {plan.truncated} dropped" if plan.truncated else ""))
+    t.add_column("#", justify="right"); t.add_column("kind"); t.add_column("query")
+    for i, (kind, _key, q) in enumerate(plan.queries, 1):
+        t.add_row(str(i), kind, q)
+    console.print(t)
+    console.print(f"[dim]window: last {window} days · domains: "
+                  f"{', '.join(res.PRESS_DOMAINS)}[/]")
+
+    if dry_run:
+        console.print("[yellow]--dry-run: no queries sent, nothing spent.[/]")
+        raise typer.Exit(0)
+
+    try:
+        out = res.run(con, plan, days=window)
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
+    console.print(f"[green]ok[/] {out['queries_spent']} queries spent, "
+                  f"{out['hits']} hits, {out['written']} rows in chains.press_hits "
+                  f"(since {out['since']})"
+                  + (f", [red]{out['errors']} failed[/]" if out["errors"] else ""))
+
+
+@chains_app.command("import")
+def chains_import(
+    path: Path = typer.Argument(..., help="JSON array of brand records "
+                                          "(snake_case keys, see watchlist.yaml)."),
+    overwrite: bool = typer.Option(False, "--overwrite",
+                                   help="Let incoming values replace non-empty "
+                                        "curated ones. OFF by default."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report; write nothing."),
+) -> None:
+    """Upsert a research JSON into src/loci/chains/watchlist.yaml.
+
+    FILL-ONLY by default: an incoming value is written only where the curated
+    value is empty, so a hand-corrected row survives the next import. `evidence`
+    is UNIONed by url and `first_added` is never overwritten."""
+    import json
+
+    from loci.chains import watchlist as wl
+
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        console.print(f"[red]cannot read {path}: {exc}[/]")
+        raise typer.Exit(1) from exc
+    if isinstance(payload, dict):
+        payload = payload.get("brands") or payload.get("records") or []
+    if not isinstance(payload, list):
+        console.print("[red]expected a JSON array of brand records[/]")
+        raise typer.Exit(1)
+
+    doc = wl.load()
+    doc, counts = wl.upsert(doc, payload, overwrite=overwrite)
+    errors = wl.validate(doc)
+    for e in errors:
+        console.print(f"[red]FAIL[/] {e}")
+    if errors:
+        console.print("[red]watchlist not written — fix the records above.[/]")
+        raise typer.Exit(1)
+
+    console.print(f"{counts['added']} added, {counts['updated']} updated, "
+                  f"{counts['skipped']} skipped (no resolvable brand_key); "
+                  f"{len(doc['brands'])} brands total")
+    if counts["unplaced_keys"]:
+        # Loud, not silent: a key nobody mapped is DATA THAT WAS DROPPED. Add it
+        # to watchlist.KEY_ALIASES (or IGNORED_KEYS) and re-import.
+        console.print("[yellow]unmapped keys in the payload, NOT imported: "
+                      + ", ".join(counts["unplaced_keys"])
+                      + " — add them to chains/watchlist.py KEY_ALIASES[/]")
+    if counts["dropped_categories"]:
+        # Nulled, not invented: these brands have no daily-needs category to
+        # join to. They are still worth selling to; they just cannot be a
+        # recommendation signal.
+        console.print("[yellow]loci_category set to null for unmappable values: "
+                      + ", ".join(counts["dropped_categories"]) + "[/]")
+    if dry_run:
+        console.print("[yellow]--dry-run: watchlist not written.[/]")
+        raise typer.Exit(0)
+    console.print(f"[green]written[/] -> {wl.write(doc)}")
+
+
+@chains_app.command("render")
+def chains_render(
+    month: str = typer.Option(None, "--month", help="Snapshot to render; default newest."),
+    out: Path = typer.Option(None, "--out", help="Override docs/CHAINS.md."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print; write nothing."),
+) -> None:
+    """Generate docs/CHAINS.md from watchlist + newest snapshot + press hits.
+
+    Fails before writing if the watchlist is structurally invalid -- a
+    `brand_key` that the normalizer would never produce joins to nothing, and
+    the document would report a tracked brand as undetected."""
+    from loci.chains import render as ren
+    from loci.chains import watchlist as wl
+
+    doc = wl.load()
+    errors = wl.validate(doc)
+    for e in errors:
+        console.print(f"[red]FAIL[/] {e}")
+    if errors:
+        raise typer.Exit(1)
+
+    con = _chains_connect(read_only=True)
+    text = ren.render(con, doc=doc, month=month)
+    if dry_run:
+        print(text)
+        console.print("[yellow]--dry-run: docs/CHAINS.md not written.[/]")
+        raise typer.Exit(0)
+    console.print(f"[green]written[/] -> {ren.write(text, out)}")
+
+
+@chains_app.command("refresh")
+def chains_refresh(
+    month: str = typer.Option(None, "--month", help="Snapshot month YYYY-MM."),
+    max_queries: int = typer.Option(None, "--max-queries", help="Tavily budget."),
+    skip_research: bool = typer.Option(False, "--skip-research",
+                                       help="detect + render only; spend nothing."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Every step dry: no snapshot, no queries, no doc."),
+) -> None:
+    """detect -> research -> render. The monthly job (`make chains-refresh`).
+
+    Research failure does NOT abort the run: the snapshot is the load-bearing
+    artefact and it is already written by then, so a Tavily outage must not
+    cost the month its count."""
+    console.rule("[bold]1/3 detect")
+    chains_detect(month=month, dry_run=dry_run, limit=25)
+    if skip_research:
+        console.rule("[bold]2/3 research — skipped (--skip-research)")
+    else:
+        console.rule("[bold]2/3 research")
+        try:
+            chains_research(month=month, max_queries=max_queries, days=None,
+                            detected=0, dry_run=dry_run)
+        except typer.Exit as exc:
+            if exc.exit_code:
+                console.print("[yellow]research failed — continuing to render; "
+                              "the snapshot is already written.[/]")
+        except Exception as exc:            # noqa: BLE001
+            console.print(f"[yellow]research failed ({exc}) — continuing to render.[/]")
+    console.rule("[bold]3/3 render")
+    try:
+        chains_render(month=month, out=None, dry_run=dry_run)
+    except typer.Exit as exc:
+        if exc.exit_code:
+            raise
+
+
 if __name__ == "__main__":
     app()

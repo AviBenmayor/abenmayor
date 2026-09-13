@@ -22,6 +22,7 @@ dependencies = [
   "overturemaps>=0.14",
   "census>=0.8",
   "requests>=2.32",
+  "tavily-python>=0.7",
   # model
   "statsmodels>=0.14",
   "linearmodels>=6.1",
@@ -51,6 +52,10 @@ packages = ["src/loci"]
 [tool.hatch.build.targets.wheel.force-include]
 "src/loci/registry.yaml" = "loci/registry.yaml"
 "src/loci/sql" = "loci/sql"
+# The chain watchlist is hand-maintained CONFIG that lives with the code that
+# reads it, and the launchd template is installed from the installed package.
+"src/loci/chains/watchlist.yaml" = "loci/chains/watchlist.yaml"
+"src/loci/chains/com.loci.chains-refresh.plist" = "loci/chains/com.loci.chains-refresh.plist"
 
 [tool.ruff]
 line-length = 100

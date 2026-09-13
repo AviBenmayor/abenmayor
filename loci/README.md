@@ -14,6 +14,7 @@ New York City first; the scoring engine is city-agnostic.
 | **[docs/CHECKPOINT.md](docs/CHECKPOINT.md)** | Where we are — state, blockers, decision log. Read first when resuming. |
 | **[docs/QUESTIONS.md](docs/QUESTIONS.md)** | The build compass — research questions tiered by rigor, each mapped to the tickets that answer it, plus the homework list. `make check` keeps it in step with the tickets. |
 | **[docs/TICKETS.md](docs/TICKETS.md)** | Work breakdown, 6 milestones / 61 issues. Generated — never hand-edit. |
+| **[docs/chains-process.md](docs/chains-process.md)** | The NYC chain watchlist — what the list is for, the monthly `make chains-refresh` job, how to hand-edit `watchlist.yaml`, and where the detect heuristics are wrong. The list itself is [docs/CHAINS.md](docs/CHAINS.md), generated. |
 
 ## Quick start
 
