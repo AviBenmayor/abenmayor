@@ -1588,6 +1588,16 @@
       "Labels": "ingest,score,model,viz",
       "Project": "Loci",
       "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Sidewalk counts: weekday camera samples at the 15 DOT-adjacent cameras and the first camera-vs-DOT validation",
+      "Description": "`loci sidewalk-count` shipped (d948b6d) with a YOLO11n ONNX detector at 0.027 s/frame; the first 183 frames were a Sunday evening so `validate` reports N=0 against DOT's weekday counts; 15 on-street cameras sit within 60 m of 14 count points. Plan: sample each for 10 minutes in the AM (7-9), MD (12-14), PM (16-19) windows on two weekdays (~90 frames x 3 windows x 15 cameras ~ 4,050 frames, ~2 minutes of CPU), then run `validate --round 2026-05` and record the rank correlation per window. Persons-in-frame is a stock not a flow, so the deliverable is a rank check, never a conversion factor; field of view is an uncorrected confound. Consider a launchd sampler if the correlation is usable.\n\nOpened 2026-09-13 (CHECKPOINT D85). Pushed to Linear 2026-09-13 as GTM-157.",
+      "Status": "Backlog",
+      "Priority": 2,
+      "Estimate": 3,
+      "Labels": "ingest,validation",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
     }
   ]
 }

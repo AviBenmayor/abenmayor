@@ -341,6 +341,13 @@ claim stands on.
 - **Fails if:** retail_index or character_label add no explanatory power over supply_ratio_vs_base residuals or storefront survival/first-seen duration once homes_400m and jobs_400m are already in the model — in which case character is confirmed as descriptive color, the same fate D76 gave the raw transit levels.
 - **Current answer:** Open. Ticketed GTM-154 alongside the retail_index saturation and 20-lot threshold review.
 
+### X9 — Does persons-per-frame at a DOT camera rank-correlate with DOT's screenline counts across the AM/MD/PM windows, and is the relationship stable enough across cameras (field of view) to use camera counts as the shortlist verification for leads?
+- **Status:** open
+- **Answered by:** (not ticketed) — GTM-157
+- **Why it matters:** `loci sidewalk-count` (D85) gives a free, near-live person count at any of 969 cameras, but a still-frame count is a stock (people present) not a flow (people passing), and each camera's field of view is an uncorrected confound (a camera pointed down a wide plaza will always read higher than one on a narrow sidewalk regardless of true footfall). Before camera counts can stand in for DOT's screenline counts anywhere DOT has no physical count point, the two need to agree in RANK at the 15 cameras that sit within 60 m of a DOT count point — first per window (AM/MD/PM), then across cameras. If the correlation holds, a camera-based shortlist check becomes available citywide wherever DOT has no counter; if it doesn't hold, or holds only at some cameras, the tool stays scoped to comparing a camera against itself over time.
+- **Fails if:** the rank correlation between camera person-counts and DOT screenline counts is weak, inconsistent across the AM/MD/PM windows, or inconsistent across cameras (i.e. driven by field-of-view differences rather than true footfall) — in which case sidewalk counts remain a self-comparison tool only, never a cross-location verification signal.
+- **Current answer:** Open. First samples (2026-09-13) were a Sunday evening, so `validate` reports N=0 against DOT's weekday counts; weekday AM/MD/PM sampling at the 15 DOT-adjacent cameras is ticketed as GTM-157.
+
 ### Tier T · Predictive — temporal ordering, no identification claim
 
 ### T1 — Does a negative residual in 2013 predict above-average growth 2013→2023?
