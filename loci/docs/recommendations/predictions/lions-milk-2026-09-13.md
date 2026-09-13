@@ -208,3 +208,15 @@ Ask in this order; 1–3 are the ones that decide the score.
 `step3_predict.py` (a–c), `step4_bands.py` (CBP size bands), `step5_selfsens.py`,
 `step6_table.py`, `predictions.json` (every number above).
 No warehouse table, calibration YAML, CHECKPOINT entry or ticket was modified.
+
+---
+
+## Revision, 2026-09-13 evening — the judgment estimate (recorded before any answer from the owner)
+
+The owner asked: "why would we send him something we know is wrong?" The primary bet above ((c), $1.29M–$2.42M) was a bet on the most defensible *model form*, while the same document said the truth is expected below $1.29M. That is incoherent: a pre-registered bet should be the number we believe.
+
+**Judgment estimate (our actual belief): $650k – $1.25M, central $900k.** Basis, all already stated above: (1) capacity — 1,000 sq ft of retail floor plus a patio, ~62 h/wk, daytime menu; strong-corridor NYC cafés run roughly $500–900 per sq ft; (2) the borough *median* café ($575,588 from the CBP size bands) rather than the EC mean, which large operators pull up; (3) the rent back-solve for a Roebling St café at a normal occupancy ratio, $960k–$1.44M, taken as the upper half of the range because the block is exceptional on income and density.
+
+**Scoring, revised.** Two records are kept and both are scored against the owner's trailing-12-month gross: the model's primary (c) as written above, and this judgment estimate. The question the answer settles is not only "was the model right" but "does human adjustment of the model beat the model" — hit if truth within $650k–$1.25M; log error of $900k.
+
+The memo sent to the owner now leads with the judgment estimate and shows the raw model number beneath it, labelled as the thing being tested.
