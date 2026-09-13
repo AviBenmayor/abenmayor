@@ -68,34 +68,77 @@ def render(con, *, doc: dict | None = None, month: str | None = None,
                "See [chains-process.md](chains-process.md).")
     out.append("")
 
-    out += _watchlist_section(rows, snap)
+    out += _watchlist_section(rows, snap, _pipeline_counts(con, rows))
     out += _newly_detected_section(con, month, snap, rows, top_detected)
     out += _press_section(con, today)
     out += _provenance_section(month, today)
     return "\n".join(out).rstrip() + "\n"
 
 
-def _watchlist_section(rows: list[dict], snap: dict[str, dict]) -> list[str]:
+def _pipeline_counts(con, rows: list[dict]) -> dict[str, dict]:
+    """{brand_key: pipeline row} for the watchlist brands, from
+    analysis.storefront_pipeline.
+
+    DEGRADES TO AN EMPTY DICT when the table has not been built. A missing
+    optional column is not a reason to fail the monthly document build --
+    every cell simply renders as a dash, and `loci storefront-pipeline build`
+    is what fills them (it is in `make chains-refresh`, ahead of detect).
+    """
+    try:
+        from loci.model import storefront_pipeline as sp
+    except ImportError:                                     # pragma: no cover
+        return {}
+    keys = [r.get("brand_key") for r in rows if r.get("brand_key")]
+    if not keys or not sp.has_pipeline_table(con):
+        return {}
+    frame = sp.brand_pipeline(con, brand_keys=keys)
+    return {r["brand_key"]: r for r in frame.to_dict("records")}
+
+
+def _watchlist_section(rows: list[dict], snap: dict[str, dict],
+                       pipe: dict[str, dict] | None = None) -> list[str]:
     out = ["## Watchlist — ranked by net new locations in 12 months", ""]
     if not rows:
         return out + ["_The watchlist is empty._", ""]
+    pipe = pipe or {}
 
     def key(r):
         n = r.get("net_new_12m")
         return (0 if n is None else 1, n or 0)
 
     out += ["| Brand | Category | loci_category | Net new 12m (curated) | "
-            "NYC now (curated) | Detected total | Detected new 12m | Confidence | "
-            "Last verified |",
-            "|---|---|---|---:|---:|---:|---:|---|---|"]
+            "NYC now (curated) | Detected total | Detected new 12m | "
+            "Pipeline (gov filings) | Confidence | Last verified |",
+            "|---|---|---|---:|---:|---:|---:|---|---|---|"]
     for r in sorted(rows, key=key, reverse=True):
-        d = snap.get(r.get("brand_key") or "", {})
-        out.append("| {b} | {c} | {lc} | {nn} | {now} | {dt_} | {dn} | {conf} | {lv} |".format(
+        bk = r.get("brand_key") or ""
+        d = snap.get(bk, {})
+        p = pipe.get(bk)
+        # "N in BK,MN (first entry YYYY-MM-DD)" -- the count alone is not
+        # actionable; where and when is.
+        pipe_cell = "—"
+        if p:
+            # `first_entry` comes back as a pandas Timestamp; the time half is
+            # always midnight and is noise in a document.
+            since = str(p["first_entry"])[:10]
+            pipe_cell = f"{p['pipeline_rows']} in {p['boroughs'] or '?'}, from {since}"
+        out.append("| {b} | {c} | {lc} | {nn} | {now} | {dt_} | {dn} | {pl} | "
+                   "{conf} | {lv} |".format(
             b=_fmt(r.get("brand")), c=_fmt(r.get("category")),
             lc=_fmt(r.get("loci_category")), nn=_fmt(r.get("net_new_12m")),
             now=_fmt(r.get("nyc_locations_now")),
             dt_=_fmt(d.get("locations_total")), dn=_fmt(d.get("locations_new_12m")),
+            pl=pipe_cell,
             conf=_fmt(r.get("confidence")), lv=_fmt(r.get("last_verified"))))
+    out.append("")
+    out.append("`Pipeline (gov filings)` counts rows in `analysis.storefront_pipeline` "
+               "that are filed under this brand's key and are **not yet open** — a "
+               "lease signed, a build-out permitted or a licence applied for, with no "
+               "regulator having seen a business yet. It is a FLOOR: a franchisee files "
+               "under its own operating company (`PRIYA FOODS INC` running a Dunkin'), "
+               "so an empty cell is as often \"files under another name\" as it is "
+               "\"nothing coming\". A filing is also not a store — applications are "
+               "withdrawn and permits lapse.")
     out.append("")
 
     unverified = [r for r in rows if (r.get("confidence") or "unverified") == "unverified"]

@@ -3607,3 +3607,439 @@ def filings_stats() -> None:
     console.print("[dim]Conditioned on both rows resolving to the same BBL; "
                   "applications that never opened contribute nothing; the "
                   "24-month window right-censors the tail (median biased down).[/]")
+
+
+# ===========================================================================
+# `loci storefront-pipeline` -- stage two of the government-filing lifecycle.
+#
+# APPENDED AT THE VERY END OF THIS FILE ON PURPOSE. Two peer sessions hold
+# hunks above (D78's address-gaps scope guard, D81's revenue calibration), and
+# a block inserted mid-file would conflict with both. Nothing above this line
+# is touched.
+# ===========================================================================
+storefront_pipeline_app = typer.Typer(add_completion=False, help=(
+    "Roll the filing event log up into one row per BUSINESS TRYING TO OPEN at "
+    "a lot, reconcile the same store's filings across agencies, date the "
+    "first-seen ledger from what opened, and carry the coming-supply context "
+    "onto every address. Stage one (`loci filings`) is the event log; this is "
+    "the lifecycle."))
+app.add_typer(storefront_pipeline_app, name="storefront-pipeline")
+
+
+def _pipeline_connect(read_only: bool = False):
+    """Open the warehouse, retrying the lock a concurrent writer holds.
+
+    Same posture as `_filings_connect` and `_chains_connect`: another session
+    rebuilding analysis.address is the normal state in this project (D69), not
+    an error, so back off rather than failing a run that has already done the
+    expensive part."""
+    import time
+
+    import duckdb
+
+    last = None
+    for attempt in range(6):
+        try:
+            con = locidb.connect(read_only=read_only)
+            if not read_only:
+                locidb.init_schema(con)
+            return con
+        except duckdb.IOException as exc:        # lock held by a peer session
+            last = exc
+            time.sleep(5 * 2 ** attempt)
+    raise RuntimeError(
+        f"storefront-pipeline: the DuckDB file stayed write-locked across 6 "
+        f"attempts ({last}). Another session is holding it; retry when it "
+        f"finishes.")
+
+
+@storefront_pipeline_app.command("build")
+def storefront_pipeline_build(
+    asof: str = typer.Option(None, "--asof",
+                             help="YYYY-MM-DD; default today. Stamped on every row."),
+    no_reconcile: bool = typer.Option(False, "--no-reconcile",
+                                      help="Skip the cross-agency name link. The strict "
+                                           "(same-name-key) lead times are unaffected."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Roll up, reconcile, report -- write nothing."),
+) -> None:
+    """Build analysis.storefront_pipeline from staging.storefront_filing.
+
+    One row per (bbl, business_name_key), with the two D75 carry rules: a
+    filing with no BBL, or no usable name key, is kept as its OWN row and
+    FLAGGED rather than dropped -- and specifically is NOT grouped on the key
+    it does have, because grouping a nameless filing on its lot would fuse the
+    laundromat, the deli and the nail salon into one business, and grouping a
+    lot-less filing on its name would pair a Bronx application with a Brooklyn
+    inspection.
+
+    Then the CROSS-AGENCY LINK. The lead-time N is small because the same store
+    files under different names at different agencies -- 11,813 BBLs carry both
+    an early and a terminal stage under name keys that do not match. The link
+    pairs an unopened early row with an opened row on the SAME BBL inside 540
+    days when their names share a RARE token, or when the lot offers exactly
+    one candidate on each side. It is one-to-one and greedy, because a
+    many-to-many link would turn one build-out into several lead times.
+
+    A LINK IS AN INFERENCE; A SHARED NAME KEY IS AN OBSERVATION. `stats` prints
+    strict and reconciled side by side and never pools them.
+
+        loci storefront-pipeline build
+    """
+    import datetime as _dt
+
+    from loci.model import storefront_pipeline as sp
+
+    asof_d = _dt.date.fromisoformat(asof) if asof else _dt.date.today()
+    con = _pipeline_connect(read_only=dry_run)
+
+    console.rule("[bold]1/3 roll up + reconcile")
+    df, report = sp.build(con, asof=asof_d, dry_run=dry_run,
+                          reconcile_links=not no_reconcile)
+
+    g = Table(title=f"analysis.storefront_pipeline — asof {report['asof']}")
+    for col in ("measure", "value"):
+        g.add_column(col)
+    g.add_row("filing events rolled up", f"{report['filings']:,}")
+    g.add_row("pipeline rows", f"{report['rows']:,}")
+    for kind, n in sorted(report["by_group_kind"].items()):
+        g.add_row(f"  group_kind = {kind}", f"{n:,}")
+    g.add_row("open (first_inspection | license_issued | liquor_active)",
+              f"{report['open']:,}")
+    g.add_row("not yet open", f"{report['not_open']:,}")
+    g.add_row("rows with NO BBL (carried, flagged — D75)", f"{report['bbl_missing']:,}")
+    g.add_row("rows with NO name key (carried, flagged — D75)",
+              f"{report['name_key_missing']:,}")
+    g.add_row("with a measured lead time", f"{report['with_lead_days']:,}")
+    g.add_row("categorised (filing_categories.yaml "
+              f"v{report['category_map_version']})", f"{report['categorised']:,}")
+    for conf, n in sorted(report["category_confidence"].items()):
+        g.add_row(f"  confidence = {conf}", f"{n:,}")
+    g.add_row("point from a filing / from a PLUTO lot centroid / none",
+              f"{report['rows'] - report['points_from_pluto'] - report['points_missing']:,}"
+              f" / {report['points_from_pluto']:,} / {report['points_missing']:,}")
+    console.print(g)
+
+    if "reconcile" in report:
+        r = report["reconcile"]
+        l = Table(title="cross-agency reconciliation")
+        for col in ("measure", "value"):
+            l.add_column(col)
+        l.add_row("BBLs with an early AND a terminal row", f"{r['bbls_with_both_sides']:,}")
+        l.add_row("candidate pairs inside the window", f"{r['candidate_pairs']:,}")
+        l.add_row("links made (one-to-one)", f"{r['links']:,}")
+        for m, n in sorted(r["links_by_method"].items()):
+            l.add_row(f"  {m}", f"{n:,}")
+        l.add_row("terminal rows already strictly matched (excluded)",
+                  f"{r['terminal_rows_already_strict']:,}")
+        l.add_row("window / min idf", f"{r['window_days']} d / {r['min_idf']}")
+        console.print(l)
+        console.print("[yellow]`sole_pair_in_bbl` is the WEAKER rule: it says the lot "
+                      "offered no other candidate, not that the names agree. Read the "
+                      "strict column before quoting a reconciled median.[/]")
+
+    if dry_run:
+        console.print("[yellow]--dry-run: analysis.storefront_pipeline not written.[/]")
+        raise typer.Exit(0)
+
+    console.rule("[bold]2/3 write")
+    console.print(f"[green]written[/] {report['_written']:,} rows into {sp.TABLE}")
+
+    console.rule("[bold]3/3 validate")
+    for p in report.get("_problems", []):
+        console.print(f"[red]FAIL[/] {p}")
+    if report.get("_problems"):
+        raise typer.Exit(1)
+    console.print("[green]ok[/] every filing lands in exactly one group, the grain "
+                  "holds, and every link is symmetric, one-to-one and inside one BBL")
+
+
+@storefront_pipeline_app.command("ledger")
+def storefront_pipeline_ledger(
+    asof: str = typer.Option(None, "--asof", help="YYYY-MM-DD; default today."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Match and report; write nothing."),
+) -> None:
+    """Date the first-seen ledger from what the government says OPENED.
+
+    Adds the fourth `first_seen_kind`, 'gov_filing', to analysis.poi_presence:
+    a deduped location matched to a pipeline row whose `opened_on` is earlier
+    than anything a POI source could say -- or which is LEFT-CENSORED, i.e. the
+    ledger has no idea when it opened and never will.
+
+    ONLY AN OPEN SIGNAL MAY SET A FIRST-SEEN. The join reads `opened_on`, which
+    exists only where a `license_issued`, `liquor_active` or `first_inspection`
+    filing exists. An application, a permit and a fit-out filing are dates on
+    which somebody INTENDED to open; using one would date a storefront to a
+    year before it existed.
+
+    IT CAN ONLY EVER MOVE A DATE EARLIER, and the strict inequality that
+    guarantees that is also what makes this idempotent -- a second run updates
+    nothing.
+
+        loci storefront-pipeline ledger
+    """
+    import datetime as _dt
+
+    from loci.model import poi_presence as pp
+    from loci.model import storefront_pipeline as sp
+
+    asof_d = _dt.date.fromisoformat(asof) if asof else _dt.date.today()
+    con = _pipeline_connect(read_only=dry_run)
+    console.print("[dim]matching the first-seen ledger to the filing pipeline "
+                  "(PLUTO lot + brand key, then brand key + 100 m)…[/]")
+    report = sp.apply_gov_filing(con, asof=asof_d, dry_run=dry_run)
+
+    m = Table(title="ledger x pipeline match")
+    for col in ("measure", "value"):
+        m.add_column(col)
+    m.add_row("ledger rows", f"{report['ledger_rows']:,}")
+    m.add_row("locations matched to a pipeline row with an opening date",
+              f"{report['matched_locations']:,}")
+    for method, n in sorted(report.get("match_methods", {}).items()):
+        m.add_row(f"  {method}", f"{n:,}")
+    m.add_row("of those, ELIGIBLE (censored, or an earlier date)",
+              f"{report.get('eligible', 0):,}")
+    for kind, n in sorted(report.get("eligible_by_prior_kind", {}).items()):
+        m.add_row(f"  was {kind}", f"{n:,}")
+    console.print(m)
+
+    k = Table(title="first_seen_kind distribution")
+    for col in ("kind", "before", "after"):
+        k.add_column(col)
+    for kind in pp.KINDS:
+        k.add_row(kind, f"{report['kinds_before'].get(kind, 0):,}",
+                  f"{report['kinds_after'].get(kind, 0):,}")
+    console.print(k)
+
+    if dry_run:
+        console.print("[yellow]--dry-run: analysis.poi_presence not written.[/]")
+        raise typer.Exit(0)
+    console.print(f"[green]updated[/] {report['updated']:,} ledger rows; "
+                  f"[bold]{report['censored_resolved']:,}[/] left-censored rows "
+                  f"finally carry a real opening date")
+    errors, stats = pp.coverage_check(con)
+    for e in errors:
+        console.print(f"[red]FAIL[/] {e}")
+    if errors:
+        raise typer.Exit(1)
+    console.print("[green]ok[/] check-presence invariants hold "
+                  f"({stats['coverage_pct']:.2f}% of deduped locations covered)")
+
+
+@storefront_pipeline_app.command("openings")
+def storefront_pipeline_openings(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL."),
+    asof: str = typer.Option(None, "--asof",
+                             help="YYYY-MM-DD; default today. The windows count back "
+                                  "from this."),
+    radius_m: float = typer.Option(400.0, "--radius-m",
+                                   help="Catchment radius in NETWORK metres "
+                                        "(default 400 = the 5-min tier)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """Coming supply and just-arrived supply, per category, at address grain.
+
+        openings_pipeline_400m  filings of THIS category in the last 18 months
+                                that are NOT YET OPEN, within 400 m network
+        openings_recent_400m    of this category, OPENED in the last 12 months,
+                                same radius
+
+    CONTEXT MEASURES. UPDATE-only on analysis.address_category, asserted
+    disjoint from every column the screen, the supply ratio, the demand
+    annotation or the age fit owns. They do NOT enter gap_score,
+    supply_ratio_vs_base, supply_400m or any recommendation grade -- a block
+    does not become a gap because nothing is being built there, and does not
+    stop being one because something is.
+
+    EVERY IN-SCOPE ADDRESS x CATEGORY GETS A NUMBER, and 0 IS A VALUE (owner
+    rule: no eligibility gate, every street represented). NULL means this
+    command has not run since the last screen rebuild.
+
+    Same engine as homes_400m / jobs_400m / supply_400m: one pruned walk graph,
+    one bounded scipy Dijkstra per batch of query nodes, both measures and all
+    fifteen categories on ONE sweep. No straight lines anywhere.
+
+    THE HONEST LIMIT: both DOB feeds publish the architect's free-text job
+    description, not the tenant's trade, so a row whose only filings are DOB
+    rows carries no category and contributes to nothing. These columns are an
+    UNDER-COUNT, and thinnest at exactly the earliest stages.
+
+    RE-APPLY AFTER EVERY SCREEN RE-RUN -- `loci address-gaps` destroys the rows
+    these columns sit on. `openings_run_at IS NULL` is the flag.
+
+        loci storefront-pipeline openings --boroughs MN,BK
+    """
+    import datetime as _dt
+
+    from loci.model import storefront_pipeline as sp
+
+    asof_d = _dt.date.fromisoformat(asof) if asof else _dt.date.today()
+    boros = _parse_boroughs(boroughs)
+    con = _pipeline_connect(read_only=dry_run)
+    console.print(f"[dim]openings within {radius_m:.0f} m network for "
+                  f"{','.join(boros)}…[/]")
+    df, report = sp.build_openings(con, boros, asof=asof_d, radius_m=radius_m,
+                                   dry_run=dry_run)
+
+    t = Table(title=f"openings — asof {report['asof']}")
+    for col in ("measure", "value"):
+        t.add_column(col)
+    t.add_row("pipeline rows (total / categorised / categorised + placed)",
+              f"{report['pipeline_rows']:,} / {report['categorised']:,} / "
+              f"{report['categorised_and_placed']:,}")
+    t.add_row(f"in the pipeline window (from {report['pipeline_window_from']}, not open)",
+              f"{report['in_pipeline_window']:,}")
+    t.add_row(f"in the recent-openings window (from {report['recent_window_from']})",
+              f"{report['in_recent_window']:,}")
+    t.add_row("addresses swept / distinct graph nodes",
+              f"{report['addresses']:,} / {report['query_nodes']:,}")
+    t.add_row("address x category rows", f"{report['rows']:,}")
+    t.add_row("rows with a NON-ZERO pipeline count",
+              f"{report['address_categories_with_pipeline']:,}")
+    t.add_row("rows with a NON-ZERO recent count",
+              f"{report['address_categories_with_recent']:,}")
+    t.add_row("max per address (pipeline / recent)",
+              f"{report['max_pipeline_400m']} / {report['max_recent_400m']}")
+    t.add_row("graph version", str(report["graph_version"]))
+    console.print(t)
+
+    if dry_run:
+        console.print("[yellow]--dry-run: analysis.address_category not written.[/]")
+        raise typer.Exit(0)
+    console.print(f"[green]written[/] {report['_written']:,} address x category rows")
+    for p in report.get("_problems", []):
+        console.print(f"[red]FAIL[/] {p}")
+    if report.get("_problems"):
+        raise typer.Exit(1)
+    console.print(con.execute(sp.OPENINGS_VALIDATION_SQL).fetchdf()
+                  .tail(16).to_string(index=False))
+    console.print("[green]ok[/] every in-scope address x category carries both numbers, "
+                  "and no catchment holds more filings than the whole table does")
+
+
+@storefront_pipeline_app.command("stats")
+def storefront_pipeline_stats() -> None:
+    """The lifecycle, the lead times strict vs reconciled, the ledger kinds,
+    the brands with something in the pipeline, and two neighbourhoods.
+
+    Read the lead-time tables as TWO POPULATIONS. `strict` pairs two filings
+    that shared a business name key on one lot -- an observation. `reconciled`
+    adds pairs the cross-agency link inferred from a rare shared token or from
+    a lot with no other candidate. The strict numbers are the reference.
+
+        loci storefront-pipeline stats
+    """
+    from loci.model import storefront_pipeline as sp
+
+    con = _pipeline_connect(read_only=True)
+    if not con.execute(
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema = "
+            "'analysis' AND table_name = 'storefront_pipeline'").fetchone()[0]:
+        console.print("[red]analysis.storefront_pipeline does not exist[/] — run "
+                      "`loci storefront-pipeline build` first.")
+        raise typer.Exit(1)
+    out = sp.stats(con)
+
+    c = Table(title="lifecycle — entry stage x open state")
+    for col in ("group_kind", "entry stage", "open", "rows", "filings", "categorised"):
+        c.add_column(col)
+    for r in out["census"].head(20).itertuples(index=False):
+        c.add_row(r.group_kind, r.entry_stage, "yes" if r.is_open else "no",
+                  f"{r.n_rows:,}", f"{int(r.n_filings):,}", f"{r.n_categorised:,}")
+    console.print(c)
+
+    f = Table(title="furthest stage reached")
+    for col in ("furthest stage", "rows", "open", "median lead (d)"):
+        f.add_column(col)
+    for r in out["furthest"].itertuples(index=False):
+        f.add_row(r.furthest_stage, f"{r.n_rows:,}", f"{r.n_open:,}",
+                  "—" if r.median_lead_days is None or r.median_lead_days != r.median_lead_days
+                  else f"{r.median_lead_days:.0f}")
+    console.print(f)
+
+    h = Table(title="LEAD TIME — the three headline pairs, strict vs reconciled")
+    for col in ("first stage", "terminal stage", "N strict", "median strict",
+                "N reconciled", "median reconciled", "linked pairs added"):
+        h.add_column(col)
+    for r in out["headline"].itertuples(index=False):
+        h.add_row(r.first_stage, r.open_stage, f"{r.n_strict:,}",
+                  "—" if r.median_strict is None else f"{r.median_strict:.0f}",
+                  f"{r.n_reconciled:,}",
+                  "—" if r.median_reconciled is None else f"{r.median_reconciled:.0f}",
+                  f"+{r.n_linked:,}")
+    console.print(h)
+    console.print("[yellow]The STRICT column is the reference. A reconciled median is "
+                  "computed over strict pairs PLUS inferred links; the two are different "
+                  "populations and must never be quoted as one number.[/]")
+
+    for label, key in (("STRICT — both filings shared a name key on one BBL", "lead_strict"),
+                       ("RECONCILED — strict plus cross-agency links", "lead_reconciled")):
+        frame = out[key]
+        if not len(frame):
+            continue
+        lt = Table(title=label)
+        for col in ("first stage", "terminal stage", "N", "strict", "linked",
+                    "p25", "median", "p75"):
+            lt.add_column(col)
+        for r in frame.itertuples(index=False):
+            lt.add_row(r.first_stage, r.open_stage, f"{r.n:,}", f"{r.n_strict:,}",
+                       f"{r.n_linked:,}", f"{r.p25_days:.0f}", f"{r.median_days:.0f}",
+                       f"{r.p75_days:.0f}")
+        console.print(lt)
+    console.print("[dim]Same-agency pairs (DCWP application -> DCWP licence, SLA pending "
+                  "-> SLA active) are EXCLUDED from both tables: they measure an agency's "
+                  "queue, not a build-out.[/]")
+
+    cat = Table(title="category mapping coverage (filings, not rows)")
+    for col in ("loci_category", "confidence", "rows", "filings", "not open"):
+        cat.add_column(col)
+    for r in out["categories"].itertuples(index=False):
+        cat.add_row(r.loci_category, r.category_confidence, f"{r.n_rows:,}",
+                    f"{int(r.n_filings):,}", f"{r.n_not_open:,}")
+    console.print(cat)
+
+    if "kinds" in out:
+        k = Table(title="analysis.poi_presence — first_seen_kind")
+        for col in ("kind", "rows"):
+            k.add_column(col)
+        for r in out["kinds"].itertuples(index=False):
+            k.add_row(r.first_seen_kind, f"{r.n:,}")
+        console.print(k)
+
+    b = Table(title="top 20 brands by NOT-YET-OPEN pipeline rows")
+    for col in ("brand_key", "pipeline rows", "BBLs", "boroughs", "first entry",
+                "last entry"):
+        b.add_column(col)
+    for r in out["brands"].itertuples(index=False):
+        b.add_row(r.brand_key, f"{r.pipeline_rows:,}", f"{r.pipeline_bbls:,}",
+                  str(r.boroughs), str(r.first_entry)[:10], str(r.last_entry)[:10])
+    console.print(b)
+    console.print("[dim]A FLOOR: franchisee filings go in under the operating company "
+                  "(\"PRIYA FOODS INC\" running a Dunkin'), so a brand with no pipeline "
+                  "rows may simply be one whose franchisees file under their own names. "
+                  "Rows whose ONLY filings come from the two DOB feeds are excluded from "
+                  "this ranking: those feeds publish owner_s_business_name, so without "
+                  "the filter the twenty biggest \"brands\" in New York are twenty "
+                  "property managers.[/]")
+
+    for key, title in (("gowanus", "Gowanus core (bbox, as the recommendation card)"),
+                       ("east_village", "East Village (NTA MN0303)")):
+        if key not in out:
+            console.print("[yellow]openings not computed — run "
+                          "`loci storefront-pipeline openings` for the "
+                          "neighbourhood tables.[/]")
+            break
+        frame = out[key]
+        a = Table(title=f"{title} — top categories by mean openings_pipeline_400m")
+        for col in ("category", "addresses", "mean pipeline", "median", "max",
+                    "mean recent"):
+            a.add_column(col)
+        for r in frame.head(5).itertuples(index=False):
+            a.add_row(r.category, f"{r.n_addresses:,}", f"{r.mean_pipeline_400m}",
+                      f"{r.med_pipeline_400m:.0f}", f"{r.max_pipeline_400m}",
+                      f"{r.mean_recent_400m}")
+        console.print(a)
+    console.print("[dim]Neighbourhood means are ADDRESS-WEIGHTED. Never sum a catchment "
+                  "column across addresses: a filing within 400 m of N addresses is "
+                  "counted N times by design.[/]")

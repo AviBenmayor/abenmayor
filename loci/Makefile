@@ -31,7 +31,14 @@ nyc: db-init   ## Full NYC pipeline
 	uv run loci model  --t0 2013 --t1 2023
 	uv run loci export --format pmtiles
 
-chains-refresh: ## Monthly: first-seen ledger, detect chains, enrich from press, regenerate docs/CHAINS.md
+chains-refresh: ## Monthly: filing pipeline, first-seen ledger, detect chains, enrich from press, regenerate docs/CHAINS.md
+	# The filing pipeline goes FIRST, before detect, for two reasons: `loci
+	# chains render` reads analysis.storefront_pipeline for the "Pipeline (gov
+	# filings)" column (it degrades to dashes without it, rather than failing),
+	# and the roll-up is what the 'gov_filing' first-seen kind is computed from.
+	# Order against poi-snapshot does not matter -- this step reads only
+	# staging.storefront_filing.
+	uv run loci storefront-pipeline build
 	# `loci chains refresh` runs `loci poi-snapshot` as step 1/4, BEFORE detect:
 	# detect reads analysis.poi_first_seen and raises without it, and a month's
 	# observation cannot be recovered once the month has passed. Keeping it

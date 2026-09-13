@@ -79,7 +79,15 @@ GEO_PHRASE_SUFFIXES = (
 
 #: Names that are not names. Returning None here is what keeps DCWP's
 #: "PARADISELAUNDROMATNY@GMAIL.COM" out of the brand table.
-_JUNK_EXACT = frozenset({"na", "n a", "none", "null", "unknown", "no name", "tbd"})
+#:
+#: "nan" and "not applicable" were added 2026-09-13 on evidence from
+#: staging.storefront_filing: 2,997 filings carried the literal string "nan"
+#: as a brand key and 6,573 carried "not applicable", which between them were
+#: the second and third largest "brands" in New York. The first came from a
+#: pandas NaN reaching this function (see the guard in `brand_key`), the
+#: second from DOB filers typing it into the owner-name field.
+_JUNK_EXACT = frozenset({"na", "n a", "nan", "none", "null", "unknown",
+                         "no name", "not applicable", "tbd"})
 
 #: Manual brand collapses. One line of evidence per entry, in the comment.
 ALIASES: dict[str, str] = {
@@ -125,6 +133,14 @@ def brand_key(name: str | None) -> str | None:
     Pure and deterministic. See the module docstring for the pipeline and for
     the cases where it is knowingly wrong."""
     if not name:
+        return None
+    # A pandas NaN is a FLOAT, and a float NaN is TRUTHY, so `not name` does
+    # not catch it and `str(nan)` is the string "nan". Measured 2026-09-13:
+    # 2,997 rows of staging.storefront_filing carry `business_name_key = 'nan'`
+    # because of exactly this -- the third-largest "brand" in the city. Caught
+    # here rather than at every call site, because every call site is a frame
+    # column and they will not all remember.
+    if isinstance(name, float) and name != name:
         return None
     text = _strip_accents(str(name)).lower().strip()
     if not text or _EMAILISH.search(text):

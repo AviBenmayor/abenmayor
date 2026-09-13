@@ -11,8 +11,16 @@ source's cooperation.
 
 sql/018_poi_presence.sql carries the schema rationale: why this is a new table
 under the D61 inventory rule, why `location_key` is not `cluster_id`, what the
-three `first_seen_kind` values mean, and the five caveats the database cannot
+`first_seen_kind` values mean, and the five caveats the database cannot
 enforce. Read it before changing anything here.
+
+A FOURTH KIND, 'gov_filing', was added by sql/020_storefront_pipeline.sql. It
+is written by model/storefront_pipeline.apply_gov_filing, never by `snapshot`:
+a government filing that dated an opening earlier than any POI source could,
+or dated a LEFT-CENSORED row at all. It carries a real `first_seen_src_date`,
+so every invariant that used to test `kind = 'source_date'` now tests
+membership of `DATED_KINDS`. 20,345 rows on the 2026-09-13 build, 17,574 of
+them previously censored.
 
 WHAT THIS MODULE GUARANTEES
 ---------------------------
@@ -59,7 +67,20 @@ LEDGER_START_MONTH = "2026-09"
 #: of the ledger starting. Nothing before this may be reported as an opening.
 FIRST_HONEST_MONTH = "2026-10"
 
-KINDS = ("source_date", "observed", "backfill_censored")
+#: 'gov_filing' is written by model/storefront_pipeline.apply_gov_filing, NOT
+#: by `snapshot` -- a government filing dated the opening earlier than any POI
+#: source could, or dated a left-censored row at all. It carries a real
+#: `first_seen_src_date` exactly as 'source_date' does, which is why the two
+#: appear together in every invariant below and in the sql/020 reporting view.
+#: `snapshot` never MINTS it and never overwrites it except by the same
+#: one-way upgrade that already applies: a source date at or before the month
+#: already held.
+KINDS = ("source_date", "observed", "backfill_censored", "gov_filing")
+
+#: The kinds that carry a DATE rather than a month of observation. Anything
+#: reading `first_seen_src_date` must branch on this set, never on
+#: `== 'source_date'`.
+DATED_KINDS = frozenset({"source_date", "gov_filing"})
 
 #: Decimal places for the coordinate component of the minted key. 4 dp is
 #: ~11 m N-S and ~8.5 m E-W at NYC's latitude -- finer than dedup's 40 m match
@@ -370,7 +391,27 @@ def link_to_ledger(cur, existing) -> tuple[list[str], dict]:
 # ---------------------------------------------------------------------------
 # the snapshot
 # ---------------------------------------------------------------------------
-_UPSERT = """
+#: THE ONE-WAY UPGRADE CONDITION, written once because it appears in four SET
+#: clauses and four copies is how three of them eventually drift apart.
+#:
+#: A snapshot may replace the stored first-seen with a SOURCE date only when
+#:   * the row is not already dated by a source, AND
+#:   * the incoming date is not LATER than the month already held, AND
+#:   * where a date is already held (a 'gov_filing' row, written by
+#:     model/storefront_pipeline.apply_gov_filing), the incoming one is
+#:     STRICTLY EARLIER.
+#:
+#: The third clause is what keeps a government filing's actual opening date
+#: from being nudged later by a source date that merely falls in the same
+#: month. Without it, a 'gov_filing' row dated 2025-03-02 would be overwritten
+#: by a licence date of 2025-03-28 -- a later date, presented as an upgrade.
+_UPGRADE_SQL = """pp.first_seen_kind <> 'source_date'
+             AND excluded.first_seen_src_date IS NOT NULL
+             AND strftime(excluded.first_seen_src_date, '%Y-%m') <= pp.first_seen_month
+             AND (pp.first_seen_src_date IS NULL
+                  OR excluded.first_seen_src_date < pp.first_seen_src_date)"""
+
+_UPSERT_TEMPLATE = """
 INSERT INTO analysis.poi_presence AS pp
 SELECT location_key, category, name_key, display_name, lon, lat, borough,
        first_seen_month, last_seen_month, first_seen_kind, first_seen_src_date,
@@ -392,34 +433,28 @@ ON CONFLICT (location_key) DO UPDATE SET
                               THEN 1 ELSE 0 END,
     cluster_id_latest = excluded.cluster_id_latest,
     poi_id_latest     = excluded.poi_id_latest,
-    -- ONE-WAY UPGRADE: a row we could only censor (or only observe) becomes
-    -- 'source_date' if a source later publishes a date at or before the month
-    -- we already had. Censoring can only ever shrink; it never reappears, and
-    -- a later-than-known date is refused rather than allowed to move
-    -- first_seen_month forward. `ledger_started_month` is untouched either
-    -- way, so when we FIRST HELD the row is never lost.
+    -- ONE-WAY UPGRADE (_UPGRADE_SQL): a row we could only censor (or only
+    -- observe) becomes 'source_date' if a source later publishes a date at or
+    -- before the month we already had. Censoring can only ever shrink; it
+    -- never reappears, and a later-than-known date is refused rather than
+    -- allowed to move first_seen_month forward. `ledger_started_month` is
+    -- untouched either way, so when we FIRST HELD the row is never lost.
     first_seen_kind = CASE
-        WHEN pp.first_seen_kind <> 'source_date'
-             AND excluded.first_seen_src_date IS NOT NULL
-             AND strftime(excluded.first_seen_src_date, '%Y-%m') <= pp.first_seen_month
+        WHEN {UPGRADE}
         THEN 'source_date' ELSE pp.first_seen_kind END,
     first_seen_month = CASE
-        WHEN pp.first_seen_kind <> 'source_date'
-             AND excluded.first_seen_src_date IS NOT NULL
-             AND strftime(excluded.first_seen_src_date, '%Y-%m') <= pp.first_seen_month
+        WHEN {UPGRADE}
         THEN strftime(excluded.first_seen_src_date, '%Y-%m') ELSE pp.first_seen_month END,
     first_seen_src_date = CASE
-        WHEN pp.first_seen_kind <> 'source_date'
-             AND excluded.first_seen_src_date IS NOT NULL
-             AND strftime(excluded.first_seen_src_date, '%Y-%m') <= pp.first_seen_month
+        WHEN {UPGRADE}
         THEN excluded.first_seen_src_date ELSE pp.first_seen_src_date END,
     first_seen_src_field = CASE
-        WHEN pp.first_seen_kind <> 'source_date'
-             AND excluded.first_seen_src_date IS NOT NULL
-             AND strftime(excluded.first_seen_src_date, '%Y-%m') <= pp.first_seen_month
+        WHEN {UPGRADE}
         THEN excluded.first_seen_src_field ELSE pp.first_seen_src_field END,
     last_snapshot_at = excluded.last_snapshot_at
 """
+
+_UPSERT = _UPSERT_TEMPLATE.replace("{UPGRADE}", _UPGRADE_SQL)
 
 
 def snapshot(con, *, month: str | None = None, dry_run: bool = False,
@@ -533,8 +568,12 @@ def snapshot(con, *, month: str | None = None, dry_run: bool = False,
     if dry_run:
         return result
 
+    # UNDATED = not in DATED_KINDS. Written that way rather than
+    # `!= "source_date"` because 'gov_filing' rows ARE dated (by
+    # model/storefront_pipeline.apply_gov_filing) and counting them as
+    # undated would report a phantom upgrade every month.
     before_censored = 0 if first_ever else int(
-        (existing["first_seen_kind"] != "source_date").sum())
+        (~existing["first_seen_kind"].isin(DATED_KINDS)).sum())
 
     con.execute("BEGIN")
     try:
@@ -553,9 +592,10 @@ def snapshot(con, *, month: str | None = None, dry_run: bool = False,
     finally:
         con.unregister("_presence_in")
 
+    dated = ", ".join(f"'{k}'" for k in sorted(DATED_KINDS))
     after = con.execute(
         "SELECT count(*), "
-        "count(*) FILTER (WHERE first_seen_kind <> 'source_date') "
+        f"count(*) FILTER (WHERE first_seen_kind NOT IN ({dated})) "
         "FROM analysis.poi_presence").fetchone()
     result.n_rows_total = int(after[0])
     result.upgraded = max(0, before_censored - int(after[1])) if not first_ever else 0
@@ -620,19 +660,32 @@ def coverage_check(con) -> tuple[list[str], dict]:
                       "-- two histories are fused onto one storefront")
 
     # (3) the kind invariants.
+    holes = ", ".join("?" for _ in KINDS)
     bad_kind = con.execute(
-        "SELECT count(*) FROM analysis.poi_presence WHERE first_seen_kind NOT IN "
-        "('source_date','observed','backfill_censored')").fetchone()[0]
+        f"SELECT count(*) FROM analysis.poi_presence WHERE first_seen_kind "
+        f"NOT IN ({holes})", list(KINDS)).fetchone()[0]
     if bad_kind:
         errors.append(f"{bad_kind} rows carry an unknown first_seen_kind")
 
+    dated_holes = ", ".join(f"'{k}'" for k in sorted(DATED_KINDS))
     bad_src = con.execute(
-        "SELECT count(*) FROM analysis.poi_presence WHERE "
-        "(first_seen_kind = 'source_date') <> (first_seen_src_date IS NOT NULL)"
+        f"SELECT count(*) FROM analysis.poi_presence WHERE "
+        f"(first_seen_kind IN ({dated_holes})) <> (first_seen_src_date IS NOT NULL)"
     ).fetchone()[0]
     if bad_src:
         errors.append(f"{bad_src} rows disagree about first_seen_src_date: it must be "
-                      "non-NULL for exactly the 'source_date' rows")
+                      f"non-NULL for exactly the {sorted(DATED_KINDS)} rows")
+
+    # A 'gov_filing' row's month must BE its date's month. The writer sets both
+    # in one statement; a disagreement means something else wrote one of them.
+    bad_gov = con.execute(
+        "SELECT count(*) FROM analysis.poi_presence WHERE "
+        "first_seen_kind = 'gov_filing' AND (first_seen_src_date IS NULL "
+        "OR strftime(first_seen_src_date, '%Y-%m') <> first_seen_month)"
+    ).fetchone()[0]
+    if bad_gov:
+        errors.append(f"{bad_gov} 'gov_filing' rows have a first_seen_month that is "
+                      "not their opening date's month")
 
     bad_order = con.execute(
         "SELECT count(*) FROM analysis.poi_presence "

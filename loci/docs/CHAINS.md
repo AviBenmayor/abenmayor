@@ -12,129 +12,131 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 
 ## Watchlist — ranked by net new locations in 12 months
 
-| Brand | Category | loci_category | Net new 12m (curated) | NYC now (curated) | Detected total | Detected new 12m | Confidence | Last verified |
-|---|---|---|---:|---:|---:|---:|---|---|
-| Luckin Coffee | App-first / kiosk QSR coffee (Chinese entrant) | cafe_bakery | 15 | 20 | 26 | 17 | reported | — |
-| NAYA | Lebanese fast casual | restaurant | 10 | 38 | 54 | 5 | reported | — |
-| Raising Cane's | chicken fingers | restaurant | 9 | 14 | 14 | 4 | reported | — |
-| Blank Street Coffee | coffee & matcha | cafe_bakery | 8 | 37 | 57 | 3 | reported | — |
-| Joe & The Juice | juice bar / coffee | restaurant | 7 | 25 | 44 | 1 | reported | — |
-| Paris Baguette | Korean-French bakery café | cafe_bakery | 7 | 39 | 93 | 7 | reported | — |
-| CAVA | fast casual Mediterranean bowls | restaurant | 6 | 15 | 29 | 2 | reported | — |
-| MYKA Greek Frozen Yogurt | Premium Greek frozen yogurt (Madrid-founded franchise) | — | 6 | 6 | — | — | reported | — |
-| Apollo Bagels | bagels | cafe_bakery | 5 | 9 | 13 | 5 | reported | — |
-| The Learning Experience | childcare - daycare & early education franchise | childcare | 5 | 6 | 54 | 0 | reported | — |
-| Bluestone Lane | Australian-style café | cafe_bakery | 5 | 25 | 28 | 0 | reported | — |
-| Los Tacos No. 1 | Tijuana-style tacos | restaurant | 5 | 10 | 17 | 2 | reported | — |
-| Chase (JPMorganChase) | bank branches | bank | 5 | 425 | 47 | 0 | reported | — |
-| Chipotle Mexican Grill | fast casual Mexican | restaurant | 5 | 45 | 220 | 9 | reported | — |
-| HeyTea | boba/tea | cafe_bakery | 5 | 15 | 21 | 1 | reported | — |
-| Mixue | ice cream & bubble tea | — | 5 | 5 | 4 | 2 | reported | — |
-| Wingstop | chicken wings | restaurant | 5 | 25 | 109 | 4 | reported | — |
-| Insomnia Cookies | late-night cookies/bakery | cafe_bakery | 4 | 24 | 28 | 3 | reported | — |
-| Uniqlo | apparel | — | 4 | 10 | — | — | reported | — |
-| Aldi | Hard-discount grocery | grocery | 4 | 16 | 70 | 4 | reported | — |
-| LaundryBee | 24/7 staffed self-service laundromat chain | laundry | 4 | 20 | 8 | 0 | reported | — |
-| Dave's Hot Chicken | Nashville-style hot chicken | restaurant | 4 | 7 | 24 | 3 | reported | — |
-| Teapulse | Shanghai tea chain (extension of the Jidong brand) — milk tea, fruit tea, cheese tea | cafe_bakery | 4 | 4 | 9 | 5 | reported | — |
-| Bonchon | Korean fried chicken | restaurant | 4 | 11 | 22 | 3 | reported | — |
-| Chip City Cookies | cookies | cafe_bakery | 4 | 20 | — | — | reported | — |
-| Crumbl Cookies | cookies | cafe_bakery | 4 | 8 | 3 | 0 | reported | — |
-| Dos Toros Taqueria | California/Bay Area-style taqueria | restaurant | 4 | 18 | 27 | 1 | reported | — |
-| Sugared + Bronzed | beauty - sugaring hair removal & sunless/airbrush tanning | — | 4 | 14 | 11 | 1 | reported | — |
-| The Flowery NY | cannabis dispensary (multi-site adult-use retailer) | — | 4 | 10 | — | — | reported | — |
-| Vivvi | childcare - infant & toddler early learning campuses | childcare | 4 | 13 | 7 | 0 | reported | — |
-| Lidl US | discount grocery | grocery | 3 | 9 | — | — | reported | — |
-| Miznon | Israeli pita / street food | restaurant | 3 | 6 | 10 | 1 | reported | — |
-| 7th Street Burger | smash burger | restaurant | 3 | 10 | 29 | 5 | reported | — |
-| Glowbar | beauty - membership-based facials/skincare studios | — | 3 | 12 | 11 | 1 | reported | — |
-| Haidilao | Sichuan hot pot | restaurant | 3 | 4 | — | — | reported | — |
-| LaserAway | dermatology / laser hair removal / medspa aesthetics | clinic | 3 | 15 | 6 | 0 | reported | — |
-| Panda Express | Chinese-American fast casual | restaurant | 3 | 8 | 43 | 2 | reported | — |
-| Quality Branded | multi-concept restaurant group (steakhouse, Italian, Mexican, Southeast Asian) | restaurant | 3 | 11 | — | — | reported | — |
-| %Arabica | specialty coffee | cafe_bakery | 3 | 6 | 6 | 0 | reported | — |
-| Ever/Body | cosmetic dermatology / medical aesthetics | clinic | 3 | 10 | — | — | reported | — |
-| Möge Tee | boba/tea | cafe_bakery | 3 | 11 | 18 | 0 | reported | — |
-| Peachy | preventative Botox / wrinkle-relaxer studio | clinic | 3 | 8 | 3 | 0 | reported | — |
-| Select by Kung Fu Tea | boba/tea (new premium concept) | cafe_bakery | 3 | 3 | — | — | reported | — |
-| PopUp Bagels | bagels | cafe_bakery | 2 | 8 | 11 | 1 | reported | — |
-| Miniso | international variety/lifestyle retail | — | 2 | 0 | — | — | reported | — |
-| Tatte Bakery & Café | Israeli-inspired all-day bakery-cafe (Boston/DC chain entering NY) | cafe_bakery | 2 | 2 | 3 | 1 | reported | — |
-| Chelsea Piers Fitness | Large-format premium fitness and sports clubs | fitness | 2 | 9 | 7 | 0 | reported | — |
-| Maman | French-American bakery-cafe | cafe_bakery | 2 | 20 | 51 | 4 | reported | — |
-| Beanstalk Academy | Kindergarten-prep / early childhood education | childcare | 2 | 4 | 5 | 0 | reported | — |
-| Blo Blow Dry Bar | beauty - blowout/hair styling bar | — | 2 | 6 | 10 | 0 | reported | — |
-| Goodland Pickleball | Indoor pickleball club | fitness | 2 | 3 | — | — | reported | — |
-| Bespoke Physical Therapy | physical therapy (boutique 1-on-1 PT clinics) | clinic | 2 | 5 | — | — | reported | — |
-| Nowon | Korean-American gastropub / fried chicken | restaurant | 2 | 3 | 3 | 1 | reported | — |
-| Tacombi | Mexican fast casual | restaurant | 2 | 11 | 19 | 0 | reported | — |
-| Unapologetic Foods | multi-concept Indian/Filipino restaurant group (Semma, Dhamaka, Adda, Naks, Rowdy Rooster, Masalawala & Sons, Kebabwala) | restaurant | 2 | 8 | — | — | reported | — |
-| Warby Parker | eyewear | — | 2 | 15 | — | — | reported | — |
-| bb.q Chicken | Korean fried chicken | restaurant | 2 | 6 | 22 | 2 | reported | — |
-| Bond Vet | veterinary (urgent + primary care) | — | 2 | 15 | — | — | reported | — |
-| Cafe Landwer | Israeli/Mediterranean all-day cafe | restaurant | 2 | 2 | 2 | 1 | reported | — |
-| Devoción | specialty coffee roaster | cafe_bakery | 2 | 6 | 12 | 0 | reported | — |
-| Emmy Squared Pizza | pizza + burger | restaurant | 2 | 8 | 5 | 0 | reported | — |
-| Heyday | beauty - custom facials/skincare studios | — | 2 | 9 | 9 | 1 | reported | — |
-| Jollibee | Filipino fast food / fried chicken | restaurant | 2 | 4 | 19 | 2 | reported | — |
-| Lenox Hill Radiology (RadNet) | outpatient diagnostic imaging | clinic | 2 | 27 | 21 | 0 | reported | — |
-| New Balance | athletic footwear/apparel | — | 2 | 3 | — | — | reported | — |
-| Prince St. Pizza | Sicilian-style square-slice pizza | restaurant | 2 | 3 | — | — | reported | — |
-| Sauce Pizzeria (Everyday Hospitality) | pizzeria | restaurant | 2 | 3 | 5 | 0 | reported | — |
-| The Travel Agency (formerly Union Square Travel Agency) | cannabis dispensary (multi-site adult-use retailer) | — | 2 | 4 | — | — | reported | — |
-| Throw Me A Bone | pet - dog daycare, grooming, boarding, and training | — | 2 | 4 | — | — | reported | — |
-| Tiger Sugar | boba/tea | cafe_bakery | 2 | 6 | 15 | 1 | reported | — |
-| Upside Pizza | pizza slice shop + soft serve | restaurant | 2 | 9 | 12 | 3 | reported | — |
-| Westville | neighborhood American comfort-food restaurant | restaurant | 2 | 10 | 11 | 1 | reported | — |
-| Xing Fu Tang | boba/tea | cafe_bakery | 2 | 6 | 8 | 2 | reported | — |
-| SweatHouz | contrast therapy (private infrared sauna + cold plunge suites), franchise | — | 1 | 1 | — | — | reported | — |
-| Small Door Veterinary | veterinary (membership-based primary + urgent care) | — | 1 | 5 | — | — | reported | — |
-| New York Pilates | reformer Pilates | fitness | 1 | 2 | 4 | 0 | reported | — |
-| Life Time | luxury athletic country club / big-box gym | fitness | 1 | 11 | 15 | 1 | reported | — |
-| CTown Supermarkets | Independent-cooperative supermarket banner (Krasdale) | grocery | 1 | 90 | 115 | 4 | reported | — |
-| Golden Age Hospitality | multi-venue bar/restaurant nightlife group (Jon Neidich) | bar | 1 | 9 | — | — | reported | — |
-| Socceroof (rebranding to UNLMTD Soccer) | Indoor soccer / multi-sport clubs (also half-court basketball and pickleball) | fitness | 1 | 3 | 5 | 3 | reported | — |
-| Arc'teryx | outdoor apparel | — | 1 | 6 | — | — | reported | — |
-| Archives of Us | Matcha cafe | cafe_bakery | 1 | 2 | — | — | reported | — |
-| Atlantic Market | New independent supermarket | grocery | 1 | 1 | — | — | reported | — |
-| Barnes & Noble | Bookstores | — | 1 | 11 | 4 | 0 | reported | — |
-| Big Night | Home goods / 'dinner and party shop' | — | 1 | 3 | — | — | reported | — |
-| Callen-Lorde Community Health Center | LGBTQ+ community health / FQHC | clinic | 1 | 4 | 2 | 0 | reported | — |
-| CVS Pharmacy | pharmacy/drugstore | pharmacy | 1 | 0 | 457 | 10 | reported | — |
-| Erudite Preschool | Preschool | childcare | 1 | 2 | — | — | reported | — |
-| FaceGym | beauty - facial fitness/facial workout studios | — | 1 | 3 | 2 | 0 | reported | — |
-| Fitness Factory | Value gym | fitness | 1 | 2 | 6 | 0 | reported | — |
-| Five Iron Golf | indoor golf simulator bar / entertainment venue chain | — | 1 | 7 | 10 | 2 | reported | — |
-| Gowanus Golf Club | Indoor golf / social club | fitness | 1 | 3 | — | — | reported | — |
-| House of Spells | Fantasy collectibles retail (UK entrant) | — | 1 | 1 | — | — | reported | — |
-| Hydrogen Fitness | Boutique gym | fitness | 1 | 1 | — | — | reported | — |
-| Ivy Prep Early Learning Academy | Day care centers | childcare | 1 | 3 | 4 | 0 | reported | — |
-| Kings Co Imperial | Chinese restaurant mini-chain | restaurant | 1 | 3 | 2 | 1 | reported | — |
-| L'Industrie Pizzeria | Slice shop | restaurant | 1 | 3 | 4 | 2 | reported | — |
-| Mariscos El Submarino | Fast-casual Mexican seafood | restaurant | 1 | 4 | 5 | 1 | reported | — |
-| Muji | Japanese home goods and apparel | — | 1 | 8 | — | — | reported | — |
-| Municipal Credit Union | Credit union branches | bank | 1 | 23 | 18 | 0 | reported | — |
-| Quantum Physical Therapy & Chiropractic Care | Physical therapy and chiropractic clinics | clinic | 1 | 4 | — | — | reported | — |
-| Salomon | outdoor/athletic footwear | — | 1 | 2 | — | — | reported | — |
-| Sunday Hospitality | multi-concept restaurant/hotel group (Sunday in Brooklyn, Rule of Thirds, El Quijote, Lobby Bar, Cafe Chelsea, Bedford Post Inn, Dynamo Room) | restaurant | 1 | 6 | — | — | reported | — |
-| Tao Group Hospitality | nightlife/restaurant conglomerate (TAO, Marquee, Avenue, Lavo, etc.) | bar | 1 | 10 | — | — | reported | — |
-| Union Market | independent specialty grocery | grocery | 1 | 6 | 8 | 0 | reported | — |
-| Whole Foods Market Daily Shop | small-format organic/specialty grocery | grocery | 1 | 4 | 4 | 2 | reported | — |
-| Winner (Daniel Eddy) | Michelin-starred chef's bakery and cafe | cafe_bakery | 1 | 2 | 3 | 1 | reported | — |
-| Vital Climbing Gym | climbing gym | fitness | 0 | 4 | 4 | 0 | reported | — |
-| Gong Cha | boba/tea | cafe_bakery | 0 | 0 | 69 | 0 | reported | — |
-| Tide Cleaners | laundry & dry cleaning franchise (in-store drop-off, drive-thru, and kiosk formats) | laundry | 0 | 0 | — | — | reported | — |
-| H Mart | Korean/Asian specialty grocery | grocery | 0 | 0 | 25 | 1 | reported | — |
-| Lenwich by Lenny's | sandwich/deli chain | restaurant | 0 | 0 | — | — | reported | — |
-| Aritzia | apparel | — | 0 | 2 | 3 | 0 | reported | — |
-| CityPickle | pickleball club | fitness | 0 | 2 | 2 | 1 | reported | — |
-| Gracious Hospitality Management | multi-concept restaurant group | restaurant | 0 | 0 | — | — | reported | — |
-| Othership | social sauna / contrast therapy club | fitness | 0 | 1 | 2 | 0 | reported | — |
-| Reserve Padel | indoor padel club (members-only) | fitness | 0 | 1 | — | — | reported | — |
-| Sushiro | conveyor-belt sushi | restaurant | 0 | 0 | 2 | 1 | reported | — |
-| Amazon Fresh / Amazon Go | grocery / tech-enabled convenience | grocery | -2 | 0 | — | — | reported | — |
-| Walgreens / Duane Reade | pharmacy/drugstore | pharmacy | -8 | 0 | — | — | reported | — |
-| Rite Aid | pharmacy/drugstore | pharmacy | -35 | 0 | 258 | 0 | reported | — |
+| Brand | Category | loci_category | Net new 12m (curated) | NYC now (curated) | Detected total | Detected new 12m | Pipeline (gov filings) | Confidence | Last verified |
+|---|---|---|---:|---:|---:|---:|---|---|---|
+| Luckin Coffee | App-first / kiosk QSR coffee (Chinese entrant) | cafe_bakery | 15 | 20 | 26 | 17 | — | reported | — |
+| NAYA | Lebanese fast casual | restaurant | 10 | 38 | 54 | 5 | 2 in MN,QN, from 2025-02-27 | reported | — |
+| Raising Cane's | chicken fingers | restaurant | 9 | 14 | 14 | 4 | — | reported | — |
+| Blank Street Coffee | coffee & matcha | cafe_bakery | 8 | 37 | 57 | 3 | — | reported | — |
+| Joe & The Juice | juice bar / coffee | restaurant | 7 | 25 | 44 | 1 | — | reported | — |
+| Paris Baguette | Korean-French bakery café | cafe_bakery | 7 | 39 | 93 | 7 | — | reported | — |
+| CAVA | fast casual Mediterranean bowls | restaurant | 6 | 15 | 29 | 2 | — | reported | — |
+| MYKA Greek Frozen Yogurt | Premium Greek frozen yogurt (Madrid-founded franchise) | — | 6 | 6 | — | — | — | reported | — |
+| Apollo Bagels | bagels | cafe_bakery | 5 | 9 | 13 | 5 | — | reported | — |
+| The Learning Experience | childcare - daycare & early education franchise | childcare | 5 | 6 | 54 | 0 | — | reported | — |
+| Bluestone Lane | Australian-style café | cafe_bakery | 5 | 25 | 28 | 0 | — | reported | — |
+| Los Tacos No. 1 | Tijuana-style tacos | restaurant | 5 | 10 | 17 | 2 | — | reported | — |
+| Chase (JPMorganChase) | bank branches | bank | 5 | 425 | 47 | 0 | — | reported | — |
+| Chipotle Mexican Grill | fast casual Mexican | restaurant | 5 | 45 | 220 | 9 | 16 in BK,MN,QN, from 2025-10-03 | reported | — |
+| HeyTea | boba/tea | cafe_bakery | 5 | 15 | 21 | 1 | — | reported | — |
+| Mixue | ice cream & bubble tea | — | 5 | 5 | 4 | 2 | — | reported | — |
+| Wingstop | chicken wings | restaurant | 5 | 25 | 109 | 4 | — | reported | — |
+| Insomnia Cookies | late-night cookies/bakery | cafe_bakery | 4 | 24 | 28 | 3 | — | reported | — |
+| Uniqlo | apparel | — | 4 | 10 | — | — | — | reported | — |
+| Aldi | Hard-discount grocery | grocery | 4 | 16 | 70 | 4 | — | reported | — |
+| LaundryBee | 24/7 staffed self-service laundromat chain | laundry | 4 | 20 | 8 | 0 | — | reported | — |
+| Dave's Hot Chicken | Nashville-style hot chicken | restaurant | 4 | 7 | 24 | 3 | — | reported | — |
+| Teapulse | Shanghai tea chain (extension of the Jidong brand) — milk tea, fruit tea, cheese tea | cafe_bakery | 4 | 4 | 9 | 5 | — | reported | — |
+| Bonchon | Korean fried chicken | restaurant | 4 | 11 | 22 | 3 | — | reported | — |
+| Chip City Cookies | cookies | cafe_bakery | 4 | 20 | — | — | — | reported | — |
+| Crumbl Cookies | cookies | cafe_bakery | 4 | 8 | 3 | 0 | — | reported | — |
+| Dos Toros Taqueria | California/Bay Area-style taqueria | restaurant | 4 | 18 | 27 | 1 | — | reported | — |
+| Sugared + Bronzed | beauty - sugaring hair removal & sunless/airbrush tanning | — | 4 | 14 | 11 | 1 | — | reported | — |
+| The Flowery NY | cannabis dispensary (multi-site adult-use retailer) | — | 4 | 10 | — | — | 1 in QN, from 2026-05-21 | reported | — |
+| Vivvi | childcare - infant & toddler early learning campuses | childcare | 4 | 13 | 7 | 0 | — | reported | — |
+| Lidl US | discount grocery | grocery | 3 | 9 | — | — | 7 in BK,MN,QN, from 2024-10-28 | reported | — |
+| Miznon | Israeli pita / street food | restaurant | 3 | 6 | 10 | 1 | 1 in MN, from 2025-09-23 | reported | — |
+| 7th Street Burger | smash burger | restaurant | 3 | 10 | 29 | 5 | 1 in MN, from 2026-08-20 | reported | — |
+| Glowbar | beauty - membership-based facials/skincare studios | — | 3 | 12 | 11 | 1 | — | reported | — |
+| Haidilao | Sichuan hot pot | restaurant | 3 | 4 | — | — | — | reported | — |
+| LaserAway | dermatology / laser hair removal / medspa aesthetics | clinic | 3 | 15 | 6 | 0 | 2 in MN, from 2026-07-08 | reported | — |
+| Panda Express | Chinese-American fast casual | restaurant | 3 | 8 | 43 | 2 | — | reported | — |
+| Quality Branded | multi-concept restaurant group (steakhouse, Italian, Mexican, Southeast Asian) | restaurant | 3 | 11 | — | — | — | reported | — |
+| %Arabica | specialty coffee | cafe_bakery | 3 | 6 | 6 | 0 | — | reported | — |
+| Ever/Body | cosmetic dermatology / medical aesthetics | clinic | 3 | 10 | — | — | — | reported | — |
+| Möge Tee | boba/tea | cafe_bakery | 3 | 11 | 18 | 0 | 1 in QN, from 2025-01-16 | reported | — |
+| Peachy | preventative Botox / wrinkle-relaxer studio | clinic | 3 | 8 | 3 | 0 | — | reported | — |
+| Select by Kung Fu Tea | boba/tea (new premium concept) | cafe_bakery | 3 | 3 | — | — | — | reported | — |
+| PopUp Bagels | bagels | cafe_bakery | 2 | 8 | 11 | 1 | — | reported | — |
+| Miniso | international variety/lifestyle retail | — | 2 | 0 | — | — | — | reported | — |
+| Tatte Bakery & Café | Israeli-inspired all-day bakery-cafe (Boston/DC chain entering NY) | cafe_bakery | 2 | 2 | 3 | 1 | — | reported | — |
+| Chelsea Piers Fitness | Large-format premium fitness and sports clubs | fitness | 2 | 9 | 7 | 0 | — | reported | — |
+| Maman | French-American bakery-cafe | cafe_bakery | 2 | 20 | 51 | 4 | — | reported | — |
+| Beanstalk Academy | Kindergarten-prep / early childhood education | childcare | 2 | 4 | 5 | 0 | — | reported | — |
+| Blo Blow Dry Bar | beauty - blowout/hair styling bar | — | 2 | 6 | 10 | 0 | — | reported | — |
+| Goodland Pickleball | Indoor pickleball club | fitness | 2 | 3 | — | — | — | reported | — |
+| Bespoke Physical Therapy | physical therapy (boutique 1-on-1 PT clinics) | clinic | 2 | 5 | — | — | — | reported | — |
+| Nowon | Korean-American gastropub / fried chicken | restaurant | 2 | 3 | 3 | 1 | — | reported | — |
+| Tacombi | Mexican fast casual | restaurant | 2 | 11 | 19 | 0 | — | reported | — |
+| Unapologetic Foods | multi-concept Indian/Filipino restaurant group (Semma, Dhamaka, Adda, Naks, Rowdy Rooster, Masalawala & Sons, Kebabwala) | restaurant | 2 | 8 | — | — | — | reported | — |
+| Warby Parker | eyewear | — | 2 | 15 | — | — | — | reported | — |
+| bb.q Chicken | Korean fried chicken | restaurant | 2 | 6 | 22 | 2 | — | reported | — |
+| Bond Vet | veterinary (urgent + primary care) | — | 2 | 15 | — | — | — | reported | — |
+| Cafe Landwer | Israeli/Mediterranean all-day cafe | restaurant | 2 | 2 | 2 | 1 | — | reported | — |
+| Devoción | specialty coffee roaster | cafe_bakery | 2 | 6 | 12 | 0 | — | reported | — |
+| Emmy Squared Pizza | pizza + burger | restaurant | 2 | 8 | 5 | 0 | — | reported | — |
+| Heyday | beauty - custom facials/skincare studios | — | 2 | 9 | 9 | 1 | — | reported | — |
+| Jollibee | Filipino fast food / fried chicken | restaurant | 2 | 4 | 19 | 2 | — | reported | — |
+| Lenox Hill Radiology (RadNet) | outpatient diagnostic imaging | clinic | 2 | 27 | 21 | 0 | — | reported | — |
+| New Balance | athletic footwear/apparel | — | 2 | 3 | — | — | — | reported | — |
+| Prince St. Pizza | Sicilian-style square-slice pizza | restaurant | 2 | 3 | — | — | — | reported | — |
+| Sauce Pizzeria (Everyday Hospitality) | pizzeria | restaurant | 2 | 3 | 5 | 0 | — | reported | — |
+| The Travel Agency (formerly Union Square Travel Agency) | cannabis dispensary (multi-site adult-use retailer) | — | 2 | 4 | — | — | — | reported | — |
+| Throw Me A Bone | pet - dog daycare, grooming, boarding, and training | — | 2 | 4 | — | — | — | reported | — |
+| Tiger Sugar | boba/tea | cafe_bakery | 2 | 6 | 15 | 1 | — | reported | — |
+| Upside Pizza | pizza slice shop + soft serve | restaurant | 2 | 9 | 12 | 3 | 1 in MN, from 2025-09-26 | reported | — |
+| Westville | neighborhood American comfort-food restaurant | restaurant | 2 | 10 | 11 | 1 | — | reported | — |
+| Xing Fu Tang | boba/tea | cafe_bakery | 2 | 6 | 8 | 2 | — | reported | — |
+| SweatHouz | contrast therapy (private infrared sauna + cold plunge suites), franchise | — | 1 | 1 | — | — | — | reported | — |
+| Small Door Veterinary | veterinary (membership-based primary + urgent care) | — | 1 | 5 | — | — | — | reported | — |
+| New York Pilates | reformer Pilates | fitness | 1 | 2 | 4 | 0 | — | reported | — |
+| Life Time | luxury athletic country club / big-box gym | fitness | 1 | 11 | 15 | 1 | — | reported | — |
+| CTown Supermarkets | Independent-cooperative supermarket banner (Krasdale) | grocery | 1 | 90 | 115 | 4 | — | reported | — |
+| Golden Age Hospitality | multi-venue bar/restaurant nightlife group (Jon Neidich) | bar | 1 | 9 | — | — | 2 in MN, from 2025-08-18 | reported | — |
+| Socceroof (rebranding to UNLMTD Soccer) | Indoor soccer / multi-sport clubs (also half-court basketball and pickleball) | fitness | 1 | 3 | 5 | 3 | — | reported | — |
+| Arc'teryx | outdoor apparel | — | 1 | 6 | — | — | — | reported | — |
+| Archives of Us | Matcha cafe | cafe_bakery | 1 | 2 | — | — | — | reported | — |
+| Atlantic Market | New independent supermarket | grocery | 1 | 1 | — | — | — | reported | — |
+| Barnes & Noble | Bookstores | — | 1 | 11 | 4 | 0 | — | reported | — |
+| Big Night | Home goods / 'dinner and party shop' | — | 1 | 3 | — | — | — | reported | — |
+| Callen-Lorde Community Health Center | LGBTQ+ community health / FQHC | clinic | 1 | 4 | 2 | 0 | — | reported | — |
+| CVS Pharmacy | pharmacy/drugstore | pharmacy | 1 | 0 | 457 | 10 | 2 in BK,SI, from 2026-07-31 | reported | — |
+| Erudite Preschool | Preschool | childcare | 1 | 2 | — | — | — | reported | — |
+| FaceGym | beauty - facial fitness/facial workout studios | — | 1 | 3 | 2 | 0 | — | reported | — |
+| Fitness Factory | Value gym | fitness | 1 | 2 | 6 | 0 | — | reported | — |
+| Five Iron Golf | indoor golf simulator bar / entertainment venue chain | — | 1 | 7 | 10 | 2 | — | reported | — |
+| Gowanus Golf Club | Indoor golf / social club | fitness | 1 | 3 | — | — | — | reported | — |
+| House of Spells | Fantasy collectibles retail (UK entrant) | — | 1 | 1 | — | — | — | reported | — |
+| Hydrogen Fitness | Boutique gym | fitness | 1 | 1 | — | — | — | reported | — |
+| Ivy Prep Early Learning Academy | Day care centers | childcare | 1 | 3 | 4 | 0 | — | reported | — |
+| Kings Co Imperial | Chinese restaurant mini-chain | restaurant | 1 | 3 | 2 | 1 | — | reported | — |
+| L'Industrie Pizzeria | Slice shop | restaurant | 1 | 3 | 4 | 2 | — | reported | — |
+| Mariscos El Submarino | Fast-casual Mexican seafood | restaurant | 1 | 4 | 5 | 1 | — | reported | — |
+| Muji | Japanese home goods and apparel | — | 1 | 8 | — | — | 1 in BX, from 2025-08-25 | reported | — |
+| Municipal Credit Union | Credit union branches | bank | 1 | 23 | 18 | 0 | 6 in BK,BX,MN,QN, from 2024-11-13 | reported | — |
+| Quantum Physical Therapy & Chiropractic Care | Physical therapy and chiropractic clinics | clinic | 1 | 4 | — | — | — | reported | — |
+| Salomon | outdoor/athletic footwear | — | 1 | 2 | — | — | — | reported | — |
+| Sunday Hospitality | multi-concept restaurant/hotel group (Sunday in Brooklyn, Rule of Thirds, El Quijote, Lobby Bar, Cafe Chelsea, Bedford Post Inn, Dynamo Room) | restaurant | 1 | 6 | — | — | — | reported | — |
+| Tao Group Hospitality | nightlife/restaurant conglomerate (TAO, Marquee, Avenue, Lavo, etc.) | bar | 1 | 10 | — | — | — | reported | — |
+| Union Market | independent specialty grocery | grocery | 1 | 6 | 8 | 0 | 1 in BK, from 2026-02-05 | reported | — |
+| Whole Foods Market Daily Shop | small-format organic/specialty grocery | grocery | 1 | 4 | 4 | 2 | 2 in MN,QN, from 2026-07-22 | reported | — |
+| Winner (Daniel Eddy) | Michelin-starred chef's bakery and cafe | cafe_bakery | 1 | 2 | 3 | 1 | 1 in BK, from 2025-07-08 | reported | — |
+| Vital Climbing Gym | climbing gym | fitness | 0 | 4 | 4 | 0 | — | reported | — |
+| Gong Cha | boba/tea | cafe_bakery | 0 | 0 | 69 | 0 | — | reported | — |
+| Tide Cleaners | laundry & dry cleaning franchise (in-store drop-off, drive-thru, and kiosk formats) | laundry | 0 | 0 | — | — | — | reported | — |
+| H Mart | Korean/Asian specialty grocery | grocery | 0 | 0 | 25 | 1 | 1 in QN, from 2026-02-27 | reported | — |
+| Lenwich by Lenny's | sandwich/deli chain | restaurant | 0 | 0 | — | — | — | reported | — |
+| Aritzia | apparel | — | 0 | 2 | 3 | 0 | — | reported | — |
+| CityPickle | pickleball club | fitness | 0 | 2 | 2 | 1 | 1 in BK, from 2026-02-17 | reported | — |
+| Gracious Hospitality Management | multi-concept restaurant group | restaurant | 0 | 0 | — | — | — | reported | — |
+| Othership | social sauna / contrast therapy club | fitness | 0 | 1 | 2 | 0 | — | reported | — |
+| Reserve Padel | indoor padel club (members-only) | fitness | 0 | 1 | — | — | — | reported | — |
+| Sushiro | conveyor-belt sushi | restaurant | 0 | 0 | 2 | 1 | — | reported | — |
+| Amazon Fresh / Amazon Go | grocery / tech-enabled convenience | grocery | -2 | 0 | — | — | — | reported | — |
+| Walgreens / Duane Reade | pharmacy/drugstore | pharmacy | -8 | 0 | — | — | — | reported | — |
+| Rite Aid | pharmacy/drugstore | pharmacy | -35 | 0 | 258 | 0 | — | reported | — |
+
+`Pipeline (gov filings)` counts rows in `analysis.storefront_pipeline` that are filed under this brand's key and are **not yet open** — a lease signed, a build-out permitted or a licence applied for, with no regulator having seen a business yet. It is a FLOOR: a franchisee files under its own operating company (`PRIYA FOODS INC` running a Dunkin'), so an empty cell is as often "files under another name" as it is "nothing coming". A filing is also not a store — applications are withdrawn and permits lapse.
 
 ### Why they grow
 
@@ -284,7 +286,7 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 | EQUIS Pica Pollo | restaurant | 14 | 10 | 9 | 0 | 4 | 3 | 9 new locations in 12 months |
 | Wendy's | restaurant | 180 | 128 | 8 | 1 | 5 | 3 | 8 new locations in 12 months |
 | Northwell Labs at 170 East 77th Street | clinic | 8 | 8 | 8 | 8 | 3 | 1 | 8 new locations in 12 months |
-| Shell | convenience | 142 | 141 | 7 | 0 | 5 | 4 | 7 new locations in 12 months |
+| Shell | convenience | 142 | 141 | 7 | 0 | 5 | 3 | 7 new locations in 12 months |
 | Auntie Anne's | cafe_bakery | 97 | 50 | 7 | 1 | 5 | 3 | 7 new locations in 12 months |
 | Club Pilates | fitness | 71 | 51 | 7 | 0 | 5 | 2 | 7 new locations in 12 months |
 | SuperFresh | grocery | 19 | 11 | 7 | 0 | 5 | 3 | 7 new locations in 12 months |
@@ -304,7 +306,7 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 | Just Salad | restaurant | 67 | 54 | 5 | 0 | 3 | 3 | 5 new locations in 12 months |
 | The Bar | bar | 60 | 40 | 5 | 1 | 4 | 4 | 5 new locations in 12 months |
 | Xi'An Famous Foods | restaurant | 32 | 20 | 5 | 0 | 3 | 3 | 5 new locations in 12 months |
-| Teriyaki One | restaurant | 31 | 20 | 5 | 2 | 5 | 3 | 5 new locations in 12 months |
+| Teriyaki One | restaurant | 31 | 20 | 5 | 2 | 5 | 2 | 5 new locations in 12 months |
 | Krauszer's Food Store | convenience | 24 | 11 | 5 | 1 | 0 | 3 | 5 new locations in 12 months |
 
 `Dated` is how many of that brand's locations carry a first-seen date at all. When `Dated` is much smaller than `Locations`, `New 12m` is a floor computed on a small subset and the ranking is weak evidence.

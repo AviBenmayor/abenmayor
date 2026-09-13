@@ -96,6 +96,13 @@
 --
 -- ---------------------------------------------------------------------------
 -- THE THREE KINDS OF FIRST-SEEN -- and the one that must never be reported
+--
+-- (A FOURTH, 'gov_filing', was added later by sql/020_storefront_pipeline.sql,
+-- which also REPLACES the reporting view at the foot of this file so that
+-- `first_seen_on` covers both dated kinds. Read 020's ledger section for it.
+-- Nothing in this file is wrong; it is simply no longer the whole vocabulary,
+-- which is why model/poi_presence.KINDS and not this comment is the list any
+-- code should branch on.)
 -- ---------------------------------------------------------------------------
 --   'source_date'        a source gave an open / licence / enrolment date that
 --                        is EARLIER than (or in the same month as) the month we

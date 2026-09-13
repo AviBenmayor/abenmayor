@@ -1,0 +1,425 @@
+# staging.storefront_filing.category_hint -> one of the 15 Loci categories.
+#
+# ---------------------------------------------------------------------------
+# WHY THIS FILE EXISTS, AND WHY IT IS PER SOURCE
+# ---------------------------------------------------------------------------
+# `category_hint` is the feed's own classification text, stored VERBATIM by
+# sql/019 precisely so that no premature mapping could bury the mismatch
+# between three incompatible vocabularies. This file is that mapping, written
+# once, as package data, with a completeness test -- not scattered through the
+# roll-up SQL.
+#
+# The key is (source, category_hint) and NOT category_hint alone, because the
+# SAME STRING MEANS DIFFERENT THINGS IN DIFFERENT FEEDS. "Hotel" is a DCWP
+# trade licence for a lodging house and an SLA licence for a hotel bar;
+# "Restaurant" is an SLA licence class and is never a DOHMH cuisine. A
+# single flat dictionary would silently pick one meaning.
+#
+# ---------------------------------------------------------------------------
+# TWO KINDS OF VOCABULARY, AND WHY ONE OF THEM CANNOT BE ENUMERATED
+# ---------------------------------------------------------------------------
+# Five of the seven feeds publish a CONTROLLED vocabulary -- 30 to 90 distinct
+# values over tens of thousands of rows -- and every one of those values is
+# listed below, either in `map` or in `unmapped`. `tests/test_storefront_
+# pipeline.py::test_controlled_vocabularies_are_complete` fails if the live
+# table grows a value this file does not name.
+#
+# The two DOB feeds do not. `category_hint` there is the architect's own
+# free-text job description:
+#
+#     nyc_dob_now_job_filings    47,930 distinct values over 67,220 rows
+#     nyc_dob_permit_issuance    57,331 distinct values over 66,082 rows
+#
+# ...which is 105k strings like "FACADE REPAIRS AS PER PLANS FILED HEREWITH.
+# NO CHANGE TO USE, EGRESS OR OCCUPANCY." Those strings do not name a retail
+# category at ALL -- they name construction work -- so there is nothing to
+# enumerate and nothing a keyword rule could recover that would not be a
+# guess. They are declared `vocabulary: free_text` here, which is an EXPLICIT
+# declaration that every value from that source is unmapped, and the test
+# asserts the declaration rather than the impossible value list.
+#
+# THE CONSEQUENCE, STATED: a DOB fit-out filing carries no loci_category. A
+# pipeline row whose only filings are DOB rows therefore has
+# `loci_category IS NULL`, and does not enter `openings_pipeline_400m` for any
+# category. That is an UNDER-COUNT of the coming-supply measure and it is the
+# safe direction (a wrong category is worse than none), but it is a bias and
+# not noise: DOB filings are the earliest stages, so the measure is thinnest
+# exactly where the lead time is longest. Reconciliation (link_method) is what
+# recovers some of them -- a DOB row linked to a DOHMH inspection inherits the
+# inspection's category.
+#
+# ---------------------------------------------------------------------------
+# CONFIDENCE
+# ---------------------------------------------------------------------------
+#   high    the feed's value names the business type directly and there is
+#           exactly one Loci category it can mean.
+#   medium  the value names a licence or a permit whose HOLDER is usually, but
+#           not always, that category. Carried, flagged, and never silently
+#           promoted.
+#   (absent from both map and unmapped) -> the mapper raises. A value this file
+#           has never seen is a decision nobody made, not a default.
+#
+# ---------------------------------------------------------------------------
+# CROSS-CHECKS THE TESTS ENFORCE (machine-check the docs against the code)
+# ---------------------------------------------------------------------------
+#   * every mapped slug exists in loci.categories.CATEGORIES;
+#   * the DOHMH block agrees with sources/cities/nyc/dohmh.classify() on every
+#     value except the ones in `dohmh_classify_exceptions` below, each with a
+#     stated reason -- so the filing mapping and the POI ingest cannot drift
+#     apart unnoticed;
+#   * every SLA value mapped to `bar` is classified `on_premises` by
+#     sources/cities/nyc/alcohol_licences.yaml -- an off-premises package
+#     licence mapped to `bar` would put a liquor store in the bar supply;
+#   * every DCWP value the laundry ingest calls laundry
+#     (dcwp.KNOWN_LAUNDRY_CATEGORIES) is mapped the same way here.
+
+version: 2026-09-13
+built_against: staging.storefront_filing, 232,667 rows, ingested 2026-09-13
+
+#: DOHMH cuisine values where this file DELIBERATELY disagrees with
+#: dohmh.classify(). Each one is a bug in the keyword rule, not a judgement
+#: call, and is listed here so the drift test stays green while the
+#: disagreement stays visible.
+dohmh_classify_exceptions:
+  Steakhouse: |
+    dohmh.CAFE_KEYWORDS contains "tea", and the substring "tea" occurs inside
+    "s-TEA-khouse". classify() therefore returns cafe_bakery for every
+    steakhouse in the city. A steakhouse is a restaurant. The keyword rule
+    should be tokenised at the ingest; until it is, this file is right and
+    classify() is wrong, and the POI side over-counts cafe_bakery by the
+    steakhouse count (311 filings here).
+
+sources:
+
+  # =====================================================================
+  # NYC DOHMH restaurant inspections -- `cuisine_description`
+  # =====================================================================
+  # The one feed whose vocabulary IS a business type. 90 values, all listed.
+  # Maps onto exactly two Loci categories, matching the ingest's own scope
+  # decision (sources/cities/nyc/dohmh.py): DOHMH separates restaurant from
+  # cafe/bakery cleanly and does NOT identify bars, which are left to OSM.
+  nyc_dohmh_restaurants:
+    vocabulary: controlled
+    field: cuisine_description
+    confidence: high
+    map:
+      # ---- cafe_bakery -------------------------------------------------
+      "Bagels/Pretzels": cafe_bakery
+      "Bakery Products/Desserts": cafe_bakery
+      "Coffee/Tea": cafe_bakery
+      "Donuts": cafe_bakery
+      "Frozen Desserts": cafe_bakery
+      "Juice, Smoothies, Fruit Salads": cafe_bakery
+      # ---- restaurant --------------------------------------------------
+      "Afghan": restaurant
+      "African": restaurant
+      "American": restaurant
+      "Armenian": restaurant
+      "Asian/Asian Fusion": restaurant
+      "Australian": restaurant
+      "Bangladeshi": restaurant
+      "Barbecue": restaurant
+      "Basque": restaurant
+      "Brazilian": restaurant
+      "Cajun": restaurant
+      "Californian": restaurant
+      "Caribbean": restaurant
+      "Chicken": restaurant
+      "Chilean": restaurant
+      "Chimichurri": restaurant
+      "Chinese": restaurant
+      "Chinese/Cuban": restaurant
+      "Chinese/Japanese": restaurant
+      "Continental": restaurant
+      "Creole": restaurant
+      "Creole/Cajun": restaurant
+      "Czech": restaurant
+      "Eastern European": restaurant
+      "Egyptian": restaurant
+      "English": restaurant
+      "Ethiopian": restaurant
+      "Filipino": restaurant
+      "French": restaurant
+      "Fusion": restaurant
+      "German": restaurant
+      "Greek": restaurant
+      "Hamburgers": restaurant
+      "Haute Cuisine": restaurant
+      "Hawaiian": restaurant
+      "Hotdogs": restaurant
+      "Hotdogs/Pretzels": restaurant
+      "Indian": restaurant
+      "Indonesian": restaurant
+      "Iranian": restaurant
+      "Irish": restaurant
+      "Italian": restaurant
+      "Japanese": restaurant
+      "Jewish/Kosher": restaurant
+      "Korean": restaurant
+      "Latin American": restaurant
+      "Lebanese": restaurant
+      "Mediterranean": restaurant
+      "Mexican": restaurant
+      "Middle Eastern": restaurant
+      "Moroccan": restaurant
+      "New American": restaurant
+      "New French": restaurant
+      "Pakistani": restaurant
+      # A pancake house is a sit-down restaurant, not a bakery. Agrees with
+      # dohmh.classify(), which matches none of its cafe keywords here.
+      "Pancakes/Waffles": restaurant
+      "Peruvian": restaurant
+      "Pizza": restaurant
+      "Polish": restaurant
+      "Polynesian": restaurant
+      "Portuguese": restaurant
+      "Russian": restaurant
+      "Salads": restaurant
+      "Sandwiches": restaurant
+      "Sandwiches/Salads/Mixed Buffet": restaurant
+      "Scandinavian": restaurant
+      "Seafood": restaurant
+      "Soul Food": restaurant
+      "Soups": restaurant
+      "Soups/Salads/Sandwiches": restaurant
+      "Southeast Asian": restaurant
+      "Southwestern": restaurant
+      "Spanish": restaurant
+      "Steakhouse": restaurant      # see dohmh_classify_exceptions
+      "Tapas": restaurant
+      "Tex-Mex": restaurant
+      "Thai": restaurant
+      "Turkish": restaurant
+      "Vegan": restaurant
+      "Vegetarian": restaurant
+    confidence_overrides:
+      # A juice bar and a smoothie counter are cafe-shaped; a fruit-salad cart
+      # is not. One value, three business types.
+      "Juice, Smoothies, Fruit Salads": medium
+    unmapped:
+      # DOHMH's own "we do not know" values. Mapping them to `restaurant`
+      # would be defensible and is deliberately NOT done: the whole point of
+      # a confidence column is that a guess is visible.
+      - "Other"
+      - "Not Listed/Not Applicable"
+      # Bottled drinks and loose produce are retail, not food service, and
+      # neither is a Loci category (a bodega reaches `convenience` through a
+      # POI source, never through a DOHMH permit).
+      - "Bottled Beverages"
+      - "Fruits/Vegetables"
+      # A confectionery or nut shop is specialty RETAIL. It is not a
+      # restaurant and it is not a cafe/bakery, and this taxonomy has no
+      # category for it. Mapping it to cafe_bakery was tried and reverted:
+      # it made this file disagree with dohmh.classify() on a value where
+      # classify() is not wrong, only differently wrong, and two answers for
+      # one string is how a category silently splits in half.
+      - "Nuts/Confectionary"
+
+  # =====================================================================
+  # NYS SLA -- `description` (licence class), active and pending
+  # =====================================================================
+  # Two feeds, one vocabulary. Both blocks are written out in full rather
+  # than aliased: the pending file carries classes the active file does not
+  # ("For-profit Club", "Corporate Dining") and vice versa, and a shared
+  # block would hide which feed a value actually came from.
+  #
+  # THE ONE THAT MATTERS: `Additional Bar*` is a RIDER on an existing licensed
+  # premises -- a second service bar inside a hotel, theatre or stadium -- not
+  # an independent storefront. 2,080 active rows. Mapping it to `bar` would
+  # count one venue as two openings. Unmapped, as staging.poi already does
+  # (nys_sla.BAR_DESCRIPTIONS excludes it).
+  nyc_sla_liquor_licenses: &sla
+    vocabulary: controlled
+    field: description
+    confidence: high
+    map:
+      "Restaurant": restaurant
+      "Summer Restaurant": restaurant
+      "Restaurant Brewer": restaurant       # brewpub: brews and serves food
+      "Food & Beverage Business": bar
+      "Summer Food & Beverage Business": bar
+      "Summer Food & beverage business": bar
+      "Winter Food & Beverage Business": bar
+      "Club": bar
+      "For-profit Club": bar
+      "Bottle Club": bar
+      "Cabaret": bar
+      "Night Club": bar
+      "Grocery Store": grocery
+      "Drug Store": pharmacy
+    confidence_overrides:
+      # "Food & Beverage Business" is SLA's tavern class and is what
+      # nys_sla.BAR_DESCRIPTIONS already treats as a bar -- but it is also
+      # held by food halls and counter-service places that nobody would call
+      # a bar.
+      "Food & Beverage Business": medium
+      "Summer Food & Beverage Business": medium
+      "Summer Food & beverage business": medium
+      "Winter Food & Beverage Business": medium
+      # A brewpub is a restaurant with a brewery attached; some are bars.
+      "Restaurant Brewer": medium
+      # SLA "Grocery Store" is the beer-only off-premises class. It is held by
+      # supermarkets AND by bodegas, which are `convenience` in this taxonomy;
+      # the licence cannot tell them apart.
+      "Grocery Store": medium
+      # Same shape: a drug store beer licence is a pharmacy, but so is a
+      # Duane Reade that is really a convenience store.
+      "Drug Store": medium
+    unmapped:
+      # --- riders on an existing premises: would double-count a venue ---
+      - "Additional Bar"
+      - "Additional Bar-Seasonal"
+      - "Additional bar- ball park, race track, etc"
+      - "Additional bar- legitimate theater"
+      # --- venues and lodging: not a daily-needs storefront ---
+      - "Hotel"
+      - "Legitimate Theatre"
+      - "Legitimate theatre"
+      - "Concert Hall"
+      - "Athletic/Sporting Event/Expositions/Large Gathering Venue"
+      - "Summer Athletic/Sporting Event/Expositions/Large Gathering Venue"
+      - "Outdoor Athletic Fields and Stadiums"
+      - "Golf Venue"
+      - "Summer - Tavern Miscellaneous"
+      - "Corporate Dining"
+      # --- catering: serves at an event site, not at its own address ---
+      - "Catering Establishment"
+      - "Summer Catering Establishment"
+      - "Off Premises Caterer Establishment"
+      # --- package liquor: no Loci category exists for it ---
+      - "Liquor Store"
+      - "Wine Store"
+      - "Temporary retail"
+      # --- conveyances ---
+      - "Vessel"
+      - "Summer Vessel"
+      - "Aircraft"
+      - "Railroad car"
+      # --- producers, wholesalers, importers: not storefronts ---
+      - "Brand Owner"
+      - "Brewer"
+      - "Micro-Brewer"
+      - "Micro-Brewer 3 Year"
+      - "Farm Brewer"
+      - "Cider Producer"
+      - "Farm Cidery"
+      - "Winery"
+      - "Custom Winemaker's Center"
+      - "Distiller Class A"
+      - "Distiller Class A-1 (Micro-distiller)"
+      - "Distiller Class B-1 (Micro-rectifier)"
+      - "Distiller Class D (Farm Distiller)"
+      - "Importer"
+      - "Manufacturer's Temporary"
+      - "Wholesaler's Temporary"
+      - "Wholesale Beer"
+      - "Wholesale Beer (Retail)"
+      - "Wholesale Liquor"
+      - "Wholesale Wine"
+
+  nyc_sla_pending_licenses: *sla
+
+  # =====================================================================
+  # NYC DCWP -- `business_category` (trade licence type)
+  # =====================================================================
+  # THE HONEST RESULT: none of DCWP's 47 licence categories is one of the 15
+  # daily-needs categories. DCWP licenses home improvement contractors, tow
+  # truck drivers, sightseeing guides, pawnbrokers and locksmiths. The trades
+  # this project screens for -- grocery, pharmacy, laundry, barber, restaurant
+  # -- are licensed by DOHMH, NYS DOS and NYS Education, or are not licensed
+  # at all.
+  #
+  # So 47,954 DCWP filings (20.6% of the table) carry a category_hint that is
+  # real, specific, and simply about a different economy. They are listed
+  # value by value anyway, because "we looked and there was nothing" has to be
+  # distinguishable from "nobody looked".
+  #
+  # NEAR MISSES, deliberately left unmapped:
+  #   Tobacco Retail Dealer (3,040) -- held by bodegas AND by smoke shops. It
+  #     is the single largest could-be-convenience value in the feed and
+  #     mapping it would inflate `convenience` with vape stores. A licence to
+  #     sell cigarettes is not a licence to be a bodega.
+  #   Industrial Laundry / Industrial Laundry Delivery -- B2B linen and
+  #     uniform supply, frequently in industrial zones. Unmapped HERE for
+  #     exactly the reason dcwp.KNOWN_LAUNDRY_CATEGORIES maps them to None:
+  #     counting them would put laundry access where no resident can use it.
+  #   Newsstand / Stoop Line Stand -- kiosks and sidewalk fixtures, not a
+  #     storefront with a door.
+  nyc_dcwp_license_applications: &dcwp
+    vocabulary: controlled
+    field: business_category
+    confidence: high
+    map: {}
+    unmapped:
+      - "Bingo Game Operator"
+      - "Booting Company"
+      - "Car Wash"
+      - "Commercial Lessor - Bingo"
+      - "Construction Labor Provider"
+      - "Dealer In Products For The Disabled"
+      - "Debt Collection Agency"
+      - "Electronic & Home Appliance Service Dealer"
+      - "Electronic Cigarette Dealer"
+      - "Electronics Store"
+      - "Employment Agency"
+      - "Games of Chance - Bell Jar"
+      - "Games of Chance - Las Vegas / Casino Nights"
+      - "Games of Chance - Raffle with Net Proceeds Over $30,000"
+      - "Games of Chance - Raffle with Net Proceeds Under $30,000"
+      - "Garage & Parking Lot"
+      - "General Vendor"
+      - "General Vendor Distributor"
+      - "Home Improvement Contractor"
+      - "Horse Drawn Cab Driver"
+      - "Horse Drawn Cab Owner"
+      - "Hotel"
+      - "Industrial Laundry"
+      - "Industrial Laundry Delivery"
+      - "Locksmith"
+      - "Locksmith Apprentice"
+      - "Newsstand"
+      - "Pawnbroker"
+      - "Pedicab Business"
+      - "Pedicab Driver"
+      - "Process Server Individual"
+      - "Process Serving Agency"
+      - "Scale Dealer/Repairer"
+      - "Scrap Metal Processor"
+      - "Secondhand Dealer - Auto"
+      - "Secondhand Dealer - General"
+      - "Self-Storage Facility"
+      - "Sightseeing Bus"
+      - "Sightseeing Guide"
+      - "Specialized Vending License - MFV"
+      - "Stoop Line Stand"
+      - "Storage Warehouse"
+      - "Third Party Food Delivery Service"
+      - "Ticket Seller Business"
+      - "Ticket Seller Individual"
+      - "Tobacco Retail Dealer"
+      - "Tow Truck Company"
+      - "Tow Truck Driver"
+
+  nyc_dcwp_licenses: *dcwp
+
+  # =====================================================================
+  # NYC DOB -- free-text job description. NOT a vocabulary.
+  # =====================================================================
+  nyc_dob_now_job_filings:
+    vocabulary: free_text
+    field: job_description
+    reason: |
+      47,930 distinct values over 67,220 rows: the architect's own prose
+      description of the WORK ("Interior renovation as shown on plans filed
+      herewith"), never the tenant's trade. There is no vocabulary to
+      enumerate and no keyword rule that would not be a guess. Every value
+      from this source is unmapped by construction; a pipeline row whose only
+      filings are DOB rows carries loci_category NULL unless reconciliation
+      links it to a categorised terminal filing.
+
+  nyc_dob_permit_issuance:
+    vocabulary: free_text
+    field: job_description
+    reason: |
+      57,331 distinct values over 66,082 rows. Same field, same feed family,
+      same reason as nyc_dob_now_job_filings.
