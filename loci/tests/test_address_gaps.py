@@ -394,3 +394,88 @@ def test_the_view_exposes_lead_censored_and_the_per_category_flags():
     assert con.execute(
         "SELECT tailor_repair_censored, grocery_censored FROM analysis.address_gaps "
         "WHERE address_id = 'A0'").fetchone() == (True, False)
+
+
+# ------------------------- (h) the screen scope is enforced, not defaulted (D78)
+
+def test_prune_out_of_scope_removes_only_the_out_of_scope_rows_and_is_idempotent():
+    """write_address_gaps delete-then-inserts only the boroughs PRESENT in the
+    frame it is handed, so an MN+BK re-run cannot clean up after the citywide
+    run D61 made to attach demographics. prune_out_of_scope is that cleanup, and
+    it has to be safe to call on every run -- the second call must remove nothing.
+    """
+    from loci import db as locidb
+    from loci.model.address_gaps import prune_out_of_scope, write_address_gaps
+    from loci.sources.cities.nyc.addresses import SCREEN_BOROUGHS
+
+    out_of_scope = _d75_frame().assign(
+        borough="QN",
+        address_id=lambda d: d["address_id"] + "-QN",
+        bbl=lambda d: d["bbl"] + "-QN",
+    )
+    con = locidb.connect(":memory:")
+    locidb.init_schema(con)
+    write_address_gaps(con, _d75_frame())
+    write_address_gaps(con, out_of_scope)
+    assert con.execute("SELECT count(*) FROM analysis.address").fetchone()[0] == 4
+
+    n_addr, n_cat = prune_out_of_scope(con, SCREEN_BOROUGHS)
+    assert (n_addr, n_cat) == (2, 2 * len(ALLCATS))
+    assert con.execute(
+        "SELECT DISTINCT borough FROM analysis.address").fetchall() == [("MN",)]
+    assert con.execute(
+        "SELECT DISTINCT borough FROM analysis.address_category").fetchall() == [("MN",)]
+    # the in-scope rows survive untouched...
+    assert con.execute("SELECT count(*) FROM analysis.address").fetchone()[0] == 2
+    # ...and a second prune is a no-op, so it can sit in the write path.
+    assert prune_out_of_scope(con, SCREEN_BOROUGHS) == (0, 0)
+
+
+def test_address_gaps_refuses_a_borough_outside_the_screen_scope(monkeypatch):
+    """D48, re-ruled by the owner as D78: the screen is Manhattan+Brooklyn. A
+    DEFAULT of MN+BK is not enough -- `--borough ALL` was run under D61 to attach
+    demographics and every re-run since inherited it. The refusal has to be
+    visible to a SHELL (non-zero exit), and it has to happen BEFORE the database
+    is opened, so a fat-fingered citywide run cannot get as far as writing."""
+    from typer.testing import CliRunner
+
+    from loci import cli
+
+    def _never(*a, **k):
+        raise AssertionError("the DB was opened for an out-of-scope run")
+
+    monkeypatch.setattr(cli.locidb, "connect", _never)
+    for scope in ("ALL", "QN", "MN,SI"):
+        result = CliRunner().invoke(cli.app, ["address-gaps", "--borough", scope])
+        assert result.exit_code != 0, scope
+        assert "D78" in result.output and "MN+BK" in result.output, scope
+
+
+def test_address_gaps_allows_an_out_of_scope_borough_behind_the_flag(monkeypatch):
+    """The escape hatch stays open for a deliberate, documented citywide run --
+    otherwise the next person edits the constant instead of passing the flag."""
+    from typer.testing import CliRunner
+
+    from loci import cli
+
+    def _sentinel(*a, **k):
+        raise RuntimeError("reached-the-database")
+
+    monkeypatch.setattr(cli.locidb, "connect", _sentinel)
+    result = CliRunner().invoke(
+        cli.app, ["address-gaps", "--borough", "ALL", "--allow-out-of-scope"])
+    assert isinstance(result.exception, RuntimeError)
+    assert "reached-the-database" in str(result.exception)
+
+
+def test_the_default_scope_is_the_screen_scope():
+    """The CLI default and the constant cannot drift apart: MNBK must resolve to
+    exactly SCREEN_BOROUGHS."""
+    import inspect
+
+    from loci import cli
+    from loci.sources.cities.nyc.addresses import SCREEN_BOROUGHS
+
+    default = inspect.signature(cli.address_gaps_cmd).parameters["borough"].default
+    assert default.default == "MNBK"
+    assert SCREEN_BOROUGHS == ("MN", "BK")

@@ -24,6 +24,18 @@ from loci.grid.pluto import PLUTO_CSV
 # 3=Brooklyn, 4=Queens, 5=Staten Island).
 BOROCODE = {"MN": "1", "BX": "2", "BK": "3", "QN": "4", "SI": "5"}
 
+#: The SCREEN's scope, and only the screen's (D48, re-ruled by the owner as D78
+#: 2026-09-13: "we are still focused on Manhattan and Brooklyn"). Manhattan and
+#: Brooklyn are the two boroughs whose results are read; analysis.address,
+#: analysis.address_category and everything derived from them hold these two and
+#: nothing else. The DATA FOUNDATION stays citywide on purpose -- raw sources,
+#: staging, poi_dedup/poi_supply, the hex tables and
+#: analysis.address_demographics are all five boroughs, because a POI in Queens
+#: is still the nearest pharmacy to an address in Brooklyn. Declared here, beside
+#: BOROCODE, because "MN"/"BK" are NYC codes: model/ and score/ take the scope as
+#: an argument and never name a borough.
+SCREEN_BOROUGHS: tuple[str, ...] = ("MN", "BK")
+
 
 def load_residential_addresses(con, borough: str = "MN",
                                 pluto_csv: pathlib.Path | str = PLUTO_CSV) -> pd.DataFrame:

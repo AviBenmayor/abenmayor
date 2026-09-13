@@ -575,6 +575,39 @@ def write_address_gaps(con, df: pd.DataFrame) -> int:
     return len(df)
 
 
+def prune_out_of_scope(con, scope) -> tuple[int, int]:
+    """Delete every analysis.address / analysis.address_category row whose
+    borough is outside `scope`, and report (address rows, category rows)
+    removed.
+
+    write_address_gaps only delete-then-inserts the boroughs PRESENT in the
+    frame it is handed, which is right for a partial rebuild but means a
+    narrower re-run cannot clean up after a wider one: the citywide run that
+    D61 made to attach demographics left QN/BX/SI rows that an MN+BK run would
+    simply leave in place. This is the explicit, idempotent removal of them
+    (D78). `scope` is passed in -- a borough code never appears in this module.
+    """
+    scope = tuple(scope)
+    if not scope:
+        raise ValueError("scope must name at least one borough")
+    q = ", ".join("?" for _ in scope)
+    n_cat = con.execute(
+        f"SELECT count(*) FROM analysis.address_category WHERE borough NOT IN ({q})",
+        list(scope)).fetchone()[0]
+    n_addr = con.execute(
+        f"SELECT count(*) FROM analysis.address WHERE borough NOT IN ({q})",
+        list(scope)).fetchone()[0]
+    if n_cat or n_addr:
+        # category first, so an interrupted prune can never leave a category
+        # row whose address row is gone (the same ordering discipline
+        # write_address_gaps keeps on its per-borough delete).
+        con.execute(
+            f"DELETE FROM analysis.address_category WHERE borough NOT IN ({q})", list(scope))
+        con.execute(
+            f"DELETE FROM analysis.address WHERE borough NOT IN ({q})", list(scope))
+    return n_addr, n_cat
+
+
 def address_gaps_view_sql() -> str:
     """`CREATE OR REPLACE VIEW analysis.address_gaps`: analysis.address
     joined to a PIVOT of analysis.address_category's long rows back into the
