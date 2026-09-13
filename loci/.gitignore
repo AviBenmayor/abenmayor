@@ -27,3 +27,10 @@ data/*.duckdb
 # DuckDB backups taken before live rebuilds (D61 convention)
 data/*.duckdb.bak*
 data/*.duckdb.wal
+
+# detector weights — fetched/exported, verified by sha256 in
+# vision/person_detector.py, never committed (10 MB of binary)
+data/models/
+# camera frames kept only with --keep-frames, for QA. Public imagery of
+# identifiable people on the street: it stays on the machine that fetched it.
+data/frames/

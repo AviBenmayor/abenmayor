@@ -4630,3 +4630,658 @@ def address_character_stats(
                   "ENTRIES -- high where people LEAVE in the morning (residential catchment), "
                   "low where they ARRIVE -- and rests on n_am_pm addresses, not all of "
                   "them.[/]")
+
+
+# ===========================================================================
+# sidewalk-count -- counting people in public traffic-camera frames (D85)
+# ===========================================================================
+sidewalk_app = typer.Typer(add_completion=False, help=(
+    "Count the people in NYC DOT traffic-camera frames.\n\n"
+    "PERSONS VISIBLE IN ONE FRAME -- a STOCK, not a FLOW. The DOT bi-annual "
+    "hand count is a flow (people per hour past a screenline); this is a stock "
+    "(people standing in a cone of view at an instant). Little's law is the "
+    "only bridge and nothing here measures dwell, so `validate` reports a RANK "
+    "correlation and refuses to emit a conversion factor.\n\n"
+    "The imagery is public and COUNT-ONLY: frames are never stored unless "
+    "--keep-frames, and then only under data/frames/ for QA."))
+app.add_typer(sidewalk_app, name="sidewalk-count")
+
+
+def _sidewalk_resolve(con, camera: str | None, near: str | None, radius_m: float):
+    """--camera id | --near 'lat,lon' -> one Camera, printing the alternatives."""
+    from loci.model import sidewalk_count as sw
+
+    if bool(camera) == bool(near):
+        raise typer.BadParameter("pass exactly one of --camera or --near")
+    if camera:
+        return sw.get_camera(con, camera)
+    try:
+        lat, lon = (float(x) for x in near.replace(" ", "").split(","))
+    except ValueError:
+        raise typer.BadParameter(f"--near {near!r} is not 'lat,lon'") from None
+    found = sw.cameras_near(con, lat=lat, lon=lon, radius_m=radius_m)
+    if not found:
+        raise typer.BadParameter(
+            f"no camera within {radius_m:.0f} m of {lat},{lon}. The registry holds "
+            f"969 cameras citywide, so an empty result usually means the point is "
+            f"off an arterial rather than that the feed is down.")
+    t = Table(title=f"cameras within {radius_m:.0f} m of {lat},{lon}")
+    for c, j in (("camera_id", "left"), ("name", "left"), ("borough", "left"),
+                 ("dist_m", "right")):
+        t.add_column(c, justify=j)
+    for c in found[:10]:
+        t.add_row(c.camera_id, c.name, c.borough or "—", f"{c.dist_m:.0f}")
+    console.print(t)
+    console.print(f"[dim]using the nearest: {found[0].camera_id}[/]")
+    return found[0]
+
+
+@sidewalk_app.command("sample")
+def sidewalk_sample(
+    camera: str = typer.Option(None, "--camera", help="staging.dot_camera.camera_id"),
+    near: str = typer.Option(None, "--near", help="'lat,lon'; uses the nearest camera"),
+    radius_m: float = typer.Option(300.0, "--radius-m", help="search radius for --near"),
+    minutes: float = typer.Option(10.0, "--minutes", help="how long to sample"),
+    interval_s: float = typer.Option(10.0, "--interval-s", help="seconds between fetches"),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="print the plan, fetch ONE frame, write nothing"),
+    keep_frames: bool = typer.Option(False, "--keep-frames",
+                                     help="also write the JPEGs to data/frames/<camera>/"),
+) -> None:
+    """Fetch a camera every S seconds for N minutes and count the people.
+
+    The warehouse lock is held for the camera lookup and again for one INSERT
+    at the end -- never for the length of the run, because another session
+    rebuilding the database mid-sample is normal here (D69).
+    """
+    from loci.model import sidewalk_count as sw
+
+    con = _connect_retrying(read_only=True)
+    try:
+        cam = _sidewalk_resolve(con, camera, near, radius_m)
+    finally:
+        con.close()
+
+    plan = sw.plan_run(cam, minutes, interval_s)
+    console.print(f"[bold]{plan.describe()}[/]")
+    console.print(f"[dim]budget: MAX_FRAMES_PER_RUN={sw.MAX_FRAMES_PER_RUN}, "
+                  f"politeness floor {sw.MIN_INTERVAL_S:g}s. Counts only; frames are "
+                  f"{'KEPT under data/frames/ for QA' if keep_frames else 'discarded'}.[/]")
+
+    out = sw.sample(cam, minutes, interval_s, dry_run=dry_run, keep_frames=keep_frames)
+    rep = out["report"]
+    console.print(f"fetched [bold]{rep['fetched']}[/] · unique [bold]{rep['unique']}[/] · "
+                  f"duplicate {rep['duplicate_rate']:.0%} · errors {rep['errors']} · "
+                  f"{rep['mean_bytes'] / 1024:.0f} KB/frame · "
+                  f"{rep['seconds_per_frame'] * 1000:.0f} ms/frame "
+                  f"({rep['model']} {rep['model_version']}, quality {rep['model_quality']})")
+    if rep["unique"]:
+        counts = sorted(r["n_persons"] for r in out["rows"])
+        mid = counts[len(counts) // 2]
+        console.print(f"persons/frame: mean [bold]{rep['mean_persons']:.2f}[/] · "
+                      f"p50 {mid} · max {rep['max_persons']}")
+
+    if dry_run:
+        console.print("[dim]--dry-run:[/] one frame fetched, nothing written.")
+        raise typer.Exit(0)
+
+    con = _connect_retrying(read_only=False)
+    try:
+        con.execute((locidb.SQL_DIR / "024_sidewalk_count.sql").read_text())
+        n = sw.write_rows(con, out["rows"])
+    finally:
+        con.close()
+    console.print(f"[green]ok[/] {n:,} new rows -> analysis.sidewalk_count "
+                  f"({rep['unique'] - n} already stored)")
+    console.print("[dim]persons IN FRAME, not pedestrians per hour. Field of view "
+                  "differs by camera, so compare a camera with ITSELF across time "
+                  "before comparing two cameras with each other.[/]")
+
+
+@sidewalk_app.command("schedule")
+def sidewalk_schedule(
+    camera: str = typer.Option(..., "--camera", help="staging.dot_camera.camera_id"),
+    days: int = typer.Option(14, "--days", help="how many days the plan covers"),
+    interval_s: float = typer.Option(10.0, "--interval-s"),
+    minutes: float = typer.Option(10.0, "--minutes", help="minutes per daypart block"),
+) -> None:
+    """Emit the launchd-friendly sampling plan. RUNS NOTHING, WRITES NOTHING."""
+    from loci.model import sidewalk_count as sw
+
+    con = _connect_retrying(read_only=True)
+    try:
+        cam = sw.get_camera(con, camera)
+    finally:
+        con.close()
+
+    plan = sw.schedule_plan(cam, days=days, interval_s=interval_s,
+                            minutes_per_daypart=minutes)
+    t = Table(title=f"{cam.name} ({cam.camera_id}) — {days}-day plan")
+    for c in plan.columns:
+        t.add_column(str(c), justify="right" if plan[c].dtype.kind in "if" else "left")
+    for r in plan.itertuples(index=False):
+        t.add_row(*[f"{x:,}" if isinstance(x, int) else
+                    (f"{x:g}" if isinstance(x, float) else str(x)) for x in r])
+    console.print(t)
+    total = int(plan["frames_total"].sum())
+    console.print(f"[bold]{len(plan)}[/] blocks per cycle · "
+                  f"[bold]{total:,}[/] frames over {days} days · "
+                  f"~{total * 0.11 / 60:.0f} min of CPU at 0.11 s/frame")
+    console.print("[dim]launch_local is the MIDPOINT of each daypart, not its edge: a "
+                  "block starting at 06:00 sharp measures the quietest ten minutes of "
+                  "am_peak and calls it the peak. Each block is a separate "
+                  "`loci sidewalk-count sample --camera … --minutes … ` invocation, "
+                  "sized to sit inside MAX_FRAMES_PER_RUN.[/]")
+
+
+@sidewalk_app.command("stats")
+def sidewalk_stats(
+    camera: str = typer.Option(None, "--camera", help="one camera; default all"),
+) -> None:
+    """Per camera x day_type x daypart: N frames, mean / p50 / max persons."""
+    from loci.model import sidewalk_count as sw
+
+    con = _connect_retrying(read_only=True)
+    try:
+        df = sw.stats(con, camera_id=camera)
+    finally:
+        con.close()
+    if not len(df):
+        console.print("[yellow]analysis.sidewalk_count is empty[/] — nothing sampled yet. "
+                      "`loci sidewalk-count sample --near \"40.71,-73.95\" --minutes 10`")
+        raise typer.Exit(0)
+    df = df.copy()
+    df["camera"] = df["camera"].astype(str).str.slice(0, 28)
+    t = Table(title="persons per FRAME (a stock, not a flow)")
+    for c in df.columns:
+        t.add_column(str(c), justify="left" if c in ("camera_id", "camera", "day_type",
+                                                     "daypart") else "right")
+    for r in df.itertuples(index=False):
+        t.add_row(*[f"{x:.2f}" if isinstance(x, float) else str(x) for x in r])
+    console.print(t)
+    console.print("[dim]mean and p50 are both here because a count that is zero most of "
+                  "the time and eleven once has a mean that describes no moment of the "
+                  "day. Where they disagree, the reading rests on a handful of frames.[/]")
+
+
+@sidewalk_app.command("validate")
+def sidewalk_validate(
+    radius_m: float = typer.Option(None, "--radius-m",
+                                   help="camera-to-count-point match radius"),
+    round_: str = typer.Option(None, "--round",
+                               help="DOT round as YYYY-MM, e.g. 2026-05; default latest"),
+    out: Path = typer.Option(None, "--out", help="write the matched pairs to this CSV"),
+) -> None:
+    """Camera persons-per-frame vs the DOT bi-annual hand count, co-located.
+
+    READ-ONLY. Only cameras that have actually been sampled can appear, so N is
+    printed at every level and an empty intersection is a stated outcome, not
+    an error.
+    """
+    from loci.model import sidewalk_count as sw
+
+    r = radius_m if radius_m is not None else sw.VALIDATE_RADIUS_M
+    con = _connect_retrying(read_only=True)
+    try:
+        pairs, rep = sw.validate(con, radius_m=r, round_=round_)
+    finally:
+        con.close()
+
+    console.print(f"round [bold]{rep['round']}[/] · match radius {rep['radius_m']:.0f} m · "
+                  f"{rep['cameras_in_radius']} cameras sit within it of "
+                  f"{rep['points_in_radius']} count points "
+                  f"({rep['pairs_in_radius']} camera x window pairs)")
+    console.print(f"cameras sampled so far: [bold]{rep['cameras_sampled']}[/] · "
+                  f"compared here: [bold]{rep['cameras_compared']}[/] · "
+                  f"matched observations N = [bold]{rep['n']}[/]")
+    if rep.get("note"):
+        console.print(f"[yellow]{rep['note']}[/]")
+    if rep["spearman_rho"] is not None:
+        console.print(f"Spearman rho, camera mean persons/frame vs DOT people per "
+                      f"COUNTED HOUR: [bold]{rep['spearman_rho']:+.3f}[/] "
+                      f"(vs the raw window count: "
+                      f"{rep['spearman_rho_raw_count']:+.3f})")
+        console.print("[dim]the per-hour rho is the headline because DOT's pm window is "
+                      "THREE hours and am/md are two — ranking the raw counts would "
+                      "reward pm for the protocol, not for the sidewalk.[/]")
+    if len(pairs):
+        t = Table(title="matched (camera, DOT window) observations")
+        cols = ["camera", "point_id", "period", "dist_m", "frames",
+                "mean_persons", "p50_persons", "max_persons", "dot_count",
+                "dot_per_hour"]
+        for c in cols:
+            t.add_column(c, justify="left" if c in ("camera", "point_id", "period")
+                         else "right")
+        for row in pairs.itertuples(index=False):
+            d = row._asdict()
+            t.add_row(str(d["camera"])[:24], str(d["point_id"]), str(d["period"]),
+                      f"{d['dist_m']:.0f}", str(int(d["frames"])),
+                      f"{d['mean_persons']:.2f}", f"{d['p50_persons']:.1f}",
+                      str(int(d["max_persons"])), f"{int(d['dot_count']):,}",
+                      f"{d['dot_per_hour']:,.0f}")
+        console.print(t)
+    console.print("[dim]A RANK correlation and nothing else. The two sides are different "
+                  "physical quantities — a stock and a flow — so any ratio between them "
+                  "would be a dwell time estimated from one number. What a positive rho "
+                  "supports is narrow: that the camera orders the three windows of a day, "
+                  "and orders co-located places, the way a hand count does. The DOT count "
+                  "is also a WEEKDAY count from a single day in the round, so weekend "
+                  "frames are excluded here and weather is not averaged out on either "
+                  "side.[/]")
+
+
+# ===========================================================================
+# NYC DOT -- the bi-annual pedestrian counts and the traffic cameras.
+#
+# Owner, 2026-09-13: "we need NYC DOT data, both the bi-annual and the camera
+# data."
+#
+#   loci dot-counts ingest            staging.dot_pedestrian_count (long form,
+#                                     every round since 2007)
+#   loci dot-counts stats             points, rounds, latest AM/MD/PM per point,
+#                                     ten-year trend
+#   loci dot-counts address-context   nearest count point + nearest camera on
+#                                     every address (UPDATE-only)
+#   loci dot-cameras ingest           staging.dot_camera (the sampler's registry)
+#   loci dot-cameras probe            re-verify the image endpoint: no auth,
+#                                     and does the frame actually change?
+#   loci dot-export                   webmap/data/dot.json
+#
+# This block is appended at the END of the file on purpose: another session is
+# editing cli.py above it, and an append never conflicts with an edit.
+# ===========================================================================
+
+DOT_DISTANCE_CAVEAT = (
+    "dot_point_m and camera_m are STRAIGHT-LINE metres (Euclidean in EPSG:32618), "
+    "unlike homes_400m / transit_entries_400m / jobs_400m, which are NETWORK "
+    "metres on the pedestrian walk graph. A straight line is a LOWER BOUND on the "
+    "walk — across a rail cut, a canal or a highway the walk can be several times "
+    "this. Never compare the two."
+)
+
+
+def _dot_connect(read_only: bool = False, attempts: int = 12,
+                 path: str | None = None):
+    """Open the warehouse, retrying while another build holds the write lock.
+
+    A concurrent `loci address-gaps` or `loci export-webmap` can hold DuckDB's
+    single-writer lock for minutes. Failing instantly on that is worse than
+    waiting: the operator re-runs by hand and the run is lost either way.
+    Backs off 5 s, 10 s, ... capped at 30 s, then RAISES rather than silently
+    proceeding without a database.
+    """
+    import time as _time
+
+    import duckdb as _duckdb
+
+    last = None
+    for i in range(attempts):
+        try:
+            return locidb.connect(path, read_only=read_only)
+        except (_duckdb.IOException, _duckdb.Error) as exc:   # lock, or a
+            # transient open failure. Re-raise anything that is not a lock.
+            if "lock" not in str(exc).lower():
+                raise
+            last = exc
+            wait = min(5 * (i + 1), 30)
+            console.print(f"[yellow]database locked[/] (attempt {i + 1}/{attempts}); "
+                          f"retrying in {wait}s")
+            _time.sleep(wait)
+    raise RuntimeError(f"could not obtain the DuckDB lock after {attempts} "
+                       f"attempts: {last}")
+
+
+def _dot_migrate(con) -> None:
+    """Apply sql/022_dot.sql ONLY — not the whole migration sweep.
+
+    `locidb.init_schema` replays every migration and re-CREATEs the generated
+    views (analysis.address_gaps, analysis.address_character). That is right
+    for `loci init-db` and wrong for a source ingest running beside another
+    build: rebuilding a dozen views to add two staging tables is a large
+    blast radius for no gain. 022 is CREATE TABLE IF NOT EXISTS + ADD COLUMN
+    IF NOT EXISTS throughout, so this is idempotent and touches nothing else.
+
+    On a database that has no analysis.address yet (a fresh clone) there is
+    nothing to ALTER and the full sweep is the right answer, so it falls back.
+    """
+    has_address = con.execute(
+        "SELECT count(*) FROM information_schema.tables "
+        "WHERE table_schema = 'analysis' AND table_name = 'address'").fetchone()[0]
+    if not has_address:
+        locidb.init_schema(con)
+        return
+    con.execute((locidb.SQL_DIR / "022_dot.sql").read_text())
+
+
+dot_counts_app = typer.Typer(add_completion=False, help=(
+    "NYC DOT Bi-Annual Pedestrian Counts (cqsj-cfgu) — the only DIRECT "
+    "observation of sidewalk volume this project has.\n\n"
+    "114 screenlines, counted BY HAND in three windows (AM 07-09, MD 12-14, "
+    "PM 16-19 — note PM is three hours and the others are two), twice a year "
+    "since 2007. `ingest` writes the whole history long-form into "
+    "staging.dot_pedestrian_count: the feed is WIDE (three new columns per "
+    "round, named inconsistently — 'may_07_am', 'may_22_p_m', 'oct24_md', "
+    "'may26_pm') and the column names are PARSED, never typed.\n\n"
+    "NOT A SAMPLE OF THE CITY and never an input to a score. DOT picked these "
+    "points for traffic engineering, on busy commercial corridors and bridges, "
+    "so the bottom of the volume range is barely represented. It is context, "
+    "and it is the external check the walkable-demand measures are validated "
+    "against (`loci validate-demand`)."))
+app.add_typer(dot_counts_app, name="dot-counts")
+
+dot_cameras_app = typer.Typer(add_completion=False, help=(
+    "NYC DOT traffic cameras (NYCTMC) — the camera REGISTRY, not the frames.\n\n"
+    "`ingest` writes staging.dot_camera: one row per public camera with a "
+    "fetchable image URL. This is the contract the frame sampler builds "
+    "against; per-frame observations are camera × timestamp and belong in "
+    "their own table, never as columns here.\n\n"
+    "The siting IS the bias: signalised intersections on arterials, 376 in "
+    "Manhattan against 81 in the Bronx, no published bearing or field of view. "
+    "A person count from a frame is a count on an unknown catchment."))
+app.add_typer(dot_cameras_app, name="dot-cameras")
+
+
+@dot_counts_app.command("ingest")
+def dot_counts_ingest(
+    refresh: bool = typer.Option(False, "--refresh",
+                                 help="Re-pull the feed instead of reading data/raw/."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Parse and print; write nothing."),
+) -> None:
+    """Pull cqsj-cfgu and write every (point × round × period) row.
+
+    Idempotent: DELETE-then-INSERT of the whole table, because the feed
+    republishes the entire history on every release and 12k rows do not earn an
+    incremental path.
+
+    NULL cells produce NO ROW (Socrata omits them; a point added in 2020 has no
+    2007 row). ZERO counts DO produce rows — twelve exist and they are
+    observations of an empty screenline, not gaps.
+    """
+    from loci.sources.cities.nyc import dot_pedestrian as dp
+
+    con = _dot_connect()
+    _dot_migrate(con)
+    _, rep = dp.ingest(con, refresh=refresh, dry_run=dry_run)
+
+    t = Table(title="DOT bi-annual pedestrian counts — ingest")
+    t.add_column("metric"); t.add_column("value", justify="right")
+    for k in ("rows_in_feed", "points", "on_street_points", "bridge_points",
+              "n_rounds", "first_round", "last_round", "cells_possible",
+              "cells_present", "cells_absent_or_null", "zero_counts",
+              "total_count", "dropped_rows_without_geometry", "written"):
+        v = rep.get(k)
+        t.add_row(k, f"{v:,}" if isinstance(v, int) else str(v))
+    console.print(t)
+    console.print(f"[dim]rounds parsed: {', '.join(rep['rounds'])}[/]")
+    console.print("[dim]cells_possible = points × rounds × 3. The difference "
+                  "between it and cells_present is rounds a point was not in "
+                  "the programme for, NOT zeros — Socrata omits a null cell and "
+                  "a zero is stored as a zero.[/]")
+    if dry_run:
+        console.print("[yellow]--dry-run: nothing written[/]")
+
+
+@dot_counts_app.command("stats")
+def dot_counts_stats(
+    top: int = typer.Option(10, help="How many points to print, by latest whole-round count."),
+    trend_years: int = typer.Option(10, "--trend-years",
+                                    help="Window for the per-point slope, in years."),
+    bridges: bool = typer.Option(False, "--bridges/--no-bridges",
+                                 help="Include the 14 bridge-midpoint points."),
+) -> None:
+    """Points, rounds, each point's latest AM/MD/PM, and its ten-year trend.
+
+    The trend is the OLS slope of the WHOLE-ROUND total (AM+MD+PM = the round's
+    seven counted hours) against DECIMAL YEARS, in people per year, fitted over
+    the last `--trend-years` years anchored on the feed's latest round — the
+    same calendar window for every point, so the column is comparable across
+    points. Decimal years and not round number: the rounds are not evenly
+    spaced (no September 2019, no May 2020, and 2024's spring round is June), so
+    counting rounds would treat a 17-month gap as one step.
+
+    A slope on fewer than three rounds is NULL. It is a description of a noisy
+    series — two hours on one day, twice a year — not a forecast and not a test.
+    """
+    from loci.sources.cities.nyc import dot_pedestrian as dp
+
+    con = _dot_connect(read_only=True)
+    summary = dp.table_summary(con)
+    df = dp.point_summary(con, trend_years=trend_years)
+    if not bridges:
+        df = df[~df["is_bridge"].astype(bool)]
+
+    t = Table(title="staging.dot_pedestrian_count")
+    t.add_column("metric"); t.add_column("value", justify="right")
+    for k in ("rows", "points", "on_street_points", "bridge_points", "rounds",
+              "first_round", "last_round", "zero_counts", "total_count"):
+        v = summary[k]
+        t.add_row(k, f"{v:,}" if isinstance(v, int) else str(v))
+    console.print(t)
+
+    rounds = con.execute(
+        "SELECT round, COUNT(DISTINCT point_id) AS points, SUM(count) AS total "
+        "FROM staging.dot_pedestrian_count GROUP BY round ORDER BY round").fetchdf()
+    tr = Table(title="rounds")
+    for col in ("round", "points", "total"):
+        tr.add_column(col, justify="left" if col == "round" else "right")
+    for r in rounds.itertuples(index=False):
+        tr.add_row(r.round, f"{int(r.points):,}", f"{int(r.total):,}")
+    console.print(tr)
+
+    head = df.head(top)
+    tp = Table(title=f"top {len(head)} points by latest whole-round count"
+                     f"{'' if bridges else ' (on-street only)'}")
+    for col, just in (("loc", "right"), ("borough", "left"), ("street", "left"),
+                      ("from", "left"), ("round", "left"), ("am", "right"),
+                      ("md", "right"), ("pm", "right"), ("total", "right"),
+                      (f"trend/yr ({trend_years}y)", "right"), ("N", "right")):
+        tp.add_column(col, justify=just)
+    for r in head.itertuples(index=False):
+        trend = "—" if r.trend_per_year is None or r.trend_per_year != r.trend_per_year \
+            else f"{r.trend_per_year:+,.0f}"
+        tp.add_row(str(int(r.point_id)), str(r.borough or "—"),
+                   str(r.street or "—")[:22], str(r.from_street or "—")[:20],
+                   str(r.latest_round or "—"),
+                   *[f"{int(v):,}" if v == v and v is not None else "—"
+                     for v in (r.latest_am, r.latest_md, r.latest_pm, r.latest_total)],
+                   trend,
+                   "—" if r.trend_n_rounds != r.trend_n_rounds else str(int(r.trend_n_rounds)))
+    console.print(tp)
+    console.print("[dim]AM 07:00-09:00 (2h), MD 12:00-14:00 (2h), PM 16:00-19:00 "
+                  "(3h). The three windows are NOT equal-length and must never be "
+                  "averaged as though they were; `total` is people observed in the "
+                  "round's seven counted hours and is NOT a daily volume — DOT "
+                  "publishes no expansion factor. These 114 points are DOT's "
+                  "traffic-engineering geography, not a sample of New York.[/]")
+
+
+@dot_counts_app.command("address-context")
+def dot_counts_address_context(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL."),
+    include_bridges: bool = typer.Option(False, "--include-bridges",
+                                         help="Let bridge midpoints be a nearest count point."),
+    db: str = typer.Option(None, "--db",
+                           help="Warehouse path (default data/loci.duckdb). Point it at a "
+                                "snapshot copy to prove a run without touching the live DB."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """Nearest DOT count point and nearest camera, on every address.
+
+        dot_point_id / dot_point_m            nearest ON-STREET count point
+        dot_latest_round / _am / _md / _pm    that point's latest COMPLETE round
+        camera_id / camera_m                  nearest NYCTMC camera
+        dot_context_run_at                    NULL = never run for this row
+
+    STRAIGHT-LINE distance, Euclidean in EPSG:32618, which is the one place in
+    this project where a distance is not a network distance. It is a LOWER
+    BOUND on the walk. 114 points and 969 cameras do not justify a second
+    40-minute Dijkstra, and "which observation is nearest" has a defensible
+    straight-line answer where "how many homes can walk here" does not.
+
+    "Latest round" is PER POINT, not global: points enter and leave the
+    programme, and using the feed's latest round would write NULL counts at a
+    point that simply was not counted in May 2026 — indistinguishable from a
+    quiet street.
+
+    UPDATE-only on analysis.address, RESET-then-UPDATE in scope, pinned
+    disjoint from the screen's own columns and every sibling annotation.
+    CONTEXT, never a filter: nothing here enters gap_score, supply_ratio or a
+    grade. Re-apply after every `loci address-gaps` run, which DELETEs the rows
+    these columns live on.
+    """
+    from loci.model import address_dot_context as adc
+
+    boros = None if boroughs.strip().upper() == "ALL" else \
+        [b.strip().upper() for b in boroughs.split(",") if b.strip()]
+    con = _dot_connect(path=db)
+    _dot_migrate(con)
+    _, rep = adc.build_context(con, boros, include_bridges=include_bridges,
+                               dry_run=dry_run)
+
+    t = Table(title="analysis.address — DOT context")
+    t.add_column("metric"); t.add_column("value", justify="right")
+    for k in ("boroughs", "count_points", "count_points_with_complete_latest_round",
+              "cameras", "addresses", "metric_crs", "include_bridges", "_written"):
+        v = rep.get(k)
+        t.add_row(k, f"{v:,}" if isinstance(v, int) else str(v))
+    t.add_row("dot_point_m p50", f"{rep['dot_point_m_p50']:,.0f} m")
+    t.add_row("camera_m p50", f"{rep['camera_m_p50']:,.0f} m")
+    t.add_row("within 400 m of a camera", f"{rep['within_400m_of_camera']:.1%}")
+    t.add_row("within 400 m of a count point", f"{rep['within_400m_of_count_point']:.1%}")
+    console.print(t)
+
+    tb = Table(title="by borough")
+    for col in ("borough", "addresses", "dot_m p50", "dot_m p90", "cam_m p50",
+                "cam_m p90", "≤400 m camera", "≤400 m count pt"):
+        tb.add_column(col, justify="left" if col == "borough" else "right")
+    for boro, d in sorted(rep["by_borough"].items()):
+        tb.add_row(boro, f"{d['addresses']:,}", f"{d['dot_point_m_p50']:,.0f}",
+                   f"{d['dot_point_m_p90']:,.0f}", f"{d['camera_m_p50']:,.0f}",
+                   f"{d['camera_m_p90']:,.0f}",
+                   f"{d['within_400m_of_camera']:.1%}",
+                   f"{d['within_400m_of_count_point']:.1%}")
+    console.print(tb)
+    console.print(f"[dim]{DOT_DISTANCE_CAVEAT}[/]")
+    console.print("[dim]A camera's coordinates are the POLE, not the view: no "
+                  "bearing, field of view or height is published, so camera_m = 60 "
+                  "does not mean the address is in frame. And the camera gradient "
+                  "is DOT's operational one (arterial intersections), so 'share "
+                  "within 400 m of a camera' is a statement about arterial "
+                  "proximity, never about footfall or exposure.[/]")
+    if dry_run:
+        console.print("[yellow]--dry-run: nothing written[/]")
+
+
+@dot_cameras_app.command("ingest")
+def dot_cameras_ingest(
+    refresh: bool = typer.Option(False, "--refresh",
+                                 help="Re-pull the feed instead of reading data/raw/."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Fetch and print; write nothing."),
+) -> None:
+    """Pull the NYCTMC camera list into staging.dot_camera.
+
+    One row per camera: camera_id, name, lon, lat, image_url, is_online, area,
+    borough, fetched_at. Whole-table DELETE-then-INSERT — the feed is a full
+    snapshot with no vintage and no changelog, so an incremental merge would
+    have to invent a retirement rule.
+
+    `is_online` is parsed from the feed's STRING 'true' (bool('false') is True,
+    which is exactly the bug this avoids). It read true on 969 of 969 cameras at
+    verification, which is not a plausible steady state for 969 outdoor cameras:
+    treat it as "published", not "returning frames", and never filter a universe
+    on it.
+    """
+    from loci.sources.cities.nyc import dot_cameras as dc
+
+    con = _dot_connect()
+    _dot_migrate(con)
+    _, rep = dc.ingest(con, refresh=refresh, dry_run=dry_run)
+
+    t = Table(title="staging.dot_camera — ingest")
+    t.add_column("metric"); t.add_column("value", justify="right")
+    for k in ("rows_in_feed", "cameras", "online", "offline", "online_unknown",
+              "dropped_without_id", "dropped_without_geometry",
+              "dropped_outside_nyc", "fetched_at", "written"):
+        v = rep.get(k)
+        t.add_row(k, f"{v:,}" if isinstance(v, int) else str(v))
+    for boro, n in rep["by_borough"].items():
+        t.add_row(f"  {boro}", f"{n:,}")
+    console.print(t)
+    if rep["unknown_areas"]:
+        console.print(f"[yellow]unmapped `area` values (borough left NULL, never "
+                      f"guessed): {rep['unknown_areas']}[/]")
+    console.print("[dim]The siting IS the bias: signalised intersections on "
+                  "arterials, chosen to watch vehicle queues. No bearing, field of "
+                  "view, height or lens is published, so what any camera sees is "
+                  "an unknown catchment — two cameras 20 m apart can watch "
+                  "disjoint sidewalks.[/]")
+    if dry_run:
+        console.print("[yellow]--dry-run: nothing written[/]")
+
+
+@dot_cameras_app.command("probe")
+def dot_cameras_probe(
+    camera_id: str = typer.Option(None, help="Camera to probe (default: the first in the registry)."),
+    gap_s: float = typer.Option(5.0, "--gap-s", help="Seconds between the two fetches."),
+) -> None:
+    """Fetch one camera's frame twice and report whether the bytes changed.
+
+    This is the check that established the sampler's contract — no auth, 200
+    image/jpeg, Cache-Control: no-store, no Last-Modified, and a different
+    payload on every request. It is a command rather than a note so the claim
+    can be RE-VERIFIED when the sampler misbehaves instead of being believed.
+    Stores no image and writes nothing.
+    """
+    from loci.sources.cities.nyc import dot_cameras as dc
+
+    url = None
+    if camera_id is None:
+        con = _dot_connect(read_only=True)
+        row = con.execute("SELECT camera_id, image_url FROM staging.dot_camera "
+                          "ORDER BY camera_id LIMIT 1").fetchone()
+        if not row:
+            raise typer.BadParameter(
+                "staging.dot_camera is empty — run `loci dot-cameras ingest` "
+                "or pass --camera-id.")
+        camera_id, url = row
+    rep = dc.probe_image(camera_id, url, gap_s=gap_s)
+
+    t = Table(title=f"camera {camera_id} — image endpoint")
+    for col in ("shot", "status", "content-type", "bytes", "sha1",
+                "cache-control", "last-modified"):
+        t.add_column(col, justify="left")
+    for i, s in enumerate(rep["shots"]):
+        t.add_row(f"t+{0 if i == 0 else gap_s:g}s", str(s["status"]),
+                  str(s["content_type"]), f"{s['bytes']:,}", s["sha1"],
+                  str(s["cache_control"]), str(s["last_modified"] or "—"))
+    console.print(t)
+    console.print(f"[{'green' if rep['changed'] else 'yellow'}]"
+                  f"frame {'CHANGED' if rep['changed'] else 'IDENTICAL'} across "
+                  f"{gap_s:g}s[/] — no auth required: {not rep['auth_required']}")
+    console.print("[dim]No Last-Modified and no ETag means the response cannot "
+                  "tell you how stale a frame is. The sampler's own fetch time is "
+                  "the only timestamp of record.[/]")
+
+
+@app.command(name="dot-export")
+def dot_export_cmd(
+    out_dir: str = typer.Option(None, "--out-dir",
+                                help="Directory for dot.json (default webmap/data)."),
+    trend_years: int = typer.Option(10, "--trend-years", help="Trend window, in years."),
+) -> None:
+    """Write webmap/data/dot.json — the count points and cameras as a layer.
+
+    A STANDALONE file with a standalone command: viz/webmap_export.py and
+    webmap/index.html are owned by another thread, so nothing there is touched.
+    Wiring the layer in later is a fetch of `data/dot.json` plus a toggle.
+
+    The file carries its own `caveats` block, meant to be rendered UNTRUNCATED
+    wherever the layers are switched on — 969 camera dots look like coverage and
+    are not.
+    """
+    from loci.viz import dot_export as de
+
+    con = _dot_connect(read_only=True)
+    rep = de.export(con, out_dir=out_dir, trend_years=trend_years)
+    console.print(f"[green]ok[/] {rep['path']} — {rep['counts']} count points, "
+                  f"{rep['cameras']} cameras, {rep['bytes']:,} bytes")

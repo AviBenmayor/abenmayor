@@ -1019,7 +1019,14 @@ sources:
     name: NYC DOT Bi-Annual Pedestrian Counts
     tier: city
     city: nyc
-    role: validation
+    # `control`, not `validation`, since 2026-09-13: the whole 2007-2026 history
+    # is now INGESTED (staging.dot_pedestrian_count) and read as context beside
+    # the screen, not merely fetched to check a correlation. The schema takes
+    # exactly ONE role (loci.registry.VALID_ROLES is a set of scalars, and
+    # validate() does `s.get("role") not in VALID_ROLES`), so `validation` could
+    # not be kept alongside it -- it is recorded in the notes instead, and the
+    # validation use is unchanged.
+    role: control
     status: verified
     url: https://data.cityofnewyork.us/Transportation/Bi-Annual-Pedestrian-Counts/cqsj-cfgu
     dataset_id: cqsj-cfgu
@@ -1041,9 +1048,34 @@ sources:
       (may_22_p_m vs may_22_pm, oct24_am vs oct_23_am); resolve by metadata,
       never by a hard-coded guess.
     notes: >
-      VALIDATION ONLY. Never an input to any score, grade or ranking -- it is
-      the external check on whether transit_entries_400m, jobs_400m and
-      homes_400m rank real sidewalk volume. The tabular id is cqsj-cfgu; the
+      INGESTED SINCE 2026-09-13, AND STILL NEVER AN INPUT TO A SCORE. Role moved
+      validation -> control because the source is now stored rather than
+      re-pulled: `loci dot-counts ingest` writes
+      staging.dot_pedestrian_count -- LONG form, one row per
+      (point x round x period), every round the feed publishes (37 rounds,
+      2007-05..2026-05, 114 points, 12,312 observations). The feed is WIDE
+      (three new COLUMNS per round) and the column names are PARSED from the
+      feed's own field list by sources/cities/nyc/dot_pedestrian.parse_round --
+      never typed, because both the separator and the PM spelling move between
+      rounds. A NULL cell produces no row (342 of 12,654 possible cells are
+      absent; Socrata omits them); a ZERO count produces a row (12 exist and
+      they are observations). The rounds are NOT evenly spaced: no September
+      2019 round, no May 2020 round (COVID), and 2024's spring round is JUNE --
+      fit trends on decimal years, never on round number. PM is a THREE-hour
+      window and AM/MD are two, so the three periods are not interchangeable
+      units.
+      THE VALIDATION USE IS UNCHANGED (`loci validate-demand`): it is still the
+      external check on whether transit_entries_400m, jobs_400m and homes_400m
+      rank real sidewalk volume, but validation/pedestrian_counts.py now READS
+      THE TABLE instead of pulling the feed (`source_field` stores DOT's
+      original column spelling per cell, so the wide shape is reconstructed
+      exactly and the harness's output is unchanged).
+      ADDRESS CONTEXT: `loci dot-counts address-context` UPDATEs
+      analysis.address.dot_point_id / dot_point_m / dot_latest_round /
+      dot_latest_am|md|pm -- nearest ON-STREET point, in STRAIGHT-LINE metres
+      (EPSG:32618), which is the one distance in this project that is not a
+      network distance and is therefore a lower bound on the walk. Context
+      only; it enters no score, grade or rank. The tabular id is cqsj-cfgu; the
       catalogue also publishes a map view `2de2-6x2h` which returns empty
       objects for every row.
       PER-WINDOW as of 2026-09-13: the three count windows are no longer summed
@@ -1056,6 +1088,63 @@ sources:
       is reported too, because a tie block is where a rank correlation hides.
       DOT counts WEEKDAYS, so the saturday and sunday dayparts have no
       counterpart here and are explicitly UNVALIDATED.
+
+  - id: nyc_dot_traffic_cameras
+    name: NYC DOT traffic cameras (NYCTMC public feed)
+    tier: city
+    city: nyc
+    role: control
+    status: verified
+    url: https://webcams.nyctmc.org/api/cameras
+    # NOT a Socrata dataset: a plain JSON array on DOT's own traffic-management
+    # host, so there is no `dataset_id` and the registry's CONTEXT.md drift
+    # check (which keys on dataset_id) does not apply. The CONTEXT.md 3.4 row
+    # exists anyway.
+    api: https://webcams.nyctmc.org/api/cameras
+    geography: point (signalised intersection)
+    temporal: {start: current, end: current, grain: snapshot}
+    cost: {amount: 0, unit: total}
+    fields: [id, name, latitude, longitude, area, isOnline, imageUrl]
+    bias: >
+      THE SITING IS THE BIAS. These are traffic-management cameras at
+      SIGNALISED INTERSECTIONS on ARTERIALS, chosen to watch vehicle queues --
+      not a sample of retail streets. Manhattan 376, Queens 208, Brooklyn 204,
+      Staten Island 100, Bronx 81: that gradient is DOT's operational one, not
+      the city's, and a quiet residential block or a mid-block storefront has
+      no camera and never will. ANGLES VARY AND ARE UNPUBLISHED: no bearing, no
+      field of view, no height, no lens, so a person count from a frame is a
+      count on an unknown and non-constant catchment -- not comparable between
+      cameras without per-camera calibration, and not comparable over time at
+      one camera if it is ever re-aimed (which happens, unannounced). The
+      published position is the POLE, not the view. SOME ARE OFFLINE: the
+      `isOnline` flag is the STRING 'true'/'false' and read true on 969 of 969
+      cameras at verification, which is not a plausible steady state for 969
+      outdoor cameras -- treat it as "published", never as "returning frames",
+      and expect 404s, timeouts and grey no-signal cards regardless. Night,
+      rain on the lens, a stopped truck and a scaffold all suppress detections
+      without suppressing the camera: an absence of detected people is never
+      evidence of an absence of people. The registry itself moves with no
+      changelog and no vintage.
+    notes: >
+      THE CAMERA REGISTRY, NOT THE FRAMES. `loci dot-cameras ingest` writes
+      staging.dot_camera (camera_id, name, lon, lat, image_url, is_online,
+      area, borough, fetched_at) -- one row per public camera, whole-table
+      DELETE/INSERT because the feed is a full snapshot with no vintage.
+      VERIFIED 2026-09-13: GET returns 200 application/json, 969 objects, keys
+      exactly {id, name, latitude, longitude, area, isOnline, imageUrl}, ids
+      unique, all coordinates inside the NYC envelope. The image URL
+      (https://webcams.nyctmc.org/api/cameras/<id>/image) needs NO auth, no
+      Referer and no cookie: 200 image/jpeg, ~23 KB, `Cache-Control: no-store`
+      and NO Last-Modified or ETag, and nine fetches five seconds apart
+      returned nine DIFFERENT payloads -- the endpoint serves a near-live frame
+      per request and publishes no cadence, so a sampler's own fetch time is
+      the only timestamp of record (`loci dot-cameras probe` re-verifies this).
+      A frame SAMPLER (fetch + person detection) is built separately against
+      this contract; its per-frame observations are camera x timestamp and
+      belong in their own table, never as columns on the registry.
+      analysis.address.camera_id / camera_m carry the nearest camera in
+      STRAIGHT-LINE metres (`loci dot-counts address-context`) -- context only,
+      entering no score, grade or rank.
 
   - id: mta_bus_gtfs
     name: MTA Bus GTFS static (stops)

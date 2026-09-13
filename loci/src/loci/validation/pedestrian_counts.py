@@ -50,68 +50,49 @@ separator and the PM spelling move between rounds. `parse_round` resolves them
 from the feed's own field names and `latest_round` picks the most recent, so a
 new round needs no edit here; a hard-coded 'may26_pm' would have silently
 become stale (and 'may_22_pm' never existed at all).
+
+THE FEED IS NO LONGER PULLED HERE -- IT IS READ FROM THE WAREHOUSE
+---------------------------------------------------------------------------
+This file used to fetch cqsj-cfgu live on every run and keep only the latest
+round, throwing nineteen years of counts away each time. The source is now
+INGESTED (`staging.dot_pedestrian_count`, sources/cities/nyc/dot_pedestrian.py,
+`loci dot-counts ingest`) and this harness reads that table instead.
+
+Nothing else changed. `wide_rows_from_db` hands back the feed's own WIDE shape,
+DOT's original column spellings included (they are stored per cell as
+`source_field`), so `on_street_counts` below cannot tell the difference and
+this command's output is identical to what it printed when it pulled. The
+parser itself now has ONE definition, in the source module, and is re-exported
+here so existing importers keep working.
+
+An un-ingested database RAISES rather than correlating zero points.
 """
 from __future__ import annotations
 
-import re
+# The parser and the vocabulary live with the SOURCE now (one definition, not
+# two) and are re-exported so `from loci.validation.pedestrian_counts import
+# parse_round` keeps working.
+from loci.sources.cities.nyc.dot_pedestrian import (  # noqa: F401
+    DATASET_ID,
+    ENDPOINT,
+    MAX_ON_STREET_LOC,
+    PERIODS,
+    latest_round,
+    parse_round,
+    wide_rows_from_db,
+)
 
-import requests
-
-DATASET_ID = "cqsj-cfgu"
-ENDPOINT = "https://data.cityofnewyork.us/resource/cqsj-cfgu.json"
 TIMEOUT = 120
 
-#: `loc` values above this are bridge midpoints, not street locations.
-MAX_ON_STREET_LOC = 100
 
-#: The three count periods. A round is usable only if all three are present.
-PERIODS = ("am", "md", "pm")
+def fetch_points(con, limit: int | None = None) -> list[dict]:
+    """Every count point, in the feed's WIDE shape, FROM THE WAREHOUSE.
 
-_MONTHS = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "june": 6, "jun": 6,
-           "july": 7, "jul": 7, "aug": 8, "sept": 9, "sep": 9, "oct": 10,
-           "nov": 11, "dec": 12}
-
-_FIELD_RE = re.compile(
-    r"^(?P<mon>jan|feb|mar|apr|may|june|jun|july|jul|aug|sept|sep|oct|nov|dec)"
-    r"_?(?P<yy>\d{2})_?(?P<per>am|md|pm|p_m)$")
-
-
-def parse_round(field: str) -> tuple[int, int, str] | None:
-    """'may26_md' -> (2026, 5, 'md'); 'may_22_p_m' -> (2022, 5, 'pm');
-    anything else -> None."""
-    m = _FIELD_RE.match(field.strip().lower())
-    if not m:
-        return None
-    per = m.group("per").replace("_", "")
-    return 2000 + int(m.group("yy")), _MONTHS[m.group("mon")], per
-
-
-def latest_round(rows: list[dict]) -> tuple[int, int]:
-    """The (year, month) of the most recent round for which AM, MD and PM all
-    appear somewhere in `rows`. A round published with only one period (it
-    happens mid-release) would otherwise silently become the denominator."""
-    seen: dict[tuple[int, int], set[str]] = {}
-    for r in rows:
-        for f in r:
-            p = parse_round(f)
-            if p:
-                seen.setdefault((p[0], p[1]), set()).add(p[2])
-    full = [k for k, v in seen.items() if set(PERIODS) <= v]
-    if not full:
-        raise RuntimeError(
-            f"{ENDPOINT}: no round in the feed carries all of {PERIODS}; the column "
-            f"naming has changed shape and the count cannot be assembled.")
-    return max(full)
-
-
-def fetch_points(limit: int = 1000) -> list[dict]:
-    """Every row of cqsj-cfgu. RAISES on an empty return."""
-    resp = requests.get(ENDPOINT, params={"$limit": limit}, timeout=TIMEOUT)
-    resp.raise_for_status()
-    rows = resp.json()
-    if not rows:
-        raise RuntimeError(f"{ENDPOINT}: returned no rows.")
-    return rows
+    RAISES if `staging.dot_pedestrian_count` is empty -- that is an
+    un-ingested database, not a city nobody counted, and a zero-point
+    correlation is exactly the silent failure this project refuses.
+    """
+    return wide_rows_from_db(con, limit=limit)
 
 
 def _field_for(rows: list[dict], year: int, month: int, period: str) -> str | None:
@@ -317,7 +298,7 @@ def run_validation(con, radius_m: float | None = None, months: int = 3,
     Returns (DataFrame, report). Writes nothing, anywhere."""
     from loci.sources.cities.nyc import mta_ridership as mr
 
-    rows = fetch_points()
+    rows = fetch_points(con)
     year, month = latest_round(rows)
     pts, rep = on_street_counts(rows, year, month)
     df, srep = measure_at_points(con, pts, radius_m=radius_m, months=months,
