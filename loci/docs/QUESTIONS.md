@@ -116,6 +116,13 @@ claim stands on.
 - **Why it matters:** Each category's grade needs to account for which neighbors' presence should be predictive of this one. Partial correlations sorted by R² inform which categories are supply-independent (stand-alone risk) vs demand-dependent (predictable from peers).
 - **Current answer:** Manhattan is saturated (8/15 categories at 100% presence), structure is identified off Brooklyn; hair↔nails partial r 0.65; food block (restaurant/cafe/bodega/bar); hardware↔grocery 0.50; bank↔tailor pair alone; laundry↔bodega/cafe; zero significant negative pairs. The five categories with most absences (laundry, bar, tailor, bank, bodega) are worst-predicted (pseudo-R² 0.18–0.39) — their absence is not conspicuous given neighbors; hardware (R² 0.53) and cafe (0.39) best-conditioned. Use as a grade input (expected presence), not a finder; re-run once the supply set is settled.
 
+### M12 — Does an 800 m or distance-decay transit variable stop being binary in Brooklyn, and does it beat homes_400m at the quiet end of the distribution? · *graduation test for D76*
+- **Status:** open
+- **Answered by:** (not ticketed) — GTM-147
+- **Why it matters:** transit_entries_400m and jobs_400m shipped as card-context only (D76, GTM-147) because the Brooklyn-only DOT validation ρ is 0.56 with a CI floor of 0.14, and a binary any-station-within-400m flag alone already accounts for most of the correlation — the variable barely varies where it matters most (65% of Brooklyn addresses read zero). Until a wider radius or a distance-decay kernel produces real variation in Brooklyn, the column cannot be trusted to distinguish a genuinely busy corner from a genuinely quiet one, which is a precondition for entering any grade section.
+- **Fails if:** the 800 m / distance-decay rebuild does not clear all three D76 graduation criteria (≥100 non-corridor validation points, Brooklyn-only ρ ≥ 0.6 with CI lower bound > 0.4, non-degenerate variance) — in which case foot traffic stays card-context indefinitely, not just until the next attempt.
+- **Current answer:** Open. Blocks any future grade-section proposal for transit/jobs.
+
 ### Tier D · Descriptive — what is where
 
 ### D1 — How complete is the daily-needs bundle within a 10-minute walk across NYC, and how is completeness distributed?
@@ -262,6 +269,13 @@ claim stands on.
 - **Current answer:** — (owner direction 2026-09-13: "rank by density" — interpreted as households per km² within the walk-shed, pending the owner's confirmation; D75 next action 2.)
 - **Unblocks:** E4 · Validation and Artifact
 
+### D19 — Should `chains.loci_category` feed the `loci recommend` card as a "brand X opening nearby" line, and is that context or evidence?
+- **Status:** open
+- **Answered by:** (not ticketed) — GTM-148
+- **Why it matters:** The chains watchlist (D77, GTM-148) identifies growing brands and where they already operate; a "brand X opening nearby" line would be the most legible single fact on a recommend card. But the same mistake that foot-traffic proxies avoided (D76) is available here too: a chain's siting decision could be read as demand evidence when it may just be the chain's own real-estate strategy (lease terms, a corporate rollout schedule) — closer to the age-fit "supply-revealed" caveat than to an independent demand signal.
+- **Fails if:** the line is added as a load-bearing grade section before the chains watchlist has a growth measure (a snapshot delta, per D77) to point to — a raw brand-count with no trend is exactly the "context, not evidence" mistake D76 was written to prevent.
+- **Current answer:** Open; decide only after the 2026-10 chains snapshot exists (D77 next action).
+
 ### Tier X · Explanatory — conditional structure, no temporal claim
 
 ### X1 — How much DNCI variation is explained by density, income, transit and commercial zoning capacity?
@@ -357,6 +371,13 @@ claim stands on.
 - **Fails if:** Q5 not separating from Q1 beyond bootstrap CI; separation already present at τ=−4; not beating persistence baseline; **KILL CHECK (verified 2026-09-09):** no storefront opening/closing time series exists in Loci. Only foursquare_os_places has opened_on (109k rows; 2010 spike is Foursquare's launch, not storefronts). nys_sla_liquor_licenses has opened_on only for recent licences (3,205 rows, 2023-09→2026-09). overture, dohmh, dos, snap, dcwp_inspections have no opened_on. No source has closed_on. Conclusion: Loci has no storefront opening/closing time series; the one-session MVA cannot run until inactive/expired DCWP licences, full historical SLA licences, and raw DOHMH history are ingested (Increment-2 work, not an MVA).
 - **Current answer:** Exploratory only, pending full historical licensing ingest (see *Fails if* above). T5 (gap closure over 2002–2023) and T6 (retail vs rooftop lead/lag) map longer horizons. Timing catalysts from O5: catalyst→construction ~5–9 yr, catalyst→demographic ~10–20 yr (market-rate only). LODES panel issue: registry.yaml describes lodes_wac as annual 2002–2023, but analysis.hex_panel holds only three vintages (2002, 2013, 2023; ~11.5k hex rows each); cannot resolve a 1–3 year lag. Registry mismatch flagged for docs/CHECKPOINT decision log. Literature synthesis: Li 2022 JEG (effects within ~500 ft, 1–3 yr, modest), Asquith/Mast/Reed 2023 REStat (amenity effect too small to offset rent), Glaeser/Luca/Moszkowski 2023 (gentrifying tracts show faster entry AND exit), HR&A 2024 + NYC Comptroller 2024 (churn > net growth; post-COVID glut). **Contrarian caveats to carry (2026-09-09, Opus review):** (a) survivor truncation in opened_on series manufactures clean event-time separation under the null (gentrifying hexes have higher exit rates); (b) licence date ≠ opening date, lag longer for new construction, biasing estimated lag toward zero where treatment is; (c) "flat count, more profitable" unfalsifiable with survival/LODES/ZBP proxies — needs lease comps, taxable sales, or foot-traffic panel; (d) stage rule (permit→open by CO+18 mo) asserted, not estimated — needs issued-permit→CO survival curve + out-of-sample horse race (stage-s pipeline at t predicting openings at t+k, ≤2016 train / 2017–23 test, vs baselines, by category); (e) hex-year panel conflicts with address-level directive; narrowest charter-consistent framings are a demand-pool covariate (units under construction / recently CO'd within reach) or a timing annotation on ranked gap addresses. **Provisional planner heuristic (unvalidated):** permit issued → underwrite for daily-needs; operating by CO+18 mo → demand arrives; 50–60% leased across ≥2 buildings → signal for restaurants/fitness. Subsumes T6's focus on magnitude, lag, and pipeline-stage forecast skill. 2026-09-09: pipeline layer built (CHECKPOINT D62) — units permitted / completed within 400 m and nearest ≥50-unit project now sit on every MN+BK address and on the map; investor review (same day) found the rooftops→retail lag is a rational landlord option, not a friction, so T7's causal increments stay unbuilt and the pipeline is a timing annotation only. 2026-09-10: the DOF Storefront Registry is ingested (CHECKPOINT D67) — vacancy exposure now sits on every MN+BK address; still no opening/closing series, so T7's increments remain gated.
 
+### T8 — Do chain opening pipelines lead category gap closure — is the chains watchlist a leading indicator of supply?
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** (not ticketed) — GTM-148, needs the chains snapshot delta
+- **Fails if:** brand openings from the watchlist show no lead relationship to `analysis.address_gaps` category closure — e.g. a category's gap count in an area does not fall more often in the months following a watchlist brand's opening nearby than in a matched control period/area. Also fails if the relationship is only visible because both series move with general neighbourhood growth (the D1 endogeneity trap in a new costume — same shape as the transit/supply correlation D76 found).
+- **Current answer:** Untestable until a second chains snapshot exists (D77) — one snapshot gives a count, not a delta, and this question is specifically about the delta's timing relative to gap closure. Shares T7's structural problem: no address-level opening/closing time series exists for most categories, so the chains watchlist (which does carry approximate first-seen dates for ~60% of brand-locations, D77) may end up as the closest thing Loci has to that series, category coverage permitting.
+
 ### Tier C · Causal — deferred; requires identification
 
 ### C1 — Does adding daily-needs retail to a transit-rich, underserved hex *cause* residential growth?
@@ -371,7 +392,7 @@ claim stands on.
 - **Prediction:** —
 - **Answered by:** `Foot-traffic outcome`
 - **Fails if:** foot-traffic data is unaffordable within the ~$400 headroom after the validation sample is enlarged, which has priority.
-- **Current answer:** Phase 5, budget-dependent.
+- **Current answer:** Phase 5, budget-dependent. **Budget premise superseded 2026-09-13 (D76):** the ~$200–400/yr assumption in CONTEXT.md §3.5 is stale — in 2026 Advan via Dewey Data is $3,600/yr and academic-only, Placer.ai/Replica/Cuebiq are enterprise-only with no published price, and MTA turnstile data (the free legacy alternative) is discontinued. Free proxies (transit_entries_400m, jobs_400m) were built instead (D76) and validate at ρ +0.79 headline / +0.56 [0.14, 0.83] Brooklyn-only — good enough for card context, not for this question. The behavioural-outcome question itself — does foot traffic move before residence does — stays deferred: a card-context correlate at one point in time says nothing about lead/lag, which is what C2 actually asks.
 
 ### C3 — Does the pattern generalize beyond NYC?
 - **Status:** deferred
@@ -618,6 +639,11 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Status:** open
 - **Unblocks:** E1 · Ingest and Grid
 - **Current answer:** — (71k restaurant pairs sit within 25 m across sources with non-matching names, e.g. DOHMH "Bronx Burger Company" vs Overture "Peter Dorcas Ventures Inc". Some are food halls and shared addresses; some are legal-name vs trade-name for one establishment. Sample 50 by hand; if most are the same business, dedup needs an address-level merge for anchor sources, and every count-based result is inflated.) 2026-09-05: of 24,908 restaurant pairs within 15 m, 0.09% share a normalized name; cross-source naming is not the dominant duplication driver (see H-D5, CHECKPOINT D36).
+
+### H-D12 — Is there any public per-entrance transit volume to replace the even split across station entrances?
+- **Status:** open
+- **Unblocks:** E2 · Access Engine
+- **Current answer:** — (D76 splits MTA hourly ridership entries evenly across every entry-allowed entrance at a complex, which is wrong at 59.7% of entries — the share landing at complexes with ≥6 entrances, where one busy entrance and five quiet ones read identically. Candidates to check: MTA OMNY reader-level tap data (per-turnstile, not per-complex, if published), ADA entrance usage/elevator counts as a partial per-entrance proxy, or MTA's own entrance-level ridership estimates if any exist beyond the complex-level hourly feed. If none is public, the 800 m / distance-decay graduation test (M12) has to proceed with the even-split bias disclosed rather than fixed.)
 
 ### Methods & stats
 
