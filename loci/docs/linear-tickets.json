@@ -1538,6 +1538,16 @@
       "Labels": "ingest,score,rigor",
       "Project": "Loci",
       "Milestone": "E1 \u00b7 Ingest and Grid"
+    },
+    {
+      "Title": "Site-revenue model v0: CEX spend pool \u00d7 fitted capture share, leakage calibrated to Economic Census county receipts, gated by a leave-one-ZIP-out backtest \u2014 restaurant alone ships",
+      "Description": "Owner: 'can we try to predict what a business could make?' Anchors verified before building (Economic Census 2022 county \u00d7 NAICS is the finest public revenue truth; CEX national spend by income quintile; NY-metro rebase; trade benchmarks not trusted without census check). Model: src/loci/model/revenue.py with Huff-model capture share (distance decay \u03b2 and competition elasticity \u03b3), fitted per leave-one-ZIP-out fold with sign free \u2014 the textbook negative sign was WRONG for 7 of 10 categories at ZIP grain (incumbents proxy 'is this a retail street?'), a result not a bug; leakage \u03bb per county to match EC receipts (\u03bb_Kings vs \u03bb_NY disagree 1.4\u20132.6\u00d7, both carried). Gate: out-of-sample Spearman against CBP employees per establishment must beat county-baseline AND homes-only baseline AND cross-category placebo. Result on MN+BK 281,842 addresses after D75/D78: RESTAURANT alone passes \u2014 \u03c1_oos 0.763, R\u00b2 0.577, \u03b2 0.50, \u03b3 \u22120.25 (stable 65/73 folds), placebo pass; caf\u00e9/grocery/hair/nails/pharmacy beat baselines but fail placebo (commercial intensity); laundry/convenience/bar fail baselines; fitness too sparse. Grades modelled category C ('uncalibrated to local P&Ls'), never higher. Gowanus core restaurant revenue p25/p50/p75 $1.08M / $1.67M / $2.66M (1.81\u00d7 Kings avg), rent ceiling $11.2k/mo. Caveats: county-level blur, national CEX, no edge-shed households, \u03bb has no OOS test, backtest on establishment count only, parameter bands not outcome dispersion. 884 tests passed / 1 skipped / 1 concurrent rebuild lock failure. Commits efae213 (code), d7387dd (calibration + card). Done 2026-09-13 (CHECKPOINT D81). Pushed to Linear 2026-09-13 as GTM-150.",
+      "Status": "Done",
+      "Priority": 2,
+      "Estimate": 8,
+      "Labels": "model,rigor,validation",
+      "Project": "Loci",
+      "Milestone": "E4 \u00b7 Validation and Artifact"
     }
   ]
 }

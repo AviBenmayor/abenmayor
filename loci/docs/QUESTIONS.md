@@ -276,6 +276,13 @@ claim stands on.
 - **Fails if:** the line is added as a load-bearing grade section before the chains watchlist has a growth measure (a snapshot delta, per D77) to point to — a raw brand-count with no trend is exactly the "context, not evidence" mistake D76 was written to prevent.
 - **Current answer:** Open; decide only after the 2026-10 chains snapshot exists (D77 next action).
 
+### D20 — Can site revenue be predicted from public data well enough to grade the economics of a recommendation?
+- **Status:** answered
+- **Prediction:** —
+- **Answered by:** Site-revenue model v0 (D81, GTM-150): CEX spend pool × fitted capture share, leakage calibrated to Economic Census 2022 county receipts, gated by a leave-one-ZIP-out backtest and cross-category placebo.
+- **Fails if:** —
+- **Current answer:** Restaurant alone passes the gate — ρ_oos 0.763, R² 0.577, β 0.50, γ −0.25 (agglomerative, 65 of 73 folds stable), placebo pass — and grades C on the recommendation card ("modelled, uncalibrated to local P&Ls"). Nine other categories honestly not modelled: café/grocery/hair/nails/pharmacy beat baselines but fail placebo (commercial intensity proxy); laundry/convenience/bar fail baselines; fitness too sparse. Gowanus core restaurant revenue p25/p50/p75 $1.08M / $1.67M / $2.66M (1.81× Kings county average); rent ceiling $11.2k/mo vs one local comp $7.3k/mo (1.53×). Caveats: county anchors blur Park Slope with Gowanus; CEX quintiles are national; the MN+BK-only universe drops edge-shed households; λ (leakage) is right by construction with no out-of-sample test; backtest target is establishment count, a revenue proxy only if per-employee revenue is flat within category; a model output is never an operator forecast, and C is the highest grade a modelled category can earn — real P&Ls are the only path to B.
+
 ### Tier X · Explanatory — conditional structure, no temporal claim
 
 ### X1 — How much DNCI variation is explained by density, income, transit and commercial zoning capacity?
