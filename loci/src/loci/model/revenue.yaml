@@ -1,0 +1,280 @@
+# Site-revenue model v0 -- THE SPEC (hand-maintained input config).
+# The GENERATED output of `loci revenue fit` is revenue_calibration.yaml, a
+# different file; never hand-edit that one, never generate this one.
+#
+# Every equation this file parameterises is stated in full in the module
+# docstring of src/loci/model/revenue.py. The short form:
+#
+#   q(a)      = quintile of the address's tract median_hh_income
+#   E_c(a)    = cex_line_quintile[line_c][q] * share_c * ny_msa_ratio_c
+#   Pool_c(a) = homes_400m(a) * E_c(a)
+#   K_r(beta) = E[d^-beta | d in ring r]  (uniform annulus, inner edge floored)
+#   Dnm_c(a)  = sum_r n_r(a,c) * K_r(beta_c)
+#   s_c(a)    = 1 / (1 + Dnm_c(a) / K_self(beta_c))
+#   Rev_c(a)  = lambda_c * Pool_c(a) * s_c(a)
+#   rent_ceiling = Rev_c(a) * benchmarks.yaml occupancy_cost_ratio[c]
+#
+# WHAT lambda ABSORBS, AND WHY THE SPEND LEVELS BELOW MATTER LESS THAN THEY LOOK.
+# lambda_c is fitted so the MEAN predicted revenue over the county's existing
+# establishments equals the Economic Census mean revenue per establishment. It
+# is one positive scalar per (category, county), so ANY constant multiplicative
+# error in E_c -- a CEX line that is broader than the category (fitness's "Fees
+# and admissions"), a blended estimate with no CEX line at all (convenience), a
+# share split that is a carryover guess (bar's 65.3%) -- is absorbed exactly and
+# leaves the ranking of sites untouched. What lambda CANNOT absorb, and what the
+# model therefore genuinely asserts, is (1) the INCOME GRADIENT of the category
+# across quintiles and (2) the SPATIAL distribution of households and
+# incumbents. Those two are what the ZIP backtest tests, and they are the only
+# claims a passing gate licenses.
+version: 1
+model_version: "revenue-v0"
+
+# --------------------------------------------------------------- categories
+# v0 models a category only where BOTH a CEX line (or documented blend) and an
+# Economic Census county cell exist. Everything else is benchmark-only and must
+# keep grade D.
+modelled: [laundry, restaurant, cafe_bakery, bar, convenience, grocery,
+           hair_barber, nails_beauty, fitness]
+# Modelled but FLAGGED: NAICS 446110 is entirely absent from the 2022 vintage of
+# ecnbasic at every geography including us:1 (verified 2026-09-13, not an NYC
+# suppression), so the anchor is EC 2017 and the vintage mismatch travels with
+# every number. Pharmacy revenue is also overwhelmingly third-party-payer Rx,
+# not household out-of-pocket -- spend.yaml already flags `reliable: false`.
+flagged: [pharmacy]
+# No CEX line worth the name AND/OR no household-budget analogue at all. These
+# stay "benchmark-only, not modelled" in v0 and their economics section keeps
+# grade D. hardware HAS an EC cell (444140) but no usable CEX line; childcare,
+# bank and clinic have neither; tailor_repair shares one CEX line with laundry
+# and has no isolable NAICS.
+benchmark_only: [childcare, bank, clinic, hardware, tailor_repair]
+
+# ------------------------------------------------------------------ the CEX
+# Table 1101 (national, by income quintile) supplies the SHAPE; Table 3004 (New
+# York MSA, no quintile cut) supplies the LEVEL. No BLS table crosses metro and
+# quintile simultaneously, so the rebase is multiplicative and flat across
+# quintiles -- an assumption, stated: the NY/national spend ratio is taken to be
+# the same in every quintile.
+#
+# The quintile columns are REAL published Table 1101 columns, read from
+# data/raw/bls/table1101_2024_national.csv. They are used in preference to
+# spend.yaml's single-figure + `income_elasticity` approximation, which is an
+# affine fit to these same columns (for Food at home it misses q1 by 14%).
+# spend.yaml's elasticity form remains the documented fallback for any category
+# whose CEX line is not in Table 1101 -- today only `convenience`.
+cex:
+  table_1101_csv: data/raw/bls/table1101_2024_national.csv
+  table_3004_csv: data/raw/bls/table3004_2023-2024_msa.csv
+  quintile_columns: [q1_lowest20, q2, q3, q4, q5_highest20]
+  # Real 2024 Table 1101 "Lower limit" row -- identical to spend.yaml's, and a
+  # test asserts they stay identical so the two models cannot bin income
+  # differently.
+  quintile_income_breaks_usd: [29932, 57452, 94511, 155925]
+  moe_z90: 1.645
+
+# share_of_line: the fraction of the CEX line attributed to the category.
+# ny_msa_line: the Table 3004 row used for the rebase (null -> ratio 1.0,
+#   `source: national`, because that line does not survive the MSA rollup).
+# Both are lifted from spend.yaml's already-documented allocations rather than
+# invented here; a test asserts share_of_line * national_line reproduces
+# spend.yaml's `annual_spend_national` (or `annual_spend` where it is national).
+categories:
+  grocery:
+    cex_line: "Food at home"
+    share_of_line: 1.0
+    ny_msa_line: "Food at home"
+    naics: ["445110"]
+    note: "Definitional on both sides."
+  restaurant:
+    cex_line: "Food away from home"
+    share_of_line: 0.75
+    ny_msa_line: "Food away from home"
+    naics: ["722511", "722513"]
+    note: "75% of food-away-from-home to full+limited service, per spend.yaml."
+  cafe_bakery:
+    cex_line: "Food away from home"
+    share_of_line: 0.15
+    ny_msa_line: "Food away from home"
+    naics: ["722515"]
+    note: >
+      311811 (retail bakeries) returns HTTP 204 at county grain in ecnbasic
+      2022 -- verified 2026-09-13 -- so the anchor is the coffee-shop code
+      722515 alone and standalone bake shops are outside it. The CEX side
+      still carries 15% of all food away from home, so lambda_cafe_bakery
+      absorbs a denominator that is narrower than its numerator.
+  bar:
+    cex_line: "Alcoholic beverages"
+    share_of_line: 0.653
+    ny_msa_line: "Alcoholic beverages"
+    naics: ["722410"]
+    note: >
+      The 65.3% away-from-home share is an UNVERIFIED carryover from
+      spend.yaml, not a BLS figure -- CEX publishes no at-home/away split for
+      alcohol. Absorbed by lambda in level; the risk it carries is that the
+      away-from-home share almost certainly RISES with income, so the quintile
+      gradient here is understated.
+  hair_barber:
+    cex_line: "Personal care products and services"
+    share_of_line: 0.35
+    ny_msa_line: "Personal care products and services"
+    naics: ["812111", "812112"]
+    note: "812112 (beauty salons) sits here, not in nails_beauty -- see zbp_naics.yaml."
+  nails_beauty:
+    cex_line: "Personal care products and services"
+    share_of_line: 0.25
+    ny_msa_line: "Personal care products and services"
+    naics: ["812113"]
+  laundry:
+    cex_line: "Other apparel products and services"
+    share_of_line: 0.5159     # = spend.yaml's 130 / the real 2024 line value 252
+    ny_msa_line: null
+    naics: ["812310", "812320"]
+    note: >
+      One CEX line covers laundry sent out, dry cleaning, alterations and
+      clothing storage together; the 0.516 split against tailor_repair is
+      spend.yaml's prior, not a BLS figure. The NAICS side spans coin-op
+      (812310) and non-coin (812320) because the CEX line spans both.
+  fitness:
+    cex_line: "Fees and admissions"
+    share_of_line: 1.0
+    ny_msa_line: null
+    naics: ["713940"]
+    note: >
+      "Fees and admissions" covers cinemas, sporting events and museum
+      admissions as well as gyms. lambda absorbs the level; what survives is
+      the assumption that gym spend has the same income gradient as the whole
+      recreation-admissions line, which is the steepest gradient in Table 1101
+      (q5/q1 = 12.9x vs 2.4x for food at home). Treat fitness's quintile
+      response as the least trustworthy of the nine.
+  convenience:
+    cex_line: null            # no CEX line exists; elasticity fallback
+    fallback_annual_spend: 700
+    fallback_income_elasticity: 0.20   # both from spend.yaml, unchanged
+    share_of_line: 1.0
+    ny_msa_line: null
+    naics: ["445131"]         # NAICS 2022 renumbering of 445120
+    note: >
+      The only modelled category with no CEX line at all. Spend is
+      spend.yaml's blended 700 scaled by its documented elasticity form
+      against the same quintile income index, so the gradient here is a
+      MODELLING CHOICE (elasticity 0.20) rather than a measurement.
+  pharmacy:
+    cex_line: "Drugs"
+    share_of_line: 1.0
+    ny_msa_line: null
+    naics: ["446110"]
+    ec_vintage: 2017          # the flag: see `flagged` above
+    note: >
+      Out-of-pocket drug spend is a small and non-representative slice of a
+      pharmacy's revenue (third-party Rx reimbursement dominates), so lambda
+      here is very large and is doing structural work, not calibration.
+      Reported, never promoted out of `flagged`.
+
+# ------------------------------------------------------- Economic Census
+ec:
+  dataset: "https://api.census.gov/data/{year}/ecnbasic"
+  default_vintage: 2022
+  cache_dir: data/raw/ec
+  counties: {Kings: "047", "New York": "061"}
+  state: "36"
+  # county FIPS -> the borough code analysis.address uses
+  borough_of: {"047": BK, "061": MN}
+
+# ------------------------------------------- CBP 2023 -- the backtest target
+cbp:
+  dataset: "https://api.census.gov/data/{year}/cbp"
+  year: 2023
+  cache_dir: data/raw/cbp
+  naics_vintage: NAICS2017    # the variable is named NAICS2017 even in 2023
+  # EMPSZES band -> representative employees per establishment. Midpoints, and
+  # for the open-ended top band a convention, not a measurement.
+  band_midpoints:
+    "210": 2.5      # < 5
+    "220": 7.0      # 5-9
+    "230": 14.5     # 10-19
+    "241": 34.5     # 20-49
+    "242": 74.5     # 50-99
+    "251": 174.5    # 100-249
+    "252": 374.5    # 250-499
+    "254": 749.5    # 500-999
+    "260": 1500.0   # 1,000+ (convention)
+  # A (zip, naics) cell whose size bands account for less than this fraction of
+  # its own "001" total has suppressed rows and is DROPPED, not imputed.
+  min_band_coverage: 0.80
+  min_estab_per_zip: 3        # fewer than this and emp/estab is one or two shops
+
+# ------------------------------------------------------------- the geometry
+huff:
+  # Ring edges in NETWORK metres. The sweep runs ONCE at the outermost edge and
+  # every ring is read off the same distance matrix, so the ring count is free.
+  ring_edges_m: [0, 100, 200, 300, 400, 600, 800]
+  # Incumbents beyond the last edge are TRUNCATED, not decayed to zero: at
+  # beta = 2 a competitor at 1,200 m carries 0.7% of the pull of one at 100 m,
+  # so the truncation error is small and one-signed (shares are biased UP).
+  d_floor_m: 50.0             # = spend.yaml's huff_min_distance_m
+  # beta is FITTED, never assumed. This is the search grid.
+  beta_grid: [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3.0]
+  # gamma, the NET COMPETITION ELASTICITY, is also fitted:
+  #   s = (1 + D/K_self) ** -gamma
+  # gamma = 1 is textbook Huff (one of n+1 stores); gamma = 0 removes the
+  # competition term entirely; gamma < 0 says AGGLOMERATION DOMINATES -- more
+  # nearby establishments means a bigger business, because a retail corridor
+  # draws demand a closed walk-shed cannot see.
+  #
+  # DISCLOSURE, because it matters for how the reported skill should be read:
+  # the gamma grid was added AFTER an in-sample ablation of the pre-registered
+  # gamma = 1 form showed the capture share correlating NEGATIVELY with the
+  # backtest target in 7 of 10 categories (restaurant -0.81, bar -0.74,
+  # fitness -0.74, cafe_bakery -0.72, hair_barber -0.65, nails_beauty -0.62,
+  # laundry -0.33). That is consistent with D70's ZIP-grain finding -- nothing
+  # clusters, but a ZIP-grain incumbent count is partly a proxy for "is this a
+  # retail street". BOTH beta and gamma are re-selected INSIDE every
+  # leave-one-ZIP-out fold, so the reported out-of-sample skill is honest
+  # CONDITIONAL ON THIS GRID; the grid itself was chosen with one look at the
+  # full sample, and that residual specification-search bias is not removable
+  # without a fresh city.
+  gamma_grid: [-0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0]
+  # The demand pool is the 400 m walk-shed -- the one "within reach" distance
+  # the whole project pins (score/access.THRESHOLDS[5]). homes_800m is computed
+  # and stored because it falls out of the same sweep for free, but it enters
+  # NO equation in v0.
+  pool_radius_m: 400.0
+
+# ------------------------------------------------------------------ the gate
+# A category ships only if it beats BOTH baselines out of sample. Otherwise it
+# is "not modelled", its revenue columns stay NULL, and its card keeps grade D.
+gate:
+  # Leave-one-ZIP-out: beta and lambda are refitted on the other ZIPs, the held
+  # out ZIP is predicted, and the skill below is measured on the accumulated
+  # held-out predictions only.
+  min_zips: 15
+  min_spearman: 0.20
+  # Baseline 1: the county's EC revenue per establishment -- no site
+  # information whatsoever, constant within a county.
+  # Baseline 2: homes_400m alone -- demand pool with no spend gradient and no
+  # competition.
+  must_beat: [county_average, homes_only]
+  # Beating by a hair is not beating: the model's Spearman must exceed each
+  # baseline's by at least this.
+  spearman_margin: 0.05
+  # Placebo: category c's model must predict c's own employees/establishment
+  # better than it predicts any OTHER modelled category's. A model that tracks
+  # every category equally well is tracking generic density, not this business.
+  placebo: cross_category_own_beats_others
+
+# ------------------------------------------------------------- uncertainty
+# The p25/p75 band is multiplicative and lognormal: p{25,75} = p50 *
+# exp(-/+ 0.6745 * sigma_log), sigma_log^2 = sigma_lambda^2 + sigma_income^2 +
+# sigma_beta^2. It is a PARAMETER band, not a prediction interval: it says
+# nothing about the dispersion of real store outcomes around the model, which
+# is far wider and is not measurable without P&Ls.
+uncertainty:
+  # Disagreement between the two county lambdas, halved -- if Kings and New
+  # York County need different constants, neither is right for a third place.
+  lambda_from_county_spread: true
+  lambda_min_sigma: 0.20      # floor, even if the two counties happen to agree
+  # The tract median_hh_income MOE moves the address across quintile
+  # boundaries; sigma_income is half the log swing of E_c between income-1SE
+  # and income+1SE.
+  income_moe: true
+  # Spread of the LOZO-refitted betas, propagated through the share.
+  beta_from_lozo_folds: true

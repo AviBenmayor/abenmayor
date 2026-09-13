@@ -114,6 +114,11 @@ sections:
     b_level: borough           # >= n_comps_min at this level -> B
     thin_grade: C              # some comps, but under n_comps_min
     no_cash_flow_grade: D
+    # D76: a category with a SHIPPED, GATED site-revenue calibration reaches C
+    # without any comps -- "modelled, uncalibrated to local P&Ls". It can never
+    # reach B or A on the model alone: only real cash-flow comps do that, and
+    # C still makes "act" unreachable, so the D74 rule is untouched.
+    modelled_grade: C
 
   # 7. COVERAGE -- can we even see this category's supply? A category with no
   # qualifying registry anchor (D52) is counted out of aggregator data alone.

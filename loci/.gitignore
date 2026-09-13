@@ -26,3 +26,4 @@ data/*.duckdb
 
 # DuckDB backups taken before live rebuilds (D61 convention)
 data/*.duckdb.bak*
+data/*.duckdb.wal

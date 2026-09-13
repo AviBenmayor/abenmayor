@@ -270,13 +270,34 @@ def grade_space(facts: dict, rules: dict) -> tuple[str, str]:
                              f"never a listing; no rent or sqft exists")
 
 
-def grade_economics(comps: dict, rules: dict) -> tuple[str, str]:
-    """comps_for(). Today this is D everywhere: the listing collection 403'd
-    and n_comps is 0 for every (category, geography)."""
+def grade_economics(comps: dict, rules: dict, revenue: dict | None = None) -> tuple[str, str]:
+    """comps_for(), with the site-revenue model as the floor.
+
+    Real P&Ls (comps with cash flow) are the only evidence that reaches B or A,
+    and that is deliberate: nothing short of an operator's books tells you what
+    a business at this site actually clears. But a category with a SHIPPED,
+    GATED site-revenue calibration is no longer at "no evidence of economics"
+    either -- there is a modelled revenue range and a rent ceiling, calibrated
+    to the Economic Census county mean and shown out of sample to rank ZIPs
+    better than both baselines. That earns C ("modelled, uncalibrated to local
+    P&Ls"), never better, and the D74 rule that "act" needs >= B is untouched:
+    C still makes "act" unreachable.
+
+    A category whose calibration FAILED the gate, or that was never modelled at
+    all, gets nothing from this path and stays D.
+    """
     r = rules["sections"]["economics"]
     n = int(comps.get("n_comps") or 0)
     has_cash_flow = comps.get("cash_flow_p50") is not None
+    modelled = bool((revenue or {}).get("revenue_p50") is not None)
     if n == 0 or not has_cash_flow:
+        if modelled:
+            rev = revenue or {}
+            return r.get("modelled_grade", "C"), (
+                f"no cash-flow comps, but the site-revenue model ships for this "
+                f"category ({rev.get('revenue_model_version')}): median revenue "
+                f"${rev.get('revenue_p50'):,.0f}/yr over {rev.get('n_revenue_addresses', 0):,} "
+                f"addresses -- modelled, uncalibrated to local P&Ls")
         return r["no_cash_flow_grade"], (f"n_comps = {n}, no cash-flow data -- "
                                          f"rent_source '{comps.get('rent_source')}'")
     if n < r["n_comps_min"]:
@@ -348,7 +369,7 @@ def build_card(category: str, facts: dict, comps: dict, rules: dict) -> dict:
         "supply_thinness": lambda: grade_supply_thinness(merged, rules),
         "addressable_demand": lambda: grade_addressable_demand(category, merged, rules),
         "space": lambda: grade_space(merged, rules),
-        "economics": lambda: grade_economics(comps, rules),
+        "economics": lambda: grade_economics(comps, rules, cat_facts.get("revenue")),
         "coverage": lambda: grade_coverage(merged, rules),
     }
     sections: list[Section] = []
@@ -407,9 +428,11 @@ def _section_facts(key: str, category: str, m: dict, comps: dict, rules: dict) -
                 ("share_with_vacant", "vacant_storefronts_median", "storefronts_median",
                  "storefront_asof")}
     if key == "economics":
-        return {k: comps.get(k) for k in
-                ("n_comps", "level_used", "geo_value", "expected_revenue",
-                 "supportable_rent", "rent_source", "cushion", "cushion_basis")}
+        d = {k: comps.get(k) for k in
+             ("n_comps", "level_used", "geo_value", "expected_revenue",
+              "supportable_rent", "rent_source", "cushion", "cushion_basis")}
+        d["revenue"] = m.get("revenue")
+        return d
     if key == "coverage":
         return {k: m.get(k) for k in
                 ("anchor_qualifies", "anchor_coverage", "anchor_sources", "validation_rows")}
@@ -468,10 +491,16 @@ def area_facts(con, area: str, *, bbox=None, nta=None, boroughs=("MN", "BK"),
                eligible_only: bool = True, supply_set: str = "principled") -> dict:
     """Every number the seven sections need, for one area, in six queries.
 
-    Area-level statistics are MEDIANS over the area's eligible addresses
-    (shares and sums where a median would be meaningless), because each
-    address's 400 m catchment overlaps its neighbours' and a mean would be
-    dragged by whichever corner of the box happens to hold the most doorways.
+    Area-level statistics are MEDIANS over the area's addresses (shares and
+    sums where a median would be meaningless), because each address's 400 m
+    catchment overlaps its neighbours' and a mean would be dragged by
+    whichever corner of the box happens to hold the most doorways.
+
+    `eligible_only` is a NO-OP on any current run: D75 (2026-09-13, owner
+    ruling) retired the eligibility gate and `analysis.address.eligible` is
+    TRUE on every row. The predicate and the flag are kept so that a restored
+    pre-D75 database still answers the question it was asked; new code should
+    not reach for either.
     """
     from loci.model import density_elasticity as de
     from loci.model import supply_ratio as sr
@@ -491,7 +520,7 @@ def area_facts(con, area: str, *, bbox=None, nta=None, boroughs=("MN", "BK"),
                a.supply_ratio_supply_hash
         {base}""", p).fetchdf()
     if addr.empty:
-        raise ValueError(f"no eligible addresses in area {area!r}")
+        raise ValueError(f"no eligible addresses in area {area!r}")   # wording pinned by a test
 
     demo = con.execute(f"""
         SELECT median(d.median_hh_income) AS median_hh_income,
@@ -518,6 +547,26 @@ def area_facts(con, area: str, *, bbox=None, nta=None, boroughs=("MN", "BK"),
         FROM analysis.address_category c
         WHERE c.address_id IN (SELECT a.address_id {base})
         GROUP BY 1""", p).fetchdf().set_index("category")
+
+    # Site-revenue (D76): its own query, and TOLERANT of the columns being
+    # absent. A warehouse built before the revenue migration, or one where
+    # `loci revenue` has never run, must still produce a card -- it just
+    # produces one whose economics section stays at grade D, which is the
+    # honest reading of "no model has been applied here".
+    try:
+        revenue = con.execute(f"""
+            SELECT c.category,
+                   median(c.revenue_p25)  AS revenue_p25,
+                   median(c.revenue_p50)  AS revenue_p50,
+                   median(c.revenue_p75)  AS revenue_p75,
+                   median(c.rent_ceiling) AS rent_ceiling,
+                   count(c.revenue_p50)   AS n_revenue_addresses,
+                   max(c.revenue_model_version) AS revenue_model_version
+            FROM analysis.address_category c
+            WHERE c.address_id IN (SELECT a.address_id {base})
+            GROUP BY 1""", p).fetchdf().set_index("category")
+    except Exception:                     # noqa: BLE001 -- duckdb raises several types
+        revenue = pd.DataFrame().rename_axis("category")
 
     anchors = con.execute(
         "SELECT category, anchor_sources, anchor_coverage, qualifies "
@@ -610,9 +659,27 @@ def area_facts(con, area: str, *, bbox=None, nta=None, boroughs=("MN", "BK"),
             "anchor_coverage": None if anch is None else _f(anch["anchor_coverage"]),
             "anchor_sources": None if anch is None else anch["anchor_sources"],
             "validation_rows": int(validation.loc[cat, "n"]) if cat in validation.index else 0,
+            "revenue": _revenue_facts(revenue, cat),
         }
     facts["categories"] = per_cat
     return facts
+
+
+def _revenue_facts(revenue: pd.DataFrame, cat: str) -> dict | None:
+    """The modelled revenue block for one category, or None when the model does
+    not ship for it. None and a zero are different things and a card must never
+    print the second when it means the first."""
+    if revenue.empty or cat not in revenue.index:
+        return None
+    row = revenue.loc[cat]
+    if _f(row.get("revenue_p50")) is None:
+        return None
+    return {"revenue_p25": _f(row.get("revenue_p25")),
+            "revenue_p50": _f(row.get("revenue_p50")),
+            "revenue_p75": _f(row.get("revenue_p75")),
+            "rent_ceiling": _f(row.get("rent_ceiling")),
+            "n_revenue_addresses": int(row.get("n_revenue_addresses") or 0),
+            "revenue_model_version": row.get("revenue_model_version")}
 
 
 def _f(v):
@@ -764,7 +831,22 @@ def render_card(card: dict, rules: dict) -> str:
                       f"- Expected revenue: {_n(d['expected_revenue'], '${:,.0f}')} · "
                       f"**supportable rent {_n(d['supportable_rent'], '${:,.0f}/yr')}** "
                       f"(source `{d['rent_source']}`)",
-                      f"- Cushion: {_n(d['cushion'], '{:.0%}')} (`{d['cushion_basis']}`)",
+                      f"- Cushion: {_n(d['cushion'], '{:.0%}')} (`{d['cushion_basis']}`)"]
+            rev = d.get("revenue") or {}
+            if rev.get("revenue_p50") is not None:
+                lines += [f"- **Modelled revenue** (site-revenue {rev.get('revenue_model_version')}, "
+                          f"median of {_n(rev.get('n_revenue_addresses'))} addresses): "
+                          f"**{_n(rev.get('revenue_p50'), '${:,.0f}/yr')}** "
+                          f"(p25 {_n(rev.get('revenue_p25'), '${:,.0f}')} – "
+                          f"p75 {_n(rev.get('revenue_p75'), '${:,.0f}')})",
+                          f"- **Rent ceiling** at the category occupancy-cost ratio: "
+                          f"{_n(rev.get('rent_ceiling'), '${:,.0f}/yr')} "
+                          f"({_n((rev.get('rent_ceiling') or 0) / 12, '${:,.0f}/mo')})",
+                          "- *The range is a PARAMETER band (lambda spread, income MOE, beta "
+                          "refit spread), not the spread of real store outcomes; the level is "
+                          "fitted to the Economic Census county mean and has no out-of-sample "
+                          "test. A typical operator at this site, not a specific one.*"]
+            lines += [
                       f"- *No expected profit is emitted, ever — "
                       f"{rules['verdict']['never_emit']} is not a number this model has.*"]
         elif k == "coverage":
