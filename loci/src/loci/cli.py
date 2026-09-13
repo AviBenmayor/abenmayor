@@ -125,8 +125,10 @@ def sources(role: str = typer.Option(None, help="Filter by role.")) -> None:
             continue
         cost = s.get("cost", {})
         cost_s = "$0" if cost.get("amount") == 0 else f"${cost.get('amount')}/{cost.get('unit')}"
-        table.add_row(s["id"], s["tier"], s["role"], str(s.get("geography", "-")),
-                      cost_s, s["status"])
+        # Wishlist entries carry `grain` (the vendor's word) rather than the
+        # pipeline's `geography`, so fall back before printing a bare dash.
+        geo = s.get("geography") or s.get("grain") or "-"
+        table.add_row(s["id"], s["tier"], s["role"], str(geo), cost_s, s["status"])
     console.print(table)
 
 
@@ -5285,3 +5287,24 @@ def dot_export_cmd(
     rep = de.export(con, out_dir=out_dir, trend_years=trend_years)
     console.print(f"[green]ok[/] {rep['path']} — {rep['counts']} count points, "
                   f"{rep['cameras']} cameras, {rep['bytes']:,} bytes")
+
+
+@app.command(name="gen-paid-sources")
+def gen_paid_sources() -> None:
+    """Regenerate docs/PAID-SOURCES.md from the registry's `wishlist` entries.
+
+    The paid-source list is GENERATED for the same reason TICKETS.md is: a
+    price that lives only in a markdown table drifts away from the evidence
+    that justified it. Every number here comes from `registry.yaml`, where it
+    sits next to its dated source URL, and `loci check-sources` fails if this
+    file is not a byte-identical render.
+    """
+    from loci import paid_sources as ps
+
+    n, booked = ps.generate()
+    rows = ps.wishlist()
+    by = Counter(s["priority"] for s in rows)
+    console.print(f"[green]ok[/] docs/PAID-SOURCES.md — {n} wishlist entries "
+                  f"({by['P1']} P1 / {by['P2']} P2 / {by['P3']} P3), "
+                  f"${booked:,}/yr booked (a lower bound: quote-only vendors "
+                  f"book their price-tier floor)")

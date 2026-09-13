@@ -244,6 +244,12 @@ in this order:
    from "did people move here" to "did people start going here," strengthening the causal
    half. Nice-to-have, not load-bearing.
 
+Everything Loci would buy if the budget were not $100 — 35 paid sources surveyed
+2026-09-13, priced, licence-checked and mapped to the nine named gaps — is kept out of
+this section and generated into [`docs/PAID-SOURCES.md`](./PAID-SOURCES.md) from the
+`status: wishlist` entries in `src/loci/registry.yaml`; none of it counts against the
+budget above, because none of it is spend today.
+
 ---
 
 ## 4. Method

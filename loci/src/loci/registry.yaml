@@ -3,7 +3,11 @@
 #
 # tier:    universal | city
 # role:    poi | panel | outcome | control | validation | excluded
-# status:  planned | verified | deferred | excluded
+# status:  planned | verified | deferred | excluded | wishlist
+#
+# `wishlist` = a PAID source to buy post-raise. Exempt from the $100 budget sum
+# and from the CONTEXT.md section 3 mirror; mirrors docs/PAID-SOURCES.md
+# instead (`loci gen-paid-sources`). See the block at the end of this file.
 
 version: 1
 verified_on: 2026-09-02
@@ -1253,3 +1257,1797 @@ sources:
       coverage is near zero. budgeted_total of 0 covers the pilot only; a sweep
       needs an owner budget decision. Owes a docs/CONTEXT.md section 3 row (this session may not
       edit docs/); no dataset_id is set, so the drift check does not yet apply.
+
+  # ------------------------------------------------ NOT purchases (free / ask)
+  # Both surfaced by the 2026-09-13 paid-source survey and both deliberately
+  # NOT `wishlist`: a wishlist entry is a line item with a price, and neither of
+  # these is bought. They sit here at cost 0 so the survey's conclusion about
+  # them is recorded once and not relitigated.
+
+  - id: nyc_dot_vivacity_sensors
+    name: NYC DOT VivaCity sidewalk sensors (data-sharing ask)
+    vendor: VivaCity / NYC DOT
+    tier: city
+    city: nyc
+    role: validation
+    status: planned
+    url: https://vivacitylabs.com/
+    access: agency relationship — cloud dashboard and API, via NYC DOT
+    geography: point (sensor at an intersection)
+    temporal: {start: 2023, end: current, grain: continuous}
+    cost: {amount: 0, unit: total}
+    bias: >
+      Sited by DOT for traffic engineering, so placement is DOT's operational
+      priority, not a sample frame — but the 2026 expansion is the first NYC
+      sidewalk-count program that explicitly includes residential blocks, which
+      is exactly the non-corridor stratum the existing 114 bi-annual count
+      points cannot reach. Classified multimodal counts are a machine's read of
+      a video frame, not a turnstile: occlusion on a crowded sidewalk
+      undercounts, and the classifier's error rate on NYC scenes is unpublished.
+    notes: >
+      NOT A PURCHASE — an ASK. VivaCity is NYC DOT's actual sensor vendor
+      (Numina, the obvious Brooklyn candidate, never secured an NYC contract and
+      its pilot data does not persist anywhere). DOT piloted 20 intersections
+      across five boroughs in 2023 and announced expansion to ~100 locations
+      citywide on 2026-06-04, explicitly including residential neighborhoods.
+      That roster is THE non-corridor validation set D76 / GTM-147 needs: the
+      binding limit on validating `transit_entries_400m` today is that every
+      sidewalk count NYC publishes sits on a busy commercial corridor, i.e. a
+      restricted range. Route in is a DOT data-sharing request, not a contract;
+      the commercial price is recorded on the wishlist's absence — the UK
+      G-Cloud 14 benchmark is GBP 4,095/unit/yr, which is why buying our own is
+      not the plan. Evidence: the DOT expansion announcement of 2026-06-04 and
+      the UK G-Cloud 14 listing, both checked 2026-09-13; `url` is the vendor
+      site because the DOT press item has no stable permalink under
+      nyc.gov/html/dot, and a URL in this file has to survive the `--urls`
+      sweep.
+
+  - id: strava_metro
+    name: Strava Metro (street-segment activity counts)
+    vendor: Strava
+    tier: universal
+    role: validation
+    status: planned
+    url: https://metro.strava.com/
+    access: free web platform — ELIGIBILITY-GATED, see notes
+    geography: line (street segment)
+    temporal: {start: 2015, end: current, grain: rolling}
+    cost: {amount: 0, unit: total}
+    bias: >
+      Athletic and recreational trips, not errand walking — the wrong behaviour
+      for a daily-needs screen, and the skew is toward younger, higher-income,
+      app-owning users, i.e. away from the neighborhoods the gap screen flags.
+      Dense only where Strava users are active.
+    notes: >
+      FREE, BUT LOCI DOES NOT QUALIFY — checked 2026-09-13. Eligibility in 2026
+      covers public agencies (DOTs, MPOs, city and regional government), an
+      Academic Researchers Program, and trail/advocacy nonprofits; consultants
+      get access only under contract with an agency that already has it. No path
+      was found for a private venture-backed startup, and the terms forbid
+      commercial exploitation of the raw data, so this is not a wishlist line
+      item at any price. Kept at status `planned` rather than `excluded` because
+      the route is real but indirect: it opens if Loci ever runs work under a
+      DOT or MPO contract. Revisit only then.
+
+  # ---- wishlist (paid, post-raise) ----
+  #
+  # Sources Loci would BUY once there is money to buy them. Surveyed 2026-09-13
+  # against vendor pricing pages, published terms, public procurement records
+  # and 2025-2026 press. These entries are NOT ingested, NOT budgeted, and NOT
+  # rows in docs/CONTEXT.md section 3 — 35 vendor rows would drown the 40
+  # sources actually in the pipeline. They mirror docs/PAID-SOURCES.md, which
+  # `loci gen-paid-sources` renders from exactly these fields; `loci
+  # check-sources` asserts the doc is a byte-identical render.
+  #
+  # cost:       annual USD, never 0. `cost_basis` says what the number IS —
+  #             `verified` a vendor list price or signed contract, `reported` a
+  #             third-party or derived figure, `quote_only` the price-tier floor
+  #             because no vendor number exists. The wishlist total is therefore
+  #             a LOWER BOUND, not a forecast.
+  # closes_gap: (a) foot traffic · (b) spend · (c) rent · (d) openings/closings ·
+  #             (e) POI truth · (f) chain expansion · (g) ownership/vacancy ·
+  #             (h) demographics · (i) sidewalk counts
+  # priority:   P1 buy first · P2 buy second · P3 checked and rejected, recorded
+  #             so it is not relitigated
+  # bias:       as everywhere else in this file — what the source CANNOT see.
+
+  - id: paid_advan_research_patterns_plus
+    name: Patterns Plus (POI visits)
+    vendor: Advan Research
+    tier: universal
+    role: validation
+    status: wishlist
+    category: foot_traffic
+    priority: P1
+    url: "https://advanresearch.com"
+    access: >
+      Documented flat-file and API delivery plus REveal/FiT dashboards; enterprise
+      contract.
+    grain: >
+      POI x day/week/month visit aggregates; visitor-origin at census block group.
+    refresh: Daily/weekly/monthly period types, ~1-2 day lag.
+    measures: >
+      Modelled visit counts, dwell time, visitor-origin block groups and trade areas
+      per POI, from an opted-in mobile GPS panel.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: low
+    confidence: med
+    price_note: >
+      No published price anywhere; entirely demo-gated. No G2/Vendr/Reddit figure
+      found. Comparable-product reported figures put this plausibly at 10k-50k/yr
+      but that is inference, not a quote.
+    license_note: >
+      CRE/site-selection is one of four marketed verticals, so commercial use is
+      very likely permitted directly. Redistribution of derived metrics to Loci's
+      own customers is unconfirmed and must be negotiated explicitly.
+    closes_gap: >
+      (a) Foot traffic — gives an actual measured visit count per storefront, which
+      is the variable D76's graduation test (QUESTIONS M12) demands before
+      transit_entries_400m can stop being card context and become a grade input or
+      the supply-ratio denominator.
+    priority_reason: >
+      Advan now owns the former SafeGraph Patterns business, so it is the single
+      most direct replacement for the proxy the contrarian rejected.
+    nyc_coverage: >
+      National panel, ~45M US devices / 150M+ locations claimed; no NYC or
+      borough-level panel share published.
+    bias: >
+      A modelled panel, not a count. No NYC or borough panel share is published, so
+      the device-share denominator on any given Brooklyn block is unknown and
+      unauditable. Opt-in GPS panels skew toward smartphone-heavy, app-consenting
+      populations; an errand walk of two blocks may not register as a trip at all.
+    evidence:
+      - {url: "https://advanresearch.com/advan-news", date: 2026-09-13}
+      - {url: "https://docs.advanresearch.com", date: 2026-09-13}
+      - {url: "https://www.youtube.com/watch?v=Pms4YexzV8I", date: 2026-07-14}
+
+  - id: paid_placer_ai
+    name: Placer.ai
+    vendor: Placer Labs Inc.
+    tier: universal
+    role: validation
+    status: wishlist
+    category: foot_traffic
+    priority: P1
+    url: "https://www.placer.ai"
+    access: >
+      Self-serve web UI with a limited free tier, paid API, flat-file feeds,
+      Snowflake data share.
+    grain: >
+      POI-level visits; data is suppressed or degraded below roughly 50 unique
+      devices at a location.
+    refresh: ~2-day lag; weekly feeds delivered Wednesdays.
+    measures: >
+      ML-modelled estimated visits, dwell time, trade areas and visitor demographics
+      per physical POI, extrapolated from a mobile device panel.
+    price_tier: 10k_50k_yr
+    cost: {amount: 8000, unit: year}
+    cost_basis: verified
+    integration_effort: low
+    confidence: med
+    price_note: >
+      Quote-only officially. Signed public-sector order forms show $8,000-$27,500/yr
+      (Utah PMN 1249759; Bloomington IN 23-767 packet; CivicIQ 2026). Third-party
+      commercial estimates span $5k-$50k+/yr (softwarefinder.com, growthfactor.ai
+      2026-08-20) and do not converge.
+    license_note: >
+      ToS requires vetting as an incorporated business with brick-and-mortar
+      interest (site selection qualifies) but EXPLICITLY prohibits reselling,
+      redistributing or sublicensing Placer data or derived data, and prohibits
+      using it to train AI models. That ban is a direct conflict with exposing
+      Placer-derived numbers on a Loci card sold to a third party.
+    closes_gap: >
+      (a) Foot traffic — same graduation test as Advan (M12/D76), and its trade-area
+      polygons would also replace the Huff capture-share assumption fitted in D81.
+    priority_reason: >
+      Most site-selection-native product with a real public price floor, but the
+      derived-data redistribution ban must be negotiated before it can touch a
+      customer-facing card.
+    nyc_coverage: >
+      'Tens of millions of devices' nationally; no NYC-specific panel share
+      published. The <50-device floor is a real risk on quiet Brooklyn blocks, which
+      is exactly where Loci's proxy already fails.
+    bias: >
+      Suppresses or degrades a location below roughly 50 unique devices -- the quiet
+      blocks where Loci's transit proxy already fails are exactly the blocks Placer
+      will return empty, so its silence reads as low traffic when it means low
+      panel. Same national-panel share problem as Advan.
+    notes: >
+      Cost books $8,000 -- the low end of the signed public-sector order forms --
+      which is below the 10k_50k_yr band floor. The band is the vendor's asking
+      range; the contract is the number that was actually paid.
+    evidence:
+      - {url: "https://www.placer.ai/terms-of-service", date: 2026-09-13}
+      - {url: "https://docs.placer.ai/docs/delivery-details", date: 2026-09-13}
+      - {url: "https://www.utah.gov/pmn/files/1249759.pdf", date: 2026-09-13}
+      - {url: "https://www.growthfactor.ai/resources/blog/placer-ai-alternatives", date: 2026-08-20}
+
+  - id: paid_data_axle_business_api
+    name: Business Database API + Changes API
+    vendor: Data Axle (formerly Infogroup)
+    tier: universal
+    role: outcome
+    status: wishlist
+    category: pipeline
+    priority: P1
+    url: "https://www.data-axle.com/data-solutions/apis/"
+    access: REST API; bulk licensing also available.
+    grain: One record per business establishment, geocoded, with SIC/NAICS.
+    refresh: Monthly full file plus a real-time changes feed.
+    measures: >
+      US business file with explicit opened_for_business_on, out_of_business_on and
+      in_business/operating_status fields, plus a real-time Changes API.
+    price_tier: 1k_10k_yr
+    cost: {amount: 8000, unit: year}
+    cost_basis: reported
+    integration_effort: low
+    confidence: high
+    price_note: >
+      VERIFIED $50-75 per 1,000 records per month on the vendor's own API page. At
+      Loci's MN+BK universe this is a low-four-figure to low-five-figure annual line
+      depending on refresh depth.
+    license_note: >
+      Commercial product use is the intended use case for the API, BUT Data Axle's
+      public T&Cs grant a limited, non-transferable, non-sublicensable licence for
+      INTERNAL purposes only — an OEM/redistribution rider is needed before records
+      appear in a sold product. Separately, their Historical Business Database is
+      licensed only through university libraries for non-commercial research and is
+      therefore disqualified.
+    closes_gap: >
+      (d) Openings/closings — this is the only verified-price source with real open
+      and close DATES for the 10 categories that are structurally invisible to
+      government filings (laundry, hair, nails, childcare, clinic, fitness, bank,
+      hardware, convenience, tailor), the coverage hole ticketed as GTM-152 and
+      asked as QUESTIONS T10.
+    priority_reason: >
+      Cheapest verified price of anything that fixes the filing-blind-category
+      problem, and it is the gap that most limits the screen's credibility.
+    nyc_coverage: >
+      National file; NYC included. Phone-verified records, so coverage of small
+      independents is better than press-derived sources.
+    bias: >
+      Phone-verified compilation, so a business with no listed phone or a
+      mobile-only operator is thin or absent; the close date is a compiler's
+      observation, not a filing. Compiled files historically lag immigrant-owned and
+      cash-business independents -- the same direction as the §7.1 OSM bias.
+    notes: >
+      Annual cost books the low end of the allocation estimate ($8-12k/yr at MN+BK
+      refresh depth); the per-record price is verified, the annualisation is not.
+    evidence:
+      - {url: "https://www.data-axle.com/data-solutions/apis/", date: 2026-09-13}
+      - {url: "https://www.data-axle.com/terms-conditions/", date: 2026-09-13}
+
+  - id: paid_google_places_api_pro
+    name: Places API (New) — Place Details Pro
+    vendor: Google Maps Platform
+    tier: universal
+    role: poi
+    status: wishlist
+    category: poi
+    priority: P1
+    url: "https://developers.google.com/maps/billing-and-pricing/pricing"
+    access: REST API.
+    grain: One record per Google place_id.
+    refresh: Live on request.
+    measures: >
+      Per-place verified attributes including business_status (OPERATIONAL /
+      CLOSED_TEMPORARILY / CLOSED_PERMANENTLY), hours, location and type.
+    price_tier: 1k_10k_yr
+    cost: {amount: 3000, unit: year}
+    cost_basis: reported
+    integration_effort: low
+    confidence: high
+    price_note: >
+      VERIFIED list price: Place Details Pro $17.00/1,000 (0-100k tier), 5,000 free
+      calls/month; Essentials $5.00/1,000 with 10,000 free; Enterprise $20.00/1,000;
+      Nearby Search Pro and Text Search Pro $32.00/1,000. The old $200/month credit
+      is CONFIRMED GONE, replaced March 2025 by per-SKU free-call caps.
+    license_note: >
+      Only place_id may be cached indefinitely. Name, hours and geometry have no
+      general caching exception, so Loci can persist place_id plus point-in-time
+      status snapshots but cannot warehouse full Google records. Popular-times is
+      confirmed NOT in the API in 2026.
+    closes_gap: >
+      (e) POI truth — turns the single-source inflation problem into a measured one
+      and is the direct instrument for QUESTIONS M1 (is the measured retail gap real
+      or a POI-coverage artifact), the load-bearing P3 prediction in CONTEXT §7.1.
+    priority_reason: >
+      Only source that can confirm a storefront is actually open, at a price small
+      enough to run repeatedly rather than once.
+    nyc_coverage: >
+      Effectively a census of consumer-facing NYC businesses; the ground truth Loci
+      already budgeted for P3 validation.
+    bias: >
+      Consumer-facing bias: a business nobody searches for is thin in Google.
+      `business_status` is Google's belief, not an inspection. Caching terms bar
+      warehousing anything but place_id, so the record cannot be re-audited later --
+      only re-bought.
+    notes: >
+      Annual cost books the low end of the $3-5k/yr allocation estimate for Details
+      Pro plus the Aggregate API; the per-call price is verified, the call volume is
+      an assumption.
+    evidence:
+      - {url: "https://developers.google.com/maps/billing-and-pricing/pricing", date: 2026-09-13}
+      - {url: "https://developers.google.com/maps/documentation/places/web-service/policies", date: 2026-09-13}
+
+  - id: paid_google_places_aggregate_api
+    name: Places Aggregate API
+    vendor: Google Maps Platform
+    tier: universal
+    role: poi
+    status: wishlist
+    category: poi
+    priority: P1
+    url: "https://developers.google.com/maps/documentation/places-aggregate/overview"
+    access: REST API, 1,200 queries per minute cap.
+    grain: Aggregate count per query geometry; minimum search area 40m x 40m.
+    refresh: Live.
+    measures: >
+      Counts of places matching a type/status/rating/price filter inside an
+      arbitrary circle or polygon — i.e. a supply count without enumerating each
+      POI.
+    price_tier: under_1k_yr
+    cost: {amount: 100, unit: year}
+    cost_basis: reported
+    integration_effort: low
+    confidence: high
+    price_note: >
+      VERIFIED $10.00/1,000 calls (0-100k tier) with 5,000 free calls/month, falling
+      to $8.00 above 100k. One call per address x category x radius; a targeted
+      MN+BK sweep of a few thousand cluster centroids is inside the free tier or a
+      few hundred dollars.
+    license_note: >
+      Standard Maps Platform terms. Because the response is an aggregate count
+      rather than place records, it sidesteps most of the per-record caching
+      restriction that limits Place Details.
+    closes_gap: >
+      (e) POI truth — an independent supply count per category per walkshed, which
+      is precisely the corroboration D11 asks for (all POIs vs corroborated-only vs
+      active-licensed) without the cost of enumerating every record.
+    priority_reason: >
+      The cheapest verified way to audit Loci's supply counts against Google's, and
+      it is a direct check on the §7.1 threat at essentially no cost.
+    nyc_coverage: >
+      Full Google Places coverage of NYC.
+    bias: >
+      Returns a count with no records behind it, so a wrong count cannot be
+      debugged. Minimum 40 m x 40 m search area, and it inherits every Google
+      category-assignment quirk without exposing which place produced it.
+    notes: >
+      Annual cost books $100 because a targeted MN+BK sweep of a few thousand
+      cluster centroids sits inside or just above the 5,000-call/month free tier.
+    evidence:
+      - {url: "https://developers.google.com/maps/billing-and-pricing/pricing", date: 2026-09-13}
+      - {url: "https://developers.google.com/maps/documentation/places-aggregate/usage-and-billing", date: 2026-09-13}
+
+  - id: paid_google_places_insights_bigquery
+    name: Places Insights in BigQuery
+    vendor: Google Maps Platform
+    tier: universal
+    role: outcome
+    status: wishlist
+    category: pipeline
+    priority: P1
+    url: "https://developers.google.com/maps/documentation/placesinsights/overview"
+    access: >
+      BigQuery data-exchange listing; native SQL. Export to Parquet then DuckDB is
+      trivial.
+    grain: >
+      H3 hex cells at selectable resolution, or custom point-radius / polygon
+      geometries; up to 250 place_ids returned per row; counts of 0-4 suppressed.
+    refresh: >
+      Monthly, with historical snapshots addressable by snapshot_date (YYYY-MM).
+    measures: >
+      Aggregated counts and density of 250M+ places across 300+ place types and ~70
+      attributes, queryable as SQL, with MONTHLY SNAPSHOTS BACK TO JANUARY 2024.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: med
+    confidence: med
+    price_note: >
+      GA since 2025-09-30. No price published on either the product or documentation
+      page; access is via a contact form plus BigQuery compute. Treat as quote_only
+      until a Google Maps Platform rep gives a figure.
+    license_note: >
+      Documentation cites CC BY 4.0 on the underlying listing with no explicit
+      storage or redistribution restriction stated — materially looser on paper than
+      the Places API caching policy, but confirm in writing before relying on it.
+    closes_gap: >
+      (d) Openings/closings — monthly snapshots since Jan 2024 are a ready-made
+      openings and closings panel across ALL 15 categories, which is exactly what
+      D79's first-seen ledger cannot reconstruct (47.7% of its rows are
+      backfill_censored) and what T10 asks for.
+    priority_reason: >
+      The only source found that offers a retrospective monthly storefront panel
+      rather than starting the clock today; it would un-censor the D79 ledger back
+      two years.
+    nyc_coverage: >
+      Full Google coverage of NYC at any H3 resolution Loci already uses.
+    bias: >
+      Counts of 0-4 are suppressed, which is precisely the regime a daily-needs gap
+      lives in: a walkshed with two bodegas and a walkshed with none may both return
+      blank. Snapshots start 2024-01, so it cannot reach the 2013-2023 panel window.
+    evidence:
+      - {url: "https://developers.google.com/maps/documentation/placesinsights/overview", date: 2026-09-13}
+      - {url: "https://mapsplatform.google.com/resources/blog/places-insights-in-bigquery-is-now-generally-available/", date: 2025-09-30}
+
+  - id: paid_livexyz_storefront_census
+    name: LiveXYZ NYC storefront census
+    vendor: LiveXYZ
+    tier: city
+    city: nyc
+    role: poi
+    status: wishlist
+    category: poi
+    priority: P1
+    url: "https://www.live.xyz"
+    access: No self-serve API found; relationship/licence only.
+    grain: Individual storefront at street address; ~150,000+ NYC storefronts.
+    refresh: Daily map updates; ~90-day full re-survey.
+    measures: >
+      A physically re-walked, ground-truthed census of NYC storefronts including
+      vacancy, tenant identity and change over time.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: high
+    confidence: med
+    price_note: >
+      No public rate card found. Used by NYC DCP for its 2019 and 2024
+      storefront-vacancy studies and by NYC SBS under the 'Shop Your City'
+      partnership since Nov 2023 — those agency relationships are the realistic
+      route to a price. Note: a DIFFERENT company, Live Data Technologies, is a name
+      collision, not the same firm.
+    license_note: >
+      Unpublished. Agency use is precedented; commercial redistribution inside a
+      sold product would need explicit terms.
+    closes_gap: >
+      (e) POI truth and (g) vacancy — the only source that would let Loci measure
+      its own undercount directly rather than infer it, answering M1 outright and
+      replacing the LL157 registry whose Tax Class 1 coverage is 0.27% (the rowhouse
+      corner store, exactly the bodega-gap typology).
+    priority_reason: >
+      No substitute exists; if the raise funds one relationship-driven purchase,
+      this is the one that makes the whole screen defensible in NYC.
+    nyc_coverage: >
+      NYC-native and the most complete storefront ground truth that exists; full
+      re-walk roughly every 90 days, daily map updates.
+    bias: >
+      A ~90-day re-walk means a storefront that opened and closed inside a quarter
+      never existed. Field-survey coverage is what a surveyor could see from the
+      sidewalk: upper-floor and rear-of-lot uses are invisible, and the re-walk
+      cadence is likely denser on commercial corridors than on residential blocks.
+    evidence:
+      - {url: "https://www.live.xyz", date: 2026-09-13}
+      - {url: "https://www.nyc.gov/site/planning/data-maps/storefront-vacancy.page", date: 2026-09-13}
+
+  - id: paid_compstak_enterprise
+    name: CompStak Enterprise (lease comps)
+    vendor: CompStak
+    tier: universal
+    role: control
+    status: wishlist
+    category: rent
+    priority: P1
+    url: "https://compstak.com"
+    access: Web UI; API included at Enterprise tier only.
+    grain: >
+      Individual lease at a building address; deal alerts on new signings in a
+      market.
+    refresh: Continuous as comps are contributed; alerts on new deals.
+    measures: >
+      Transaction-level commercial lease comps — starting rent per sf, escalations,
+      concessions, TI, term, space size — crowdsourced from brokers and analysts.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: med
+    confidence: med
+    price_note: >
+      No published price at Enterprise tier. The free Exchange tier is
+      contribution-gated — a firm with no comps of its own gets market dashboards
+      but not comp-level data, so Loci cannot bootstrap for free. A DIFFERENT
+      CompStak product, Prospect, does publish $199.99/mo individual and $499.99/mo
+      team.
+    license_note: >
+      Unpublished; Enterprise terms would need an explicit clause permitting derived
+      rent figures to appear on a card sold to a third party.
+    closes_gap: >
+      (c) Rent — replaces D81's rent_ceiling, which today is a modelled revenue
+      times a generic 8% occupancy ratio checked against exactly ONE local comp, and
+      is the reason the D74 card cannot grade feasibility above D on economics.
+    priority_reason: >
+      Only lease-level comp source that is not legally hostile; rent is the single
+      line that turns a gap into an investable site.
+    nyc_coverage: >
+      NYC is CompStak's deepest market; retail comps exist but the file is
+      office-weighted, so per-corridor retail depth should be tested before signing.
+    bias: >
+      Contribution-gated and office-weighted. A comp exists only because a broker
+      uploaded it, so thin-brokerage retail corridors -- the outer-Brooklyn blocks
+      the screen flags -- are structurally under-covered, and an effective rent net
+      of concessions is not the asking rent a tenant plans against.
+    evidence:
+      - {url: "https://compstak.com", date: 2026-09-13}
+      - {url: "https://compstak.com/exchange", date: 2026-09-13}
+
+  - id: paid_safegraph_spend
+    name: SafeGraph Spend
+    vendor: SafeGraph
+    tier: universal
+    role: control
+    status: wishlist
+    category: spend
+    priority: P1
+    url: "https://www.safegraph.com/products"
+    access: Bulk download, Snowflake, S3/API; free samples published.
+    grain: >
+      POI / address level — the finest grain of any spend product surveyed, and it
+      matches Loci's existing address key directly.
+    refresh: Monthly.
+    measures: >
+      Aggregated, de-identified card transaction totals and transaction counts
+      attributed to individual POIs.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: low
+    confidence: med
+    price_note: >
+      No Spend-specific price published. A general SafeGraph suite range of '$0.10
+      per purchase to $30,000/yr' appears in SafeGraph's own marketing and is not
+      confirmed to apply to Spend. IMPORTANT correction to a common assumption:
+      SafeGraph did NOT shut down — it sold the Patterns foot-traffic line to Advan
+      and still sells Places and Spend in 2026.
+    license_note: >
+      Commercial licence configurable by usage rights; resale/redistribution
+      typically requires an add-on licence.
+    closes_gap: >
+      (b) Demand/spend — real observed dollars per storefront would replace the
+      CEX-quintile spend pool in D81 and give an out-of-sample test for the leakage
+      parameter lambda, which today is 'right by construction and has NO
+      out-of-sample test'; it is the route from a C grade on restaurant alone to a
+      real grade on the nine categories shipped as 'not modelled'.
+    priority_reason: >
+      Only spend product whose grain matches the address key; everything else in
+      this category is ZIP or coarser.
+    nyc_coverage: >
+      National; NYC included. Low-volume small independents are suppressed, which
+      bites at exactly the grain Loci cares about.
+    bias: >
+      Card-panel share is unpublished and low-volume independents are suppressed, so
+      the categories with the weakest economics grade are the ones most likely to
+      come back blank. A card panel cannot see cash, which is a large share of
+      exactly the bodega/laundry/barber trades in question.
+    evidence:
+      - {url: "https://www.safegraph.com/products", date: 2026-09-13}
+      - {url: "https://www.safegraph.com/free-data", date: 2026-09-13}
+
+  - id: paid_esri_business_analyst
+    name: ArcGIS Business Analyst Web App (incl. Tapestry + Consumer Spending)
+    vendor: Esri
+    tier: universal
+    role: control
+    status: wishlist
+    category: demographics
+    priority: P1
+    url: "https://www.esri.com/en-us/arcgis/products/arcgis-business-analyst/"
+    access: Web app plus ArcGIS APIs / GeoEnrichment service.
+    grain: >
+      Census block group, aggregable to any trade-area ring or drive/walk time.
+    refresh: Annual vintage updates.
+    measures: >
+      Updated demographics, Tapestry segmentation, Consumer Spending and Retail
+      MarketPlace (supply/demand gap) variables — all modelled from BLS CEX and
+      Census.
+    price_tier: 1k_10k_yr
+    cost: {amount: 5200, unit: year}
+    cost_basis: verified
+    integration_effort: med
+    confidence: high
+    price_note: >
+      VERIFIED list price on Esri's own AWS Marketplace listing: Standard $700/yr
+      and Advanced Bundle $5,200/yr per named user. Esri.com itself is quote-gated.
+      Vendr's 32-deal median of $25,281/yr reflects negotiated enterprise
+      agreements, a different population. Tapestry and Consumer Spending are
+      bundled, not sold standalone.
+    license_note: >
+      Esri's master agreement restricts sublicensing and redistributing underlying
+      data; a standard seat licence does NOT clearly permit backing a paid product
+      resold to third parties — an OEM agreement is needed. Also: legacy Esri
+      Tapestry retires June 2026 in favour of ArcGIS Tapestry with non-1:1 segment
+      redefinition, so anything built on the old segments needs migrating.
+    closes_gap: >
+      (h) Demographics — Retail MarketPlace supply/demand gap by block group is an
+      independent second opinion on the residual Loci computes itself, and Consumer
+      Spending at block group replaces D81's national CEX quintiles, one of the
+      caveats the model 'cannot escape'.
+    priority_reason: >
+      $700-$5,200/yr is the best verified price-to-value in the whole list, and it
+      is the cheapest way to sanity-check the gap measure against an independent
+      commercial estimate.
+    nyc_coverage: >
+      Full; block-group grain is finer than the tract grain Loci interpolates from
+      ACS today.
+    bias: >
+      Modelled block-group estimates built on the same ACS backbone Loci already
+      uses, so it is a second opinion on the interpolation, not an independent
+      measurement. Retail MarketPlace's supply side is a compiled business file with
+      the compilation biases above.
+    evidence:
+      - {url: "https://aws.amazon.com/marketplace/seller-profile?id=esri", date: 2026-09-13}
+      - {url: "https://www.esri.com/en-us/arcgis/products/arcgis-business-analyst/", date: 2026-09-13}
+
+  - id: paid_streetlight_active_transportation
+    name: StreetLight InSight — Active Transportation / Bike-Ped
+    vendor: StreetLight Data (Jacobs)
+    tier: universal
+    role: validation
+    status: wishlist
+    category: foot_traffic
+    priority: P2
+    url: "https://www.streetlightdata.com/pricing/"
+    access: Self-serve web platform, bulk CSV/ArcGIS, documented developer API.
+    grain: >
+      Census tract for pedestrian volumes; road segment for vehicle metrics. Coarser
+      than Loci's address grain.
+    refresh: Annual and monthly product variants.
+    measures: >
+      Modelled pedestrian and bicycle volumes, origin-destination and mode share
+      from mobile location and connected-vehicle data.
+    price_tier: 10k_50k_yr
+    cost: {amount: 42888, unit: year}
+    cost_basis: verified
+    integration_effort: med
+    confidence: high
+    price_note: >
+      Real public-agency contracts: Ames IA $64,900/yr base, $105,667/yr multimodal
+      (2021 council packet); Teton County WY $42,888 for one year; San Mateo C/CAG
+      tiers at $99,000/agency single-domain and $440,000 regional, with pay-per-use
+      ~$24,000 for a 50-zone study. 2020-21 figures; current rates likely higher.
+    license_note: >
+      A retail vertical is explicitly marketed ('select sites, forecast sales'), so
+      commercial site-selection use is a stated permitted use. Public-agency
+      contracts restrict to internal agency use; a commercial licence is negotiated
+      separately.
+    closes_gap: >
+      (a) Foot traffic — but note it is MODELLED, not sensed, so it would compound
+      rather than resolve the 'no ground truth on quiet blocks' problem and cannot
+      on its own clear the M12 graduation test.
+    priority_reason: >
+      Best-verified pricing of any mobility vendor, but tract grain and modelled
+      origin make it a validation cross-check rather than a grade input.
+    nyc_coverage: >
+      National by tract and segment; NYC included.
+    bias: >
+      Census tract for pedestrian volumes -- two orders of magnitude coarser than
+      the address grain, so it cannot separate a busy corner from the quiet block
+      behind it. Modelled from a mobility panel, and the published figures are
+      2020-21 vintage.
+    evidence:
+      - {url: "https://www.streetlightdata.com/pricing/", date: 2026-09-13}
+      - {url: "https://vault.amesnews.net/gov/city/CouncilPackets/2021/081021CouncilAgenda/20.pdf", date: 2021-08-10}
+      - {url: "https://ccag.ca.gov/wp-content/uploads/2020/04/6.3_StreetLight-Presentation.pdf", date: 2020-04}
+
+  - id: paid_foursquare_visits
+    name: Foursquare Visits (enterprise)
+    vendor: Foursquare
+    tier: universal
+    role: validation
+    status: wishlist
+    category: foot_traffic
+    priority: P2
+    url: "https://location.foursquare.com/products/visits/"
+    access: >
+      Enterprise contract; also listed on Snowflake Marketplace and AWS Data
+      Exchange (exportable to Parquet then DuckDB).
+    grain: POI x period aggregates.
+    refresh: Not publicly documented.
+    measures: >
+      POI-level aggregated visit counts and patterns from Foursquare's panel.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: low
+    confidence: med
+    price_note: >
+      Visits pricing is not published. For contrast, the Places API IS verified at
+      $15.00/1,000 calls (Pro, 501-100k tier, effective 2026-06-01) down to
+      $9.00/1,000 at 500k+ — but that is POI attributes, largely redundant with the
+      free OS Places Loci already ingests.
+    license_note: >
+      Commercial site-selection use is explicitly marketed (Yum! Brands case study
+      via AWS Data Exchange). Redistribution terms not public.
+    closes_gap: >
+      (a) Foot traffic — same M12/D76 test as Advan and Placer, and the marketplace
+      route means no sales cycle is strictly required.
+    priority_reason: >
+      Cleanest procurement path (AWS/Snowflake, no sales call) but the panel's
+      check-in bias is the one Loci has already documented as dangerous.
+    nyc_coverage: >
+      Not disclosed; Foursquare's panel historically skews toward check-in-heavy
+      venues, i.e. away from laundromats — the same bias CONTEXT §3.1 already flags
+      for OS Places.
+    bias: >
+      Inherits the check-in-derived venue skew CONTEXT §3.1 already flags for OS
+      Places: away from laundromats, tailors and dry cleaners, i.e. away from the
+      daily-needs bundle. No panel share disclosed.
+    evidence:
+      - {url: "https://foursquare.com/pricing", date: 2026-09-13}
+      - {url: "https://location.foursquare.com/products/visits/", date: 2026-09-13}
+
+  - id: paid_veraset_visits
+    name: Veraset Visits / Movement
+    vendor: Veraset
+    tier: universal
+    role: validation
+    status: wishlist
+    category: foot_traffic
+    priority: P2
+    url: "https://www.veraset.com"
+    access: >
+      S3 flat file, REST API, and a new self-serve 'Orchestrator' UI launched March
+      2026.
+    grain: >
+      Visits = POI-level. Movement = device-level raw pings (finest grain available
+      anywhere).
+    refresh: Daily flat-file delivery; on-demand API.
+    measures: >
+      Visits: ML-attributed POI visits with dwell time across 4M+ US POIs. Movement:
+      raw anonymized GPS pings, 10B+/day across 300M+ devices.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: high
+    confidence: med
+    price_note: >
+      Least transparent vendor checked — not even a converging rumour. One
+      AI-search-derived claim of '$40,000 starting' could not be traced to a live
+      primary page and should not be relied on.
+    license_note: >
+      A dedicated Real Estate solutions page makes commercial site-selection an
+      intended use. Raw pings carry a materially higher privacy/compliance burden
+      (CCPA pass-through) than pre-aggregated products.
+    closes_gap: >
+      (a) Foot traffic — raw Movement pings are the only product that would let Loci
+      geofence its OWN address polygons rather than accept a vendor's POI
+      attribution, which matters because Loci's supply set is deduped differently
+      from any vendor's.
+    priority_reason: >
+      Highest ceiling and highest effort; only worth it if vendor POI attribution
+      proves incompatible with Loci's cluster grain.
+    nyc_coverage: >
+      No NYC-specific figures published. A Datarade listing citing ~768M devices is
+      almost certainly a mislabelled cumulative figure — treat sceptically.
+    bias: >
+      The least transparent vendor surveyed -- no published panel share, no NYC
+      figures, and a Datarade device count that is almost certainly a mislabelled
+      cumulative. Raw device pings carry the heaviest privacy and licence exposure
+      of anything on the list.
+    evidence:
+      - {url: "https://www.veraset.com/products/product-comparison", date: 2026-09-13}
+      - {url: "https://www.veraset.com/solutions/real-estate", date: 2026-09-13}
+
+  - id: paid_besttime_app
+    name: BestTime.app busyness API
+    vendor: BestTime.app
+    tier: universal
+    role: validation
+    status: wishlist
+    category: foot_traffic
+    priority: P2
+    url: "https://besttime.app/subscription/pricing"
+    access: Self-serve REST API, free test key.
+    grain: Per venue, per hour, per day of week.
+    refresh: Rolling average of recent weeks; live where available.
+    measures: >
+      Google-popular-times-style hourly busyness forecast per venue, plus live 'how
+      busy now'. RELATIVE busyness (0-100%), not absolute visitor counts.
+    price_tier: 1k_10k_yr
+    cost: {amount: 1152, unit: year}
+    cost_basis: verified
+    integration_effort: low
+    confidence: high
+    price_note: >
+      VERIFIED published pricing: Basic metered $0.04/credit with $29/mo minimum;
+      Pro metered $0.009/credit falling to $0.006 above 10k and $0.001 above 100k,
+      plus $99/mo base; Pro fixed package $96/mo; Basic fixed package $299/mo;
+      Enterprise 'from $2K+/month'. Free credits for students and non-profits.
+    license_note: >
+      The ToS could not be fully extracted and contains no discoverable resale
+      prohibition — but absence of evidence is not permission. Because the forecasts
+      are Google-derived, there is plausible indirect exposure to Google's own
+      terms. Get written confirmation of derived-analytics and resale rights before
+      shipping.
+    closes_gap: >
+      (a) Foot traffic — the only sub-$1k/month way to get an hourly busyness curve
+      per storefront, which is the day-part discrimination the D76 addendum found
+      the transit levels do NOT carry (the AM count is ranked better by pm_peak than
+      by am_peak).
+    priority_reason: >
+      Cheapest credible pilot in the whole foot-traffic category, but
+      relative-not-absolute values and the small-business coverage hole cap what it
+      can grade.
+    nyc_coverage: >
+      Global, but explicitly requires 'sufficient visitor volume for reliable
+      forecasts' — small independent NYC storefronts with thin Google signal will
+      simply have no forecast. That is a coverage bias pointing the same direction
+      as OSM's, i.e. toward the areas Loci flags as underserved.
+    bias: >
+      Requires 'sufficient visitor volume for reliable forecasts', so a small
+      independent with thin Google signal simply has no curve. That absence points
+      the same direction as the OSM undercount -- toward the underserved areas the
+      screen exists to find -- and a busyness index is a shape, not a count.
+    notes: >
+      Cost books the Pro fixed package at $96/mo = $1,152/yr. The allocation
+      paragraph budgets $2-3k for a pilot, which includes metered credits on top.
+    evidence:
+      - {url: "https://besttime.app/subscription/pricing", date: 2026-09-13}
+      - {url: "https://documentation.besttime.app", date: 2026-09-13}
+
+  - id: paid_crexi_intelligence
+    name: Crexi Intelligence
+    vendor: Crexi
+    tier: universal
+    role: control
+    status: wishlist
+    category: rent
+    priority: P2
+    url: "https://www.crexi.com/intelligence"
+    access: Web UI; a listing API appears to exist via third-party tooling.
+    grain: >
+      Property and listing level; claims 153M+ property records and 46M+ sales comps
+      (unverified for NYC retail specifically).
+    refresh: Continuous listings.
+    measures: >
+      Commercial property records, sales comps and listing/asking data; a lower-cost
+      CoStar alternative.
+    price_tier: 1k_10k_yr
+    cost: {amount: 2988, unit: year}
+    cost_basis: reported
+    integration_effort: med
+    confidence: med
+    price_note: >
+      Third-party pricing pages report ~$249/user/month (~$2,988/yr); NOT confirmed
+      on Crexi's own site.
+    license_note: >
+      No litigation history found against it and a materially more permissive
+      posture than CoStar, but terms for embedding in a sold product are unverified.
+    closes_gap: >
+      (c) Rent — asking rents on active retail listings, which is a leading
+      indicator the LL157 annual snapshot cannot provide (CONTEXT §3.3 notes an
+      annual 12/31 snapshot is not an availability listing).
+    priority_reason: >
+      Only affordable listing-level rent option; validate NYC retail depth on a
+      trial before committing.
+    nyc_coverage: >
+      National coverage; NYC retail depth unverified.
+    bias: >
+      Listing-derived: it sees space that was marketed, not space that was leased,
+      and NYC retail depth is unverified. Asking rent on an active listing is a
+      landlord's number.
+    evidence:
+      - {url: "https://www.crexi.com/intelligence", date: 2026-09-13}
+
+  - id: paid_pincusco
+    name: PincusCo NYC real-estate deal tracking
+    vendor: PincusCo Media
+    tier: city
+    city: nyc
+    role: outcome
+    status: wishlist
+    category: pipeline
+    priority: P2
+    url: "https://pincusco.com"
+    access: Web and email; no documented API.
+    grain: Deal / property level, NYC only.
+    refresh: Daily.
+    measures: >
+      NYC-native daily tracking of property sales, financings, ownership changes and
+      permit activity, with structured tagging.
+    price_tier: 1k_10k_yr
+    cost: {amount: 1500, unit: year}
+    cost_basis: verified
+    integration_effort: high
+    confidence: high
+    price_note: >
+      VERIFIED published tiers: $10/mo (Posts) up to $125/mo (~$1,500/yr,
+      Professional).
+    license_note: >
+      Editorial subscription; systematic extraction into a sold product would need
+      permission.
+    closes_gap: >
+      (d) Pipeline and (g) property — cheapest NYC-native early signal on ownership
+      and financing changes, which often precede a ground-floor re-tenanting by
+      months and are invisible to the DOB/DCWP/SLA feeds D80 already ingests.
+    priority_reason: >
+      Under $1,500/yr and NYC-specific; low integration value but high analyst value
+      while the filing-blind categories remain unfixed.
+    nyc_coverage: >
+      NYC-native by construction — the most NYC-specific product in this list.
+    bias: >
+      Deal-and-filing journalism: it covers what is newsworthy, which means larger
+      transactions and institutional owners. A small walk-up lease change is below
+      its threshold. No API, so ingest is scraping a paywalled site.
+    evidence:
+      - {url: "https://pincusco.com/subscribe/", date: 2026-09-13}
+
+  - id: paid_reonomy_altus
+    name: Reonomy
+    vendor: Altus Group
+    tier: universal
+    role: control
+    status: wishlist
+    category: property
+    priority: P2
+    url: "https://www.reonomy.com/pricing"
+    access: Self-serve web UI; API and bulk feed are quote-only.
+    grain: Parcel / building, keyed to APN (BBL in NYC).
+    refresh: Continuous.
+    measures: >
+      Property ownership, true-owner contact, transaction and debt history. NOT
+      lease or rent comps.
+    price_tier: 1k_10k_yr
+    cost: {amount: 4800, unit: year}
+    cost_basis: verified
+    integration_effort: med
+    confidence: high
+    price_note: >
+      VERIFIED self-serve: $500/mo month-to-month, or $400/mo ($4,800/yr) annual.
+      API/bulk feed pricing unpublished.
+    license_note: >
+      Self-serve seat is for internal use; bulk/derived redistribution requires the
+      enterprise feed and separate terms.
+    closes_gap: >
+      (g) Property — landlord identity and debt position per BBL, which decides
+      whether a flagged vacancy is actually leasable; the LL157 registry is annual,
+      self-reported, and non-filing is invisible (CONTEXT §3.3).
+    priority_reason: >
+      Verified sub-$5k price and a BBL key that drops straight into Loci's schema.
+    nyc_coverage: >
+      Strong — Reonomy started as an NYC product.
+    bias: >
+      Ownership and debt, not occupancy -- it knows who owns the building and
+      nothing about whether the ground floor is trading. Contact data is the
+      product; the retail-tenancy field is thin.
+    evidence:
+      - {url: "https://www.reonomy.com/pricing", date: 2026-09-13}
+
+  - id: paid_propertyshark
+    name: PropertyShark
+    vendor: Yardi
+    tier: universal
+    role: control
+    status: wishlist
+    category: property
+    priority: P2
+    url: "https://www.propertyshark.com/mason/Subscriptions"
+    access: Web UI only; no API.
+    grain: BBL / building.
+    refresh: Continuous from city records.
+    measures: >
+      NYC property reports — ownership, zoning, tax, permits, sales history,
+      building photos.
+    price_tier: 1k_10k_yr
+    cost: {amount: 719, unit: year}
+    cost_basis: verified
+    integration_effort: high
+    confidence: high
+    price_note: >
+      VERIFIED published: Pro $59.95/mo, Elite $79.95/mo, Platinum $169.95/mo.
+    license_note: >
+      UI-only by design; bulk or automated extraction is restricted. Most of the
+      underlying content is already free in PLUTO/ACRIS, which Loci ingests.
+    closes_gap: >
+      (g) Property — a manual per-site due-diligence tool for the recommendation
+      cards, not a pipeline input.
+    priority_reason: >
+      Cheap analyst tool for card-by-card verification; adds little the free
+      PLUTO/ACRIS stack does not already have.
+    nyc_coverage: >
+      NYC-native and deep.
+    bias: >
+      Derived from the same NYC public records Loci already ingests (PLUTO, ACRIS,
+      DOB), so most of its value is convenience rather than new information. Web UI
+      only, no API, so any bulk use is manual or a terms breach.
+    notes: >
+      Cost books Pro at $59.95/mo = $719/yr, below the band floor; the band reflects
+      the Platinum tier at $169.95/mo ($2,039/yr).
+    evidence:
+      - {url: "https://www.propertyshark.com/mason/Subscriptions", date: 2026-09-13}
+
+  - id: paid_yelp_places_api
+    name: Yelp Places API (formerly Fusion)
+    vendor: Yelp
+    tier: universal
+    role: poi
+    status: wishlist
+    category: poi
+    priority: P2
+    url: "https://business.yelp.com/data/products/places-api/"
+    access: REST API.
+    grain: One record per Yelp business.
+    refresh: Live.
+    measures: >
+      Business records with categories, ratings, review counts, hours and price
+      level.
+    price_tier: 1k_10k_yr
+    cost: {amount: 2748, unit: year}
+    cost_basis: verified
+    integration_effort: low
+    confidence: high
+    price_note: >
+      VERIFIED: Base $229/mo + $5.91/1,000 extra calls; Enhanced $299/mo +
+      $6.57/1,000; Premium $643/mo + $14.13/1,000. There is NO ongoing free
+      production tier in 2026 — only a 5,000-call/30-day trial. Above 150k calls/mo
+      goes to a sales quote. 'Yelp Knowledge' appears to have been renamed/absorbed
+      into the quote-only Yelp Insights API.
+    license_note: >
+      Standard API terms with caching limits; opening dates, closure dates and
+      review-velocity fields are NOT documented and are likely absent, which is the
+      thing Loci actually wanted.
+    closes_gap: >
+      (e) POI truth — a third corroborating source for D11's corroborated-only
+      supply set, but it does not deliver the openings/closings signal it was
+      shortlisted for.
+    priority_reason: >
+      Verified price but the review-velocity and opening-date fields that justified
+      it do not appear to exist — buy only as a corroboration layer.
+    nyc_coverage: >
+      Dense in NYC for consumer-facing categories; thin for laundromats and tailors,
+      the same bias as every consumer-review source.
+    bias: >
+      Review-platform coverage: dense for restaurants and bars, thin for laundromats
+      and tailors. The opening date, closure date and review-velocity fields that
+      justified the shortlist are not documented and are probably absent.
+    evidence:
+      - {url: "https://business.yelp.com/data/products/places-api/", date: 2026-09-13}
+
+  - id: paid_outscraper_google_maps
+    name: Outscraper Google Maps extraction
+    vendor: Outscraper
+    tier: universal
+    role: poi
+    status: wishlist
+    category: poi
+    priority: P2
+    url: "https://outscraper.com/pricing/"
+    access: API and UI.
+    grain: One record per Google place.
+    refresh: On demand.
+    measures: >
+      Bulk extraction of Google Maps business records including status, categories,
+      reviews and popular-times where present.
+    price_tier: under_1k_yr
+    cost: {amount: 300, unit: year}
+    cost_basis: reported
+    integration_effort: low
+    confidence: high
+    price_note: >
+      VERIFIED: first 500 records free, then $3.00/1,000 (501-100k) and $1.00/1,000
+      above 100k. An MN+BK sweep of ~230k locations is roughly $300-400.
+    license_note: >
+      MATERIAL RISK — scraping Google Maps breaches Google's terms (a contract
+      issue, not a CFAA crime per case law), and Outscraper's marketing grants no
+      explicit redistribution or resale licence for the records. Legal sign-off
+      required before any scraped record appears in a sold product. This is the
+      cheap-but-dirty path; Places Aggregate API is the clean one.
+    closes_gap: >
+      (e) POI truth — 10-20x cheaper per record than the official API and it can
+      return popular-times, which the official API cannot; the price of that is
+      contractual exposure.
+    priority_reason: >
+      Cheapest possible POI corroboration and the only route to popular-times at
+      scale, but it should be a one-off research audit rather than a product
+      dependency.
+    nyc_coverage: >
+      As complete as Google Maps.
+    bias: >
+      A scrape of Google, so it inherits every Google bias with none of Google's
+      guarantees, and the record is a point-in-time capture with no provenance.
+      Contractual exposure, not data quality, is the binding limit.
+    notes: >
+      Cost books the low end of the $300-400 estimate for a ~230k-location MN+BK
+      sweep.
+    evidence:
+      - {url: "https://outscraper.com/pricing/", date: 2026-09-13}
+
+  - id: paid_bright_data_google_maps_dataset
+    name: Google Maps Businesses dataset
+    vendor: Bright Data
+    tier: universal
+    role: poi
+    status: wishlist
+    category: poi
+    priority: P2
+    url: "https://brightdata.com/products/datasets"
+    access: Flat file / S3 / API.
+    grain: One record per business.
+    refresh: >
+      One-off, or subscription refresh at bi-annual/quarterly/monthly cadence with
+      25%/50%/80% discounts.
+    measures: >
+      Pre-collected Google Maps business records delivered as a dataset with
+      optional scheduled refresh.
+    price_tier: 1k_10k_yr
+    cost: {amount: 250, unit: year}
+    cost_basis: verified
+    integration_effort: low
+    confidence: high
+    price_note: >
+      VERIFIED: $250 minimum for 100,000 records (~$0.0025/record) one-time; Scraper
+      API from $0.75/1,000 with a free tier.
+    license_note: >
+      Same Google-terms exposure as Outscraper; no explicit resale licence granted.
+      Legal review required.
+    closes_gap: >
+      (e) POI truth — a monthly-refreshed scraped panel is the cheapest possible
+      substitute for Places Insights' snapshot history, at the cost of the same
+      contractual risk.
+    priority_reason: >
+      Lowest per-record cost anywhere; carries the same legal caveat as Outscraper.
+    nyc_coverage: >
+      Filterable to NYC.
+    bias: >
+      Same Google-derived coverage and the same terms exposure as Outscraper, plus a
+      delivery lag: a dataset snapshot cannot answer 'is it open today'.
+    notes: >
+      Cost books the $250 one-time 100k-record minimum, not a subscription.
+    evidence:
+      - {url: "https://brightdata.com/products/datasets", date: 2026-09-13}
+
+  - id: paid_placekey
+    name: Placekey
+    vendor: Placekey (SafeGraph-originated open standard)
+    tier: universal
+    role: poi
+    status: wishlist
+    category: poi
+    priority: P2
+    url: "https://www.placekey.io/pricing"
+    access: REST API; free key available.
+    grain: One key per place (address + POI components).
+    refresh: Live API.
+    measures: >
+      A universal join key for physical places, so records from different vendors
+      can be matched without fuzzy name/address logic.
+    price_tier: 1k_10k_yr
+    cost: {amount: 3000, unit: year}
+    cost_basis: verified
+    integration_effort: low
+    confidence: high
+    price_note: >
+      VERIFIED: free tier 10,000 lookups/day; Silver $3,000/yr (6M lookups); Gold
+      $15,000/yr (30M); Enterprise from $40,000/yr. Correcting a common assumption —
+      it is NOT simply free at production volume.
+    license_note: >
+      Open standard, partners include SafeGraph, Veraset, CARTO, Esri, Cuebiq,
+      Regrid. Keys are designed to be shared.
+    closes_gap: >
+      (e) POI truth — D79 found the dedup cluster_id is an input-order artefact
+      (0.00% survive a row-order shuffle) and had to fall back on a content hash;
+      Placekey is the industry-standard fix and makes every vendor file above
+      joinable to Loci's ledger without rebuilding the dedup.
+    priority_reason: >
+      The plumbing that makes every other purchase on this list cheaper to
+      integrate; free tier probably suffices for MN+BK.
+    nyc_coverage: >
+      Full.
+    bias: >
+      Not a data source -- a join key. It cannot add a POI Loci does not already
+      have, and an address that geocodes wrongly gets a confidently wrong key.
+    evidence:
+      - {url: "https://www.placekey.io/pricing", date: 2026-09-13}
+
+  - id: paid_retailstat_location
+    name: RetailStat Location (incl. former Creditntell)
+    vendor: RetailStat
+    tier: universal
+    role: poi
+    status: wishlist
+    category: chains
+    priority: P2
+    url: "https://www.retailstat.com"
+    access: Platform; no self-serve.
+    grain: Brand and individual store location.
+    refresh: Continuous.
+    measures: >
+      Chain store openings and closings, retailer financial and credit health, and
+      POI data on national and regional banners.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: high
+    confidence: med
+    price_note: >
+      No public pricing anywhere, no G2/Capterra listing to triangulate. Note
+      Creditntell merged into RetailStat in 2023 and creditntell.com now redirects —
+      they are one vendor, not two options.
+    license_note: >
+      Unpublished.
+    closes_gap: >
+      (f) Chain expansion — D77's watchlist is 121 brands assembled from press with
+      only one detect snapshot so far; a vendor feed replaces press-scraping and
+      makes QUESTIONS T8 (do chain pipelines lead category gap closure) answerable
+      without waiting a year for a second snapshot.
+    priority_reason: >
+      Best-fit product for the chains gap on paper, but fully quote-gated and
+      chain-only in a city dominated by independents.
+    nyc_coverage: >
+      National chains operating in NYC; independent operators are out of scope by
+      construction.
+    bias: >
+      Chains only, by construction. Independent operators -- the majority of the NYC
+      daily-needs bundle -- are out of scope, so it can never speak to the gap
+      itself, only to who might fill it.
+    evidence:
+      - {url: "https://www.retailstat.com", date: 2026-09-13}
+
+  - id: paid_coresight_openings_closures
+    name: Coresight US Store Openings/Closures Tracker
+    vendor: Coresight Research
+    tier: universal
+    role: poi
+    status: wishlist
+    category: chains
+    priority: P2
+    url: "https://coresight.com"
+    access: Membership research portal.
+    grain: Brand-level, national counts; not address-level.
+    refresh: Weekly.
+    measures: >
+      Weekly national tracker of announced chain store openings and closures.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: high
+    confidence: med
+    price_note: >
+      Quote-only across all membership tiers and even single-report purchase; no
+      dollar figure published anywhere.
+    license_note: >
+      Research subscription; republication restricted.
+    closes_gap: >
+      (f) Chain expansion — the closest professional analogue to Loci's press-based
+      watchlist, but at national brand grain it would inform the watchlist rather
+      than replace it.
+    priority_reason: >
+      Useful editorial input, wrong grain to feed a screen; buy only if a human
+      analyst is curating the watchlist.
+    nyc_coverage: >
+      National only — NYC store-by-store detail is not the product.
+    bias: >
+      Brand-level national counts. It cannot place a closure at a BBL, a corridor,
+      or even a borough, so it is trend context and never an address-level input.
+    evidence:
+      - {url: "https://coresight.com", date: 2026-09-13}
+
+  - id: paid_spatial_ai_personalive
+    name: PersonaLive segmentation
+    vendor: Spatial.ai
+    tier: universal
+    role: control
+    status: wishlist
+    category: demographics
+    priority: P2
+    url: "https://www.spatial.ai/pricing"
+    access: Platform and data delivery.
+    grain: Census block group or custom trade area.
+    refresh: Annual vintages.
+    measures: >
+      Behavioural and psychographic household segmentation, with a credit-card spend
+      insights layer at the top tier.
+    price_tier: 10k_50k_yr
+    cost: {amount: 5100, unit: year}
+    cost_basis: verified
+    integration_effort: med
+    confidence: med
+    price_note: >
+      VERIFIED published tiers: Analyst $5,100-$6,000/yr; Media Buyer
+      $8,400-$9,600/yr; Strategist $16,200-$18,000/yr (includes credit-card spend
+      insights). Pricing scales with trade-area count, so an NYC-wide deployment
+      could land at the top of the 10k-50k band.
+    license_note: >
+      Redistribution terms for a resold product are not published and need direct
+      confirmation.
+    closes_gap: >
+      (h) Demographics — behavioural segments are the non-income demand control D12
+      asks for (where absent supply reflects revealed demand rather than a gap, e.g.
+      bars in Midwood and Borough Park), which ACS income and age cannot express.
+    priority_reason: >
+      Best published pricing transparency in the segmentation category and it
+      targets a specific named open question rather than generic demographics.
+    nyc_coverage: >
+      National; block-group grain covers MN+BK fully.
+    bias: >
+      Modelled social/behavioural segments at block group, inferred from social and
+      mobility signals rather than measured. Segment labels are proprietary and
+      unauditable -- there is no way to test the assignment against ground truth.
+    evidence:
+      - {url: "https://www.spatial.ai/pricing", date: 2026-09-13}
+
+  - id: paid_earnest_analytics_zip_spend
+    name: Earnest Analytics (Vela / Orion), incl. ZIP-level in-store spend
+    vendor: Earnest Analytics (acquired by Consumer Edge, April 2025)
+    tier: universal
+    role: control
+    status: wishlist
+    category: spend
+    priority: P2
+    url: "https://www.earnestanalytics.com"
+    access: Dash UI plus raw delivery via S3, BigQuery, Snowflake.
+    grain: >
+      ZIP code via a merchant_location_zip table; custom trade areas on request.
+      Coarser than Loci's address grain but finer than county.
+    refresh: Near-daily post-swipe.
+    measures: >
+      Card-panel derived spend by merchant, with a 2025 addition giving
+      ZIP-code-level in-store spend and custom trade areas.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: med
+    confidence: med
+    price_note: >
+      No price published and no Vendr benchmark exists for this vendor.
+    license_note: >
+      RED FLAG — the Dash terms restrict use to an 'investment/financial services
+      firm or internal business analysis' and bar assembling a database from the
+      output. As written this is internal-use-only and incompatible with backing a
+      resold product without a bespoke agreement.
+    closes_gap: >
+      (b) Spend — ZIP-grain observed spend is the out-of-sample test D81's leakage
+      parameter lambda currently has none of; lambda_Kings and lambda_NY already
+      disagree by 1.4-2.6x per category with no way to adjudicate.
+    priority_reason: >
+      Finest non-SafeGraph spend grain found, but the terms as published would block
+      the product Loci is raising money to sell.
+    nyc_coverage: >
+      National panel; NYC ZIPs included.
+    bias: >
+      ZIP grain, which in NYC pools radically different blocks into one number and
+      is coarser than the walkshed the whole screen is built on. Card panel, so cash
+      is invisible and panel share is undisclosed.
+    evidence:
+      - {url: "https://www.earnestanalytics.com", date: 2026-09-13}
+
+  - id: paid_mastercard_retail_location_insights
+    name: Mastercard Retail Location Insights
+    vendor: Mastercard Data & Services (delivered with CARTO)
+    tier: universal
+    role: control
+    status: wishlist
+    category: spend
+    priority: P2
+    url: "https://carto.com/solutions/mastercard/"
+    access: >
+      Via the CARTO platform or a direct Mastercard engagement. NOT confirmed as a
+      self-serve Snowflake listing (that appears to be a different Mastercard
+      product).
+    grain: CENSUS BLOCK — the finest grain of any card-panel product surveyed.
+    refresh: Not published.
+    measures: >
+      A location 'site score' covering spend stability, performance and traffic,
+      derived from Mastercard's 2.2B+ card panel.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: high
+    confidence: med
+    price_note: >
+      No price found anywhere — Vendr, G2 and press are all blank. A Vendr
+      '$100-125k' Mastercard entry could not be attributed to this specific product.
+    license_note: >
+      Terms page blocked automated access; unconfirmed. Mastercard's adjacent
+      SpendingPulse product explicitly bars redistribution, which is a signal about
+      house style.
+    closes_gap: >
+      (b) Spend — block-grain spend would let D81 drop the county-level Economic
+      Census anchor that currently 'blurs Park Slope with Gowanus', the caveat the
+      revenue model says it cannot escape.
+    priority_reason: >
+      Finest published grain in the category and it targets D81's named weakness,
+      but zero price transparency and a likely six-figure entry point.
+    nyc_coverage: >
+      Plausible from a national panel but not explicitly confirmed for NYC.
+    bias: >
+      Census-block grain is fine, but the panel is card transactions: cash-heavy
+      trades are systematically understated, NYC coverage is not explicitly
+      confirmed, and redistribution is barred, so it can inform a grade it may never
+      display.
+    evidence:
+      - {url: "https://carto.com/solutions/mastercard/", date: 2026-09-13}
+
+  - id: paid_dot_camera_cv_build
+    name: Computer vision on NYC DOT traffic camera frames (BUILD, not buy)
+    vendor: self-built on NYCTMC feeds
+    tier: city
+    city: nyc
+    role: validation
+    status: wishlist
+    category: sidewalk
+    priority: P2
+    url: "https://webcams.nyctmc.org/api/cameras"
+    access: Open unauthenticated JSON API and image endpoint.
+    grain: >
+      Per camera, per sampled frame; the catchment is unknown and non-constant
+      because bearing, field of view, height and lens are all unpublished.
+    refresh: >
+      Near-live frame per request, no published cadence, no Last-Modified or ETag.
+    measures: >
+      Pedestrian counts inferred by an object detector run on still frames from ~969
+      public NYC DOT cameras.
+    price_tier: hardware
+    cost: {amount: 4320, unit: year}
+    cost_basis: reported
+    integration_effort: high
+    confidence: med
+    price_note: >
+      Compute only. Credible published industry figures: ~$24/camera/month on a
+      rented cloud L4 GPU at full continuous stream density, cut 3-6x by dropping
+      inference to 5-10 fps; or an ~$8,000 on-prem L4 server supporting ~24
+      simultaneous 1080p streams. For periodic sampling of a few dozen target blocks
+      this is a few hundred dollars a month at most.
+    license_note: >
+      MATERIAL RISK — no published, versioned terms-of-use text is retrievable (the
+      site is a JS SPA and the terms link is client-side routed), but NYC DOT sent a
+      cease-and-desist to at least one creative-reuse project in 2024 despite the
+      feeds being technically open. Treat commercial automated scraping as legally
+      ambiguous, not permitted.
+    closes_gap: >
+      (i) Sidewalk counts — the only route to more than 114 observation points
+      without buying hardware, but CONTEXT already documents why the resulting
+      number is a count on an unknown catchment.
+    priority_reason: >
+      Cheapest way to multiply observation points ninefold, but the
+      unknown-catchment problem and the C&D precedent mean it is a research probe,
+      not a product dependency.
+    nyc_coverage: >
+      969 cameras (MN 376 / BK 204), but sited at signalised arterial intersections
+      to watch vehicle queues — a quiet residential block has no camera, so the
+      siting bias runs in the SAME direction as the DOT count points it is meant to
+      escape.
+    bias: >
+      Cameras sit at signalised arterial intersections chosen to watch vehicle
+      queues, so the siting bias runs in the SAME direction as the DOT count points
+      it is meant to escape -- a quiet residential block has no camera. Bearing,
+      field of view, height and lens are unpublished, so a person count is a count
+      on an unknown, non-constant catchment: a stock, never a flow.
+    notes: >
+      BUILD, NOT BUY -- the sampler already exists (`loci sidewalk-count`, d948b6d).
+      Cost books 15 DOT-adjacent cameras at ~$24/camera/month of rented cloud GPU =
+      $4,320/yr at full continuous stream density; periodic sampling at 5-10 fps
+      cuts that 3-6x.
+    evidence:
+      - {url: "https://webcams.nyctmc.org/about", date: 2026-09-13}
+      - {url: "https://wttdotm.com/blog/tcpb_part_2.html", date: 2025}
+      - {url: "https://www.reddit.com/r/nyc/comments/1hcw3kc/nyc_traffic_camera_selfie_creator_holds_cease_and", date: 2024-12}
+
+  - id: paid_costar_retail
+    name: CoStar Retail
+    vendor: CoStar Group
+    tier: universal
+    role: control
+    status: wishlist
+    category: rent
+    priority: P3
+    url: "https://www.costar.com"
+    access: UI; no general API; bulk export restricted.
+    grain: Building and lease level.
+    refresh: Continuous.
+    measures: >
+      Building, lease and sale comps plus availabilities for retail space.
+    price_tier: 10k_50k_yr
+    cost: {amount: 15000, unit: year}
+    cost_basis: reported
+    integration_effort: high
+    confidence: high
+    price_note: >
+      No published price. Vendr reports $3,000-$23,000/yr with a ~$15,000/yr average
+      — a reported range, not CoStar's list.
+    license_note: >
+      NON-STARTER as written. CoStar is the most litigious vendor in this space,
+      with 30+ copyright and trade-secret suits on record (CoStar v. LoopNet 1999;
+      CoStar v. Zillow 2025 over ~46,000 photos; Move/Realtor.com v. CoStar 2025).
+      Embedding CoStar data in a commercial analytics product would very likely
+      breach its terms, and CoStar is known to refuse redistribution licences.
+      LoopNet inherits the same posture and its ToS explicitly bars robots and
+      exporting listings into a database.
+    closes_gap: >
+      (c) Rent — would close it completely on data, and open a legal exposure that
+      is worse than the gap.
+    priority_reason: >
+      Best data, unusable licence; list it so the decision is explicit rather than
+      revisited every quarter.
+    nyc_coverage: >
+      Deepest NYC retail file that exists commercially.
+    bias: >
+      The licence, not the data, is the blind spot: the terms make a sold product
+      almost certainly a breach, so anything learned from it can inform internal
+      work and never appear on a card. Building-level coverage also thins for small
+      walk-up retail.
+    notes: >
+      Cost books Vendr's reported ~$15,000/yr average. P3 on licence grounds, not
+      price.
+    evidence:
+      - {url: "https://www.costar.com", date: 2026-09-13}
+      - {url: "https://www.loopnet.com/legal/terms-of-use/", date: 2026-09-13}
+
+  - id: paid_dewey_data
+    name: Dewey Data (Advan/SafeGraph reseller channel)
+    vendor: Dewey Data
+    tier: universal
+    role: validation
+    status: wishlist
+    category: foot_traffic
+    priority: P3
+    url: "https://www.deweydata.io/pricing"
+    access: >
+      Self-serve web platform, project downloads, API, and a Dewey MCP server.
+    grain: Same as the underlying provider.
+    refresh: Same as the underlying provider.
+    measures: >
+      A marketplace reselling 30+ providers' data, notably Advan Patterns Plus,
+      under one subscription.
+    price_tier: 1k_10k_yr
+    cost: {amount: 3600, unit: year}
+    cost_basis: verified
+    integration_effort: low
+    confidence: high
+    price_note: >
+      VERIFIED tiers: Researcher $3,600/yr; Department $25,000/yr; School
+      $35,000/yr; University $50,000/yr. No commercial tier exists at any price.
+    license_note: >
+      DISQUALIFIED. Dewey's own subscription terms state data 'may not be used for
+      any commercial purpose or to generate revenue', raw data 'may not be shared,
+      distributed, or published to any third party', and must be destroyed at
+      licence end — confirmed on Dewey's site and mirrored by UVA, UW and Berkeley
+      library guides. A venture-backed startup cannot use this channel for its
+      product at any price.
+    closes_gap: >
+      (a) Foot traffic — on paper, at the cheapest price in the category; in
+      practice, not at all.
+    priority_reason: >
+      The obvious cheap route to Advan data and it is contractually closed; record
+      it so nobody proposes it again.
+    nyc_coverage: >
+      Same as the underlying provider.
+    bias: >
+      An academic reseller, not a source -- coverage is exactly the underlying
+      provider's. Its terms bar commercial use outright, so its coverage is
+      irrelevant to Loci at any price.
+    evidence:
+      - {url: "https://www.deweydata.io/pricing", date: 2026-09-13}
+      - {url: "https://docs.deweydata.io/article/subscription-terms", date: 2026-09-13}
+      - {url: "https://guides.lib.virginia.edu/dewey", date: 2026-09-13}
+
+  - id: paid_claritas_prizm_premier
+    name: PRIZM Premier / Claritas 360
+    vendor: Claritas
+    tier: universal
+    role: control
+    status: wishlist
+    category: demographics
+    priority: P3
+    url: "https://claritas.com"
+    access: >
+      Claritas 360 platform (a delivery platform, not a separate segmentation
+      system).
+    grain: >
+      Household, distributed at ZIP, ZIP+4, ZIP+6, block group, tract or custom
+      trade area.
+    refresh: Annual.
+    measures: >
+      Household segmentation with consumer behaviour and spend propensity attached.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: med
+    confidence: high
+    price_note: >
+      100% quote-only everywhere checked, including the PolicyMap reseller.
+      Claritas's own self-serve arm, Spotlight, publishes $1,645/yr Standard and
+      $3,295/yr Advanced — but those tiers EXPLICITLY EXCLUDE PRIZM Premier
+      segmentation.
+    license_note: >
+      Sharpest licence restriction found in the entire survey. The Information
+      Services Agreement prohibits distributing, reselling or sublicensing Licensed
+      Materials OR DERIVATIVES to any third party without written consent, and
+      separately bars using the data to build any third-party list-enhancement or
+      data-appending application. That is a direct conflict with Loci's business
+      model.
+    closes_gap: >
+      (h) Demographics — would close it on data; the derivatives clause closes it
+      back.
+    priority_reason: >
+      Industry standard and contractually incompatible; Spatial.ai or Esri are the
+      workable substitutes.
+    nyc_coverage: >
+      Full.
+    bias: >
+      Modelled household segments, annual vintage, and a licence that bars
+      distributing derivatives -- the sharpest restriction in the survey. It cannot
+      be shown, so it can only ever be a private sanity check.
+    notes: >
+      Claritas Spotlight publishes $1,645/yr Standard and $3,295/yr Advanced, but
+      those tiers explicitly EXCLUDE PRIZM Premier, so the quote_only floor stands.
+    evidence:
+      - {url: "https://claritas.com/claritas-360/", date: 2026-09-13}
+      - {url: "https://claritas.com/terms-of-use/", date: 2026-09-13}
+
+  - id: paid_consumer_edge_ce_vision
+    name: CE Vision
+    vendor: Consumer Edge
+    tier: universal
+    role: control
+    status: wishlist
+    category: spend
+    priority: P3
+    url: "https://consumer-edge.com"
+    access: Platform plus data delivery.
+    grain: >
+      Store-location level for attribution (500k-885k locations), but the platform's
+      analytical cuts are cohort and demographic, not a small-area demand surface.
+    refresh: ~3 days post-swipe.
+    measures: >
+      Card-panel transaction data attributed to merchants and store locations.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: med
+    confidence: med
+    price_note: >
+      No public price; Vendr and Datarade are both blank.
+    license_note: >
+      Public terms of use bar reselling, redistributing or creating derivative
+      commercial products without written consent.
+    closes_gap: >
+      (b) Spend — same target as Earnest (which Consumer Edge now owns), with a
+      coarser analytical surface.
+    priority_reason: >
+      Now the same corporate parent as Earnest; negotiate once, not twice, and lead
+      with the Earnest ZIP table.
+    nyc_coverage: >
+      National panel.
+    bias: >
+      Cohort and demographic analytics over a card panel; the store-location
+      attribution exists but the analytical cuts are not a small-area demand
+      surface. Same cash blindness as every card panel.
+    evidence:
+      - {url: "https://consumer-edge.com", date: 2026-09-13}
+
+  - id: paid_datassential_firefly
+    name: Firefly (US foodservice operator database)
+    vendor: Datassential
+    tier: universal
+    role: poi
+    status: wishlist
+    category: chains
+    priority: P3
+    url: "https://datassential.com"
+    access: Platform UI only; no API.
+    grain: Individual location.
+    refresh: Weekly.
+    measures: >
+      US foodservice operator database with openings and closures across ~1.4M US
+      locations.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: high
+    confidence: high
+    price_note: >
+      No public number anywhere; their own terms say the fee is set per individual
+      purchase order.
+    license_note: >
+      Datassential's published Additional Product Terms explicitly bar embedding
+      their data or reports into a third-party product for resale. Internal use only
+      without bespoke negotiation.
+    closes_gap: >
+      (d) Openings/closings — but only for food service, which is the ONE category
+      family Loci can already see through DOHMH inspections, so it adds least where
+      the need is greatest.
+    priority_reason: >
+      Duplicates Loci's strongest existing asset (DOHMH near-census) and is
+      resale-restricted. Technomic/Ignite has the same shape and no published terms
+      at all.
+    nyc_coverage: >
+      Chain-locator-centric, cross-referenced against Yelp/Foursquare — independent
+      restaurant coverage, which dominates NYC neighborhoods, is unverified and
+      plausibly weak.
+    bias: >
+      Food service only -- the one family Loci already sees through the DOHMH
+      near-census, so it adds nothing where the coverage hole actually is.
+      Chain-locator-centric, so independent NYC restaurants are plausibly weak.
+    evidence:
+      - {url: "https://datassential.com", date: 2026-09-13}
+
+  - id: paid_lightcast_job_postings
+    name: Lightcast job postings + LMI
+    vendor: Lightcast (formerly Emsi Burning Glass)
+    tier: universal
+    role: outcome
+    status: wishlist
+    category: pipeline
+    priority: P3
+    url: "https://lightcast.io"
+    access: API and platform.
+    grain: >
+      Metro, county or ZIP for LMI; city-level filters for postings. NOT
+      address-level, contradicting the vendor's own marketing implication.
+    refresh: Daily postings ingest.
+    measures: >
+      ~3B job postings (~1M/day) plus labour-market data; a hiring post is often the
+      earliest public signal a store is opening.
+    price_tier: 10k_50k_yr
+    cost: {amount: 7500, unit: year}
+    cost_basis: verified
+    integration_effort: med
+    confidence: high
+    price_note: >
+      VERIFIED public contract: Sumter County FL, $23,200 over 3 years ($7,500
+      rising to $7,975/yr) for a single-county subscription. An NYC-scale deal would
+      plausibly run well into five figures per year.
+    license_note: >
+      Terms explicitly bar redistributing the dataset to third parties on an
+      on-demand or standalone basis — usable as an internal signal only.
+    closes_gap: >
+      (d) Pipeline — an attractive leading indicator in theory, but city-level grain
+      cannot place a hire at a BBL, so it cannot feed an address-grain screen.
+    priority_reason: >
+      Right idea, wrong grain; revisit only if Lightcast can demonstrate
+      address-resolved postings.
+    nyc_coverage: >
+      National; NYC at city grain only.
+    bias: >
+      City grain, not address: a hiring post cannot be placed at a BBL, which is the
+      only thing that would have made it an opening signal. Postings also miss the
+      cash-hire independents that dominate the bundle.
+    evidence:
+      - {url: "https://lightcast.io", date: 2026-09-13}
+
+  - id: paid_dnb_data_blocks
+    name: D&B Data Blocks / Direct+ / Hoovers
+    vendor: Dun & Bradstreet
+    tier: universal
+    role: outcome
+    status: wishlist
+    category: pipeline
+    priority: P3
+    url: "https://www.dnb.com"
+    access: API (Direct+), platform (Hoovers).
+    grain: Business record keyed to DUNS.
+    refresh: Continuous.
+    measures: >
+      Firmographics, corporate linkage and risk/failure scores.
+    price_tier: 10k_50k_yr
+    cost: {amount: 41400, unit: year}
+    cost_basis: reported
+    integration_effort: med
+    confidence: med
+    price_note: >
+      D&B Hoovers has a small public self-serve tier at $49/mo or $529/yr.
+      Enterprise Direct+/Data Blocks is quote-only; Vendr crowdsourced contract data
+      gives a median of $41,400/yr across 109 deals (range $6,922-$147,552).
+    license_note: >
+      Enterprise licences are per-use-case; redistribution requires specific terms.
+    closes_gap: >
+      (d) Openings/closings — weaker than Data Axle for this purpose: no clean
+      confirmed open/close DATE field comparable to opened_for_business_on and
+      out_of_business_on.
+    priority_reason: >
+      Costs roughly an order of magnitude more than Data Axle and lacks the one
+      field the gap needs.
+    nyc_coverage: >
+      National; NYC included.
+    bias: >
+      DUNS-keyed corporate records with no clean open/close date field, which is the
+      field it was shortlisted for. Small independents are thin in the DUNS
+      universe.
+    notes: >
+      Cost books Vendr's $41,400/yr median across 109 deals.
+    evidence:
+      - {url: "https://www.dnb.com/products/marketing-sales/dnb-hoovers/pricing.html", date: 2026-09-13}
