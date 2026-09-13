@@ -364,20 +364,35 @@ CREATE TABLE IF NOT EXISTS analysis.poi_dedup (
 --                              order, so viz/webmap_export.py, the laundry
 --                              views and the CLI queries are unchanged
 --
--- THE SCREEN ITSELF IS UNCHANGED (D33/D38/D39/D41). Per residential PLUTO lot
--- (UnitsRes > 0): a FIXED, reach-independent walkability gate (`eligible` --
--- >= 12 of 15 categories present within 800 m, mirroring model/gaps.py's
--- `_eligible_universe` at address grain) decides what is in scope at all;
--- among eligible addresses `gap_score` = max over categories of
+-- THE SCREEN (D33/D38/D39/D41, gate retired 2026-09-13 by D75). Per
+-- residential PLUTO lot (UnitsRes > 0): `gap_score` = max over categories of
 -- nearest_m / reach_m is a CONTINUOUS ranking (D39), never a binary "exactly
 -- one missing" list. `lead_category` / `lead_excess_m` name the worst
 -- (max-ratio) category, ties going to the larger raw nearest_m (the more
--- conspicuous absence). `n_missing` counts categories with ratio > 1. All are
--- NULL/0 for an ineligible address. `units_capped` clips units at 500/lot for
--- unit-weighted ranking (D39: Co-op City-scale lots would otherwise dominate);
--- raw `units` is kept beside it. `cluster_id` groups eligible, gap_score > 1
--- addresses sharing a lead_category within ~200 m (single-linkage, eps=200 m)
--- -- the action signal is a CLUSTER missing the same business, not one lot.
+-- conspicuous absence). `n_missing` counts categories with ratio > 1.
+-- `units_capped` clips units at 500/lot for unit-weighted ranking (D39: Co-op
+-- City-scale lots would otherwise dominate); raw `units` is kept beside it.
+-- `cluster_id` groups gap_score > 1 addresses sharing a lead_category within
+-- ~200 m (single-linkage, eps=200 m) -- the action signal is a CLUSTER missing
+-- the same business, not one lot.
+--
+-- `eligible` IS RETIRED AND IS ALWAYS TRUE (D75, 2026-09-13, owner ruling).
+-- Until then it was a FIXED, reach-independent walkability gate (>= 12 of 15
+-- categories within 800 m, mirroring model/gaps.py's `_eligible_universe`),
+-- and every summary column above was NULL/0 outside it. The owner's ruling:
+-- "I 100% vehemently disagree with 'which addresses count at all'. If an
+-- address is truly in a super underdeveloped area, this would completely not
+-- count it." Every address is now in the universe; the column stays, always
+-- TRUE, so that stored data, this DDL and every query written against the
+-- pre-D75 shape keep working. It is NOT a filter any reader should apply, and
+-- `WHERE eligible` in new code is a bug. The monotonicity D39 needed it for is
+-- now trivial: with no gate, the gap set is `ratio > 1` read off each
+-- address's own nearest_m against a fixed reach, so tightening a reach can
+-- only ADD pairs. `present_count` survives as the descriptive count it always
+-- was (categories within 800 m) and is a candidate RANKING feature; the
+-- feasibility question the gate was reaching for lives in model/invest.py's
+-- PLUTO CommFAR / RetailArea build-or-lease test, and nothing from the gate
+-- was folded into it.
 --
 -- NO DEMOGRAPHICS HERE (D56). Join analysis.address_demographics on
 -- address_id: it holds the lot's own census tract's ACS figures, taken
@@ -409,12 +424,12 @@ CREATE TABLE IF NOT EXISTS analysis.address (
     h3_index          VARCHAR,             -- res-9 cell CONTAINING the lot: the borough/NTA
                                            -- join key and the roll-up-to-grid key. Geometry,
                                            -- not demography -- nothing demographic rides on it.
-    present_count     SMALLINT NOT NULL,   -- categories within 800 m (the fixed gate's own count)
-    eligible          BOOLEAN NOT NULL,    -- present_count >= 12; reach-independent by construction
-    gap_score         REAL,                -- max(nearest_m / reach_m); NULL if not eligible
-    lead_category     VARCHAR,             -- argmax ratio, ties -> larger nearest_m; NULL if not eligible
-    lead_excess_m     REAL,                -- nearest_m - reach_m at lead_category; NULL if not eligible
-    n_missing         SMALLINT NOT NULL,   -- count of categories with ratio > 1; 0 if not eligible
+    present_count     SMALLINT NOT NULL,   -- categories within 800 m; DESCRIPTIVE since D75, not a gate
+    eligible          BOOLEAN NOT NULL,    -- RETIRED D75 (2026-09-13): always TRUE; never filter on it
+    gap_score         REAL,                -- max(nearest_m / reach_m); populated for every address (D75)
+    lead_category     VARCHAR,             -- argmax ratio, ties -> larger nearest_m
+    lead_excess_m     REAL,                -- nearest_m - reach_m at lead_category
+    n_missing         SMALLINT NOT NULL,   -- count of categories with ratio > 1
     cluster_id        VARCHAR,             -- "{borough}:{lead_category}:{local_id}"; NULL unless gap_score > 1
     reach_source      VARCHAR NOT NULL CHECK (reach_source IN ('tiers', 'p80')),
     reach_hash        VARCHAR NOT NULL,
@@ -471,10 +486,11 @@ CREATE TABLE IF NOT EXISTS analysis.address (
 -- their order (D48: the output is graded, never filtered). An annotation that
 -- reorders leads has become a filter wearing a costume.
 --
--- `is_lead` and `eligible` are written by the SCREEN, not by the annotation --
--- they are copies of analysis.address.lead_category = category and
--- analysis.address.eligible, denormalised so a reader can slice the long table
--- without a join. The annotation reads them; it does not set them.
+-- `is_lead`, `eligible` and `censored` are written by the SCREEN, not by the
+-- annotation -- they are copies of analysis.address.lead_category = category,
+-- analysis.address.eligible (retired D75, always TRUE) and the D75 censoring
+-- flag, denormalised so a reader can slice the long table without a join. The
+-- annotation reads them; it does not set them.
 --
 -- demand_class is DERIVED from spend.yaml's BLS CEX income elasticity at
 -- demand.yaml's 0.35 cut (D49), never hand-coded; `elasticity` is the CEX
@@ -499,10 +515,10 @@ CREATE TABLE IF NOT EXISTS analysis.address_category (
     address_id           VARCHAR NOT NULL,
     borough              VARCHAR NOT NULL,
     category             VARCHAR NOT NULL,
-    nearest_m            REAL,               -- censored at the 30-minute network cap
+    nearest_m            REAL,               -- censored at the 30-minute network cap; see `censored`
     ratio                REAL,               -- nearest_m / reach_m; > 1 means "missing" (D39)
     is_lead              BOOLEAN,            -- written by the screen: this is the address's lead_category
-    eligible             BOOLEAN,            -- written by the screen: the address's walkability gate
+    eligible             BOOLEAN,            -- RETIRED D75: always TRUE; a copy of analysis.address.eligible
     -- ---- demand annotation, written ONLY by model/address_demand.py ----
     demand_class         VARCHAR CHECK (demand_class IS NULL
                                         OR demand_class IN ('necessity', 'discretionary')),
@@ -966,3 +982,98 @@ ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS supply_ratio_run_at       
 ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS supply_400m          BIGINT;
 ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS supply_per_1k        DOUBLE;
 ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS supply_ratio_vs_base DOUBLE;
+
+-- ==========================================================================
+-- D75 (2026-09-13) -- THE RIGHT-CENSORING FLAGS.
+--
+-- `nearest_m` is the output of a walk-network Dijkstra run with
+-- `limit = score/access.DIST_LIMIT` (2,400 m, a 30-minute walk). A category
+-- with NOTHING inside that limit is recorded AT the limit. So a stored
+-- nearest_m of 2,400 has two readings that the number alone cannot separate:
+-- "the nearest one is 2,400 m away" and "there isn't one within 2,400 m, and
+-- nobody measured how much further it is". The second is the common case.
+--
+-- D51 found this and noted the derived ceiling it puts on gap_score
+-- (max attainable ratio = 2400 / reach, so a max-ratio ranking partly sorts
+-- the reach table). The eligibility gate was accidentally hiding most of it:
+-- an address with several unreachable categories usually failed
+-- `present_count >= 12` and was dropped. D75 retired the gate, so the
+-- artifact is now fully exposed and has to be handled in the open.
+--
+-- THE HANDLING IS A FLAG, NOT A RULE. `gap_score` is unchanged and `cap_m` is
+-- unchanged. A censored ratio is still the SMALLEST value that ratio could
+-- take, so leaving it in the score keeps the ranking monotone, continuous and
+-- conservative -- inventing an extrapolated distance would be a new model
+-- nobody has calibrated, and dropping the pair would re-introduce a gate by
+-- the back door. Instead the fact travels with the number:
+--
+--   analysis.address_category.censored  TRUE iff nearest_m >= 2,400 -- this
+--       pair's nearest_m and ratio are FLOORS, not measurements.
+--   analysis.address.lead_censored      TRUE iff the LEAD category is
+--       censored -- i.e. this address's gap_score is a floor. This is the one
+--       a ranking, a recommendation card or a map popup must read: the honest
+--       rendering is "nearest X beyond 2,400 m -- distance not measured",
+--       never "2,400 m".
+--
+-- Both are written by the SCREEN (model/address_gaps.py's
+-- ADDRESS_COLUMNS / ADDRESS_CATEGORY_SCREEN_COLUMNS) and by nothing else, so
+-- they are covered by the same disjointness tests as every other screen
+-- column. Both are surfaced on the generated view analysis.address_gaps
+-- (`lead_censored` plus the fifteen `{cat}_censored`).
+--
+-- Added at the TAIL of 002 for the same reason as the supply-intensity block
+-- above: db.init_schema() rebuilds the generated VIEW analysis.address_gaps
+-- immediately after this file, and DuckDB resolves a view's query at CREATE
+-- time, so a column added in a later migration would not exist when the view
+-- naming it is created.
+-- ==========================================================================
+ALTER TABLE analysis.address          ADD COLUMN IF NOT EXISTS lead_censored BOOLEAN;
+ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS censored      BOOLEAN;
+
+-- ==========================================================================
+-- SITE-REVENUE MODEL v0 (2026-09-13) -- what a typical new store could take.
+--
+-- WHY THESE COLUMNS AND NOT A NEW TABLE. Revenue varies by category, so the
+-- three percentiles, the rent ceiling and the model version extend
+-- analysis.address_category (per-category grain). `homes_800m` does NOT vary
+-- by category -- the same homes are within 800 m whether the question is bars
+-- or pharmacies -- so it extends analysis.address, exactly as homes_400m,
+-- storefronts_400m and units_permitted_400m do, and for the same D61 reason:
+-- putting it on address_category would write fifteen identical copies of one
+-- number.
+--
+-- WHAT THE NUMBERS ARE. revenue_p50 = lambda_c * homes_400m * annual CEX spend
+-- per household for the address's income quintile * a Huff capture share
+-- against the principled incumbents within 800 m network metres. lambda_c is
+-- fitted per COUNTY so that the mean prediction over that county's existing
+-- establishments equals the Economic Census mean revenue per establishment, so
+-- the LEVEL is calibrated by construction and only the cross-sectional
+-- variation is a claim. Full equations: src/loci/model/revenue.py's docstring.
+--
+-- WHAT p25/p75 ARE NOT. They are a PARAMETER band (lambda disagreement between
+-- the two counties, the tract income MOE moving the address across a quintile
+-- boundary, and the spread of the leave-one-ZIP-out beta refits). They say
+-- nothing about how far a real store's takings sit from the model -- that
+-- dispersion needs P&Ls and is exactly why the recommendation card caps this
+-- evidence at grade C.
+--
+-- NULL MEANS NOT MODELLED. A category that failed the out-of-sample gate
+-- (`gate: fail` in src/loci/model/revenue_calibration.yaml) is left NULL on
+-- purpose and keeps grade D. NULL is never a revenue of zero.
+--
+-- Written ONLY by model/revenue.py's CATEGORY_REVENUE_COLUMNS /
+-- ADDRESS_REVENUE_COLUMNS, by UPDATE, with the SET lists pinned disjoint from
+-- the screen, demand, pipeline, storefront, age-fit and supply-ratio columns by
+-- tests/test_revenue.py. Re-apply: `uv run loci revenue --boroughs MN,BK`,
+-- AFTER `loci supply-ratio` in the canonical order.
+--
+-- At the TAIL of 002 for the same reason as the two blocks above: db.init_schema()
+-- rebuilds the generated VIEW analysis.address_gaps immediately after this file.
+-- ==========================================================================
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS homes_800m BIGINT;
+
+ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS revenue_p25           DOUBLE;
+ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS revenue_p50           DOUBLE;
+ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS revenue_p75           DOUBLE;
+ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS rent_ceiling          DOUBLE;
+ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS revenue_model_version VARCHAR;

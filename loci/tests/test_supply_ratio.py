@@ -276,7 +276,7 @@ def test_baseline_yaml_round_trip(tmp_path):
     doc = {
         "supply_hash": "deadbeef1234", "supply_set": "principled",
         "asof": "2026-09-11", "radius_m": 400.0, "boroughs": ["MN", "BK"],
-        "universe": "eligible addresses with homes_400m > 0",
+        "universe": "all addresses with homes_400m > 0",
         "n_addresses": 281842, "graph_version": "abc123",
         "categories": fit_baselines(_long([("a", "grocery", True, 1000, 2, 2.0)])),
     }

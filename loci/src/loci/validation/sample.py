@@ -24,7 +24,7 @@ are a data gap wearing a costume. Measuring Google's enumeration ONLY where
 loci says a category is missing cannot separate coverage bias from a real
 hole — the present side of each stratum is the control.
 
-The sample is ADDRESS-weighted by default: every eligible lot is one draw,
+The sample is ADDRESS-weighted by default: every lot in scope is one draw,
 so a 400-unit apartment building and a two-family house count the same. That
 is the right weighting for "is loci's inventory right at this point", which
 is a property of the point, not of the households behind it. Pass
@@ -160,15 +160,19 @@ def draw_sample(con, categories: list[str] | None = None, per_stratum: int = 20,
 
     Strata: 10 income deciles × {missing, present} × |categories|, with
     `per_stratum` addresses each. Deciles are NTILE(10) over
-    address_demographics.median_hh_income across the WHOLE frame (all
-    eligible addresses in scope), computed once, so a decile means the same
+    address_demographics.median_hh_income across the WHOLE frame (every
+    address in scope), computed once, so a decile means the same
     thing in every category's strata. Ties at a decile boundary are split
     arbitrarily by NTILE; with ~265k addresses over ~2.3k distinct tract
     medians the effect on a stratum of 20 is negligible.
 
-    `eligible_only` keeps the address screen's own walkability gate
-    (present_count >= 12 of 15 within 800 m, D38/D39): an ineligible address
-    is out of scope for a lead, so ground-truthing it validates nothing.
+    `eligible_only` applies `analysis.address_gaps.eligible`. That column is
+    RETIRED and always TRUE since D75 (2026-09-13, owner ruling: an address in
+    a genuinely under-developed area must not be dropped), so on any run of the
+    current screen the flag is a no-op and the default draws from every address
+    in scope. The parameter survives for one reason: a parquet snapshot or a
+    restored backup from before D75 still carries FALSE rows, and re-measuring
+    those alongside gate-free rows would pool two different universes.
     """
     mapped, _skipped = mapped_categories(list(categories) if categories is not None else list(CATEGORIES))
     if not mapped:

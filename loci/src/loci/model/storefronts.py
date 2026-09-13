@@ -121,6 +121,7 @@ ADDRESS_SCREEN_COLUMNS = [
     "lead_excess_m", "n_missing", "cluster_id",
     "reach_source", "reach_hash", "graph_version",
     "supply_set", "supply_hash", "run_at",
+    "lead_censored",          # D75, appended
 ]
 
 #: D63's age-fit annotation columns at analysis.address grain

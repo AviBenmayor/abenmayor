@@ -107,6 +107,11 @@ def con():
               "is_canonical BOOLEAN, category VARCHAR)")
     c.execute("CREATE TABLE analysis.hex (h3_index VARCHAR, borough VARCHAR, nta_code VARCHAR)")
     cols = ", ".join(f"{cat}_ratio FLOAT, {cat}_nearest_m FLOAT" for cat in wx.ALLCATS)
+    # ...and the D75 censoring flags the real view appends: the address-grain
+    # `lead_censored` plus one `{cat}_censored` per category. Declared here so
+    # the export's censoring reading is exercised rather than skipped by
+    # `has_censoring_columns`.
+    cens = ", ".join(f"{cat}_censored BOOLEAN" for cat in wx.ALLCATS)
     # supply_set/supply_hash are native columns on the real analysis.address
     # (sql/002_schema.sql) as of D58, not an ALTER 006 bolts onto address_gaps
     # -- address_gaps is a VIEW now, and ALTER TABLE against a view errors.
@@ -128,7 +133,8 @@ def con():
         address_id VARCHAR, lon DOUBLE, lat DOUBLE, borough VARCHAR,
         units_capped FLOAT, nta_code VARCHAR, neighborhood VARCHAR,
         eligible BOOLEAN, gap_score FLOAT, lead_category VARCHAR,
-        supply_set VARCHAR, supply_hash VARCHAR, {pipe}, {shop}, {age}, {cols})""")
+        supply_set VARCHAR, supply_hash VARCHAR, lead_censored BOOLEAN,
+        {pipe}, {shop}, {age}, {cols}, {cens})""")
     # The per-category table the LEAD category's `age_fit_source` is joined
     # from. Column subset of the real analysis.address_category (sql/002) in
     # the real relative order -- `age_fit_source` is per CATEGORY, so it cannot
@@ -277,7 +283,8 @@ def _add_storefront(con, premises, boro, seq=1, filing=SNAP_FILING,
 
 def _add_gap(con, address_id, boro, cat="laundry", ratio=2.0, eligible=True,
              extra=(), units=10.0, score=1.5, pipe=None, shop=None,
-             age=None, age_source=None, lead=None):
+             age=None, age_source=None, lead=None, censored=(),
+             lead_censored=False):
     """One address row. `cat` (plus anything in `extra`) is beyond reach at
     `ratio`; every other category sits at 0.5, comfortably inside it.
 
@@ -291,9 +298,10 @@ def _add_gap(con, address_id, boro, cat="laundry", ratio=2.0, eligible=True,
     ratios = {c: (ratio if c in missing else 0.5) for c in wx.ALLCATS}
     lon, lat = PLACES[boro]
     cols = ["address_id", "lon", "lat", "borough", "units_capped", "nta_code",
-            "neighborhood", "eligible", "gap_score", "lead_category"]
+            "neighborhood", "eligible", "gap_score", "lead_category",
+            "lead_censored"]
     vals = [address_id, lon, lat, boro, units, boro + "0001",
-            "Somewhere in " + boro, eligible, score, lead or cat]
+            "Somewhere in " + boro, eligible, score, lead or cat, lead_censored]
     # `pipe` is the seven PIPELINE_GAP_COLUMNS as a dict; anything not named
     # stays NULL, which is the state of a database whose `loci pipeline` has
     # not run for that address.
@@ -311,9 +319,12 @@ def _add_gap(con, address_id, boro, cat="laundry", ratio=2.0, eligible=True,
     age = dict(age or {})
     cols += list(AGE_TYPES)
     vals += [age.get(c) for c in AGE_TYPES]
+    # `censored` names the categories whose nearest_m sits AT the 2,400 m
+    # Dijkstra cap (D75) -- their distance is a floor, not a measurement.
+    censored = set(censored)
     for c in wx.ALLCATS:
-        cols += [f"{c}_ratio", f"{c}_nearest_m"]
-        vals += [ratios[c], 100.0]
+        cols += [f"{c}_ratio", f"{c}_nearest_m", f"{c}_censored"]
+        vals += [ratios[c], wx.GAP_CAP_M if c in censored else 100.0, c in censored]
     con.execute(f"INSERT INTO analysis.address_gaps ({', '.join(cols)}) "
                 f"VALUES ({', '.join('?' * len(vals))})", vals)
     # The per-category row the lead category's age_fit_source is joined from.
@@ -375,18 +386,55 @@ def test_corroborated_needs_two_distinct_sources(con):
     assert counts == {"all": 3, "corroborated": 1, "single": 2}
 
 
-def test_gap_layer_uses_ratio_and_eligibility(con):
-    """A gap point is an ELIGIBLE address whose category ratio exceeds 1 --
-    model/address_gaps.py's own n_missing definition. Ineligible addresses and
-    ratio <= 1 addresses are not gaps."""
+def test_gap_layer_uses_ratio_and_ignores_the_retired_gate(con):
+    """A gap point is ANY address whose category ratio exceeds 1 --
+    model/address_gaps.py's own n_missing definition. The eligibility gate is
+    retired (D75, owner ruling), so a row carrying the retired flag as FALSE
+    is exported like any other: only `ratio > 1` decides. The only thing that
+    keeps an address out is reaching the category."""
     _add_gap(con, "gap", "MN", ratio=1.4)
     _add_gap(con, "reached", "MN", ratio=0.9)
-    _add_gap(con, "ineligible", "MN", ratio=3.0, eligible=False)
+    _add_gap(con, "was_ineligible", "MN", ratio=3.0, eligible=False)
 
     bundle = wx.collect(con, ["MN"])
-    assert bundle["gaps"]["laundry"]["ids"] == ["gap"]
+    assert bundle["gaps"]["laundry"]["ids"] == ["gap", "was_ineligible"]
     # The same address is not a gap for a category it can reach.
     assert bundle["gaps"]["grocery"]["ids"] == []
+
+
+def test_gap_layer_carries_the_censoring_flags(con):
+    """D75: a nearest_m AT the 2,400 m Dijkstra cap is a FLOOR, not a walk, and
+    the map has to be able to say so. Three states travel per point -- 1
+    censored, 0 measured, null "this file cannot say" -- for the layer's own
+    category and for the address's lead, plus the cap in metres so the UI never
+    hard-codes 2400."""
+    _add_gap(con, "measured", "MN", ratio=1.4)
+    _add_gap(con, "at_the_cap", "MN", ratio=6.0, censored=("laundry",),
+             lead_censored=True)
+
+    layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
+    assert layer["ids"] == ["at_the_cap", "measured"]
+    cens = layer["censoring"]
+    assert cens["capM"] == wx.GAP_CAP_M == 2400.0
+    assert cens["cat"] == [1, 0]
+    assert cens["lead"] == [1, 0]
+
+
+def test_a_pre_d75_database_exports_null_censoring_rather_than_a_confident_zero(con):
+    """The degrade-don't-lie contract, same as the pipeline/storefront/age-fit
+    blocks: a database written before the flags landed must not export 0
+    ("measured") for a distance nobody flagged. It exports null, and the UI
+    says nothing."""
+    _add_gap(con, "gap", "MN", ratio=1.4)
+    con.execute("ALTER TABLE analysis.address_gaps DROP COLUMN lead_censored")
+    for c in wx.ALLCATS:
+        con.execute(f"ALTER TABLE analysis.address_gaps DROP COLUMN {c}_censored")
+    assert wx.has_censoring_columns(con) is False
+
+    layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
+    assert layer["ids"] == ["gap"]
+    assert layer["censoring"]["cat"] == [None]
+    assert layer["censoring"]["lead"] == [None]
 
 
 def test_write_emits_one_file_per_category_per_layer(con, tmp_path):
@@ -766,11 +814,11 @@ def test_nta_index_counts_match_a_direct_query(con):
         boro = code[:2]
         assert row["n"] == con.execute(
             "SELECT count(*) FROM analysis.address_gaps "
-            "WHERE eligible AND nta_code = ?", [code]).fetchone()[0]
+            "WHERE nta_code = ?", [code]).fetchone()[0]
         for cat in wx.ALLCATS:
             direct = con.execute(
                 f"SELECT count(*) FROM analysis.address_gaps "
-                f"WHERE eligible AND nta_code = ? AND {cat}_ratio > 1",
+                f"WHERE nta_code = ? AND {cat}_ratio > 1",
                 [code]).fetchone()[0]
             assert row["gapCounts"][cat] == direct, (code, cat)
         assert row["boro"] == boro
@@ -778,20 +826,21 @@ def test_nta_index_counts_match_a_direct_query(con):
     assert [r["nta"] for r in index["ntas"]] == ["MN0001", "BK0001"]
 
 
-def test_nta_file_holds_only_eligible_addresses_that_miss_something(con):
-    """Three ways an address must NOT reach a neighborhood file: ineligible,
-    nothing over its reach tier, and (the adversarial one) a NULL ratio, which
-    is unmeasured rather than missing -- treating it as a gap would invent an
-    opportunity out of a hole in the data."""
+def test_nta_file_holds_every_address_that_misses_something(con):
+    """Two ways an address must NOT reach a neighborhood file: nothing over its
+    reach tier, and (the adversarial one) a NULL ratio, which is unmeasured
+    rather than missing -- treating it as a gap would invent an opportunity out
+    of a hole in the data. The third way used to be the eligibility gate; D75
+    retired it, so a row carrying the retired flag as FALSE is kept."""
     _add_gap(con, "keep", "MN", cat="laundry", ratio=2.0)
-    _add_gap(con, "ineligible", "MN", cat="laundry", ratio=2.0, eligible=False)
+    _add_gap(con, "was_ineligible", "MN", cat="laundry", ratio=2.0, eligible=False)
     _add_gap(con, "nothing_missing", "MN", cat="laundry", ratio=0.9)
     _add_gap(con, "unmeasured", "MN", cat="laundry", ratio=2.0)
     con.execute("UPDATE analysis.address_gaps SET laundry_ratio = NULL "
                 "WHERE address_id = 'unmeasured'")
     layer = _nta(con)["MN0001"]
-    assert layer["ids"] == ["keep"]
-    assert layer["n"] == 1
+    assert layer["ids"] == ["keep", "was_ineligible"]
+    assert layer["n"] == 2
 
 
 def test_nta_missing_list_is_walkable_and_worst_first(con):

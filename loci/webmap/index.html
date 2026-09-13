@@ -197,7 +197,7 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
       <div class="alc" id="alcLegend"></div>
       <div class="fine" id="alcFine"></div>
     </div>
-    <div class="note">A <b>gap address</b> is an eligible address (12+ of 15 categories within 800&nbsp;m) whose walking distance to this business exceeds its reach tier. A <b>known location</b> is one deduplicated business record that the supply set counts. <b>Single-source</b> records are attested by only one dataset — CHECKPOINT&nbsp;D47 found they inflate apparent supply, so a gap that closes only because of a hollow dot is not yet confirmed. <b>Excluded</b> records (D52) are lone aggregator listings in a category whose licence registry is dense enough to have listed them: the gap model does not count them, and neither does the count above. For a category with no registry anchor loaded nothing is excluded — loading the anchor is the fix, not filtering.</div>
+    <div class="note">A <b>gap address</b> is any residential address whose walking distance to this business exceeds its reach tier — every address counts, the 12-of-15 walkability gate having been retired on 2026-09-13 (CHECKPOINT&nbsp;D75). Walking distances are measured out to 2,400&nbsp;m and no further; an address flagged <i>beyond 2,400&nbsp;m</i> has nothing of this kind inside that radius and its score is a floor, not a measurement. A <b>known location</b> is one deduplicated business record that the supply set counts. <b>Single-source</b> records are attested by only one dataset — CHECKPOINT&nbsp;D47 found they inflate apparent supply, so a gap that closes only because of a hollow dot is not yet confirmed. <b>Excluded</b> records (D52) are lone aggregator listings in a category whose licence registry is dense enough to have listed them: the gap model does not count them, and neither does the count above. For a category with no registry anchor loaded nothing is excluded — loading the anchor is the fix, not filtering.</div>
   </aside>
   <div class="mapwrap"><div id="map"></div><div class="banner" id="banner">Loading…</div><button id="valBtn" class="valbtn">✓ Check this view against Google</button><div id="valOut" class="valout" hidden></div><div class="loading" id="loading">Loading…</div></div>
 </main>
@@ -502,6 +502,27 @@ function clusterPaint(){
     ['step',['get','s'],0.45,b[0],0.6,b[1],0.75,b[2],0.9]];
 }
 const fmt2=v=>v==null?'—':(+v).toFixed(2);
+// ---------------------------------------------------------------------------
+// D75 RIGHT-CENSORING. `nearest_m` is a Dijkstra capped at 2,400 m, so a
+// distance AT the cap means "nothing of this category within 2,400 m, and
+// nobody measured how much further it is" — a floor, not a walk. Until D75 the
+// eligibility gate hid most of these; it is retired, so they are on the map.
+// Three states, and the third is the point: 1 = censored, 0 = measured,
+// null = this file predates the flag and cannot say. Only 1 renders.
+const censAt=(L,j)=>{const c=L&&L.censoring; if(!c) return null;
+  return {cat:c.cat?c.cat[j]:null, lead:c.lead?c.lead[j]:null, capM:c.capM||2400};};
+function censHTML(L,j){
+  const x=censAt(L,j); if(!x) return '';
+  const m=(+x.capM).toLocaleString();
+  let h='';
+  if(x.cat===1) h+=`<div class="warn">Nearest ${esc(label().toLowerCase())} is `+
+    `<b>beyond ${m} m</b> — the distance was not measured, so this address's `+
+    `reading for ${esc(label().toLowerCase())} is a floor, not a walk.</div>`;
+  if(x.lead===1) h+='<div class="warn">The rank score is a <b>floor</b>: this '+
+    `address's worst category has nothing within ${m} m, so the true score is `+
+    'higher by an unmeasured amount.</div>';
+  return h;
+}
 // The caveat, whole. No clamp, no ellipsis, no "…" — see rule 3 above.
 function cavHTML(){
   const t=AF().caveat; if(!t) return '';
@@ -1259,6 +1280,7 @@ map.on('load',async()=>{
   map.on('click','pt',e=>{const p=e.features[0].properties;
     new maplibregl.Popup({closeButton:false,maxWidth:'320px'}).setLngLat(e.lngLat)
       .setHTML(`<div class="pnb">Gap address</div><div class="ppop">${p.u} homes · no ${label().toLowerCase()} in reach</div>`+
+        censHTML(CACHE.gaps[biz],+p.j)+
         afHTML(CACHE.gaps[biz],+p.j)+
         pipeHTML(pipeAt(CACHE.gaps[biz],+p.j,GAP_PIPE))+
         sfHTML(sfAt(CACHE.gaps[biz],+p.j,GAP_SF))+

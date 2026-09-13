@@ -51,8 +51,8 @@ traceable to the run it annotates. Rows are emitted for:
     reading of "missing" adopted in D41/D39 (nearest business sits beyond the
     category's reach), not a binary gap flag; plus
   * the address's `lead_category`, always, so the headline category of every
-    eligible address carries its demand context even in the rare case where
-    the lead's own ratio is <= 1 (an eligible address with no gap at all).
+    address carries its demand context even in the rare case where the
+    lead's own ratio is <= 1 (an address with no gap at all).
     Those rows are flagged `is_lead` and are the ONLY rows with ratio <= 1.
 
 WHICH INCOME
@@ -326,7 +326,7 @@ def write_address_demand(con, df: pd.DataFrame, boroughs: list[str]) -> int:
          category), for the rows actually in scope this run.
     `boroughs` is passed explicitly (not inferred from `df`) so an empty-df
     run (nothing missing, nothing led -- impossible in practice since every
-    eligible address always has a lead row, but not assumed here) still
+    address always has a lead row, but not assumed here) still
     resets rather than silently leaving stale annotations in place.
     """
     if not boroughs:

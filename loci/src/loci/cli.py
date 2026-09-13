@@ -832,13 +832,25 @@ def address_gaps_cmd(
     console.print(f"{summary['n_addresses']:,} addresses, {summary['n_units']:,.0f} units, "
                   f"borough={b}, reach={reach}")
     console.print(f"eligible: [bold]{100*summary['eligible_addr_share']:.1f}%[/] of addresses, "
-                  f"[bold]{100*summary['eligible_unit_share']:.1f}%[/] of units")
+                  f"[bold]{100*summary['eligible_unit_share']:.1f}%[/] of units "
+                  f"[dim](retired D75 — always 100%; every address is in the universe)[/]")
+    # D75: how much of the screen is reading the Dijkstra cap rather than a
+    # distance. The gate used to hide most of this; printing it beside the gap
+    # counts is the whole point of exposing it.
+    cap = summary["cap_m"]
+    console.print(f"censored at {cap:,.0f} m (nothing of that category within the cap — "
+                  f"a FLOOR, not a measurement): [bold]{summary['censored_pairs']:,}[/] "
+                  f"(address, category) pairs; [bold]{summary['lead_censored_addr']:,}[/] "
+                  f"addresses have a censored LEAD, so their gap_score is a floor")
 
-    console.print("[bold]per-category gap counts (eligible only, ratio > 1):[/]")
+    console.print("[bold]per-category gap counts (ratio > 1; censored = at the cap):[/]")
     for cat in ag.ALLCATS:
         n_addr = summary["per_cat_gap_addr"][cat]
         if n_addr:
-            console.print(f"  {cat:14} {n_addr:>8,} addr  {summary['per_cat_gap_units'][cat]:>10,.0f} units")
+            n_cens = summary["per_cat_censored"][cat]
+            console.print(f"  {cat:14} {n_addr:>8,} addr  "
+                          f"{summary['per_cat_gap_units'][cat]:>10,.0f} units  "
+                          f"{n_cens:>8,} censored")
 
     console.print("[bold]lead category distribution:[/]")
     for cat, n_addr in sorted(summary["lead_distribution"].items(), key=lambda kv: -kv[1]):
@@ -2617,6 +2629,166 @@ def recommend(
     console.print(t)
     console.print("[yellow]The supply baseline is REVEALED SUPPLY (D6); permit 'activity' is "
                   "a renewal, not a shovel; no expected profit is emitted.[/]")
+
+
+# ===========================================================================
+# SITE-REVENUE MODEL v0 (2026-09-13) -- appended block, see model/revenue.py.
+# ===========================================================================
+def _connect_retrying(read_only: bool, retries: int = 40, wait_s: float = 45.0):
+    """Open the warehouse, waiting out the lock a concurrent writer holds.
+    Never kills anything: another session rebuilding is normal (D69), and the
+    same pattern recommend.connect_read_only already uses."""
+    import time as _time
+
+    last = None
+    for i in range(retries):
+        try:
+            return locidb.connect(read_only=read_only)
+        except Exception as exc:            # noqa: BLE001 -- duckdb raises several types
+            last = exc
+            if i == 0:
+                console.print(f"[dim]warehouse is locked by another session; "
+                              f"retrying every {wait_s:.0f}s…[/]")
+            if i < retries - 1:
+                _time.sleep(wait_s)
+    raise RuntimeError(f"warehouse still locked after {retries} tries: {last}")
+
+
+revenue_app = typer.Typer(add_completion=False, help=(
+    "What a TYPICAL new store of a category could take at an address.\n\n"
+    "`loci revenue fit` calibrates and GATES; `loci revenue` applies the shipped "
+    "calibration to the warehouse. Fitting is deliberately NOT part of the "
+    "re-apply path -- a re-apply must not silently re-calibrate, or every run is "
+    "measured against itself."))
+app.add_typer(revenue_app, name="revenue")
+
+
+@revenue_app.callback(invoke_without_command=True)
+def revenue_apply(
+    ctx: typer.Context,
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """Apply the shipped calibration: revenue_p25/p50/p75, rent_ceiling and
+    revenue_model_version on analysis.address_category, homes_800m on
+    analysis.address, by UPDATE only.
+
+        revenue_p50 = lambda_c x homes_400m x CEX spend/household at the
+                      address's income quintile x Huff capture share
+
+    A category whose calibration FAILED the out-of-sample gate is left NULL --
+    NULL is "not modelled", never a revenue of zero -- and keeps grade D on the
+    recommendation card.
+
+    RE-APPLY after a screen re-run with exactly this, at the END of the
+    canonical order (it reads nothing from supply-ratio, but shares its sweep
+    engine and belongs after it):
+
+        uv run loci revenue --boroughs MN,BK
+    """
+    if ctx.invoked_subcommand is not None:
+        return
+    from loci.model import revenue as rev
+
+    boros = _parse_boroughs(boroughs)
+    con = _connect_retrying(read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+    console.print(f"[dim]site revenue for {','.join(boros)}…[/]")
+    report = rev.build_revenue(con, boros, dry_run=dry_run,
+                               log=lambda m: console.print(f"[dim]{m}[/]"))
+    console.print(
+        f"{report['addresses']:,} addresses swept ({report['query_nodes']:,} distinct "
+        f"nodes, {report['sweep_seconds']:.0f}s) · shipped categories: "
+        f"{', '.join(report['shipped_categories']) or 'NONE'} · "
+        f"{report['rows_predicted']:,} address x category rows predicted")
+    agree = report.get("homes_400m_agrees_with_supply_ratio")
+    if agree is not None:
+        colour = "green" if agree > 0.999 else "yellow"
+        console.print(f"[{colour}]homes_400m recomputed here matches the stored D73 column "
+                      f"on {agree:.3%} of addresses[/] — this module recomputes rather than "
+                      f"reads, so the two sweeps cross-check each other.")
+    if report.get("supply_hash_drift"):
+        console.print("[yellow]warning:[/] lambda was calibrated against a different "
+                      "incumbent set than the live one — re-run `loci revenue fit`.")
+    console.print("[yellow]p25/p75 are a PARAMETER band (lambda spread, income MOE, beta "
+                  "refit spread), NOT the dispersion of real store outcomes. The model "
+                  "describes a typical operator at a site and says nothing about concept "
+                  "quality; county anchors blur Park Slope with Gowanus.[/]")
+
+
+@revenue_app.command("fit")
+def revenue_fit(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Fit and print the table; do NOT write the YAML."),
+) -> None:
+    """Calibrate lambda and beta, backtest out of sample, and write
+    src/loci/model/revenue_calibration.yaml -- IF the gate passes.
+
+    lambda_c is fitted per county so the mean prediction over that county's
+    existing establishments equals the Economic Census mean revenue per
+    establishment; beta is fitted by leave-one-ZIP-out skill against CBP 2023
+    employees per establishment, never assumed. A category ships only if it
+    beats BOTH the county-average and homes-only baselines out of sample and
+    passes the cross-category placebo. If nothing passes, nothing is written.
+    """
+    from loci.model import revenue as rev
+
+    boros = _parse_boroughs(boroughs)
+    con = _connect_retrying(read_only=True)
+    console.print(f"[dim]calibrating site revenue on {','.join(boros)}…[/]")
+    doc = rev.fit(con, boros, log=lambda m: console.print(f"[dim]{m}[/]"))
+
+    t = Table(title="site-revenue calibration — lambda from EC county anchors, "
+                    "beta from leave-one-ZIP-out skill")
+    for col, j in (("category", "left"), ("beta", "right"), ("gamma", "right"),
+                   ("competition", "left"), ("lambda BK", "right"),
+                   ("lambda MN", "right"), ("EC $/estab BK", "right"),
+                   ("rho oos", "right"), ("vs county", "right"), ("vs homes", "right"),
+                   ("placebo", "center"), ("gate", "center")):
+        t.add_column(col, justify=j)
+    for cat, d in doc["categories"].items():
+        bt = d.get("backtest") or {}
+        lam = d.get("lambda") or {}
+        pl = d.get("placebo") or {}
+        colour = "green" if d.get("gate") == "pass" else "red"
+
+        def _l(f):
+            v = (lam.get(f) or {}).get("lambda_per_store")
+            return "—" if v is None else f"{v:.3f}"
+        ec = (lam.get("047") or {}).get("ec_rev_per_estab_usd")
+        t.add_row(cat, "—" if d.get("beta") is None else f"{d['beta']:.2f}",
+                  "—" if d.get("gamma") is None else f"{d['gamma']:+.2f}",
+                  d.get("competition_sign") or "—",
+                  _l("047"), _l("061"),
+                  "—" if ec is None else f"${ec:,.0f}",
+                  "—" if bt.get("spearman_oos") is None else f"{bt['spearman_oos']:+.3f}",
+                  "—" if bt.get("baseline_county_average_spearman") is None
+                       else f"{bt['baseline_county_average_spearman']:+.3f}",
+                  "—" if bt.get("baseline_homes_only_spearman") is None
+                       else f"{bt['baseline_homes_only_spearman']:+.3f}",
+                  "pass" if pl.get("passes") else "FAIL",
+                  f"[{colour}]{d.get('gate')}[/]")
+    console.print(t)
+    for cat, d in doc["categories"].items():
+        if d.get("gate") != "pass":
+            console.print(f"[red]not modelled[/] {cat}: {d.get('gate_reason')}")
+
+    if dry_run:
+        console.print("[yellow]--dry-run: revenue_calibration.yaml NOT written.[/]")
+        return
+    try:
+        path = rev.save_calibration(doc)
+    except RuntimeError as exc:
+        console.print(f"[red]gate refused the write:[/] {exc}")
+        raise typer.Exit(code=1) from None
+    console.print(f"[green]written[/] -> {path}")
+    console.print("[yellow]The backtest target is CBP employees per establishment, a "
+                  "REVENUE PROXY: it validates cross-sectional ranking, never the level. "
+                  "The level is fitted to the EC county mean by construction and has no "
+                  "out-of-sample test anywhere — no public source publishes retail "
+                  "receipts below county grain.[/]")
 
 
 # ---------------------------------------------------------------------------

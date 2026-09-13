@@ -173,6 +173,7 @@ ADDRESS_SCREEN_COLUMNS = [
     "lead_excess_m", "n_missing", "cluster_id",
     "reach_source", "reach_hash", "graph_version",
     "supply_set", "supply_hash", "run_at",
+    "lead_censored",          # D75, appended
 ]
 
 
@@ -371,10 +372,15 @@ def fit_baselines(long_df: pd.DataFrame, eligible_only: bool = True) -> dict:
 
     `long_df` columns: category, supply_400m, homes_400m, supply_per_1k,
     eligible. Addresses with no homes within reach are excluded by
-    construction (their supply_per_1k is None), and by default so are
-    ineligible ones -- the eligible universe is the screen's own (D48
-    present_count gate), so the norm is measured over the blocks the screen
-    actually scores rather than over parkland and rail yards.
+    construction (their supply_per_1k is None) -- the norm is measured over
+    the blocks that have residents, not over parkland and rail yards.
+
+    `eligible_only` is a NO-OP on any current run: D75 (2026-09-13, owner
+    ruling) retired the eligibility gate, so the column is TRUE everywhere and
+    the universe is every address with a denominator. That change of universe
+    is why the baseline was re-fit once under D75 even though the supply set
+    did not move: MN+BK n 267,329 -> 281,842. The parameter survives for a
+    pre-D75 snapshot, whose FALSE rows belong to a different universe.
 
     Address-weighted, deliberately: a 400-unit tower and a rowhouse are one
     observation each. `aggregate_per_1k` is the home-weighted alternative and
@@ -394,7 +400,7 @@ def fit_baselines(long_df: pd.DataFrame, eligible_only: bool = True) -> dict:
         agg = (float(supply.sum()) / tot_h * 1000.0) if tot_h > 0 else None
         # THE ESTIMATOR FALLBACK, declared per category rather than hidden.
         # `tailor_repair` has 966 principled POIs over MN+BK, so MORE THAN HALF
-        # of eligible addresses have none within 400 m and the address-weighted
+        # of addresses have none within 400 m and the address-weighted
         # median is exactly 0. A zero norm is not a norm: every ratio against it
         # is NULL and a whole category drops out of the ranking. Where that
         # happens the baseline falls back to the HOME-WEIGHTED aggregate (total
@@ -433,8 +439,11 @@ _BASELINE_HEADER = """\
 #
 # `median` is the address-weighted median of supply_per_1k (principled POIs of
 # the category within 400 m network metres, per 1,000 residential units within
-# the same 400 m) over ELIGIBLE addresses in `boroughs` that have at least one
-# home within reach. `aggregate_per_1k` is the home-weighted alternative --
+# the same 400 m) over EVERY address in `boroughs` that has at least one home
+# within reach. Before D75 (2026-09-13) the universe was the subset the
+# eligibility gate admitted; the owner retired the gate, so the baseline was
+# re-fit once on the gate-free universe (MN+BK n 267,329 -> 281,842) with the
+# supply set itself unchanged. `aggregate_per_1k` is the home-weighted alternative --
 # total supply over total homes -- and is NOT what the ratio divides by; it is
 # here because the two disagree and the gap is informative.
 #
@@ -698,7 +707,10 @@ def build_supply_ratio(
             "asof": dt.date.today().isoformat(),
             "radius_m": float(radius_m),
             "boroughs": list(boroughs),
-            "universe": "eligible addresses with homes_400m > 0",
+            # D75: the eligibility gate is retired, so this is every address
+            # with a denominator. The string is stamped into the YAML and is
+            # how a later reader tells a post-D75 baseline from a pre-D75 one.
+            "universe": "all addresses with homes_400m > 0",
             "n_addresses": len(addr),
             "graph_version": report["graph_version"],
             "categories": cats,

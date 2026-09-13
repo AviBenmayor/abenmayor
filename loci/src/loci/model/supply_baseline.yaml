@@ -4,8 +4,11 @@
 #
 # `median` is the address-weighted median of supply_per_1k (principled POIs of
 # the category within 400 m network metres, per 1,000 residential units within
-# the same 400 m) over ELIGIBLE addresses in `boroughs` that have at least one
-# home within reach. `aggregate_per_1k` is the home-weighted alternative --
+# the same 400 m) over EVERY address in `boroughs` that has at least one home
+# within reach. Before D75 (2026-09-13) the universe was the subset the
+# eligibility gate admitted; the owner retired the gate, so the baseline was
+# re-fit once on the gate-free universe (MN+BK n 267,329 -> 281,842) with the
+# supply set itself unchanged. `aggregate_per_1k` is the home-weighted alternative --
 # total supply over total homes -- and is NOT what the ratio divides by; it is
 # here because the two disagree and the gap is informative.
 #
@@ -20,132 +23,132 @@
 # this one. tests/test_supply_ratio.py fails when the two drift.
 supply_hash: 767b28674e30
 supply_set: principled
-asof: '2026-09-11'
+asof: '2026-09-13'
 radius_m: 400.0
 boroughs:
 - MN
 - BK
-universe: eligible addresses with homes_400m > 0
+universe: all addresses with homes_400m > 0
 n_addresses: 281842
 graph_version: walk_graph.pkl:1788298912:306836099
 categories:
   grocery:
-    n: 267329
-    median: 3.170289855072464
-    p25: 1.7472335468841003
-    p75: 5.001562988433886
-    aggregate_per_1k: 3.4826470412448702
+    n: 281842
+    median: 3.078501795792714
+    p25: 1.6160310277957335
+    p75: 4.928806133625411
+    aggregate_per_1k: 3.4570752766108073
     estimator: median
-    baseline: 3.170289855072464
+    baseline: 3.078501795792714
   convenience:
-    n: 267329
-    median: 1.1299435028248588
-    p25: 0.461361014994233
-    p75: 1.9294377067254684
-    aggregate_per_1k: 1.1247361402605707
+    n: 281842
+    median: 1.1104941699056081
+    p25: 0.39138943248532293
+    p75: 1.9204389574759946
+    aggregate_per_1k: 1.1237646235447478
     estimator: median
-    baseline: 1.1299435028248588
+    baseline: 1.1104941699056081
   pharmacy:
-    n: 267329
-    median: 0.7558578987150416
+    n: 281842
+    median: 0.7177892195083415
     p25: 0.0
-    p75: 1.5003750937734435
-    aggregate_per_1k: 0.9708294657743568
+    p75: 1.4598540145985401
+    aggregate_per_1k: 0.9595663775512294
     estimator: median
-    baseline: 0.7558578987150416
+    baseline: 0.7177892195083415
   laundry:
-    n: 267329
-    median: 1.2283335608025112
-    p25: 0.5675368898978433
-    p75: 1.9723865877712032
-    aggregate_per_1k: 1.4590408802335975
+    n: 281842
+    median: 1.1797380005651794
+    p25: 0.4833252779120348
+    p75: 1.942690626517727
+    aggregate_per_1k: 1.4411648114019586
     estimator: median
-    baseline: 1.2283335608025112
+    baseline: 1.1797380005651794
   hair_barber:
-    n: 267329
-    median: 2.540650406504065
-    p25: 1.2077294685990339
-    p75: 4.158004158004158
-    aggregate_per_1k: 3.27250604426912
+    n: 281842
+    median: 2.4407252440725244
+    p25: 1.0615711252653928
+    p75: 4.056795131845842
+    aggregate_per_1k: 3.2312098668829803
     estimator: median
-    baseline: 2.540650406504065
+    baseline: 2.4407252440725244
   nails_beauty:
-    n: 267329
-    median: 1.6880924555252563
-    p25: 0.7653061224489796
-    p75: 3.069577080491132
-    aggregate_per_1k: 2.3204697690131755
+    n: 281842
+    median: 1.6220600162206003
+    p25: 0.6631299734748011
+    p75: 2.987303958177745
+    aggregate_per_1k: 2.289468958845576
     estimator: median
-    baseline: 1.6880924555252563
+    baseline: 1.6220600162206003
   tailor_repair:
-    n: 267329
+    n: 281842
     median: 0.0
     p25: 0.0
-    p75: 0.2934272300469484
-    aggregate_per_1k: 0.23835881327482022
+    p75: 0.27056277056277056
+    aggregate_per_1k: 0.23349580394525501
     estimator: aggregate_per_1k
-    baseline: 0.23835881327482022
+    baseline: 0.23349580394525501
   restaurant:
-    n: 267329
-    median: 6.189821182943604
-    p25: 3.146853146853147
-    p75: 10.697911360163017
-    aggregate_per_1k: 9.503173672336805
+    n: 281842
+    median: 5.913476501711796
+    p25: 2.805049088359046
+    p75: 10.406342913776015
+    aggregate_per_1k: 9.351628442753466
     estimator: median
-    baseline: 6.189821182943604
+    baseline: 5.913476501711796
   cafe_bakery:
-    n: 267329
-    median: 1.297016861219196
-    p25: 0.41946308724832215
-    p75: 2.631322483188773
-    aggregate_per_1k: 2.1901940982249277
+    n: 281842
+    median: 1.201345506967804
+    p25: 0.2771618625277162
+    p75: 2.5420281406003937
+    aggregate_per_1k: 2.1472583290317515
     estimator: median
-    baseline: 1.297016861219196
+    baseline: 1.201345506967804
   bar:
-    n: 267329
-    median: 0.5192107995846313
+    n: 281842
+    median: 0.45955882352941174
     p25: 0.0
-    p75: 1.574803149606299
-    aggregate_per_1k: 1.5344378864788575
+    p75: 1.5141318977119784
+    aggregate_per_1k: 1.505276846296218
     estimator: median
-    baseline: 0.5192107995846313
+    baseline: 0.45955882352941174
   childcare:
-    n: 267329
-    median: 1.296456352636128
-    p25: 0.6925207756232687
-    p75: 2.237136465324385
-    aggregate_per_1k: 1.4323953213650167
+    n: 281842
+    median: 1.2827090815802975
+    p25: 0.6640106241699867
+    p75: 2.229654403567447
+    aggregate_per_1k: 1.4298290458349157
     estimator: median
-    baseline: 1.296456352636128
+    baseline: 1.2827090815802975
   clinic:
-    n: 267329
-    median: 0.7748934521503293
-    p25: 0.17190991920233797
-    p75: 1.6464293064416546
-    aggregate_per_1k: 1.2958892301269358
+    n: 281842
+    median: 0.7224128589488893
+    p25: 0.0
+    p75: 1.5944724953494553
+    aggregate_per_1k: 1.274787522506309
     estimator: median
-    baseline: 0.7748934521503293
+    baseline: 0.7224128589488893
   fitness:
-    n: 267329
-    median: 0.8573878250928837
+    n: 281842
+    median: 0.8012820512820512
     p25: 0.0
-    p75: 1.9083969465648853
-    aggregate_per_1k: 1.8265159200002752
+    p75: 1.8467220683287164
+    aggregate_per_1k: 1.7953503884575164
     estimator: median
-    baseline: 0.8573878250928837
+    baseline: 0.8012820512820512
   bank:
-    n: 267329
-    median: 0.24137098720733768
+    n: 281842
+    median: 0.0
     p25: 0.0
-    p75: 0.9110579660630908
-    aggregate_per_1k: 0.728574410017821
-    estimator: median
-    baseline: 0.24137098720733768
+    p75: 0.8583690987124463
+    aggregate_per_1k: 0.7139522995053483
+    estimator: aggregate_per_1k
+    baseline: 0.7139522995053483
   hardware:
-    n: 267329
-    median: 0.4231013327691982
+    n: 281842
+    median: 0.39308176100628933
     p25: 0.0
-    p75: 0.881057268722467
-    aggregate_per_1k: 0.5607200028804165
+    p75: 0.8635578583765112
+    aggregate_per_1k: 0.5546425478117425
     estimator: median
-    baseline: 0.4231013327691982
+    baseline: 0.39308176100628933

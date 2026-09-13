@@ -249,17 +249,17 @@ claim stands on.
 - **Current answer:** Headroom has no predictive skill. Bars, cafés and restaurants cluster rather than saturate; ZIPs above the norm added MORE, not less. For chore categories (laundry, grocery, pharmacy, hair), the regime is demand÷incumbents and the pipeline adds directly. For social categories, the cap is spend per resident by age/income, not headcount. Greenpoint illustrates: read "full" on bars in 2013, added the most in 2023. Headroom ships as a descriptive ratio with interval, never a forecast. Per-category clustering-vs-saturation coefficient ticketed for the grade design (GTM-138). 2026-09-11 (CHECKPOINT D70): the direct per-category test supersedes the clustering half — nothing clusters at ZIP grain (cafés fail the cross-category placebo, bars fail significance); eight chore categories saturate (childcare, clinic, laundry, grocery, tailor, fitness, nails, bank); the rest show no signal and are scored on residents only. Shipped as src/loci/model/density_elasticity.yaml. 2026-09-11 (CHECKPOINT D73): supply per 1,000 homes vs the MN+BK baseline on the principled set is now the ranking statistic (`loci supply-ratio`); in the Gowanus core pharmacy 0.00×, convenience 0.40×, hardware 0.72× are thin and laundry 0.94× is normal — the laundry lead was a gap-screen selection artifact.
 
 ### D17 — Should the eligibility gate be POI-free (PLUTO retail floor area within 800 m) rather than ≥12-of-15 categories present within 800 m of the current supply set?
-- **Status:** open
+- **Status:** answered
 - **Answered by:** (not ticketed yet)
 - **Fails if:** on an NTA-level 50/50 holdout the built-form gate's AUC against DOF storefront density does not exceed the incumbent's with a Conley/NTA-clustered CI excluding zero, or the seeded 10% supply-perturbation leakage is not materially below the incumbent's 243 addresses.
-- **Current answer:** — (D71 analysis: incumbent AUC 0.856 vs built-form 0.873, Spearman 0.566 vs 0.724; interim option is the gate on in_all. Owner ruling pending.)
+- **Current answer:** — (gate removed by owner ruling D75, 2026-09-13; the built-form gate question is moot for eligibility and survives only as a possible ranking feature.)
 - **Unblocks:** E2 · Access Engine
 
 ### D18 — Should clusters be ranked by capped units or by mean gap_score?
 - **Status:** open
 - **Answered by:** (not ticketed yet)
 - **Fails if:** the two rankings agree on the top-50 (Jaccard ≥ 0.8) so the choice is immaterial.
-- **Current answer:** — (D71: gate-on vs gate-off top-50 Jaccard is 0.926 by units and 0.318 by gap_score; the choice decides whether the eligibility gate matters at all. Owner ruling pending.)
+- **Current answer:** — (owner direction 2026-09-13: "rank by density" — interpreted as households per km² within the walk-shed, pending the owner's confirmation; D75 next action 2.)
 - **Unblocks:** E4 · Validation and Artifact
 
 ### Tier X · Explanatory — conditional structure, no temporal claim

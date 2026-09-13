@@ -10,27 +10,51 @@ is deleted here, not kept behind a flag.
 
 The new rule, at address grain:
 
-  - ELIGIBILITY is a FIXED, reach-independent walkability gate: an address is
-    in scope iff >= `MIN_PRESENT` (12) of the 15 categories sit within
-    `WINDOW_M` (800 m, the window rule's own 10-minute definition) of it --
-    mirrors model/gaps.py's `_eligible_universe` at address grain, so
-    changing the reach table can never change which addresses are screened
-    (tests/test_address_gaps.py part a).
+  - THE ELIGIBILITY GATE IS RETIRED (D75, 2026-09-13, owner ruling). Every
+    residential address is in the universe. The owner's words: "I 100%
+    vehemently disagree with 'which addresses count at all'. If an address is
+    truly in a super underdeveloped area, this would completely not count
+    it." The gate existed for one reason -- D39 found the LITERAL port
+    (eligible iff within *reach* of >= 12/15) violated monotonicity, because
+    tightening a reach dropped addresses out of eligibility faster than they
+    gained gaps; a FIXED, reach-independent presence test restored it. With
+    NO gate at all that role is filled trivially: the gap set is
+    `ratio > 1` over every address, `ratio` reads only that address's own
+    nearest_m against a reach that is fixed input, so tightening a reach can
+    only ADD pairs (tests/test_address_gaps.py part b, now asserted over the
+    whole universe). `eligible` survives as a column, always TRUE, for
+    schema and query compatibility; `present_count` survives as the
+    informational count it always was (categories within `WINDOW_M`), and is
+    a candidate RANKING feature, never a filter.
 
-  - Among eligible addresses, `ratio[c] = nearest_m[c] / reach[c]` is a
-    CONTINUOUS score per category (D39), not a binary flag: `gap_score` is
-    its row-max, `lead_category` its argmax (ties -> the LARGER raw
-    nearest_m, since a farther near-miss is the more conspicuous absence),
-    `lead_excess_m` is nearest - reach at the lead, and `n_missing` counts
-    categories with ratio > 1. Tightening any reach can only grow the set of
-    (address, category) pairs with ratio > 1, never shrink it (part b) --
-    reach never touches the gate, only the ratio.
+  - For every address, `ratio[c] = nearest_m[c] / reach[c]` is a CONTINUOUS
+    score per category (D39), not a binary flag: `gap_score` is its row-max,
+    `lead_category` its argmax (ties -> the LARGER raw nearest_m, since a
+    farther near-miss is the more conspicuous absence), `lead_excess_m` is
+    nearest - reach at the lead, and `n_missing` counts categories with
+    ratio > 1.
+
+  - RIGHT-CENSORING IS NOW VISIBLE, and is flagged rather than smoothed
+    (D51 finding, exposed by D75). `nearest_m` is the output of a Dijkstra
+    capped at `CAP_M` (2,400 m, score/access.DIST_LIMIT): a category with
+    NOTHING within the cap is recorded AT the cap, so its ratio is
+    `CAP_M / reach[c]` -- a floor, not a measurement. The gate used to hide
+    most of these, because an address with several unreachable categories
+    usually failed `present_count >= 12`. It no longer does. The handling is
+    explicitly NOT a new rule on the score: `gap_score` keeps the same
+    monotone, continuous definition (a censored ratio is still the smallest
+    value that category's ratio could take, so the ordering is conservative,
+    never inflated). Instead the fact is CARRIED: `censored` per (address,
+    category) and `lead_censored` on the address, so a ranking, a card or a
+    popup can say "nearest X beyond 2,400 m -- distance not measured"
+    instead of printing a number that is really the cap. `CAP_M` is NOT
+    changed here.
 
   - `units_capped` clips units at `UNITS_CAP` (500/lot) for any unit-weighted
     ranking: D39 found Co-op City-scale lots (~10k units) would otherwise
     dominate every cluster ranking on their own. Raw `units` is kept too.
 
-  - Eligible, gap_score > 1 addresses that share a `lead_category` and sit
+  - `gap_score > 1` addresses that share a `lead_category` and sit
     within `CLUSTER_RADIUS_M` (200 m) of each other are grouped into one
     `cluster_id` (single-linkage / DBSCAN-like, eps=200m, min_samples=1) --
     the action signal is a CLUSTER of addresses missing the same business,
@@ -87,9 +111,14 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[3]
 INTERIM_DIR = REPO_ROOT / "data" / "interim"
 
 WINDOW_M = 800.0        # gaps.py's own window-rule presence definition (10 min @ 80 m/min)
-MIN_PRESENT = 12        # gaps.py's _eligible_universe default gate, mirrored at address grain
+MIN_PRESENT = 12        # RETIRED as a gate (D75); kept so present_count keeps its old meaning
 UNITS_CAP = 500.0       # D39: cap per-lot units for any unit-weighted ranking
 CLUSTER_RADIUS_M = 200.0
+#: The Dijkstra's own right-censoring point (score/access.DIST_LIMIT, 30 min
+#: walk). A nearest_m AT this value means "nothing of that category was found
+#: within 2,400 m", not "it is 2,400 m away". Aliased here rather than
+#: re-declared so there is exactly ONE cap in the codebase (D75).
+CAP_M = DIST_LIMIT
 
 #: analysis.address's column list, DDL order (sql/002_schema.sql). Identity +
 #: the summary of the screen + ONE set of provenance stamps -- everything
@@ -104,6 +133,11 @@ ADDRESS_COLUMNS = [
     "lead_excess_m", "n_missing", "cluster_id",
     "reach_source", "reach_hash", "graph_version",
     "supply_set", "supply_hash", "run_at",
+    # D75, APPENDED (the column is added by an ALTER at the tail of
+    # sql/002_schema.sql, so it is last in DDL order too): the lead
+    # category's nearest_m is AT the 2,400 m Dijkstra cap, i.e. gap_score is
+    # a floor rather than a measurement for this address.
+    "lead_censored",
 ]
 
 #: analysis.address_category's SCREEN-owned columns (D38/D58 split) -- the
@@ -114,6 +148,9 @@ ADDRESS_COLUMNS = [
 #: cannot accidentally clobber an annotation with a plain re-run of the screen.
 ADDRESS_CATEGORY_SCREEN_COLUMNS = [
     "address_id", "borough", "category", "nearest_m", "ratio", "is_lead", "eligible",
+    # D75, APPENDED: nearest_m is AT the 2,400 m cap -- there is no location
+    # of this category within the cap, so `nearest_m` and `ratio` are floors.
+    "censored",
 ]
 
 
@@ -227,21 +264,34 @@ def address_nearest_matrix(
 # ------------------------------------------------------------ pure metrics
 
 def compute_gap_metrics(M: np.ndarray, reach: dict[str, float],
-                         window_m: float = WINDOW_M, min_present: int = MIN_PRESENT
+                         window_m: float = WINDOW_M, min_present: int = MIN_PRESENT,
+                         cap_m: float = CAP_M,
                          ) -> dict[str, np.ndarray]:
     """Pure numpy classification from an (n_addresses, 15) nearest-metres
     matrix (ALLCATS column order) and a complete {category: reach_m} dict.
     Fails closed (mirrors loci.reach._check_reach_complete) if `reach` is
     missing a category.
 
-    `eligible` = present_count (categories with nearest_m <= window_m) >=
-    min_present -- FIXED and reach-independent by construction (`reach`
-    never enters this computation). `ratio[c] = nearest_m[c] / reach[c]` is
-    always populated (informational, even for ineligible rows); `gap_score`
-    (row-max ratio), `lead_category` (argmax ratio, ties -> larger
-    nearest_m), `lead_excess_m` (nearest - reach at the lead) are NaN/None
-    for an ineligible row, and `n_missing` (count of ratio > 1) is 0 for one
-    -- out of scope, exactly like a hex failing gaps.py's window gate.
+    D75 -- THE GATE IS GONE. `eligible` is TRUE for every row and is kept
+    only so that every stored column, view and query written against the
+    pre-D75 shape keeps working. Nothing here filters: `gap_score` (row-max
+    ratio), `lead_category` (argmax ratio, ties -> larger nearest_m),
+    `lead_excess_m` and `n_missing` (count of ratio > 1) are populated for
+    EVERY address, including the ones in "super underdeveloped" areas the
+    gate used to drop. `present_count` (categories with nearest_m <=
+    window_m) is still computed and still reach-independent -- `reach` never
+    enters it -- but it is now a descriptive statistic and a candidate
+    ranking feature, not a filter. `min_present` is therefore unused by the
+    classification and kept only so callers and tests can still ask for the
+    count's definition.
+
+    CENSORING (D75). `censored[i, c]` is True where `M[i, c] >= cap_m`: the
+    Dijkstra found nothing of that category within the cap, so the stored
+    nearest_m IS the cap and the ratio is a lower bound. `lead_censored` is
+    that flag at the lead category. Neither changes `ratio` or `gap_score` --
+    a censored ratio is still the smallest value that ratio could take, so
+    the ranking stays monotone and conservative; the flags exist so that a
+    renderer prints "beyond 2,400 m -- not measured" instead of the cap.
     """
     missing_cats = sorted(set(CATEGORIES) - set(reach))
     if missing_cats:
@@ -252,7 +302,10 @@ def compute_gap_metrics(M: np.ndarray, reach: dict[str, float],
     reach_arr = np.array([reach[c] for c in ALLCATS], dtype=np.float64)
 
     present_count = (M <= window_m).sum(axis=1)
-    eligible = present_count >= min_present
+    # D75: retired. TRUE for every address, by owner ruling -- kept as a
+    # column, not as a predicate. `min_present` is deliberately not read.
+    eligible = np.ones(len(M), dtype=bool)
+    censored = M >= cap_m
 
     ratio = M / reach_arr[None, :]
     max_ratio = ratio.max(axis=1)
@@ -261,23 +314,21 @@ def compute_gap_metrics(M: np.ndarray, reach: dict[str, float],
     # LARGER raw nearest_m is the more conspicuous absence.
     nearest_masked = np.where(is_max, M, -np.inf)
     lead_idx = nearest_masked.argmax(axis=1)
-    lead_excess = M[np.arange(len(M)), lead_idx] - reach_arr[lead_idx]
-    n_missing_all = (ratio > 1.0).sum(axis=1)
-
-    gap_score = np.where(eligible, max_ratio, np.nan)
-    lead_excess_m = np.where(eligible, lead_excess, np.nan)
-    lead_category = np.array(
-        [ALLCATS[i] if e else None for i, e in zip(lead_idx, eligible)], dtype=object
-    )
-    n_missing = np.where(eligible, n_missing_all, 0)
+    rows = np.arange(len(M))
+    lead_excess = M[rows, lead_idx] - reach_arr[lead_idx]
+    n_missing = (ratio > 1.0).sum(axis=1)
+    lead_category = np.array([ALLCATS[i] for i in lead_idx], dtype=object)
+    lead_censored = censored[rows, lead_idx]
 
     return {
         "present_count": present_count,
         "eligible": eligible,
         "ratio": ratio,
-        "gap_score": gap_score,
+        "censored": censored,
+        "gap_score": max_ratio,
         "lead_category": lead_category,
-        "lead_excess_m": lead_excess_m,
+        "lead_excess_m": lead_excess,
+        "lead_censored": lead_censored,
         "n_missing": n_missing,
     }
 
@@ -382,8 +433,11 @@ def compute_address_gaps(
     lead_category = metrics["lead_category"]
     gap_score = metrics["gap_score"]
 
-    # ---- clustering: eligible, gap_score > 1, grouped by (borough, lead) ----
-    gap_mask = eligible & (np.nan_to_num(gap_score, nan=-1.0) > 1.0)
+    # ---- clustering: gap_score > 1, grouped by (borough, lead) ----
+    # D75: no `eligible &` term any more -- the gate is retired and every
+    # address is in the universe, so a cluster is now purely "addresses near
+    # each other whose worst category is the same and is beyond its reach".
+    gap_mask = np.nan_to_num(gap_score, nan=-1.0) > 1.0
     cluster_id = np.full(len(addresses_df), None, dtype=object)
     gap_idx = np.flatnonzero(gap_mask)
     if len(gap_idx):
@@ -434,11 +488,14 @@ def compute_address_gaps(
         "lead_excess_m": _nan_to_none(metrics["lead_excess_m"]),
         "n_missing": metrics["n_missing"],
         "cluster_id": cluster_id,
+        "lead_censored": metrics["lead_censored"],
     }
     ratio = metrics["ratio"]
+    censored = metrics["censored"]
     for i, cat in enumerate(ALLCATS):
         data[f"{cat}_nearest_m"] = M[:, i]
         data[f"{cat}_ratio"] = ratio[:, i]
+        data[f"{cat}_censored"] = censored[:, i]
     data["reach_source"] = reach_source
     data["reach_hash"] = reach_hash_
     data["graph_version"] = gver
@@ -455,11 +512,12 @@ def compute_address_gaps(
 
 def _split_wide(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Split compute_address_gaps' wide working frame (one row per address,
-    30 pivoted `{cat}_nearest_m`/`{cat}_ratio` columns) into the two shapes
-    analysis.address and analysis.address_category actually store (D38/D58):
-    identity + summary + provenance on one row per address, and
-    nearest_m/ratio/is_lead/eligible on one row per (address, category) --
-    ALLCATS rows per address, always, present or missing alike."""
+    45 pivoted `{cat}_nearest_m`/`{cat}_ratio`/`{cat}_censored` columns) into
+    the two shapes analysis.address and analysis.address_category actually
+    store (D38/D58): identity + summary + provenance on one row per address,
+    and nearest_m/ratio/is_lead/eligible/censored on one row per (address,
+    category) -- ALLCATS rows per address, always, present or missing
+    alike."""
     addr_df = df[ADDRESS_COLUMNS].copy()
     lead = df["lead_category"]
     long_frames = [
@@ -469,11 +527,13 @@ def _split_wide(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
             "category": cat,
             "nearest_m": df[f"{cat}_nearest_m"],
             "ratio": df[f"{cat}_ratio"],
-            # IS NOT NULL guard: an ineligible address has lead_category NULL,
-            # and `NULL == cat` is NULL, not FALSE -- would read as neither
-            # true nor false rather than "not the lead" if compared bare.
+            # IS NOT NULL guard: kept after D75 even though every address now
+            # has a lead_category -- `NULL == cat` is NULL, not FALSE, so a
+            # bare comparison on any future NULL would read as neither true
+            # nor false rather than "not the lead".
             "is_lead": lead.notna() & (lead == cat),
             "eligible": df["eligible"],
+            "censored": df[f"{cat}_censored"],
         })
         for cat in ALLCATS
     ]
@@ -533,10 +593,12 @@ def address_gaps_view_sql() -> str:
     """
     pivot_cols = ",\n            ".join(
         f"MAX(CASE WHEN category = '{c}' THEN nearest_m END) AS {c}_nearest_m,\n"
-        f"            MAX(CASE WHEN category = '{c}' THEN ratio END) AS {c}_ratio"
+        f"            MAX(CASE WHEN category = '{c}' THEN ratio END) AS {c}_ratio,\n"
+        f"            MAX(CASE WHEN category = '{c}' THEN censored END) AS {c}_censored"
         for c in ALLCATS
     )
     select_cols = ",\n            ".join(f"w.{c}_nearest_m, w.{c}_ratio" for c in ALLCATS)
+    censored_cols = ", ".join(f"w.{c}_censored" for c in ALLCATS)
     return f"""
         CREATE OR REPLACE VIEW analysis.address_gaps AS
         WITH wide AS (
@@ -611,7 +673,20 @@ def address_gaps_view_sql() -> str:
             -- `homes_400m` as a laundry demand pool.
             a.homes_400m, a.addressable_homes_400m_laundry,
             a.supply_ratio_radius_m, a.supply_ratio_supply_hash,
-            a.supply_ratio_run_at
+            a.supply_ratio_run_at,
+            -- The D75 CENSORING flags (sql/002 tail). APPENDED, same reason as
+            -- every block above: positional consumers of the older column
+            -- order are untouched. `lead_censored` says the lead category's
+            -- nearest_m is AT the 2,400 m Dijkstra cap, so `gap_score` for
+            -- this address is a FLOOR, not a measurement; the fifteen
+            -- `{{cat}}_censored` flags say the same per category and sit beside
+            -- their own `{{cat}}_nearest_m`/`{{cat}}_ratio` pair. They are pivoted
+            -- in (unlike age_fit, which is not) because a censored distance
+            -- and the distance itself are the SAME reading -- a renderer that
+            -- can reach one must be able to reach the other, or it prints the
+            -- cap as if it were a measurement.
+            a.lead_censored,
+            {censored_cols}
         FROM analysis.address a
         LEFT JOIN wide w ON w.address_id = a.address_id AND w.borough = a.borough
     """
@@ -643,22 +718,27 @@ def summarize_gap_run(df: pd.DataFrame) -> dict:
     post-write CLI summary, so both report the same numbers."""
     n_addr = len(df)
     n_units = float(df["units"].sum()) if n_addr else 0.0
+    # D75: `eligible` is TRUE everywhere, so these two shares are 1.0 by
+    # construction. They stay in the summary dict (the CLI prints them and a
+    # reader comparing against a pre-D75 run needs to SEE the 100%), but no
+    # count below is masked by them any more.
     elig = df["eligible"].astype(bool)
     eligible_addr_share = float(elig.mean()) if n_addr else 0.0
     eligible_unit_share = float(df.loc[elig, "units"].sum() / n_units) if n_units else 0.0
 
-    per_cat_gap_addr, per_cat_gap_units = {}, {}
+    per_cat_gap_addr, per_cat_gap_units, per_cat_censored = {}, {}, {}
     for cat in ALLCATS:
-        gap_mask = elig & (df[f"{cat}_ratio"] > 1.0)
+        gap_mask = df[f"{cat}_ratio"] > 1.0
         per_cat_gap_addr[cat] = int(gap_mask.sum())
         per_cat_gap_units[cat] = float(df.loc[gap_mask, "units"].sum())
+        per_cat_censored[cat] = int(df[f"{cat}_censored"].astype(bool).sum())
 
     # "lead distribution" counts only addresses that actually HAVE a gap
-    # (n_missing > 0) -- an eligible, fully-served address still gets a
-    # lead_category (the argmax ratio, which can be <= 1), but it isn't a
-    # gap and shouldn't inflate this table (matches the per-category gap
-    # counts and cluster scoping above, and the D8 reference implementation).
-    has_gap = elig & (df["n_missing"] > 0)
+    # (n_missing > 0) -- a fully-served address still gets a lead_category
+    # (the argmax ratio, which can be <= 1), but it isn't a gap and
+    # shouldn't inflate this table (matches the per-category gap counts and
+    # cluster scoping above, and the D8 reference implementation).
+    has_gap = df["n_missing"] > 0
     lead_distribution = (
         df.loc[has_gap & df["lead_category"].notna(), "lead_category"]
         .value_counts()
@@ -692,4 +772,11 @@ def summarize_gap_run(df: pd.DataFrame) -> dict:
         "per_cat_gap_units": per_cat_gap_units,
         "lead_distribution": lead_distribution,
         "top_clusters": top_clusters,
+        # D75 censoring: how much of the screen is reading the cap rather
+        # than a distance. `lead_censored_addr` is the number that matters
+        # for the ranking -- those addresses' gap_score is a floor.
+        "per_cat_censored": per_cat_censored,
+        "censored_pairs": int(sum(per_cat_censored.values())),
+        "lead_censored_addr": int(df["lead_censored"].astype(bool).sum()),
+        "cap_m": CAP_M,
     }

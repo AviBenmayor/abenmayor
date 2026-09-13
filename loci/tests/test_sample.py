@@ -219,7 +219,12 @@ def test_sample_is_restricted_to_the_scope_boroughs():
     assert {r["borough"] for r in s_qn} == {"QN"}
 
 
-def test_ineligible_addresses_are_out_of_frame():
+def test_the_retired_eligible_flag_still_filters_a_pre_d75_snapshot():
+    """`eligible` is retired and always TRUE on any current run (D75), so this
+    filter is a no-op in practice. It is kept -- and pinned -- because a
+    restored pre-D75 backup still carries FALSE rows, and pooling those with
+    gate-free rows would mix two universes. The fixture writes the FALSE by
+    hand precisely because the screen can no longer produce one."""
     con = _address_fixture(n=20)
     con.execute("UPDATE analysis.address SET eligible = false WHERE address_id = 'a000'")
     s = smp.draw_sample(con, categories=["hardware"], per_stratum=99)

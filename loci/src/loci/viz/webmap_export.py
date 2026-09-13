@@ -10,8 +10,9 @@ sliced the same way:
 
   gaps/<category>.json   addresses from `analysis.address_gaps` whose
                          `<category>_ratio > 1` (the model's own definition of
-                         a missing category: see model/address_gaps.py, D41),
-                         restricted to eligible addresses.
+                         a missing category: see model/address_gaps.py, D41).
+                         EVERY address -- the eligibility gate is retired
+                         (D75) -- each carrying the D75 censoring flags.
   pois/<category>.json   every canonical business location for that category,
                          read through `analysis.poi_supply` (sql/003 + sql/006).
 
@@ -85,7 +86,7 @@ the whole export.
 ALL OPPORTUNITIES, ONE NEIGHBORHOOD (owner request 2026-09-09). A FOURTH set
 of files, `nta/<nta_code>.json` plus `nta/index.json`, answers the inverse of
 the question above: not "where is laundry missing" but "what is missing HERE".
-One file per NTA holds every eligible address in it that is beyond reach of at
+One file per NTA holds every address in it that is beyond reach of at
 least one category, with the whole missing list per address, and its own
 known-location block for all fifteen categories. It is a PRESENTATION layer
 over the same `analysis.address_gaps` rows -- same `ratio > 1` test, same
@@ -204,6 +205,7 @@ import pathlib
 
 from loci.categories import CATEGORIES
 from loci.reach import load_reach
+from loci.score.access import DIST_LIMIT
 from loci.score.supply import DEFAULT_SUPPLY_SET, SUPPLY_SETS, supply_predicate
 
 ALLCATS: list[str] = list(CATEGORIES)
@@ -369,6 +371,15 @@ VACANT_M_ROUND = 10
 #: drift test pins this to age_fit.ADDRESS_AGE_FIT_COLUMNS, so a fourth column
 #: added there forces a decision here instead of quietly never shipping.
 AGE_FIT_GAP_COLUMNS = ["age_fit_lead", "age_fit_lead_moe", "gap_score_fit"]
+
+#: The D75 right-censoring flags on analysis.address_gaps. The first is
+#: per-CATEGORY and its name depends on the layer (`{cat}_censored`), so this
+#: list names only the address-grain one; `_gap_sql` builds the pair.
+CENSORED_GAP_COLUMNS = ["lead_censored"]
+#: The Dijkstra cap those flags mean, in metres. Imported from score/access
+#: (which model/address_gaps re-exports as CAP_M), never re-declared, so the
+#: map and the screen can never disagree about what "beyond" means.
+GAP_CAP_M = DIST_LIMIT
 #: `age_fit_source` is PER CATEGORY (analysis.address_category), not per
 #: address, so the lead category's value is joined in rather than read off the
 #: address_gaps view -- which deliberately does not pivot 30 mostly-NULL
@@ -509,10 +520,12 @@ def _poi_sql(boroughs: list[str], dcats: list[str],
 
 def _gap_sql(cat: str, boroughs: list[str], pipeline: bool = True,
              storefront: bool = True, age_fit: bool = True,
-             age_source: bool = True) -> tuple[str, list]:
-    """Eligible addresses whose `cat` is beyond its reach tier (ratio > 1) --
+             age_source: bool = True, censoring: bool = True) -> tuple[str, list]:
+    """Addresses whose `cat` is beyond its reach tier (ratio > 1) --
     model/address_gaps.py's own `n_missing` definition, one category at a
-    time.
+    time. NO eligibility filter: the gate is retired (D75, owner ruling) and
+    every address is in the universe, so `WHERE g.eligible` is gone rather
+    than left in as a no-op that a future reader would take for a rule.
 
     `pipeline` selects the seven PIPELINE_GAP_COLUMNS, `storefront` the five
     STOREFRONT_GAP_COLUMNS and `age_fit` the three AGE_FIT_GAP_COLUMNS. All
@@ -524,7 +537,14 @@ def _gap_sql(cat: str, boroughs: list[str], pipeline: bool = True,
 
     `age_source` adds the LEFT JOIN that fetches the lead category's
     `age_fit_source`; it is skipped when analysis.address_category does not
-    carry the column, and the meta block records that it was."""
+    carry the column, and the meta block records that it was.
+
+    `censoring` adds the two D75 flags, APPENDED after the ranking block:
+    this layer's own `{cat}_censored` and the address's `lead_censored`. They
+    are what lets the popup say "beyond 2,400 m -- distance not measured"
+    rather than printing the Dijkstra cap as if it were a measured walk. Same
+    NULL-safe contract as the blocks above: a database written before D75
+    exports NULLs and the UI says nothing."""
     placeholders = ", ".join("?" for _ in boroughs)
     pipe = (", " + ", ".join(f"g.{c}" for c in PIPELINE_GAP_COLUMNS)) if pipeline else \
            ", " + ", ".join("NULL" for _ in PIPELINE_GAP_COLUMNS)
@@ -541,6 +561,7 @@ def _gap_sql(cat: str, boroughs: list[str], pipeline: bool = True,
     age = (", " + ", ".join(f"g.{c}" for c in AGE_FIT_GAP_COLUMNS)) if age_fit else \
           ", " + ", ".join("NULL" for _ in AGE_FIT_GAP_COLUMNS)
     src = f", ac.{AGE_FIT_SOURCE_COLUMN}" if age_source else ", NULL"
+    cens = (f", g.{cat}_censored, g.lead_censored") if censoring else ", NULL, NULL"
     join = f"""
         LEFT JOIN {'.'.join(AGE_FIT_SOURCE_TABLE)} ac
                ON ac.address_id = g.address_id
@@ -558,11 +579,10 @@ def _gap_sql(cat: str, boroughs: list[str], pipeline: bool = True,
                g.neighborhood
                {pipe}
                {shop}
-               , g.gap_score, g.lead_category {age} {src}
+               , g.gap_score, g.lead_category {age} {src} {cens}
         FROM analysis.address_gaps g
         {join}
-        WHERE g.eligible
-          AND g.borough IN ({placeholders})
+        WHERE g.borough IN ({placeholders})
           AND g.{cat}_ratio > 1
         ORDER BY g.address_id
     """
@@ -892,7 +912,11 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
 
     The D63/D69 ranking block does NOT ride in `pts` and does not move the
     stride -- see `_AgeFit` for why a NULL multiplier cannot live in a numeric
-    stride slot.
+    stride slot. Nor does the D75 censoring block, for the same reason: its
+    third state is "this file predates D75 and cannot say", which is a null,
+    not a 0. It rides in `censoring` as two parallel arrays of 1/0/null --
+    `cat`, this layer's category, and `lead`, the address's lead category --
+    plus `capM`, the metres the flag means, so the UI never hard-codes 2400.
     """
     bidx = {b: i for i, b in enumerate(boroughs)}
     projects = _Projects()
@@ -900,7 +924,9 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
     fit = _AgeFit()
     npipe, nshop = len(PIPELINE_GAP_COLUMNS), len(STOREFRONT_GAP_COLUMNS)
     tail = 8 + npipe + nshop        # where the ranking block starts in a row
+    cens_at = tail + 6              # ...and where the D75 censoring pair starts
     pts, ids = [], []
+    cens_cat, cens_lead = [], []
     for row in rows:
         address_id, lon, lat, boro, units = row[:5]
         if lon is None or lat is None or boro not in bidx:
@@ -909,6 +935,9 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
         pts.extend(pipe_slots(projects, row[8:8 + npipe]))
         pts.extend(sf_slots(vacants, row[8 + npipe:tail]))
         fit.add(row[tail:tail + 6])
+        c_cat, c_lead = row[cens_at:cens_at + 2]
+        cens_cat.append(None if c_cat is None else int(bool(c_cat)))
+        cens_lead.append(None if c_lead is None else int(bool(c_lead)))
         ids.append(address_id)
     return {"category": cat, "label": CATEGORIES[cat].label, "stride": 12,
             "pts": pts, "ids": ids, "n": len(ids),
@@ -917,7 +946,8 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
             "vacants": vacants.pack(),
             "storefrontColumns": list(STOREFRONT_GAP_COLUMNS),
             "ageFit": fit.pack(),
-            "ageFitColumns": list(AGE_FIT_GAP_COLUMNS)}
+            "ageFitColumns": list(AGE_FIT_GAP_COLUMNS),
+            "censoring": {"cat": cens_cat, "lead": cens_lead, "capM": GAP_CAP_M}}
 
 
 def _code_for(borough_name: str | None) -> str | None:
@@ -1546,7 +1576,7 @@ def collect_storefronts(con, boroughs: list[str]) -> dict:
 # is business X missing"; nobody can answer "what is missing HERE" by clicking
 # through fifteen of them and holding the union in their head.
 #
-# So: one file per NTA carrying every eligible address in it that is missing at
+# So: one file per NTA carrying every address in it that is missing at
 # least one category, with the whole missing LIST per address. This is a
 # PRESENTATION layer over exactly the same `analysis.address_gaps` rows the
 # per-category files read -- no new score, no new threshold. `ratio > 1` is
@@ -1580,7 +1610,8 @@ SCORE_DP = 3
 
 def _nta_gap_sql(boroughs: list[str], pipeline: bool = True,
                  storefront: bool = True) -> tuple[str, list]:
-    """Every eligible address in `boroughs` with its fifteen ratios. The
+    """Every address in `boroughs` with its fifteen ratios (no eligibility
+    filter -- the gate is retired, D75). The
     missing LIST is assembled in Python rather than by an UNPIVOT: one pass
     over 267k rows beats fifteen self-joins, and the same `ratio > 1` test then
     lives in exactly one place for both the count and the payload."""
@@ -1599,7 +1630,7 @@ def _nta_gap_sql(boroughs: list[str], pipeline: bool = True,
                round(lon, {COORD_DP}) AS lon, round(lat, {COORD_DP}) AS lat,
                units_capped, gap_score, lead_category, {pipe}, {shop}, {ratios}
         FROM analysis.address_gaps
-        WHERE eligible AND borough IN ({ph}) AND nta_code IS NOT NULL
+        WHERE borough IN ({ph}) AND nta_code IS NOT NULL
         ORDER BY nta_code, address_id
     """
     return sql, list(boroughs)
@@ -1785,6 +1816,16 @@ def has_age_fit_columns(con) -> bool:
     failing -- the map degrades to "no age-adjusted score", never to a 500 and
     never to a neutral 1.0."""
     return set(AGE_FIT_GAP_COLUMNS) <= _gaps_columns(con)
+
+
+def has_censoring_columns(con) -> bool:
+    """True when analysis.address_gaps exposes the D75 censoring flags -- the
+    address-grain `lead_censored` and all fifteen `{cat}_censored`. A database
+    written before D75 exports them as nulls rather than failing, and the UI
+    then says nothing about censoring instead of asserting "measured" (same
+    degrade-don't-lie contract as the three blocks above)."""
+    cols = _gaps_columns(con)
+    return set(CENSORED_GAP_COLUMNS) <= cols and all(f"{c}_censored" in cols for c in ALLCATS)
 
 
 def has_age_fit_source(con) -> bool:
@@ -1996,12 +2037,15 @@ def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
     # `age_fit_source` they are labelled with.
     age_cols = has_age_fit_columns(con)
     age_src = has_age_fit_source(con)
+    # Same contract again for the D75 censoring flags.
+    cens_cols = has_censoring_columns(con)
     # One read of the vacant-storefront lookup for all sixteen gap files: the
     # same ~3,800 rows stand behind every category.
     vacants = collect_vacant_detail(con, boroughs)
     gap_layers = {}
     for cat in ALLCATS:
-        sql, params = _gap_sql(cat, boroughs, pipe_cols, shop_cols, age_cols, age_src)
+        sql, params = _gap_sql(cat, boroughs, pipe_cols, shop_cols, age_cols, age_src,
+                               cens_cols)
         gap_layers[cat] = pack_gaps(con.execute(sql, params).fetchall(), boroughs,
                                     cat, vacants)
 
