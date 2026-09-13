@@ -3403,3 +3403,207 @@ def chains_refresh(
 
 if __name__ == "__main__":
     app()
+
+
+# ===========================================================================
+# `loci filings` -- the government-filing lifecycle (GTM, 2026-09-13)
+#
+# Appended at the END of this file on purpose: three concurrent threads hold
+# hunks above, and a block that only adds lines at the bottom cannot conflict
+# with any of them. `app` is already constructed; Typer registers on import,
+# and the installed entry point is `loci.cli:app` (pyproject [project.scripts]),
+# so the placement after the __main__ guard changes nothing about how the CLI
+# is invoked.
+# ===========================================================================
+
+filings_app = typer.Typer(add_completion=False, help=(
+    "When a store goes live, read off what it had to declare to the government. "
+    "Seven feeds -- SLA pending, DOB NOW job filings, DCWP applications, DOB NOW "
+    "permits, DCWP licences, SLA active, DOHMH first inspection -- normalised "
+    "into ONE table, staging.storefront_filing, one row per dated filing event. "
+    "Not only chains: an independent operator announces nothing to the press and "
+    "everything to the City."))
+app.add_typer(filings_app, name="filings")
+
+
+def _filings_connect(read_only: bool = False):
+    """Open the warehouse, retrying the lock a concurrent writer holds.
+
+    Same posture as `_chains_connect`: another session rebuilding
+    analysis.address is the normal state in this project, not an error. Backs
+    off rather than failing the whole ingest after a 60-second Socrata pull."""
+    import time
+
+    import duckdb
+
+    last = None
+    for attempt in range(6):
+        try:
+            con = locidb.connect(read_only=read_only)
+            if not read_only:
+                locidb.init_schema(con)
+            return con
+        except duckdb.IOException as exc:       # lock held by a peer session
+            last = exc
+            time.sleep(5 * 2 ** attempt)
+    raise RuntimeError(
+        f"filings: the DuckDB file stayed write-locked across 6 attempts ({last}). "
+        f"Another session is holding it; retry when it finishes.")
+
+
+@filings_app.command("ingest")
+def filings_ingest(
+    source: list[str] = typer.Option(None, "--source",
+                                     help="Repeatable. Default: all seven feeds."),
+    asof: str = typer.Option(None, "--asof", help="YYYY-MM-DD; default today. "
+                                                  "Sets the 24-month window."),
+    limit: int = typer.Option(None, "--limit", help="Cap rows per feed (probing)."),
+    refresh: bool = typer.Option(False, "--refresh",
+                                 help="Ignore data/raw/<source>/ and re-pull."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Fetch, normalise, geocode, report -- write nothing."),
+) -> None:
+    """Pull the filing feeds, resolve each to a BBL, write staging.storefront_filing.
+
+    Idempotent per source: the write DELETEs only the sources named in this run,
+    so `--source nyc_sla_pending_licenses` cannot erase the other six.
+
+    Every feed FAILS LOUD. A `$where` that matches nothing raises rather than
+    ingesting a silent zero, because "no business filed anything in New York for
+    two years" and "the column was renamed" are the same HTTP 200.
+    """
+    import datetime as _dt
+
+    from loci.model import storefront_filing as sf
+    from loci.sources.cities.nyc.filing_feeds import FEEDS, dob_now_where
+
+    asof_d = _dt.date.fromisoformat(asof) if asof else _dt.date.today()
+    sources = list(source) if source else list(FEEDS)
+
+    con = _filings_connect(read_only=False)
+    console.rule("[bold]1/4 PLUTO lot index")
+    n_lots = sf.build_pluto_index(con)
+    console.print(f"  {n_lots:,} lots, five boroughs, all land uses")
+
+    console.rule(f"[bold]2/4 fetch + geocode ({len(sources)} feed(s))")
+    frame, report = sf.assemble(con, sources, asof=asof_d, limit=limit,
+                                use_cache=not refresh)
+
+    t = Table(title=f"rows per source x stage — asof {report['asof']}")
+    for col in ("source", "stage", "rows"):
+        t.add_column(col)
+    for row in report["stage_counts"]:
+        t.add_row(row["source"], row["stage"], f"{row['n']:,}")
+    console.print(t)
+
+    m = Table(title="BBL match method")
+    for col in ("source", "match_method", "rows"):
+        m.add_column(col)
+    for row in report["match_counts"]:
+        m.add_row(row["source"], row["match_method"], f"{row['n']:,}")
+    console.print(m)
+
+    console.print(f"  dropped, no event date or id: {report['dropped_no_date_or_id']:,}")
+    console.print(f"  collapsed to earliest, duplicate filing_id (permit renewals, "
+                  f"repeated licence rows): {report['dropped_duplicate_filing_id']:,}")
+    for src, n in sorted(report["duplicate_rows_by_source"].items()):
+        console.print(f"    {src}: {n:,} rows in duplicated groups")
+    console.print(f"  name key NULL (junk name): {report['name_key_null']:,}")
+    if "nyc_dob_now_job_filings" in sources:
+        console.print(Panel(dob_now_where(asof_d),
+                            title="DOB NOW storefront filter (server-side)"))
+
+    if dry_run:
+        console.print("[yellow]--dry-run: staging.storefront_filing not written.[/]")
+        raise typer.Exit(0)
+
+    console.rule("[bold]3/4 write")
+    n = sf.write(con, frame, sources)
+    console.print(f"[green]written[/] {n:,} rows into {sf.TABLE}")
+
+    console.rule("[bold]4/4 validate")
+    problems = sf.validate(con, frame, sources)
+    for p in problems:
+        console.print(f"[red]FAIL[/] {p}")
+    if problems:
+        raise typer.Exit(1)
+    console.print("[green]ok[/] row counts and source x stage totals agree with the build")
+
+
+@filings_app.command("stats")
+def filings_stats() -> None:
+    """Rows per source x stage, BBL match rates, and the LEAD-TIME distribution.
+
+    The lead time is the point of the exercise: median days from a business's
+    earliest application-side filing to its earliest terminal one (DCWP licence
+    issued, or DOHMH's first real inspection), paired within one BBL and split
+    by the feed's own category text.
+
+    Read `model/storefront_filing`'s docstring before quoting it. The pairing is
+    conditioned on both rows resolving to the same BBL, applications that never
+    opened contribute nothing, and the 24-month window right-censors the tail --
+    so the median is a lower bound among successes, not a schedule.
+    """
+    from loci.model import storefront_filing as sf
+
+    con = _filings_connect(read_only=True)
+    out = sf.stats(con)
+
+    t = Table(title="staging.storefront_filing — source x stage")
+    for col in ("source", "stage", "filings", "name keys", "BBLs", "first", "last"):
+        t.add_column(col)
+    for r in out["census"].itertuples(index=False):
+        t.add_row(r.source, r.stage, f"{r.n_filings:,}", f"{r.n_name_keys:,}",
+                  f"{r.n_bbl:,}", str(r.first_filed_on), str(r.last_filed_on))
+    console.print(t)
+
+    m = Table(title="BBL match rate")
+    for col in ("source", "rows", "with BBL", "% BBL", "with name key"):
+        m.add_column(col)
+    for r in out["match_rate"].itertuples(index=False):
+        m.add_row(r.source, f"{r.n:,}", f"{r.n_bbl:,}", f"{r.pct_bbl}",
+                  f"{r.n_name_key:,}")
+    console.print(m)
+
+    d = Table(title="match method detail")
+    for col in ("source", "method", "rows", "% of source"):
+        d.add_column(col)
+    for r in out["match"].itertuples(index=False):
+        d.add_row(r.source, r.match_method, f"{r.n:,}", f"{r.pct_of_source}")
+    console.print(d)
+
+    pairs = out["lead_pairs"]
+    if not len(pairs):
+        console.print("[yellow]no (business_name_key, bbl) pairs with both an early "
+                      "and a terminal stage — nothing to measure yet.[/]")
+        return
+
+    sp = Table(title="lead time by stage pair — THE SPLIT THAT MATTERS")
+    for col in ("kind", "first stage", "terminal stage", "N", "p25", "median", "p75"):
+        sp.add_column(col)
+    for r in pairs.itertuples(index=False):
+        sp.add_row(r.pair_kind, r.first_stage, r.open_stage, f"{r.n:,}",
+                   f"{r.p25_days:.0f}", f"{r.median_days:.0f}", f"{r.p75_days:.0f}")
+    console.print(sp)
+    console.print("[yellow]`same_agency_processing` is DCWP application -> DCWP "
+                  "licence: the agency's own clock, NOT a time-to-open. Never pool "
+                  "it with the cross-agency rows below.[/]")
+
+    for label, key in (("CROSS-AGENCY — time from first filing to first "
+                        "inspection / licence issued (days)", "lead"),
+                       ("SAME-AGENCY — DCWP application to DCWP licence "
+                        "(processing time, days)", "lead_same_agency")):
+        frame = out[key]
+        if not len(frame):
+            continue
+        lt = Table(title=label)
+        for col in ("category_hint", "N", "p25", "median", "p75", "min", "max"):
+            lt.add_column(col)
+        for r in frame.itertuples(index=False):
+            lt.add_row(str(r.category_hint)[:40], f"{r.n:,}", f"{r.p25_days:.0f}",
+                       f"{r.median_days:.0f}", f"{r.p75_days:.0f}",
+                       f"{r.min_days:.0f}", f"{r.max_days:.0f}")
+        console.print(lt)
+    console.print("[dim]Conditioned on both rows resolving to the same BBL; "
+                  "applications that never opened contribute nothing; the "
+                  "24-month window right-censors the tail (median biased down).[/]")

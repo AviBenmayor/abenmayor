@@ -78,7 +78,11 @@ sources:
     tier: city
     city: nyc
     role: poi
-    status: planned
+    # planned -> verified 2026-09-13. The adapter has been live since GTM-17 and
+    # the anchor coverage numbers in CONTEXT.md 7.1 are computed from it; the
+    # `planned` label was stale by a year. Now also the terminal stage of the
+    # filing lifecycle (`first_inspection`, sql/019_storefront_filing.sql).
+    status: verified
     url: https://data.cityofnewyork.us/Health/DOHMH-New-York-City-Restaurant-Inspection-Results/43nn-pn8j
     dataset_id: 43nn-pn8j
     api: https://data.cityofnewyork.us/resource/43nn-pn8j.json
@@ -650,6 +654,119 @@ sources:
       dataset, and an annual 12/31 snapshot is not an availability listing.
       4,780 MN+BK rows carry a literal (0, 0) coordinate, nulled on ingest.
       Verified 2026-09-10.
+
+  # ------------------------------------------- Government filings: the go-live
+  # lifecycle. Registered 2026-09-13 on the owner's ask: "find when stores go
+  # live via what they must declare to the government -- not just for chains."
+  # All three land in staging.storefront_filing beside the four already-ingested
+  # feeds (nyc_dob_permit_issuance, nyc_dcwp_licenses, nyc_sla_liquor_licenses,
+  # nyc_dohmh_restaurants), which supply the LATE stages of the same lifecycle.
+
+  - id: nyc_sla_pending_licenses
+    name: NYS SLA Current Pending Licenses
+    tier: city
+    city: nyc
+    role: outcome
+    status: verified
+    url: https://data.ny.gov/Economic-Development/Current-SLA-Pending-Licenses/f8i8-k2gm
+    dataset_id: f8i8-k2gm
+    api: https://data.ny.gov/resource/f8i8-k2gm.json
+    geography: point (georeference), premises address; NO BBL and NO BIN
+    temporal: {start: 2023-05, end: current, grain: application-dated, ingested_window: 24mo}
+    cost: {amount: 0, unit: total}
+    fields: [application_id, premises_county, type, class, description, legalname,
+             dba, actual_address_of_premises, received_date, status, georeference]
+    bias: >
+      THE EARLIEST SIGNAL THE CITY PUBLISHES. An SLA application needs a signed
+      lease and a 30-day community-board notice, so it precedes opening by
+      months, and it names the TENANT rather than the landlord. But it is a
+      PENDING file, not a panel: a row LEAVES the dataset the moment the licence
+      issues or the application is withdrawn, so this is a live queue and NOT a
+      history -- an application ingested last month may simply be gone next
+      month, and its absence is not a withdrawal. Statewide (2,925 rows on the
+      2026-09-13 extract, 1,574 in NYC), filtered server-side on premises_county
+      in Kings/New York/Bronx/Queens/Richmond. Covers ONLY businesses that want
+      to serve alcohol -- silent on every bodega, pharmacy, laundromat and gym.
+      No BBL, no BIN and no house/street split: one free-text premises address
+      plus a point, so every row reaches a BBL through the 30 m nearest-lot
+      rung and its match rate is structurally the lowest of the seven feeds.
+      Verified 2026-09-13.
+    notes: Stage `liquor_application` (rank 1) in src/loci/filing_stages.py.
+
+  - id: nyc_dob_now_job_filings
+    name: "DOB NOW: Build - Job Application Filings"
+    tier: city
+    city: nyc
+    role: outcome
+    status: verified
+    url: https://data.cityofnewyork.us/Housing-Development/DOB-NOW-Build-Job-Application-Filings/w9ak-ipjd
+    dataset_id: w9ak-ipjd
+    api: https://data.cityofnewyork.us/resource/w9ak-ipjd.json
+    geography: point (building), with BBL, BIN and house number + street
+    temporal: {start: 2016-06, end: current, grain: filing-dated, ingested_window: 24mo}
+    cost: {amount: 0, unit: total}
+    fields: [job_filing_number, job_type, building_type, filing_status, house_no,
+             street_name, borough, bin, bbl, latitude, longitude,
+             owner_s_business_name, job_description, filing_date,
+             current_status_date, first_permit_date,
+             general_construction_work_type_, sign, place_of_assembly_work_type_]
+    bias: >
+      THE FIT-OUT SIGNAL, and the noisiest of the seven. A STOREFRONT FILTER is
+      applied server-side and it is a judgement call, stated in full in
+      sources/cities/nyc/filing_feeds.dob_now_where: drop job_type in (New
+      Building, Full Demolition, No Work, ALT-CO - New Building with Existing
+      Elements to Remain) because the ground floor does not exist yet or is
+      coming down; drop building_type in (1/2/3 Family) as pure residential;
+      require at least one of general_construction / sign / place_of_assembly.
+      Measured on the 2026-09-13 extract that keeps 68,678 of 314,822 filings
+      and drops 246,144 (78.2%) -- 39,051 on job type, 72,385 on building type,
+      134,708 on work type. THE FILTER CANNOT ISOLATE COMMERCIAL WORK:
+      `building_type` has four values and mixed-use falls in `Other`, so a lobby
+      renovation on a mixed-use building survives it. AND THE NAME IS THE WRONG
+      NAME -- `owner_s_business_name` is the OWNER, i.e. the landlord on a
+      commercial fit-out ("AVERY HALL INVESTMENTS", "637 WILSON MGT.", a literal
+      "N/A"), so this stage is a PLACE signal, not a business-identity signal,
+      and its business_name_key joins to the chains table far worse than the
+      licence feeds do. Verified 2026-09-13.
+    notes: Stage `fitout_filing` (rank 2). job_description carried as category_hint.
+
+  - id: nyc_dcwp_license_applications
+    name: NYC DCWP License Applications
+    tier: city
+    city: nyc
+    role: outcome
+    status: verified
+    url: https://data.cityofnewyork.us/Business/License-Applications/ptev-4hud
+    dataset_id: ptev-4hud
+    api: https://data.cityofnewyork.us/resource/ptev-4hud.json
+    geography: point, with BBL, BIN and building number + street
+    temporal: {start: 2022, end: current, grain: application-dated, ingested_window: 24mo}
+    cost: {amount: 0, unit: total}
+    fields: [application_id, license_number, business_name, dba_trade_name,
+             business_category, application_type, license_type, submission_date,
+             date_closed, status, building_number, street, borough, bin, bbl,
+             latitude, longitude]
+    bias: >
+      The APPLICATION side of w7w3-xahh, which publishes only issued licences.
+      Names the operator and carries a real category, so it is the best
+      name-bearing early signal for the non-alcohol trades. COVERS ONLY
+      DCWP-LICENSED CATEGORIES: laundries, garages, newsstands, sidewalk cafes,
+      second-hand dealers, home improvement contractors -- and NOT groceries,
+      NOT pharmacies, NOT restaurants (D13/D55 already established the licence
+      roster contributes ~nothing to the daily-needs bundle as a POI source; it
+      is used here for its DATES, not its coverage). `address_type` is not
+      filtered, so a business licensed at a mailing address geocodes to the
+      wrong lot; flagged by match_method rather than dropped, because filtering
+      would silently delete every home-based applicant. MEASURED ON THE FIRST
+      INGEST (2026-09-13): 13,470 of 35,290 windowed rows (38.2%) resolve to
+      NO BBL, and 12,698 of those carry no borough, no BBL and no coordinate
+      at all -- they are OUT-OF-CITY applicants, overwhelmingly Home
+      Improvement Contractors licensed at a home address in New Jersey or
+      Long Island. That is a property of the licence type, not a geocoding
+      failure, and it means this feed's usable share is the trade-premises
+      subset, not the file. 65,932 rows total on the 2026-09-13 extract.
+      Verified 2026-09-13.
+    notes: Stage `license_application` (rank 3). business_category -> category_hint.
 
   - id: irs_soi_migration
     name: IRS SOI county-to-county migration
