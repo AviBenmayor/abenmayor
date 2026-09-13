@@ -2,6 +2,15 @@
 
     loci init-db
     loci check-sources [--urls]
+    loci poi-snapshot [--month YYYY-MM] [--dry-run] [--force]
+                                                        (the first-seen ledger:
+                                                         analysis.poi_presence, one row
+                                                         per deduped location per its
+                                                         first/last observed month.
+                                                         Run after every dedup, BEFORE
+                                                         `loci chains detect`.)
+    loci check-presence                                 (100% of deduped locations have
+                                                         a ledger row; skips with no DB)
     loci check-questions
     loci check-tickets [--hook]
     loci reach-table [--quantile 0.80] [--write]        (read-only unless --write)
@@ -114,6 +123,104 @@ def check_sources(urls: bool = typer.Option(False, "--urls", help="Also check ev
     errors = registry.validate(check_urls=urls)
     for e in errors:
         console.print(f"[red]FAIL[/] {e}")
+    raise typer.Exit(1 if errors else 0)
+
+
+@app.command(name="poi-snapshot")
+def poi_snapshot(
+    month: str = typer.Option(None, "--month", help="Snapshot month YYYY-MM; "
+                                                    "default the current month."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Compute and print; write nothing."),
+    force: bool = typer.Option(False, "--force",
+                               help="Allow a month older than the ledger's newest. "
+                                    "Read sql/018 caveat 2 first."),
+) -> None:
+    """Record one month of observation for every deduplicated POI location.
+
+    This is the FIRST-SEEN LEDGER (`analysis.poi_presence`): independent of
+    whether any source publishes an open date, it records the month Loci first
+    and last SAW each storefront. Run it after every ingest + `loci dedup`, and
+    before `loci chains detect` -- `make chains-refresh` does exactly that.
+
+    Idempotent: re-running a month never moves a `first_seen_month` and never
+    double-counts `n_months_seen`. Backfill for the ledger's first month marks
+    every undated location `backfill_censored`, which means "already existed,
+    true opening date unknown" -- never "opened this month"."""
+    from loci.model import poi_presence as pp
+
+    con = pp.connect_write()
+    try:
+        result = pp.snapshot(con, month=month, dry_run=dry_run, force=force)
+    except (ValueError, RuntimeError) as exc:
+        console.print(f"[red]FAIL[/] {exc}")
+        raise typer.Exit(1) from exc
+
+    t = Table(title=f"poi-snapshot {result.month}"
+                    + (" — DRY RUN, nothing written" if result.dry_run else ""))
+    t.add_column("metric"); t.add_column("n", justify="right")
+    t.add_row("deduped locations seen", f"{result.n_locations:,}")
+    t.add_row("  carried by key match", f"{result.n_matched_hash:,}")
+    t.add_row("  carried by name+40 m link", f"{result.n_matched_link:,}")
+    t.add_row("  minted this month", f"{result.n_new:,}")
+    t.add_row("ledger rows NOT seen this month", f"{result.n_gone:,}")
+    t.add_row("ledger rows total", f"{result.n_rows_total:,}")
+    for kind, n in sorted(result.kinds.items()):
+        t.add_row(f"first_seen_kind = {kind}", f"{n:,}")
+    if result.hash_collisions:
+        t.add_row("[yellow]key collisions (kept apart)[/]",
+                  f"{result.hash_collisions:,}")
+    if result.upgraded:
+        t.add_row("[green]censored rows a source finally dated[/]",
+                  f"{result.upgraded:,}")
+    console.print(t)
+
+    if result.kinds.get("backfill_censored"):
+        console.print("[yellow]NOTE[/] left-censored rows existed when the ledger "
+                      "started. Their true opening date is UNKNOWN — never report "
+                      "them as openings in the ledger's first month.")
+    if not result.dry_run:
+        errors, stats = pp.coverage_check(con)
+        for e in errors:
+            console.print(f"[red]FAIL[/] {e}")
+        if errors:
+            raise typer.Exit(1)
+        console.print(f"[green]ok[/] ledger covers "
+                      f"{stats['coverage_pct']:.2f}% of "
+                      f"{stats['clusters']:,} deduped locations")
+
+
+@app.command(name="check-presence")
+def check_presence() -> None:
+    """Assert the first-seen ledger covers every deduplicated location.
+
+    The drift check for `analysis.poi_presence`: after an ingest, 100% of
+    current `analysis.poi_dedup` clusters must have a ledger row in the newest
+    snapshot month, no cluster may be claimed by two ledger rows, and the
+    `first_seen_kind` invariants must hold. Skips (exit 0) on a clone with no
+    warehouse, the way a fresh checkout has none."""
+    import pathlib as _pl
+
+    from loci.model import poi_presence as pp
+
+    import os as _os
+
+    target = _pl.Path(_os.environ.get("LOCI_DB") or locidb.DEFAULT_PATH)
+    if not target.exists():
+        console.print(f"[yellow]skip[/] no warehouse at {target} — nothing to check")
+        raise typer.Exit(0)
+    from loci.model.recommend import connect_read_only
+
+    con = connect_read_only()
+    errors, stats = pp.coverage_check(con)
+    for e in errors:
+        console.print(f"[red]FAIL[/] {e}")
+    if not errors:
+        console.print(
+            f"[green]ok[/] {stats['ledger_rows']:,} ledger rows, "
+            f"{stats['coverage_pct']:.2f}% of {stats['clusters']:,} deduped "
+            f"locations covered in {stats['newest_month']}; kinds="
+            + ", ".join(f"{k}={v:,}" for k, v in sorted(stats["kinds"].items())))
     raise typer.Exit(1 if errors else 0)
 
 
@@ -2997,11 +3104,15 @@ def chains_detect(
     `loci.chains.normalize.brand_key`, and flags brands that are growing.
     Idempotent: re-running a month DELETEs and re-INSERTs it.
 
-    `locations_new_12m` is a FLOOR -- only four of the nine POI sources carry a
-    usable first-seen date, so it is counted over `locations_dated`, which is
-    printed beside it. The date-independent measure is the difference between
-    two monthly snapshots, which is why this command exists as a cron job and
-    not only as a query."""
+    First-seen comes from `analysis.poi_first_seen` (the ledger built by
+    `loci poi-snapshot`), NOT from the sources directly -- run that first or
+    this command raises rather than reporting every brand as undated.
+
+    `locations_new_12m` is still a FLOOR, counted over `locations_dated`, which
+    is printed beside it together with the three-way split: dated BY SOURCE,
+    dated BY OBSERVATION (the ledger saw it appear), and LEFT-CENSORED (already
+    there when the ledger started; opening date unknown). The censored share is
+    the part that shrinks every month the ledger runs."""
     from loci.chains import detect as det
 
     con = _chains_connect(read_only=dry_run)
@@ -3028,9 +3139,18 @@ def chains_detect(
                   str(r["n_boroughs"]), str(r["n_sources"]),
                   str(r.get("flag_reason") or ""))
     console.print(t)
-    console.print(f"[dim]{result.n_locations:,} brand-locations, "
-                  f"{result.n_dated:,} ({result.n_dated / max(result.n_locations, 1):.0%}) "
-                  f"carry a first-seen date — `new 12m` is a floor over that subset.[/]")
+    n = max(result.n_locations, 1)
+    console.print(
+        f"[dim]{result.n_locations:,} brand-locations by first-seen kind: "
+        f"{result.n_by_source:,} ({result.n_by_source / n:.0%}) dated BY SOURCE, "
+        f"{result.n_observed:,} ({result.n_observed / n:.0%}) dated BY OBSERVATION "
+        f"(the month Loci first saw it), "
+        f"{result.n_censored:,} ({result.n_censored / n:.0%}) LEFT-CENSORED "
+        f"(existed when the ledger started; opening date unknown).[/]")
+    console.print(
+        f"[dim]`new 12m` is a floor over the {result.n_dated:,} dated "
+        f"({result.n_dated / n:.0%}); the censored share shrinks every month the "
+        f"ledger runs. Never read a censored location as an opening.[/]")
     if dry_run:
         console.print("[yellow]--dry-run: nothing written.[/]")
     else:
@@ -3200,17 +3320,23 @@ def chains_refresh(
     dry_run: bool = typer.Option(False, "--dry-run",
                                  help="Every step dry: no snapshot, no queries, no doc."),
 ) -> None:
-    """detect -> research -> render. The monthly job (`make chains-refresh`).
+    """poi-snapshot -> detect -> research -> render. The monthly job
+    (`make chains-refresh`).
 
     Research failure does NOT abort the run: the snapshot is the load-bearing
     artefact and it is already written by then, so a Tavily outage must not
     cost the month its count."""
-    console.rule("[bold]1/3 detect")
+    console.rule("[bold]1/4 poi-snapshot (first-seen ledger)")
+    # BEFORE detect, always: detect reads the ledger and raises without it, and
+    # a month whose ledger row is missing can never be recovered afterwards --
+    # the observation is gone once the month is.
+    poi_snapshot(month=month, dry_run=dry_run, force=False)
+    console.rule("[bold]2/4 detect")
     chains_detect(month=month, dry_run=dry_run, limit=25)
     if skip_research:
-        console.rule("[bold]2/3 research — skipped (--skip-research)")
+        console.rule("[bold]3/4 research — skipped (--skip-research)")
     else:
-        console.rule("[bold]2/3 research")
+        console.rule("[bold]3/4 research")
         try:
             chains_research(month=month, max_queries=max_queries, days=None,
                             detected=0, dry_run=dry_run)
@@ -3220,7 +3346,7 @@ def chains_refresh(
                               "the snapshot is already written.[/]")
         except Exception as exc:            # noqa: BLE001
             console.print(f"[yellow]research failed ({exc}) — continuing to render.[/]")
-    console.rule("[bold]3/3 render")
+    console.rule("[bold]4/4 render")
     try:
         chains_render(month=month, out=None, dry_run=dry_run)
     except typer.Exit as exc:

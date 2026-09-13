@@ -27,6 +27,7 @@ import pytest
 
 from loci import db as locidb
 from loci.chains import detect
+from loci.model import poi_presence
 
 TODAY = dt.date(2026, 9, 13)
 RECENT = (TODAY - dt.timedelta(days=30)).isoformat()      # inside 3m and 12m
@@ -125,6 +126,10 @@ def con():
         c.execute("INSERT OR IGNORE INTO analysis.hex "
                   "SELECT h3_latlng_to_cell_string(?, ?, 9), ?", [lat, lon, boro])
     detect.ensure_schema(c)
+    # detect now reads first-seen from the LEDGER, never from the sources
+    # directly, so the fixture has to run the snapshot the monthly job runs
+    # before it. This is the integration, not a mock.
+    poi_presence.snapshot(c, month="2026-09", today=TODAY)
     return c
 
 
@@ -231,3 +236,58 @@ def test_brand_latest_delta_needs_two_snapshots(con):
 def test_bad_month_is_rejected(con):
     with pytest.raises(ValueError, match="YYYY-MM"):
         detect.build(con, month="September 2026", dry_run=True, today=TODAY)
+
+
+# ---------------------------------------------------------------------------
+# the first-seen ledger (GTM / owner 2026-09-13)
+# ---------------------------------------------------------------------------
+def test_detect_reports_the_three_first_seen_kinds(con):
+    """The run summary must split the dated/undated population by HOW it was
+    dated. Without the split, `locations_new_12m` reads as a measurement when
+    most of its denominator is left-censored backfill."""
+    result, _ = detect.build(con, month="2026-09", dry_run=True, today=TODAY)
+    assert result.n_by_source + result.n_observed + result.n_censored \
+        == result.n_locations
+    assert result.n_by_source + result.n_observed == result.n_dated
+    # at the ledger's first month nothing can be 'observed' -- everything
+    # either carries a source date or is left-censored
+    assert result.n_observed == 0
+    assert result.n_by_source > 0 and result.n_censored > 0
+
+
+def test_detect_refuses_to_run_without_the_ledger(con):
+    """Fail loud. A missing ledger would zero every `locations_dated`, which
+    reads as "no chain is growing" -- a finding -- when it means "not
+    measured"."""
+    con.execute("DROP VIEW analysis.poi_first_seen")
+    con.execute("DROP TABLE analysis.poi_presence")
+    with pytest.raises(RuntimeError, match="poi_first_seen does not exist"):
+        detect.build(con, month="2026-09", dry_run=True, today=TODAY)
+
+
+def test_detect_never_reads_last_inspection_date_from_the_ledger_either(con):
+    """The trap, asserted through the new code path: the ledger is the only
+    source of first_seen now, and `last_inspection_date` is not one of its
+    fields. Old Diner is inspected this month and must stay undated."""
+    from loci.model import poi_presence as pp
+
+    assert "last_inspection" not in " ".join(e for e, _ in pp.FIRST_SEEN_FIELDS)
+    kind, month, on = con.execute(
+        "SELECT first_seen_kind, first_seen_month, first_seen_on "
+        "FROM analysis.poi_first_seen WHERE display_name = 'Old Diner'").fetchone()
+    assert (kind, month, on) == ("backfill_censored", None, None)
+    _, rows = detect.build(con, month="2026-09", dry_run=True, today=TODAY)
+    diner = _by_key(rows)["old diner"]
+    assert diner["locations_dated"] == 0 and diner["flagged"] is False
+
+
+def test_brand_location_is_keyed_on_the_ledger_not_on_cluster_id(con):
+    """cluster_id is renumbered by every dedup re-run, so the old key made two
+    months of chains.brand_location incomparable."""
+    detect.build(con, month="2026-09", today=TODAY)
+    keys = [r[0] for r in con.execute(
+        "SELECT DISTINCT location_key FROM chains.brand_location").fetchall()]
+    assert keys and all(k.startswith("loc_") for k in keys)
+    ledger = {r[0] for r in con.execute(
+        "SELECT location_key FROM analysis.poi_presence").fetchall()}
+    assert set(keys) <= ledger

@@ -22,28 +22,42 @@ exactly the young chain the list exists to find. The source count per brand
 (`n_sources`) is published so a single-source brand can be discounted by eye.
 
 ---------------------------------------------------------------------------
-DATES: a floor, not a measurement
+DATES: read from the LEDGER, never re-derived here
 ---------------------------------------------------------------------------
-`first_seen_on` per location is the EARLIEST date any cluster member carries,
-taken from FIRST_SEEN_FIELDS below. Most sources carry none:
+`first_seen_on` per location comes from `analysis.poi_first_seen`
+(model/poi_presence.py, sql/018), the monthly observation ledger -- NOT from
+the sources directly. The ledger resolves the three kinds:
 
-    foursquare_os_places   opened_on            (FSQ `date_created`) -- present
-    nys_sla_liquor_licenses opened_on           (licence effective)  -- present
-    nys_dos_appearance_enhancement  attrs.license_issue_date         -- present
-    nys_medicaid_pharmacies attrs.enrollment_begin_date              -- present
-    overture_places, nyc_dohmh_restaurants, usda_snap_retailers,
-    nyc_dcwp_inspections, nyc_dohmh_childcare                        -- NONE
+    source_date        a source published an open / licence / enrolment date.
+                       `first_seen_on` is that DATE.
+    observed           no source date; the ledger saw the storefront appear.
+                       `first_seen_on` is the FIRST DAY of that month, so the
+                       12m / 3m windows treat it exactly like a dated one.
+    backfill_censored  the location already existed when the ledger started
+                       (2026-09) and nothing dates it. LEFT-CENSORED:
+                       `first_seen_on` is NULL and it counts as UNDATED, the
+                       same way an undated location always has.
 
-So `locations_new_12m` is a COUNT OVER THE DATED SUBSET and is a floor.
-`locations_dated` is written beside it so the denominator is never hidden.
-`attrs.last_inspection_date` is deliberately NOT used: it is a LAST-seen date,
-and reading it as a first-seen would date every long-established restaurant to
+So `locations_new_12m` is STILL a floor -- but a floor that shrinks every
+month, because each month's genuinely new storefronts arrive as 'observed'
+rather than as nothing at all. `locations_dated` publishes the denominator, and
+the run summary now splits it by kind so the shrinking is visible.
+
+THE TRAP THAT MUST STAY SHUT: `attrs.last_inspection_date` is a LAST-seen
+date. It is not in `poi_presence.FIRST_SEEN_FIELDS`, it must never be added,
+and both tests/test_chains_detect.py and tests/test_poi_presence.py assert it
+-- reading it as a first-seen would date every long-established restaurant to
 its most recent inspection and label the whole food tier a new chain.
 
-The honest growth measure is the month-over-month difference in
-`chains.brand_snapshot`, which depends on no source's dates at all. It needs
-two snapshots to exist. Until then, the record-date estimate is what there is,
-flagged as such in docs/CHAINS.md.
+THE OTHER HALF of the growth measure is still the month-over-month difference
+in `chains.brand_snapshot`, which depends on no date at all and needs two
+snapshots. The ledger does not replace it; it makes the per-location story
+auditable in between.
+
+`location_key` IS NOW THE LEDGER KEY, not `poi_dedup.cluster_id`. cluster_id is
+renumbered by every dedup re-run (sql/018 explains why), so the old
+`brand_location` key silently meant a different storefront from one month to
+the next. Comparing two months of that table is only valid with the ledger key.
 """
 from __future__ import annotations
 
@@ -52,6 +66,7 @@ import pathlib
 from dataclasses import dataclass
 
 from loci.chains.normalize import ALIASES, brand_key
+from loci.model.poi_presence import FIRST_SEEN_FIELDS, first_seen_sql  # noqa: F401
 
 SQL_015 = pathlib.Path(__file__).resolve().parents[1] / "sql" / "015_chains.sql"
 
@@ -67,17 +82,11 @@ FLAG_NEW_12M = 3
 FLAG_FAST_SMALL_NEW = 2
 FLAG_FAST_SMALL_TOTAL = 8
 
-#: Per-location first-seen candidates, in no particular order: the minimum over
-#: all of them wins. Each entry is (SQL expression over `p`, label).
-#: try_strptime returns NULL instead of raising on a format mismatch, which is
-#: what keeps one malformed attrs blob from failing the whole run.
-FIRST_SEEN_FIELDS: tuple[tuple[str, str], ...] = (
-    ("p.opened_on", "opened_on"),
-    ("try_cast(try_strptime(json_extract_string(p.attrs, '$.license_issue_date'),"
-     " '%m/%d/%Y') AS DATE)", "license_issue_date"),
-    ("try_cast(try_strptime(json_extract_string(p.attrs, '$.enrollment_begin_date'),"
-     " '%Y-%m-%dT%H:%M:%S.%g') AS DATE)", "enrollment_begin_date"),
-)
+#: FIRST_SEEN_FIELDS is re-exported from model/poi_presence for backwards
+#: compatibility only. It is DEFINED there, because the ledger and this module
+#: must never disagree about which fields may be read as an opening date --
+#: two copies of that list is how `last_inspection_date` eventually gets added
+#: to one of them.
 
 
 @dataclass(frozen=True)
@@ -87,6 +96,13 @@ class DetectResult:
     n_flagged: int
     n_locations: int
     n_dated: int
+    #: The dated/undated split by LEDGER KIND, over brand-locations.
+    #: n_by_source + n_observed == n_dated; n_censored is the undated
+    #: remainder and is LEFT-CENSORED, never "opened in the ledger's first
+    #: month".
+    n_by_source: int = 0
+    n_observed: int = 0
+    n_censored: int = 0
 
 
 def current_month(today: dt.date | None = None) -> str:
@@ -99,37 +115,30 @@ def ensure_schema(con) -> None:
     con.execute(SQL_015.read_text())
 
 
-def _first_seen_sql() -> tuple[str, str]:
-    """(least-of-the-candidates, the label of whichever won) as two SQL
-    expressions over an aliased staging.poi row `p`."""
-    exprs = [e for e, _ in FIRST_SEEN_FIELDS]
-    value = "least(" + ", ".join(exprs) + ")" if len(exprs) > 1 else exprs[0]
-    # Which field produced it. CASE rather than a lateral so this stays one pass.
-    branches = " ".join(
-        f"WHEN {expr} IS NOT NULL AND {expr} = {value} THEN '{label}'"
-        for expr, label in FIRST_SEEN_FIELDS)
-    return value, f"CASE {branches} END"
-
-
 def location_rows_sql() -> str:
-    """One row per (cluster_id, raw name) with its earliest dateable evidence.
+    """One row per (cluster_id, raw name), with its first-seen taken FROM THE
+    LEDGER (`analysis.poi_first_seen`).
 
     Names come from EVERY cluster member, not just the canonical POI: Overture
     is canonical far more often than DOHMH is, and Overture's spelling is the
     one most likely to be a bare brand ("Starbucks") while a licence filing
     carries the operating company. Taking all spellings and letting
     `brand_key` collapse them means a location reaches its brand if ANY source
-    spelled it recognisably."""
-    value, label = _first_seen_sql()
-    return f"""
+    spelled it recognisably.
+
+    THE JOIN TO THE LEDGER IS ON `cluster_id_latest`, and the view only ever
+    exposes that column for rows seen in the newest snapshot month -- every
+    other row has it NULLed by `loci poi-snapshot`, precisely so a stale dedup
+    numbering cannot attach one storefront's history to another. A location
+    with no ledger row therefore reads as UNDATED rather than as wrongly dated,
+    and `build` raises on it instead of quietly shipping the zero."""
+    return """
     WITH member AS (
         SELECT d.cluster_id,
                p.poi_id,
                p.source_id,
                p.name,
-               p.category,
-               {value} AS first_seen_on,
-               {label} AS first_seen_src
+               p.category
         FROM analysis.poi_dedup d
         JOIN staging.poi p ON p.poi_id = d.poi_id
         WHERE p.name IS NOT NULL
@@ -143,13 +152,26 @@ def location_rows_sql() -> str:
         FROM analysis.poi_supply s
         GROUP BY 1
     ),
-    dated AS (
-        SELECT cluster_id,
-               min(first_seen_on) AS first_seen_on,
-               arg_min(first_seen_src, first_seen_on) AS first_seen_src,
-               count(DISTINCT source_id) AS n_sources
-        FROM member
-        GROUP BY 1
+    srcs AS (
+        SELECT cluster_id, count(DISTINCT source_id) AS n_sources
+        FROM member GROUP BY 1
+    ),
+    led AS (
+        SELECT cluster_id_latest AS cluster_id,
+               location_key,
+               first_seen_kind,
+               first_seen_month,
+               -- The window date. A source date is used as-is; an 'observed'
+               -- location is dated to the FIRST DAY of the month the ledger
+               -- saw it, which is the conservative end of that month. A
+               -- censored location stays NULL: first_seen_month is already
+               -- NULL for it in the view, so this COALESCE cannot resurrect
+               -- the ledger's start month as a fake opening date.
+               COALESCE(first_seen_on,
+                        try_strptime(first_seen_month || '-01', '%Y-%m-%d')::DATE)
+                                                          AS first_seen_on
+        FROM analysis.poi_first_seen
+        WHERE cluster_id_latest IS NOT NULL
     )
     SELECT m.cluster_id,
            m.name,
@@ -158,13 +180,15 @@ def location_rows_sql() -> str:
            c.category           AS category,
            c.lon, c.lat,
            h.borough            AS borough,
-           d.first_seen_on,
-           d.first_seen_src,
-           d.n_sources,
+           l.location_key,
+           l.first_seen_on,
+           COALESCE(l.first_seen_kind, 'unledgered') AS first_seen_kind,
+           s.n_sources,
            m.source_id
     FROM member m
-    JOIN canon c  ON c.cluster_id = m.cluster_id
-    JOIN dated d  ON d.cluster_id = m.cluster_id
+    JOIN canon c       ON c.cluster_id = m.cluster_id
+    JOIN srcs  s       ON s.cluster_id = m.cluster_id
+    LEFT JOIN led l    ON l.cluster_id = m.cluster_id
     LEFT JOIN analysis.hex h
            ON h.h3_index = h3_latlng_to_cell_string(c.lat, c.lon, 9)
     """
@@ -185,7 +209,17 @@ def build(con, *, month: str | None = None, dry_run: bool = False,
 
     import pandas as pd
 
+    _require_ledger(con)
     df = con.execute(location_rows_sql()).fetchdf()
+
+    unledgered = int((df["first_seen_kind"] == "unledgered").sum())
+    if unledgered:
+        raise RuntimeError(
+            f"{unledgered} of {len(df)} POI rows have no row in "
+            f"analysis.poi_first_seen for the newest snapshot month. Run "
+            f"`loci poi-snapshot --month {month}` first. Detecting without the "
+            "ledger would silently report every one of them as undated, which "
+            "reads as 'not growing' rather than as 'not measured'.")
 
     # brand_key is deliberately applied in Python, not SQL: the normalizer is
     # the unit-tested artefact and a SQL transliteration of it would be a
@@ -198,6 +232,7 @@ def build(con, *, month: str | None = None, dry_run: bool = False,
     # (Dunkin'/Baskin) are real, and picking one would silently halve a brand.
     df = (df.sort_values(["brand_key", "cluster_id", "name"])
             .drop_duplicates(["brand_key", "cluster_id"]))
+
 
     cutoff_12m = today - dt.timedelta(days=365)
     cutoff_3m = today - dt.timedelta(days=91)
@@ -249,12 +284,21 @@ def build(con, *, month: str | None = None, dry_run: bool = False,
     brands["snapshot_month"] = month
     brands["detected_at"] = dt.datetime.now()
 
+    # The ledger kind, counted over BRAND-LOCATIONS (`loc` is exactly the
+    # population `locations_total` sums over, co-branded storefronts included),
+    # so source + observed + censored == n_locations and the censored share is
+    # readable straight off the run summary. It is the number that says how
+    # much of `locations_new_12m` is a floor rather than a measurement.
+    kinds = loc["first_seen_kind"].value_counts()
     result = DetectResult(
         snapshot_month=month,
         n_brands=len(brands),
         n_flagged=int(brands["flagged"].sum()),
         n_locations=int(brands["locations_total"].sum()),
         n_dated=int(brands["locations_dated"].sum()),
+        n_by_source=int(kinds.get("source_date", 0)),
+        n_observed=int(kinds.get("observed", 0)),
+        n_censored=int(kinds.get("backfill_censored", 0)),
     )
     rows = brands.sort_values(["locations_new_12m", "locations_total"],
                              ascending=False).to_dict("records")
@@ -279,6 +323,24 @@ def flag_for(new_12m: int, total: int) -> str | None:
     return None
 
 
+def _require_ledger(con) -> None:
+    """Fail loud if the first-seen ledger has not been built.
+
+    Without this, `location_rows_sql` would still run -- the LEFT JOIN simply
+    yields NULLs -- and every brand would report `locations_dated = 0`. A
+    zeroed growth column looks like "no chain is growing", which is a finding;
+    it is actually "we did not measure". Never ingest a silent zero."""
+    ok = con.execute(
+        "SELECT count(*) FROM information_schema.tables "
+        "WHERE table_schema = 'analysis' AND table_name = 'poi_first_seen'"
+    ).fetchone()[0]
+    if not ok:
+        raise RuntimeError(
+            "analysis.poi_first_seen does not exist. Run `loci poi-snapshot` "
+            "(sql/018_poi_presence.sql) before `loci chains detect`; "
+            "`make chains-refresh` does this in order.")
+
+
 def _validate_month(month: str) -> None:
     try:
         dt.datetime.strptime(month, "%Y-%m")
@@ -296,8 +358,13 @@ def _write(con, month: str, brands, loc) -> None:
                 "locations_new_3m", "n_boroughs", "n_sources"):
         snap[col] = snap[col].astype(int)
 
-    detail = loc.assign(snapshot_month=month).rename(
-        columns={"cluster_id": "location_key"})
+    # location_key is the LEDGER key (analysis.poi_presence.location_key), NOT
+    # poi_dedup.cluster_id: cluster_id is renumbered by every dedup re-run, so
+    # the old key made two months of this table incomparable. `first_seen_src`
+    # now carries the ledger KIND -- source_date / observed / backfill_censored
+    # -- which is what a reader of a date actually needs to know about it.
+    detail = loc.assign(snapshot_month=month,
+                        first_seen_src=loc["first_seen_kind"])
     detail = detail[["snapshot_month", "brand_key", "location_key", "poi_id",
                      "category", "borough", "lon", "lat",
                      "first_seen_on", "first_seen_src"]].copy()

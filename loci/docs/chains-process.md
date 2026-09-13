@@ -46,17 +46,26 @@ failure modes below.
 ## The monthly process
 
 ```bash
-make chains-refresh          # = loci chains refresh: detect -> research -> render
+make chains-refresh          # = loci chains refresh:
+                             #   poi-snapshot -> detect -> research -> render
 ```
 
 Run on the 1st of each month. Each step is also a command of its own:
 
 ```bash
+uv run loci poi-snapshot    [--month 2026-09] [--dry-run] [--force]
 uv run loci chains detect   [--month 2026-09] [--dry-run] [--limit 25]
 uv run loci chains research [--max-queries 60] [--days 45] [--detected 20] [--dry-run]
 uv run loci chains import   path/to/brands.json [--overwrite] [--dry-run]
 uv run loci chains render   [--month 2026-09] [--dry-run]
 ```
+
+`poi-snapshot` must run **before** `detect`, and `loci chains refresh` does it
+as step 1/4 for exactly that reason: `detect` reads first-seen from the ledger
+and **raises** if the ledger is missing, rather than reporting every brand as
+undated. A month's observation also cannot be recovered once the month has
+passed — if the job does not run in October, October is simply not in the
+record. Both commands are idempotent per month.
 
 `detect` is idempotent per month — re-running `--month 2026-09` deletes and
 rewrites that month rather than duplicating it. `research` will not spend more
@@ -83,12 +92,96 @@ On the 2026-09 snapshot that leaves **60% of brand-locations dated** — so
 `locations_dated` is published beside it so the denominator is never hidden;
 when `Dated` is far below `Locations`, the ranking is weak evidence.
 
+Since 2026-09-13 these source dates are read **through the first-seen ledger**
+(below), never from the sources directly, and from 2026-10 the undated
+remainder starts shrinking on its own: a storefront the ledger watches appear
+is dated `observed`, whatever the sources say.
+
 The fix that depends on no source's dates is to **take the count ourselves,
 every month**, and difference it. `chains.brand_latest.locations_delta_since`
 is that measure. It is NULL until two snapshots exist — NULL means "not yet
 measurable", never zero. The list gets materially more trustworthy after a
 year of snapshots, and that is the whole reason for the cron job.
 
+---
+
+## The first-seen ledger
+
+*Owner's ask, 2026-09-13: "make sure moving forward we have dates on which
+month data was first seen for storefronts."*
+
+`analysis.poi_presence` (schema and full rationale in
+`src/loci/sql/018_poi_presence.sql`) holds **one row per deduplicated
+storefront location** — all of them, not just the ones that belong to a chain —
+recording the month Loci **first** and **last** observed it. It does not depend
+on any source publishing an open date. `loci poi-snapshot` writes one month of
+it; `analysis.poi_first_seen` is the view every consumer reads.
+
+### The three kinds
+
+| `first_seen_kind` | means | `first_seen_month` in the view |
+|---|---|---|
+| `source_date` | a source published an open / licence / enrolment date at or before the month we first saw it. `first_seen_on` is that DATE. | the source's month |
+| `observed` | no source date; the ledger **watched it appear** in that month. | that month |
+| `backfill_censored` | it already existed when the ledger started and nothing dates it. **Left-censored** — the true opening date is unknown and unbounded below. | **NULL** |
+
+**The first honest month is 2026-10.** September 2026 is the backfill: every
+location then in the warehouse got a row, so "new in 2026-09" is not a
+measurement of anything. October is the first month with a prior snapshot for a
+new location to be new *relative to*.
+
+**A left-censored row must never be reported as "opened in 2026-09."** The view
+is the guard: it returns `NULL` for a censored `first_seen_month`, so a naive
+`GROUP BY first_seen_month` cannot produce a fake September spike. Read the
+view, not the table.
+
+### Why the key is not `cluster_id`
+
+`analysis.poi_dedup.cluster_id` is **renumbered by every dedup re-run**. It is
+assigned by `enumerate()` over a dict whose order is the order rows came back
+from an unordered `SELECT`, plus a per-category offset that shifts when any
+earlier category gains or loses one cluster. Measured on the live warehouse:
+re-running the dedup on **byte-identical data in a shuffled row order**
+reproduces the partition exactly (100% identical clusters, 100% identical
+canonical picks) and yet **0.00%** of POIs keep their `cluster_id`.
+
+So the ledger carries identity itself: a content hash of
+`category | normalized-name | lon,lat @ 4 dp` to mint, then a **name +
+distance link** (the same `norm_tokens` / `names_match` / 40 m rule that formed
+the cluster) to carry a row forward when the hash moves. `cluster_id_latest` is
+kept only as a convenience join key, and is NULLed on every row not seen in the
+newest month so a stale join returns nothing instead of the wrong storefront.
+
+**Nameless locations are the weak spot.** 118 of 227,548 clusters (0.052%)
+collided on the content hash, and *every one* had an empty normalized name —
+CJK and Arabic shopfront names (`norm_tokens` keeps only `[a-z0-9]`) and
+all-generic names like "Chicken Kitchen", usually stacked on one fallback
+geocode. Their key folds in the canonical `poi_id`, which keeps them apart but
+means the key moves if that canonical member changes. An openings spike
+concentrated in empty-`name_key` rows is a churn artefact, not turnover.
+
+### What detect now reports
+
+`locations_new_12m` is still a floor, but the run summary splits the
+brand-locations three ways — **dated by source / dated by observation /
+left-censored** — so the size of the floor is visible. The censored share
+shrinks every month the job runs, and only the first two count toward
+`locations_dated`.
+
+### The guard
+
+`loci check-presence` (wired into `make check`) asserts that **100% of current
+deduplicated locations have a ledger row in the newest snapshot month**, that no
+cluster is claimed by two rows, and that the `first_seen_kind` invariants hold.
+It skips quietly on a clone with no warehouse.
+
+### Out of scope: `analysis.storefront`
+
+The DOF Local Law 157 registry inventories **commercial space**, not
+businesses, its rows are filings rather than observations, and it already
+carries its own history — `SELECT premises_id, min(filing_due_date) FROM
+analysis.storefront GROUP BY 1`. Folding it into this ledger would put two
+grains under one primary key.
 ---
 
 ## Installing the monthly job (launchd)
@@ -111,8 +204,16 @@ Logs land in `data/chains/logs/`. Remove with
 Two things that will bite: launchd agents get a **minimal PATH** and do not
 read your shell profile (the plist sets PATH explicitly — check `which uv`
 matches), and if the machine is asleep at 03:10 the job runs at next wake. A
-slipped run is harmless: `detect` is idempotent per month and the press window
-is 45 days, not 30, precisely so a late run leaves no hole.
+slipped run is *mostly* harmless: `detect` is idempotent per month and the press
+window is 45 days, not 30, precisely so a late run leaves no hole. The
+**ledger** is the exception — a month with no `poi-snapshot` is a month with no
+observation, and it cannot be reconstructed later. Slipping by days is fine; a
+month skipped entirely is a permanent hole in the first-seen record.
+
+**The job is not installed yet** (checked 2026-09-13: there is no
+`~/Library/LaunchAgents/com.loci.chains-refresh.plist`). The plist is still a
+template. It runs `make chains-refresh`, which now runs `poi-snapshot` first, so
+no edit to the plist is needed — only the bootstrap above.
 
 ---
 
@@ -231,5 +332,17 @@ A fourth schema exists because a *brand* is a different grain from everything in
 | `chains.press_hits` | `(brand_key, url)`; `brand_key = ''` is a discovery hit |
 | `chains.brand_latest` | VIEW: newest snapshot + the cross-snapshot delta |
 
-One location is one `analysis.poi_dedup.cluster_id`, so a Starbucks carried by
-both Overture and Foursquare counts once.
+Plus the ledger the chain work now depends on, in `analysis`
+(`src/loci/sql/018_poi_presence.sql`):
+
+| Object | Grain |
+|---|---|
+| `analysis.poi_presence` | one deduplicated location — its first/last observed month |
+| `analysis.poi_first_seen` | VIEW: the reporting surface; NULLs a censored `first_seen_month` |
+
+One location is one deduplicated storefront, so a Starbucks carried by both
+Overture and Foursquare counts once. Since 2026-09-13 `brand_location.location_key`
+is the **ledger** key, not `poi_dedup.cluster_id` — cluster_id is renumbered by
+every dedup re-run, which made two months of that table incomparable — and
+`first_seen_src` carries the ledger **kind** (`source_date` / `observed` /
+`backfill_censored`) rather than a source field name.

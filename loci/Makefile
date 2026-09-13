@@ -10,12 +10,13 @@ setup:         ## Install deps and create .env
 db-init:       ## Create data/loci.duckdb and apply the schema
 	uv run loci init-db
 
-check:         ## Registry + URL sweep + QUESTIONS drift + decisions + load-bearing unit tests
+check:         ## Registry + URL sweep + QUESTIONS drift + decisions + ledger coverage + load-bearing unit tests
 	uv run loci check-sources --urls
 	uv run loci check-questions
 	uv run loci check-tickets
+	uv run loci check-presence
 	uv run pytest tests/test_chains_normalize.py tests/test_chains_detect.py \
-	              tests/test_chains_watchlist.py -q
+	              tests/test_chains_watchlist.py tests/test_poi_presence.py -q
 
 tickets:       ## Regenerate docs/TICKETS.md + docs/linear-*.{csv,json}
 	uv run loci gen-tickets
@@ -24,12 +25,18 @@ nyc: db-init   ## Full NYC pipeline
 	uv run loci ingest --source overture_places --city nyc
 	uv run loci grid   --city nyc --resolution 9
 	uv run loci dedup
+	uv run loci poi-snapshot
 	uv run loci score
 	uv run loci gaps
 	uv run loci model  --t0 2013 --t1 2023
 	uv run loci export --format pmtiles
 
-chains-refresh: ## Monthly: detect chains, enrich from press, regenerate docs/CHAINS.md
+chains-refresh: ## Monthly: first-seen ledger, detect chains, enrich from press, regenerate docs/CHAINS.md
+	# `loci chains refresh` runs `loci poi-snapshot` as step 1/4, BEFORE detect:
+	# detect reads analysis.poi_first_seen and raises without it, and a month's
+	# observation cannot be recovered once the month has passed. Keeping it
+	# inside the subcommand rather than as a second line here is what makes the
+	# cron and the human run the identical sequence.
 	uv run loci chains refresh
 
 clean:         ## Drop intermediates and the database (keeps data/raw)
