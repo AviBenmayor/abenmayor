@@ -1,0 +1,95 @@
+-- ---------------------------------------------------------------------------
+-- 016_address_access.sql -- the PRESENT-DAY NON-RESIDENTIAL DEMAND axis on
+-- analysis.address: subway entries and jobs within a 400 m walk.
+--
+-- Written only by `UPDATE analysis.address SET <ACCESS_COLUMNS>`
+-- (model/address_access.py, `loci address-access`). Never by the screen.
+-- ---------------------------------------------------------------------------
+-- NO NEW TABLE (owner rule, D61 inventory): these are new MEASURES at an
+-- existing grain, so they extend `analysis.address`, exactly as homes_400m,
+-- storefronts_400m and units_permitted_400m do. They are category-INDEPENDENT
+-- -- the same subway entries and the same jobs are within 400 m whether you
+-- are asking about pharmacies or bars -- so putting them on
+-- analysis.address_category would be fifteen identical copies of one number,
+-- 11.5M rows to say 767k things.
+-- ---------------------------------------------------------------------------
+-- WHY A SEPARATE MIGRATION AND NOT THE TAIL OF 002
+--
+-- The supply-intensity block (homes_400m ...) and the D75 censoring flags sit
+-- at the tail of 002_schema.sql because they are SURFACED ON the generated
+-- view analysis.address_gaps, which db.init_schema() creates immediately after
+-- 002 and which DuckDB resolves at CREATE time -- a column added later would
+-- not exist when the view naming it is built.
+--
+-- These two are deliberately NOT on that view yet, so they belong in their own
+-- migration. Read them off analysis.address directly. Putting them on the view
+-- is a one-line change in model/address_gaps.address_gaps_view_sql() PLUS
+-- moving these ALTERs into 002's tail -- both, or the view breaks on a fresh
+-- database. The webmap reads the view, so that is also the moment the webmap
+-- export's column list has to grow; none of that is done here.
+-- ---------------------------------------------------------------------------
+-- UNITS AND MEANING, because the column names cannot carry it
+--
+--   transit_entries_400m    people per AVERAGE WEEKDAY entering the subway at
+--                           station complexes within 400 m NETWORK metres.
+--                           ENTRIES, not footfall, and not entries+exits:
+--                           `ridership` in MTA 5wq4-mkjj counts taps INTO the
+--                           system. `transfers` is a separate column and is
+--                           deliberately never added -- a transfer is a rider
+--                           already counted where they entered.
+--                           A complex's entries are split EVENLY over its
+--                           entry-allowed entrances (MTA i9wp-a4ja) and each
+--                           entrance snapped to the walk graph, so a large
+--                           interchange is not a single point. Evenly, because
+--                           no public source publishes per-entrance volume:
+--                           this UNDERSTATES the corner outside a complex's
+--                           busy main entrance and OVERSTATES its side streets.
+--
+--   jobs_400m               LEHD LODES8 WAC total jobs (column C000, ALL
+--                           sectors) in 2020 census blocks whose CENTROID is
+--                           within the same 400 m. NOT the CNS07/CNS18 retail
+--                           and food-service sectors that analysis.hex_panel
+--                           carries -- this is every job, because the measure
+--                           is daytime population, not retail competition.
+--
+--   access_radius_m         the radius the two numbers were actually computed
+--                           at. The COLUMN NAMES say 400; this says what the
+--                           run used, so a --radius-m run is readable rather
+--                           than silently mis-named.
+--   transit_entries_window  e.g. '2026-06-01..2026-08-31 weekdays'. Federal
+--                           holidays excluded. Stamped per row because the
+--                           default window is the feed's latest three FULL
+--                           months and therefore moves.
+--   transit_entries_snap    'entrances' | 'complex' -- which convention put the
+--                           riders on the map.
+--   jobs_vintage            the LODES WAC year (2023). LODES8 puts every year
+--                           on 2020 blocks, but pre-2020 years got there by
+--                           area-proportional ALLOCATION, which is bias and not
+--                           noise (CONTEXT.md 7.4b); 2023 is observed on its
+--                           own blocks.
+--   access_run_at           NULL means `loci address-access` has never run for
+--                           this borough.
+-- ---------------------------------------------------------------------------
+-- ZERO IS AN OBSERVATION, NULL IS NOT A THING HERE
+--
+-- Every address in scope gets BOTH numbers (owner rule 2026-09-13: no
+-- eligibility gate, never drop an address). 0 means "nothing within a
+-- five-minute walk", which is a measurement. NULL means the command has not
+-- been run. There is no third state and, unlike nearest_m, no CENSORING: a
+-- catchment sum inside a hard 400 m radius has no ceiling to be censored at --
+-- every weight inside the circle is counted exactly once and every weight
+-- outside it excluded exactly once. Do not add a *_censored flag here; it would
+-- name a state that cannot occur.
+-- ---------------------------------------------------------------------------
+-- NEVER ADD THESE TO EACH OTHER OR TO homes_400m. They overlap heavily by
+-- construction (a station complex sits where the jobs and the homes are) and a
+-- sum would triple-count the same block. They are three separate readings.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS transit_entries_400m   DOUBLE;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS jobs_400m              BIGINT;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS access_radius_m        REAL;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS transit_entries_window VARCHAR;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS transit_entries_snap   VARCHAR;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS jobs_vintage           SMALLINT;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS access_run_at          TIMESTAMP;

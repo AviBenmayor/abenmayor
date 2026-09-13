@@ -11,6 +11,10 @@
     loci address-gaps [--borough ALL] [--reach tiers|p80] [--supply-set principled]
                       [--limit 0] [--dry-run]
     loci address-demand [--borough MNBK|MN|BK|ALL] [--dry-run]  (D49 annotation, GTM-110)
+    loci address-access [--boroughs MN,BK] [--months 3] [--complex-point] [--dry-run]
+                                                       (transit_entries_400m + jobs_400m
+                                                        beside homes_400m; UPDATE-only,
+                                                        never a filter on the screen)
     loci age-fit fit   [--category <registry category>|all] [--boroughs MN,BK] [--dry-run]
                                                        (D63/D64: re-estimate the
                                                         supply-revealed age curves;
@@ -2271,6 +2275,169 @@ def supply_ratio(
     console.print(f"[green]ok[/] {report['_written_address']:,} rows -> analysis.address · "
                   f"{report['_written_category']:,} rows -> analysis.address_category "
                   f"(graph {report['graph_version']})")
+
+
+@app.command(name="address-access")
+def address_access(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL."),
+    radius_m: float = typer.Option(400.0, "--radius-m",
+                                   help="Catchment radius in NETWORK metres (default 400 = the 5-min tier)."),
+    months: int = typer.Option(3, "--months",
+                               help="How many of the ridership feed's latest FULL months "
+                                    "to average (3 = one quarter, 12 = a trailing year)."),
+    complex_point: bool = typer.Option(False, "--complex-point",
+                                       help="Snap each complex's entries to its own published "
+                                            "point instead of splitting them over entrances. "
+                                            "Coarser at 400 m; use only if i9wp-a4ja is down."),
+    jobs_vintage: int = typer.Option(2023, "--jobs-vintage",
+                                     help="LODES8 WAC vintage on disk (data/raw/lodes)."),
+    refresh: bool = typer.Option(False, "--refresh",
+                                 help="Re-pull the MTA feeds instead of using data/raw/mta cache."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """Present-day NON-RESIDENTIAL demand at address grain, beside homes_400m.
+
+        transit_entries_400m  average weekday daily subway ENTRIES at station
+                              complexes within 400 m NETWORK metres
+        jobs_400m             LODES8 WAC total jobs (C000, all sectors) in
+                              census blocks within the same 400 m
+
+    `homes_400m` is the resident half of demand and is currently the only half
+    the screen can see. Two addresses with the same homes_400m are the same
+    number downstream and are not the same retail location if one is 80 m from
+    a complex putting 30,000 people on the sidewalk each weekday.
+
+    Same engine as every other catchment column -- score/access._prune +
+    _to_csr, then scipy Dijkstra on the pedestrian walk graph, sourced from the
+    query nodes. No ST_DWithin and no straight line anywhere: 400 m of NETWORK
+    distance is the project's one definition of "within reach".
+
+    EVERY ADDRESS GETS BOTH VALUES. 0 means "nothing within a five-minute
+    walk" -- a measurement, not a missing value -- and there is no censoring to
+    record, because a catchment sum inside a hard radius has no ceiling the way
+    a right-censored `nearest_m` does.
+
+    UPDATE-only on analysis.address (seven columns), pinned disjoint from the
+    screen's own columns and from every sibling annotation. These do NOT enter
+    gap_score, supply_ratio_vs_base or any recommendation grade.
+
+    Caveats that ride with the numbers: subway ENTRIES are not footfall (they
+    are the morning-outbound direction at a residential complex); the default
+    window is three SUMMER months; LODES counts payroll jobs at a block
+    CENTROID, not people on a sidewalk. Never add these two to each other or
+    to homes_400m -- they overlap by construction.
+
+    RE-APPLY AFTER EVERY SCREEN RE-RUN. `loci address-gaps` DELETEs and
+    re-INSERTs analysis.address, so these seven columns come back NULL exactly
+    as every other annotation does. Run this in the same re-apply sequence as
+    `loci pipeline`, `loci storefronts`, age-fit and `loci supply-ratio`;
+    `access_run_at IS NULL` is the flag that says it has not been.
+
+        loci address-access --boroughs MN,BK
+    """
+    from loci.model import address_access as aa
+
+    boros = _parse_boroughs(boroughs)
+    con = locidb.connect(read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+    if abs(radius_m - aa.DEFAULT_RADIUS_M) > 1e-6:
+        console.print(f"[yellow]warning:[/] --radius-m {radius_m:.0f} differs from the "
+                      f"{aa.DEFAULT_RADIUS_M:.0f} m the COLUMN NAMES encode; the values "
+                      f"will be at {radius_m:.0f} m and the names will still say 400 "
+                      f"(access_radius_m records what was actually used).")
+
+    console.print(f"[dim]walkable transit entries + jobs for {','.join(boros)} at "
+                  f"{radius_m:.0f} m network…[/]")
+    df, report = aa.build_access(
+        con, boros, radius_m=radius_m, months=months,
+        use_entrances=not complex_point, jobs_vintage=jobs_vintage,
+        refresh=refresh, dry_run=dry_run)
+
+    t = report["transit"]
+    console.print(f"ridership {t['dataset_id']} · window [bold]{report['transit_window']}[/] "
+                  f"({t['n_weekdays']} weekdays, federal holidays excluded) · "
+                  f"{t['complexes']:,} complexes · {t['total_entries_per_weekday']:,.0f} "
+                  f"entries per average weekday citywide")
+    console.print(f"snap '[bold]{t['snap']}[/]' · {t['weight_points']:,} weight points "
+                  f"({t['complexes_without_entrances']} complexes fell back to their "
+                  f"published point)")
+    console.print(f"LODES WAC {report['jobs_vintage']} column {report['jobs_column']} · "
+                  f"{report['job_blocks']:,} blocks with jobs inside the walk-graph bbox "
+                  f"· {report['job_total_in_bbox']:,.0f} jobs")
+    console.print(f"{report['addresses']:,} addresses over {report['query_nodes']:,} "
+                  f"distinct graph nodes (graph {report['graph_version']})")
+
+    tab = Table(title=f"walkable demand — {','.join(boros)} @ {radius_m:.0f} m network")
+    for col, j in (("borough", "left"), ("addresses", "right"),
+                   ("transit >0", "right"), ("transit p50", "right"),
+                   ("transit p90", "right"), ("jobs >0", "right"),
+                   ("jobs p50", "right"), ("jobs p90", "right")):
+        tab.add_column(col, justify=j)
+    for b in [*boros, "ALL"]:
+        s = df if b == "ALL" else df[df["borough"] == b]
+        if s.empty:
+            continue
+        te, jo = s["transit_entries_400m"], s["jobs_400m"]
+        tab.add_row(b, f"{len(s):,}",
+                    f"{(te > 0).mean():.0%}", f"{te.median():,.0f}", f"{te.quantile(0.9):,.0f}",
+                    f"{(jo > 0).mean():.0%}", f"{jo.median():,.0f}", f"{jo.quantile(0.9):,.0f}")
+    console.print(tab)
+    console.print(f"[dim]zero is an observation ('nothing within {radius_m:.0f} m'), not a "
+                  f"missing value; {report['addresses_censored']} addresses are censored "
+                  f"(a catchment sum inside a hard radius cannot be).[/]")
+
+    if dry_run:
+        console.print("[dim]--dry-run:[/] nothing written.")
+        raise typer.Exit(0)
+    console.print(f"[green]ok[/] {report['_written']:,} rows -> analysis.address")
+
+
+@app.command(name="validate-pedestrian")
+def validate_pedestrian(
+    radius_m: float = typer.Option(400.0, "--radius-m", help="Catchment radius, NETWORK metres."),
+    months: int = typer.Option(3, "--months", help="Ridership months to average."),
+    out: Path = typer.Option(None, "--out", help="Write the per-point table to this CSV."),
+) -> None:
+    """External check: do the walkable-demand measures RANK real footfall?
+
+    At each NYC DOT Bi-Annual Pedestrian Count screenline (cqsj-cfgu, the 100
+    ON-STREET points; `loc` 101-114 are bridge midpoints and are excluded),
+    recompute `transit_entries_400m`, `jobs_400m` and `homes_400m` with the
+    same walk graph and the same Dijkstra, and report Spearman rho against the
+    observed AM+MD+PM count of the latest complete round.
+
+    READ-ONLY. Writes nothing to the warehouse; no score reads the result.
+
+    What a high rho would NOT prove: DOT's points are traffic-engineering
+    locations on busy commercial corridors, so the correlation is measured on a
+    RESTRICTED RANGE and says nothing about how the measures order one quiet
+    residential block against another -- which is most of the address universe.
+    The three measures also overlap by construction, so three similar rhos are
+    one piece of evidence, not three.
+    """
+    from loci.validation import pedestrian_counts as pc
+
+    con = locidb.connect(read_only=True)
+    console.print("[dim]fetching DOT pedestrian counts + sweeping the walk graph…[/]")
+    df, report = pc.run_validation(con, radius_m=radius_m, months=months)
+
+    console.print(f"round [bold]{report['round']}[/] ({report['fields']}) · "
+                  f"{report['on_street_points']} on-street points "
+                  f"({report['dropped_bridge_points']} bridge points excluded, "
+                  f"{report['dropped_missing_count']} missing a period)")
+    console.print(f"transit window {report['transit']['window_start']}.."
+                  f"{report['transit']['window_end']} · LODES WAC "
+                  f"{report['jobs_vintage']} · radius {report['radius_m']:.0f} m")
+
+    t = Table(title="Spearman rho vs DOT observed pedestrian count")
+    t.add_column("measure"); t.add_column("rho", justify="right"); t.add_column("N", justify="right")
+    for k, v in report["correlations"].items():
+        t.add_row(k, f"{v['spearman_rho']:+.3f}", str(v["n"]))
+    console.print(t)
+    if out:
+        df.to_csv(out, index=False)
+        console.print(f"[green]ok[/] per-point table -> {out}")
 
 
 @app.command(name="supply-ratio-box")

@@ -735,19 +735,35 @@ sources:
     bias: Station centroid understates walk distance from far entrances.
 
   - id: mta_subway_entrances
-    name: MTA Subway Entrances and Exits
+    name: MTA Subway Entrances and Exits 2024
     tier: city
     city: nyc
     role: control
-    status: planned
-    url: https://data.ny.gov/en/Transportation/MTA-Subway-Entrances-and-Exits-2024-Map/68hr-j2j7
-    dataset_id: 68hr-j2j7
+    status: verified
+    url: https://data.ny.gov/Transportation/MTA-Subway-Entrances-and-Exits-2024/i9wp-a4ja
+    dataset_id: i9wp-a4ja
+    api: https://data.ny.gov/resource/i9wp-a4ja.json
     geography: point
+    temporal: {start: 2024, end: 2024, grain: snapshot}
     cost: {amount: 0, unit: total}
-    bias: none material
+    bias: >
+      A 2024 SNAPSHOT: entrances close for construction and the file does not
+      track it. Entry-only/exit-only status is published (`entry_allowed`,
+      `exit_allowed`) and is honoured -- an exit-only stair carries no entries.
+      No per-entrance volume exists anywhere in public data, so a complex's
+      riders are split EVENLY; that understates the corner outside a busy main
+      entrance and overstates its side streets.
     notes: >
-      Preferred over station centroids -- a station can be 400m of walking from
-      its own far entrance.
+      CORRECTED 2026-09-13: the previously registered `68hr-j2j7` is the Socrata
+      MAP VIEW and publishes NO columns at all (/api/views returns an empty
+      column list and every row comes back as `{}`), so nothing could ever have
+      been read from it -- grid/mta.py's comment that "the entrances dataset
+      returned empty at build time" was this, not an outage. The tabular dataset
+      is `i9wp-a4ja`, 2,120 rows, 2,006 with entry_allowed = YES, and its
+      `complex_id` matches `station_complex_id` in both ridership feeds on
+      424/424 complexes. Preferred over station centroids: a station can be
+      400 m of walking from its own far entrance. Consumed by
+      sources/cities/nyc/mta_ridership.py.
 
   - id: mta_subway_ridership
     name: MTA Subway Hourly Ridership 2020-2024
@@ -774,6 +790,83 @@ sources:
       Island Railway and the Roosevelt Island tram). Value per hex is the annual
       ridership of the NEAREST station complex, the same convention subway_routes
       uses; gate on walk_m_to_subway, which is NULL beyond 3 km.
+
+  - id: mta_subway_ridership_2025
+    name: 'MTA Subway Hourly Ridership: Beginning 2025'
+    tier: city
+    city: nyc
+    role: control
+    status: verified
+    url: https://data.ny.gov/Transportation/MTA-Subway-Hourly-Ridership-Beginning-2025/5wq4-mkjj
+    dataset_id: 5wq4-mkjj
+    api: https://data.ny.gov/resource/5wq4-mkjj.json
+    geography: station complex (point), split to entrances via i9wp-a4ja
+    temporal: {start: 2025-01-01, end: current, grain: hourly}
+    cost: {amount: 0, unit: total}
+    bias: >
+      ENTRIES ARE NOT FOOTFALL, and this is the single most important thing to
+      say about the column built from them. `ridership` counts taps INTO the
+      system, which at a residential complex is overwhelmingly the morning
+      OUTBOUND direction; the evening arrival flow -- the one that buys
+      groceries on the way home -- is not published per station anywhere and is
+      only visible as entries at the other end of the trip. So the measure is a
+      commuter-base proxy at a residential station and an evening-exodus proxy
+      at a job-centre station, never a turnstile-neutral pedestrian count.
+      Fare evasion and unpaid entry are invisible and are spatially correlated
+      with income. The default window is the feed's latest three FULL months,
+      which is summer: school is out and offices are thinner, so a
+      school-adjacent or CBD complex reads low against an annual mean.
+    notes: >
+      The CURRENT ridership feed. `mta_subway_ridership` (wujg-7c2s) stops at
+      2024-12-31 and is not extended; identical schema, DISJOINT date coverage,
+      never sum the two. Source of analysis.address.transit_entries_400m
+      (sources/cities/nyc/mta_ridership.py, `loci address-access`): average
+      weekday daily entries per station complex, the complex total split EVENLY
+      across its entry-allowed entrances (i9wp-a4ja) and each entrance snapped
+      to the pedestrian walk graph, so a 400 m catchment sees a large
+      interchange as the ~20 doors it actually has rather than one published
+      point. `transfers` is deliberately NOT added to `ridership` (a transfer is
+      a rider already counted at their entry complex -- the same ruling D63
+      records for wujg-7c2s) and `transit_mode` is pinned to 'subway' (the feed
+      also carries Staten Island Railway and the Roosevelt Island tram).
+      Weekdays only, federal holidays excluded by date. 44.5M rows; a whole-year
+      server-side aggregation times out, so it is chunked by calendar month
+      (~3 s per month at this feed's size). First run 2026-09-13: window
+      2026-06-01..2026-08-31, 64 weekdays, 424 complexes, 4,037,494 entries per
+      average weekday citywide (MTA's own published average weekday subway
+      ridership for the period is the same order, which is the sanity check).
+
+  - id: nyc_dot_pedestrian_counts
+    name: NYC DOT Bi-Annual Pedestrian Counts
+    tier: city
+    city: nyc
+    role: validation
+    status: verified
+    url: https://data.cityofnewyork.us/Transportation/Bi-Annual-Pedestrian-Counts/cqsj-cfgu
+    dataset_id: cqsj-cfgu
+    api: https://data.cityofnewyork.us/resource/cqsj-cfgu.json
+    geography: point (screenline location)
+    temporal: {start: 2007, end: current, grain: semiannual (May and Sept/Oct)}
+    cost: {amount: 0, unit: total}
+    bias: >
+      NOT A SAMPLE OF THE CITY. 114 points chosen by DOT for traffic-engineering
+      reasons, concentrated on busy commercial corridors and bridge crossings,
+      so the range of pedestrian volume is restricted at the bottom -- a rank
+      correlation measured here does not transfer to a quiet residential block.
+      Counts are manual screenline observations of two hours per period
+      (AM/MD/PM), on one day, twice a year; weather and a single unusual day are
+      not averaged out. `loc` 101-114 are BRIDGE MIDPOINTS (East River and
+      Harlem River), which have no 400 m residential catchment in any
+      meaningful sense and are excluded -- the 100 on-street points are the
+      usable set. Column names are per-round and inconsistent
+      (may_22_p_m vs may_22_pm, oct24_am vs oct_23_am); resolve by metadata,
+      never by a hard-coded guess.
+    notes: >
+      VALIDATION ONLY. Never an input to any score, grade or ranking -- it is
+      the external check on whether transit_entries_400m, jobs_400m and
+      homes_400m rank real sidewalk volume. The tabular id is cqsj-cfgu; the
+      catalogue also publishes a map view `2de2-6x2h` which returns empty
+      objects for every row.
 
   - id: mta_bus_gtfs
     name: MTA Bus GTFS static (stops)
