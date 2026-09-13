@@ -1528,6 +1528,16 @@
       "Labels": "score,infra,rigor",
       "Project": "Loci",
       "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Storefront first-seen ledger: install the monthly snapshot before 2026-10-01 and add the gov_filing kind",
+      "Description": "Only about 60% of chain locations (D77) and far fewer POIs overall carry any source first-seen/opened date, so the owner asked that every storefront instead carry the month Loci ITSELF first saw it (commit 46e50ff, CHECKPOINT D79, sql/018). Built analysis.poi_presence + the poi_first_seen view, `loci poi-snapshot --month` and `loci check-presence`.\n\nThe dedup cluster_id turned out to be an input-order artefact, not a stable identity \u2014 0.00% of ids survive a byte-identical row-order shuffle \u2014 so the ledger key is a content hash of normalized name + rounded lon/lat + category instead, with the canonical poi_id folded in only for the 118 nameless (CJK/Arabic/generic) collisions the content hash cannot separate (0.052%). Backfill 2026-09: 227,548 locations, 52.3% source_date, 47.7% backfill_censored, 0 observed, 100% coverage, idempotent (re-run mints 0, retires 0); the view returns a NULL first_seen_month for censored rows so the backfill can never be reported as a wave of September openings. chains.brand_location now keys on the ledger instead of cluster_id, fixing the exact cross-snapshot comparability problem GTM-148 flagged.\n\nRule going forward: a skipped monthly snapshot is a permanent hole, not reconstructable after the fact \u2014 install the launchd plist (docs/chains-process.md) before 2026-10-01, covering both `loci chains detect` and `loci poi-snapshot`. Stage two (D80, in flight) adds a 'gov_filing' first-seen kind sourced from staging.storefront_filing.\n\nDone 2026-09-13 (CHECKPOINT D79). Pushed to Linear 2026-09-13 as GTM-151.",
+      "Status": "Done",
+      "Priority": 2,
+      "Estimate": 5,
+      "Labels": "ingest,score,rigor",
+      "Project": "Loci",
+      "Milestone": "E1 \u00b7 Ingest and Grid"
     }
   ]
 }

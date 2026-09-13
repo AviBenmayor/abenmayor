@@ -320,6 +320,13 @@ claim stands on.
 - **Fails if:** gap incidence by race is fully explained by income_class + population density.
 - **Current answer:** Expectation (not a P1–P3 prediction): Per Meltzer & Schuetz, predominantly Black hexes show more gaps than income alone predicts; predominantly Hispanic hexes fewer (more small-format supply). Loci has NO race/ethnicity column today; needs an ACS B03002 ingest. — (Descriptive only; this is the "retail redlining" question. Investor lens: a gap that exists for supply-side reasons in a high-demand area is the strongest kind of opportunity; a gap that reflects thin demand is not. The demand_caveat flag is the first, crude version of that distinction.)
 
+### X7 — Does the AM/PM entry share (station type) explain category mix or supply ratios better than transit levels do — is "residential vs destination catchment" a usable segmentation for the screen?
+- **Status:** open
+- **Answered by:** (not ticketed) — D76 daypart addendum (2026-09-13), analysis.address_transit_profile
+- **Why it matters:** The daypart profile shows a shape the D76-refused transit levels do not carry: Brooklyn addresses split cleanly by AM/PM share (84.5% read residential-type, median 1.79; East Village 0%, a destination catchment; Gowanus core mixed at 1.03), while at DOT validation points every window is best ranked by the largest daypart — i.e. station size, not time-of-day. If the ratio predicts which categories an address should carry (daily-needs under-supplied where residential-type, food/bar over-supplied where destination-type), it is a legitimate segmentation input for supply_ratio_vs_base or the recommend card, distinct from the levels D76 capped at card-context.
+- **Fails if:** category mix or supply_ratio_vs_base show no material difference between residential-type (AM/PM share > 1) and destination-type (AM/PM share ≤ 1) addresses once density and income are controlled — in which case the ratio is descriptive color, the same fate D76 gave the raw levels.
+- **Current answer:** Open. Saturday/Sunday profiles are unvalidated (DOT counts weekdays only), so any segmentation built on the share should be scoped to weekday dayparts until a weekend validation source is found.
+
 ### Tier T · Predictive — temporal ordering, no identification claim
 
 ### T1 — Does a negative residual in 2013 predict above-average growth 2013→2023?
@@ -377,6 +384,13 @@ claim stands on.
 - **Answered by:** (not ticketed) — GTM-148, needs the chains snapshot delta
 - **Fails if:** brand openings from the watchlist show no lead relationship to `analysis.address_gaps` category closure — e.g. a category's gap count in an area does not fall more often in the months following a watchlist brand's opening nearby than in a matched control period/area. Also fails if the relationship is only visible because both series move with general neighbourhood growth (the D1 endogeneity trap in a new costume — same shape as the transit/supply correlation D76 found).
 - **Current answer:** Untestable until a second chains snapshot exists (D77) — one snapshot gives a count, not a delta, and this question is specifically about the delta's timing relative to gap closure. Shares T7's structural problem: no address-level opening/closing time series exists for most categories, so the chains watchlist (which does carry approximate first-seen dates for ~60% of brand-locations, D77) may end up as the closest thing Loci has to that series, category coverage permitting.
+
+### T9 — What is the median lead time from first government filing (liquor application, fit-out filing, license application) to first DOHMH inspection or license issue, by category — and is it stable enough to turn filings into an "opening within N months" forecast?
+- **Status:** open
+- **Answered by:** (not ticketed) — D80 (in flight), staging.storefront_filing
+- **Why it matters:** T7's kill check found no storefront opening/closing time series anywhere in Loci; government filings (SLA pending licenses, DOB NOW job filings, DCWP license applications, DOHMH promoted inspections) are the closest candidate the project has assembled since, and a stable per-category lead time is what would let the chains/pipeline work (T7, T8) turn a filing into a dated forecast rather than a bare count.
+- **Fails if:** lead time varies too widely across category or borough to support a single-N forecast, or the filing-to-open correlation disappears once withdrawn/never-opened filings are accounted for — in which case filings are context (like transit, D76) rather than a forecast input.
+- **Current answer:** Pending D80 numbers. staging.storefront_filing is staged with lifecycle stages across the four filing sources; the median lead-time computation itself has not yet been run.
 
 ### Tier C · Causal — deferred; requires identification
 
