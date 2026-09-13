@@ -334,6 +334,13 @@ claim stands on.
 - **Fails if:** category mix or supply_ratio_vs_base show no material difference between residential-type (AM/PM share > 1) and destination-type (AM/PM share ≤ 1) addresses once density and income are controlled — in which case the ratio is descriptive color, the same fate D76 gave the raw levels.
 - **Current answer:** Open. Saturday/Sunday profiles are unvalidated (DOT counts weekdays only), so any segmentation built on the share should be scoped to weekday dayparts until a weekend validation source is found.
 
+### X8 — Does the neighborhood character (retail_index, weekday-office catchment) explain supply-ratio residuals or storefront survival better than homes/jobs alone — i.e. is it a control the screen should carry, or just a map colour?
+- **Status:** open
+- **Answered by:** (not ticketed) — GTM-154
+- **Why it matters:** D82 shipped retail_index and the corporate/industrial/residential labels as map colour and card context only, on the owner's ruling that character enters no grade. But if character predicts *why* a supply ratio or age-fit residual reads high or low — e.g. a "thin" category in a corporate-labeled address is thin because the daytime population is real but transient, not because the daily-needs opportunity is real — then it is quietly doing the work of a control variable without being treated as one, and every grade that omits it risks the same "supply-revealed, not demand-revealed" confound D63's age-fit caveat exists to catch. If it explains nothing net of homes_400m/jobs_400m, the D82 ruling (map colour only) stands confirmed rather than merely asserted.
+- **Fails if:** retail_index or character_label add no explanatory power over supply_ratio_vs_base residuals or storefront survival/first-seen duration once homes_400m and jobs_400m are already in the model — in which case character is confirmed as descriptive color, the same fate D76 gave the raw transit levels.
+- **Current answer:** Open. Ticketed GTM-154 alongside the retail_index saturation and 20-lot threshold review.
+
 ### Tier T · Predictive — temporal ordering, no identification claim
 
 ### T1 — Does a negative residual in 2013 predict above-average growth 2013→2023?

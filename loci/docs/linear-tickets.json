@@ -1558,6 +1558,16 @@
       "Labels": "model,rigor,validation",
       "Project": "Loci",
       "Milestone": "E4 \u00b7 Validation and Artifact"
+    },
+    {
+      "Title": "Neighborhood character: tune retail_index saturation, review the 20-lot overlay threshold, and put character on the recommend card",
+      "Description": "retail_index saturates in Manhattan (p50 1.0 below 96th St; the map uses quantile stops so shade encodes rank, not raw saturation). COMMERCIAL_OVERLAY_MIN_LOTS=20 was chosen by the executive, not derived \u2014 \u22651 lot gives BK 52% retail_mixed, floor-area/jobs-share alone gives 20.5%, \u226520 lots gives 35%, and all twelve planner-flagged corridors flip at every setting tried, so the choice buys discrimination not coverage and should be revisited against a held-out corridor list. Stuyvesant Town is suppressed by the < 50-address-per-NTA rule (2,744 addresses citywide). jobs_400m is inflated by payroll-address coding (LODES codes jobs where the employer is registered, not where the work happens) in Brighton Beach, Borough Park and South Williamsburg (home-health and yeshiva billing offices); jobs_400m is suspect wherever jobs_other_share is high and homes_400m is ordinary. Card copy must say 'weekday-office catchment' for corporate addresses, with the caveat that corporate addresses have MORE homes within 400 m than retail ones (median 5,682 vs 2,284) \u2014 daily-needs demand there is limited by rent, loading and ground-floor supply, not by an absence of customers; this copy does not yet reach the `loci recommend` card. transit AM/PM share is NULL outside the subway shed (D76) and must render as 'no station within a 5-minute walk,' never a zero.\n\nBuilt at the address grain per D82 (never hex): PLUTO floor areas within 400 m network distance over ALL lots, LODES 2023 jobs split retail-facing vs desk-facing vs other, commercial zoning overlays within 100 m, transit AM/PM share as independent corroboration. First pass (commit 55e2116) failed urban-planner review on prewar retail corridors reading ~0 retail_mixed; revised (commit 1f115d6) with the zoning-overlay OR-route, lowered retail-jobs floor/share, institutional-lot exclusion, and suppression rules for parks/cemeteries/small NTAs. Map shipped (commit e99c808): single-hue sequential ramp, quantile stops, hatched corporate/industrial overlays, suppressed NTAs as not-measured grey. Ruling: character is map colour and card context only \u2014 it enters no grade.\n\nOpened 2026-09-13 (CHECKPOINT D82). Pushed to Linear 2026-09-13 as GTM-154.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 3,
+      "Labels": "score,viz,rigor",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
     }
   ]
 }
