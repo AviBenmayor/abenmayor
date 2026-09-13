@@ -2492,25 +2492,154 @@ def pack_nta(gap_rows, poi_rows, supply_set: str = DEFAULT_SUPPLY_SET,
     return out
 
 
+#: How the map says a list is ordered. Mirrors model/address_gaps.RANK_BY so
+#: the file and the screen can never disagree about what "density" means.
+RANK_LABELS = {
+    "density": "walk-shed density (residential units per km²)",
+    "units": "capped residential units",
+}
+
+#: Rendered UNTRUNCATED wherever a density appears, for the same reason the
+#: age-fit caveat is: the number is a PLUTO register count over a measured
+#: walk-shed, and a reader who takes it for an ACS household density will
+#: compare it with figures that carry a margin of error when this one cannot.
+DENSITY_CAVEAT = (
+    "Walk-shed density is residential UNITS (PLUTO UnitsRes) per km² of the area "
+    "reachable within a 400 m walk — the convex hull of the reachable street nodes, "
+    "not a πr² disc. It is a register count with NO margin of error and no occupancy "
+    "adjustment, so it is not an ACS households-per-km² figure and must not be "
+    "compared with one like for like."
+)
+
+#: Columns of clusters.json's `rows`, in order. Declared once so the file and
+#: any reader of it are generated from the same list.
+CLUSTER_COLUMNS = ["cluster_id", "borough", "lead_category", "nta_code",
+                   "cluster_density_400m", "cluster_density_mean_400m",
+                   "units_capped", "n_addresses", "median_lead_excess_m"]
+
+
+def _fnum(value, dp: int = 0):
+    """`_num` plus the NaN guard this block needs. A weighted median over a
+    cluster whose densities are all NULL is NaN, and `json.dumps` writes NaN
+    as the bare token `NaN`, which every browser's JSON.parse rejects -- one
+    such cluster would 404 the whole file. NaN is missing, so it is None."""
+    if value is None:
+        return None
+    v = float(value)
+    return None if v != v else round(v, dp)
+
+
 def nta_index(layers: dict[str, dict], boroughs: list[str],
-              supply_set: str, supply_hash: str | None) -> dict:
+              supply_set: str, supply_hash: str | None,
+              densities: dict[str, float] | None = None,
+              rank_by: str = "density") -> dict:
     """The small file the sidebar reads: one row per neighborhood with its
-    address count, its per-category gap counts and its bounds, sorted by size.
-    It exists so the picker can show "Canarsie — 9,939 addresses" without
-    fetching a 500 kB NTA file to count them."""
+    address count, its per-category gap counts and its bounds.
+
+    ORDER (owner ruling 2026-09-13, "rank by density"): by the neighborhood's
+    walk-shed density, `n` as the tiebreak, with `n` and `units` still on every
+    row -- "how dense" and "how many" are different questions and the picker
+    shows both. `densities=None` (a database where `loci supply-ratio` has not
+    run) falls back to the old size order and says so in `rankBy`, rather than
+    labelling a size order as a density one.
+    """
+    densities = densities or {}
     rows = [{"nta": code, "name": L["name"], "boro": L["boro"], "n": L["n"],
              "units": L["units"], "pois": L["pois"]["n"], "nSet": L["pois"]["nSet"],
              "gapCounts": L["gapCounts"], "bounds": L["bounds"], "center": L["center"],
              # Dominant label only -- the index is the SMALL file the picker
              # reads, and the four shares belong in the file it opens next.
              "char": (L.get("character") or {}).get("dom"),
-             "charShare": (L.get("character") or {}).get("domShare")}
+             "charShare": (L.get("character") or {}).get("domShare"),
+             # APPENDED (owner ruling 2026-09-13): the units_capped-weighted
+             # MEDIAN of this neighborhood's gap addresses' own density_400m.
+             # None where supply-ratio has not run for the borough.
+             "density": _fnum(densities.get(code))}
             for code, L in layers.items()]
-    rows.sort(key=lambda r: (-r["n"], r["nta"]))
+    ranked = rank_by == "density" and any(r["density"] is not None for r in rows)
+    if ranked:
+        rows.sort(key=lambda r: (-(r["density"] if r["density"] is not None else -1),
+                                 -r["n"], r["nta"]))
+    else:
+        rows.sort(key=lambda r: (-r["n"], r["nta"]))
     return {"boroughs": boroughs, "cats": ALLCATS,
             "catLabels": [CATEGORIES[c].label for c in ALLCATS],
             "supplySet": supply_set, "supplyHash": supply_hash,
+            "rankBy": "density" if ranked else "units",
+            "rankLabel": RANK_LABELS["density" if ranked else "units"],
             "n": sum(r["n"] for r in rows), "ntas": rows}
+
+
+def nta_densities(con, boroughs: list[str]) -> dict[str, float]:
+    """{nta_code: units_capped-weighted median of `density_400m`} over the
+    GAP addresses of each neighborhood -- the same statistic and the same
+    weighting `model/address_gaps.cluster_table` uses for a cluster, so a
+    neighborhood and a cluster inside it are read on one ruler.
+
+    Read in its own small query and NOT appended to `_nta_gap_sql`'s row: that
+    row is consumed positionally by `pack_nta`, and a column added to it would
+    be a silent reindex of every field after it.
+    """
+    from loci.model.address_gaps import weighted_median
+
+    if not has_density_columns(con):
+        return {}
+    ph = ", ".join("?" for _ in boroughs)
+    df = con.execute(
+        f"""SELECT nta_code, density_400m, units_capped FROM analysis.address
+            WHERE borough IN ({ph}) AND nta_code IS NOT NULL
+              AND density_400m IS NOT NULL AND gap_score > 1""", list(boroughs)).fetchdf()
+    if df.empty:
+        return {}
+    return {code: weighted_median(g["density_400m"].to_numpy(), g["units_capped"].to_numpy())
+            for code, g in df.groupby("nta_code", sort=False)}
+
+
+def collect_clusters(con, boroughs: list[str], rank_by: str = "density") -> dict:
+    """The ranked cluster list, as its own small file.
+
+    This is the ONE list on the map that is a cluster list, so it is the one
+    the owner's "rank by density" ruling lands on directly: ordered by
+    `cluster_density_400m` (the units_capped-weighted median of the members'
+    own `density_400m`), with `units_capped` as the tiebreak and printed
+    beside it. `available` false means `loci supply-ratio` has not run, and the
+    map says so instead of showing a size order under a density label."""
+    from loci.model.address_gaps import RANK_BY, cluster_table
+
+    if rank_by not in RANK_BY:
+        raise ValueError(f"unknown rank_by {rank_by!r}; expected one of {RANK_BY}")
+    unavailable = {"available": False, "rankBy": "units", "rankLabel": RANK_LABELS["units"],
+                   "caveat": DENSITY_CAVEAT, "cols": CLUSTER_COLUMNS, "rows": [], "n": 0}
+    if not has_density_columns(con):
+        return unavailable
+    ph = ", ".join("?" for _ in boroughs)
+    df = con.execute(
+        f"""SELECT address_id, borough, cluster_id, units_capped, lead_category,
+                   lead_excess_m, nta_code, density_400m
+            FROM analysis.address
+            WHERE cluster_id IS NOT NULL AND borough IN ({ph})""", list(boroughs)).fetchdf()
+    if df.empty:
+        return unavailable
+    available = True
+    try:
+        table = cluster_table(df, rank_by=rank_by)
+    except ValueError:
+        # The column is there but every value is NULL -- supply-ratio ran for
+        # a different borough. Ship the list ordered by size and SAY so; an
+        # empty file would lose the clusters, and a density label over a size
+        # order is the failure the ruling corrects.
+        if rank_by != "density":
+            raise
+        rank_by, available = "units", False
+        table = cluster_table(df, rank_by="units")
+    rows = [[r["cluster_id"], r["borough"], r["lead_category"], r.get("nta_code"),
+             _fnum(r["cluster_density_400m"]), _fnum(r["cluster_density_mean_400m"]),
+             _fnum(r["units_capped"]), int(r["n_addresses"]),
+             _fnum(r["median_lead_excess_m"])]
+            for r in table.to_dict("records")]
+    return {"available": available, "rankBy": rank_by, "rankLabel": RANK_LABELS[rank_by],
+            "caveat": DENSITY_CAVEAT, "cols": CLUSTER_COLUMNS,
+            "rows": rows, "n": len(rows)}
 
 
 def collect_nta(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
@@ -2557,6 +2686,15 @@ def has_storefront_columns(con) -> bool:
     A database predating `loci storefronts` exports the slots as nulls rather
     than failing -- the map degrades to "no vacancy reading", never to a 500."""
     return set(STOREFRONT_GAP_COLUMNS) <= _gaps_columns(con)
+
+
+def has_density_columns(con) -> bool:
+    """True when analysis.address_gaps exposes both walk-shed density columns.
+    A database predating `loci supply-ratio`'s density sweep exports the
+    cluster list unranked-by-density rather than failing -- the map degrades to
+    "ordered by size", labelled as such, never to a size order wearing a
+    density label."""
+    return {"walkshed_km2_400m", "density_400m"} <= _gaps_columns(con)
 
 
 def has_age_fit_columns(con) -> bool:
@@ -2842,6 +2980,11 @@ def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
             "storefronts": collect_storefronts(con, boroughs),
             "character": character,
             "nta": nta,
+            # The owner's 2026-09-13 ranking ruling, as data the map reads
+            # rather than an order baked into a sort call: the ranked cluster
+            # list, and the per-neighborhood density the picker orders by.
+            "clusters": collect_clusters(con, boroughs),
+            "ntaDensities": nta_densities(con, boroughs),
             "supplySet": supply_set, "supplyProvenance": prov,
             "supplyWarning": supply_warning(supply_set, prov),
             "ageFit": age_fit_meta(prov, curve_dir, source_joined=age_src,
@@ -3038,7 +3181,16 @@ def write(bundle: dict, out_dir: pathlib.Path) -> dict[str, int]:
         _dump(f"{NTA_DIR}/index.json",
               nta_index(nta_layers, bundle["boroughs"],
                         bundle.get("supplySet", DEFAULT_SUPPLY_SET),
-                        (bundle.get("supplyProvenance") or {}).get("supply_hash")))
+                        (bundle.get("supplyProvenance") or {}).get("supply_hash"),
+                        bundle.get("ntaDensities"),
+                        (bundle.get("clusters") or {}).get("rankBy", "density")))
+
+    # The ranked cluster list. Its own file, fetched only by a view that wants
+    # the ordering -- the single-business view costs exactly what it did.
+    clusters = bundle.get("clusters") or {
+        "available": False, "rankBy": "units", "rankLabel": RANK_LABELS["units"],
+        "caveat": DENSITY_CAVEAT, "cols": CLUSTER_COLUMNS, "rows": [], "n": 0}
+    _dump("clusters.json", clusters)
 
     meta = {
         "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
@@ -3176,6 +3328,18 @@ def write(bundle: dict, out_dir: pathlib.Path) -> dict[str, int]:
                 "dir": NTA_DIR,
                 "n": len(nta_layers),
                 "addresses": sum(L["n"] for L in nta_layers.values())},
+        # THE ORDERING, ON THE FACE OF THE MAP (owner ruling 2026-09-13, "rank
+        # by density"). `rankBy` is what every ranked list in this export is
+        # actually sorted by -- it reads "units" when supply-ratio has not run,
+        # so the UI labels a size order as a size order instead of calling it
+        # density. `caveat` is rendered UNTRUNCATED wherever a density appears.
+        "rankBy": clusters["rankBy"],
+        "rankLabel": clusters["rankLabel"],
+        "densityCaveat": DENSITY_CAVEAT,
+        "clusters": {"available": bool(clusters.get("available")),
+                     "file": "clusters.json",
+                     "cols": clusters["cols"],
+                     "n": clusters["n"]},
     }
     _dump("meta.json", meta)
     return written

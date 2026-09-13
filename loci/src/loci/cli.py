@@ -897,6 +897,12 @@ def address_gaps_cmd(
                                         "corroborated (D52, score/supply.py). Recorded in "
                                         "analysis.address_gaps.supply_set/supply_hash."),
     limit: int = typer.Option(0, help="Cap addresses per borough, for smoke runs (0 = all)."),
+    rank_by: str = typer.Option("density", "--rank-by",
+                                help="Order the cluster list by 'density' (owner ruling "
+                                     "2026-09-13, default: the units_capped-weighted median "
+                                     "of member density_400m, capped units as tiebreak) or "
+                                     "'units' (the pre-ruling Sum(units_capped) order). "
+                                     "'density' needs `loci supply-ratio` to have run."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print the summary; write nothing."),
     allow_out_of_scope: bool = typer.Option(
         False, "--allow-out-of-scope",
@@ -987,7 +993,20 @@ def address_gaps_cmd(
                               f"address_category rows outside "
                               f"{'+'.join(SCREEN_BOROUGHS)} (D48/D78)")
 
-    summary = ag.summarize_gap_run(df)
+    if rank_by not in ag.RANK_BY:
+        raise typer.BadParameter(f"--rank-by must be one of {ag.RANK_BY}; got {rank_by!r}")
+    # `density_400m` lives on analysis.address (model/supply_ratio.py owns it,
+    # off the same 400 m sweep as homes_400m) and NOT on the screen's own
+    # working frame -- the screen runs BEFORE supply-ratio in the canonical
+    # order. Join it in for the ranking only; nothing here writes it back, and
+    # nothing about the gap set depends on it.
+    df = df.merge(
+        con.execute(
+            "SELECT address_id, borough, density_400m, walkshed_km2_400m "
+            "FROM analysis.address"
+        ).fetchdf(),
+        on=["address_id", "borough"], how="left")
+    summary = ag.summarize_gap_run(df, rank_by=rank_by)
     console.print(f"{summary['n_addresses']:,} addresses, {summary['n_units']:,.0f} units, "
                   f"borough={b}, reach={reach}")
     console.print(f"eligible: [bold]{100*summary['eligible_addr_share']:.1f}%[/] of addresses, "
@@ -1015,18 +1034,110 @@ def address_gaps_cmd(
     for cat, n_addr in sorted(summary["lead_distribution"].items(), key=lambda kv: -kv[1]):
         console.print(f"  {cat:14} {n_addr:>8,}")
 
-    console.print("[bold]top 10 clusters by capped units:[/]")
-    for row in summary["top_clusters"]:
+    if summary["rank_by_fallback"]:
+        console.print(f"[yellow]--rank-by density unavailable[/] "
+                      f"({summary['rank_by_fallback']}); listing by capped units instead")
+    label = ("walk-shed density (units/km², units_capped-weighted median; capped units tiebreak)"
+             if summary["rank_by"] == "density" else "capped units")
+    console.print(f"[bold]top 10 clusters by {label}:[/]")
+    _print_clusters(summary["top_clusters"])
+
+
+def _print_clusters(rows) -> None:
+    """Shared renderer for a ranked cluster list -- `loci address-gaps` and
+    `loci clusters` print the SAME columns in the same order, so the two can
+    never disagree about what a cluster's density is."""
+    for row in rows:
+        d = row.get("cluster_density_400m")
+        dens = f"{d:>9,.0f}" if d is not None and d == d else "        —"
         # emoji=False: cluster_id is "{borough}:{lead_category}:{n}" (e.g.
         # "BK:bank:12") and rich's default emoji shortcode parsing mangles
         # ":bank:" into a bank-emoji glyph, garbling the id -- data-derived
         # text with colons must never be printed with emoji parsing on.
         console.print(
             f"  {row['cluster_id']:28} {row['borough']:3} lead={row['lead_category']:14} "
-            f"units_capped={row['units_capped']:>8,.0f}  n_addr={row['n_addresses']:>5}  "
-            f"median_lead_excess_m={row['median_lead_excess_m']:>7.0f}",
+            f"density={dens} u/km²  units_capped={row['units_capped']:>8,.0f}  "
+            f"n_addr={row['n_addresses']:>5}  "
+            f"median_lead_excess_m={row['median_lead_excess_m']:>7.0f}"
+            + (f"  {row['neighborhood']}" if row.get("neighborhood") else ""),
             emoji=False,
         )
+
+
+@app.command(name="clusters")
+def clusters_cmd(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated boroughs; D78 scope is MN+BK."),
+    rank_by: str = typer.Option("density", "--rank-by",
+                                help="'density' (owner ruling 2026-09-13, default) or 'units'."),
+    category: str = typer.Option("", help="Restrict to clusters with this lead category."),
+    min_addresses: int = typer.Option(1, "--min-addresses",
+                                      help="Drop clusters with fewer than this many member "
+                                           "addresses. Density ranks a one-lot cluster against "
+                                           "a 700-lot one on equal terms, and nine of the "
+                                           "MN+BK top-50 by density are single addresses; this "
+                                           "is the knob for reading the list as an investable "
+                                           "corridor rather than a doorway. Default 1 = no "
+                                           "filter, because the floor is the owner's to set."),
+    limit: int = typer.Option(25, help="How many clusters to print (0 = all)."),
+    out: str = typer.Option("", help="Also write the FULL ranked table to this CSV path."),
+) -> None:
+    """List gap clusters in rank order. READ-ONLY -- reads the screen tables
+    `loci address-gaps` and `loci supply-ratio` already wrote, and recomputes
+    nothing, so it is the cheap way to see the ordering without re-running the
+    15 Dijkstra passes.
+
+    THE ORDER IS DENSITY (owner ruling, 2026-09-13: "rank by density", read as
+    households per km² inside the walk-shed). A cluster's density is the
+    `units_capped`-weighted MEDIAN of its member addresses' own `density_400m`
+    -- not Σhomes/Σarea, because member walk-sheds overlap almost entirely at
+    a 200 m clustering radius and that ratio is neither a density nor stable
+    under how the block was cut into tax lots. `Σ units_capped` is the
+    tiebreak and is still printed: "how dense" and "how many" are different
+    questions. `--rank-by units` restores the pre-ruling order for comparison.
+
+    Density is a UNITS count per km², from PLUTO UnitsRes -- a register count
+    with no margin of error and no occupancy adjustment. It is NOT an ACS
+    household density and must not be compared with one like-for-like."""
+    from loci.model import address_gaps as ag
+
+    if rank_by not in ag.RANK_BY:
+        raise typer.BadParameter(f"--rank-by must be one of {ag.RANK_BY}; got {rank_by!r}")
+    boros = [x.strip().upper() for x in boroughs.split(",") if x.strip()]
+    con = locidb.connect(read_only=True)
+    holes = ", ".join("?" for _ in boros)
+    params = list(boros)
+    where = f"cluster_id IS NOT NULL AND borough IN ({holes})"
+    if category:
+        where += " AND lead_category = ?"
+        params.append(category)
+    df = con.execute(
+        f"""SELECT address_id, borough, cluster_id, units_capped, lead_category,
+                   lead_excess_m, nta_code, neighborhood, density_400m, walkshed_km2_400m
+            FROM analysis.address WHERE {where}""", params).fetchdf()
+    if df.empty:
+        console.print(f"[yellow]no clustered gap addresses for {boros}"
+                      f"{' lead=' + category if category else ''} — "
+                      f"run `loci address-gaps` first[/]")
+        raise typer.Exit(0)
+
+    try:
+        table = ag.cluster_table(df, rank_by=rank_by)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    n_all = len(table)
+    if min_addresses > 1:
+        table = table[table["n_addresses"] >= min_addresses].reset_index(drop=True)
+    label = ("walk-shed density (units/km², units_capped-weighted median)"
+             if rank_by == "density" else "capped units")
+    console.print(f"{len(table):,} clusters over {len(df):,} gap addresses in "
+                  f"{'+'.join(boros)}; ordered by [bold]{label}[/]"
+                  + (f" [dim](of {n_all:,}; {n_all - len(table):,} dropped under "
+                     f"--min-addresses {min_addresses})[/]" if min_addresses > 1 else ""))
+    _print_clusters(table.head(limit if limit else len(table)).to_dict("records"))
+    if out:
+        table.to_csv(out, index=False)
+        console.print(f"[green]ok[/] wrote {len(table):,} rows -> {out}")
 
 
 @app.command()
@@ -2437,6 +2548,22 @@ def supply_ratio(
                   f"reach, of which {addr['addressable_homes_400m_laundry'].sum():,.0f} "
                   f"({100 * addr['addressable_homes_400m_laundry'].sum() / max(addr['homes_400m'].sum(), 1):.0f}%) "
                   f"survive the in-home haircut (v{report['haircut_version']})")
+    # The DENOMINATOR of the owner's density ruling, printed beside the
+    # nominal disc it deliberately is not: a reader has to be able to see that
+    # the shed is measured and not assumed.
+    nominal = 3.141592653589793 * (radius_m / 1000.0) ** 2
+    console.print(
+        f"walk-shed area ({report['shed_crs']}, convex hull of the reachable nodes): "
+        f"p10 {report['shed_km2_p10']:.3f} · median [bold]{report['shed_km2_median']:.3f}[/] · "
+        f"p90 {report['shed_km2_p90']:.3f} km² "
+        f"[dim](nominal disc πr² = {nominal:.3f} km²; median permeability "
+        f"{report['shed_km2_median'] / nominal:.2f}×)[/]; "
+        f"{report['shed_at_floor']:,} at the {sr.MIN_SHED_KM2:.5f} km² floor")
+    console.print(
+        f"median density_400m: [bold]{report['density_median']:,.0f}[/] residential units "
+        f"per km² of reachable walk "
+        f"[dim](PLUTO UnitsRes — a register count with NO margin of error; not ACS "
+        f"households per km², and not comparable with one)[/]")
 
     if fit_baseline and not dry_run:
         console.print(f"[green]baseline written[/] -> {report['baseline_written']}")

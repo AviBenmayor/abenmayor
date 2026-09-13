@@ -115,6 +115,49 @@ instead of seventeen passes. ~611 Dijkstra calls at 400 m, not 2,200.
 Symmetry is what licenses the reversal: the walk graph is undirected, so
 "POIs within 400 m of node i" and "nodes within 400 m of POI j" are the same
 relation read from opposite ends.
+
+THE WALK-SHED'S AREA, AND WHY DENSITY IS NOT homes_400m (owner ruling,
+2026-09-13: "rank by density")
+---------------------------------------------------------------------------
+`homes_400m` is a COUNT. Two addresses with 3,000 homes inside a five-minute
+walk are not equally dense if one of them reaches those homes across a
+permeable Manhattan grid and the other has to spend its 400 m walking the one
+street that crosses a rail cut. Density is the count divided by the area the
+walk actually reaches, so this module also persists that area:
+
+    walkshed_km2_400m   area of the CONVEX HULL of the graph nodes within
+                        `radius_m` NETWORK metres of the address's own node
+    density_400m        homes_400m / walkshed_km2_400m  (units per km2)
+
+It is computed in the SAME sweep, from the SAME Dijkstra rows that produce
+`homes_400m` -- the reachable-node mask is already materialised for the
+weight product, so the area costs one convex hull per query node (~39k hulls,
+~70 s) and not a second pass.
+
+NOT a nominal disc. pi*0.4^2 = 0.5027 km2 is the area a 400 m walk would
+reach on a featureless plain; the measured median over the MN+BK query nodes
+is well under half of that, and the gap between them IS the permeability
+signal the ranking is supposed to see. Dividing by a constant would rank by
+`homes_400m` again under a different name.
+
+Convex, not concave, ON PURPOSE, and the direction of the error is the
+argument. A concave hull needs an alpha/ratio knob that silently moves every
+area; the convex hull has none. Where the reachable network is broken --
+water, a park, a highway, a superblock -- the convex hull spans the hole and
+OVERSTATES the shed, which UNDERSTATES the density, which is the conservative
+direction for a screen whose output is "put capital here". It is also bounded
+above for free: network distance >= straight-line distance, so every
+reachable node lies inside the 400 m straight-line disc and the hull can
+never exceed 0.5027 km2. What it understates is the frontier -- the walk does
+not stop at the last intersection, it continues down the partially-traversed
+edge -- so the hull is a little tight at the edges and a little loose at the
+holes.
+
+CAVEAT, carried into every card and popup that prints it: this is a UNITS
+count over an area, not ACS households per km2. It has no margin of error
+because PLUTO's UnitsRes has none to give; it is a register count, not a
+survey estimate, and it must never be compared like-for-like with an ACS
+household density that does carry an MOE.
 """
 from __future__ import annotations
 
@@ -126,7 +169,9 @@ import numpy as np
 import osmnx as ox
 import pandas as pd
 import yaml
+from pyproj import Transformer
 from scipy.sparse.csgraph import dijkstra
+from scipy.spatial import ConvexHull, QhullError
 
 from loci.categories import CATEGORIES
 from loci.model.conveniences import ALLCATS, graph_version
@@ -146,10 +191,25 @@ DEFAULT_RADIUS_M = THRESHOLDS[5]      # 400.0
 #: allocation: 48 x 605,130 x 8 = 232 MB.
 BATCH = 48
 
+#: Projected CRS the walk-shed hull is measured in. UTM 18N covers all five
+#: boroughs; metres, so a hull area is metres squared with no further scaling.
+#: Named here rather than inline so a city port changes ONE string.
+SHED_CRS = "EPSG:32618"
+
+#: Floor on a walk-shed's area, in km2 -- the area of a 50 m-radius disc. A
+#: node on a stub with two reachable neighbours produces a degenerate sliver
+#: of a hull, and `homes / sliver` is an arbitrarily large density that would
+#: take the top of any ranking on a graph artifact. Below this the area is
+#: recorded as the floor (never as NULL: the address is real and its homes are
+#: real), and the run report counts how many addresses hit it.
+MIN_SHED_KM2 = 0.00785
+
 #: The ONLY columns write_address_measures may name in a SET clause.
 #: Category-INDEPENDENT by construction -- see the module docstring on D61.
 ADDRESS_RATIO_COLUMNS = [
     "homes_400m",
+    "walkshed_km2_400m",
+    "density_400m",
     "addressable_homes_400m_laundry",
     "supply_ratio_radius_m",
     "supply_ratio_supply_hash",
@@ -333,35 +393,90 @@ def node_weights(idx: dict, nodes_of: dict[str, np.ndarray],
     return W
 
 
+def node_xy_m(G, idx: dict) -> np.ndarray:
+    """(n_nodes, 2) projected metres (`SHED_CRS`) for every pruned graph node,
+    in CSR index order -- the coordinate table `catchment_walkshed_km2` takes
+    hulls in. OSMnx node `x`/`y` are lon/lat degrees; an area in degrees is not
+    an area, so this projects once for the whole graph rather than per query."""
+    nodes = list(G.nodes())
+    lon = np.array([G.nodes[n]["x"] for n in nodes], dtype=np.float64)
+    lat = np.array([G.nodes[n]["y"] for n in nodes], dtype=np.float64)
+    x, y = Transformer.from_crs("EPSG:4326", SHED_CRS, always_xy=True).transform(lon, lat)
+    xy = np.empty((len(idx), 2), dtype=np.float64)
+    rows = np.array([idx[n] for n in nodes], dtype=np.int64)
+    xy[rows, 0] = x
+    xy[rows, 1] = y
+    return xy
+
+
+def hull_area_km2(pts: np.ndarray, min_km2: float = MIN_SHED_KM2) -> float:
+    """Convex-hull area of `pts` (projected metres) in km2, floored at
+    `min_km2`. Fewer than three points, or three collinear ones, is a
+    degenerate hull with no area at all -- Qhull raises, and the answer is the
+    floor, not zero: an address whose walk reaches two intersections still
+    houses people, and a zero denominator would make its density infinite.
+
+    Pure, no graph, no DB -- the property the tests lean on."""
+    if len(pts) >= 3:
+        try:
+            return max(float(ConvexHull(pts).volume) / 1e6, min_km2)
+        except (QhullError, ValueError):
+            pass
+    return min_km2
+
+
 def catchment_sums(A, query_nidx: np.ndarray, W: np.ndarray,
                    radius_m: float = DEFAULT_RADIUS_M,
                    batch: int = BATCH) -> np.ndarray:
     """(n_query, k) sum of every weight within `radius_m` NETWORK metres of
-    each query node, self included.
+    each query node, self included. Thin wrapper on
+    `catchment_sums_and_shed`, kept so every caller that does not want the
+    walk-shed area reads the same as before."""
+    return catchment_sums_and_shed(A, query_nidx, W, radius_m=radius_m, batch=batch)[0]
+
+
+def catchment_sums_and_shed(A, query_nidx: np.ndarray, W: np.ndarray,
+                            radius_m: float = DEFAULT_RADIUS_M,
+                            batch: int = BATCH,
+                            xy_m: np.ndarray | None = None,
+                            ) -> tuple[np.ndarray, np.ndarray | None]:
+    """((n_query, k) weight sums, (n_query,) walk-shed km2 or None).
 
     Sourced from the QUERY nodes, not from the weights -- see the module
     docstring. Only the weight-bearing columns of the distance matrix are
     materialised for the product, which is what keeps the matmul at ~130 MFLOP
     a batch instead of ~660.
 
-    Pure: takes a CSR matrix and an array, touches no database, no cache and no
+    Pass `xy_m` (the whole graph's projected coordinates, `node_xy_m`) to also
+    get each query node's walk-shed area off the SAME Dijkstra rows: the
+    reachable mask is already computed for the product, so the area is one
+    convex hull per query and not a second sweep. `xy_m=None` skips it
+    entirely and returns None in its place.
+
+    Pure: takes a CSR matrix and arrays, touches no database, no cache and no
     graph pickle, so tests exercise it on a synthetic line graph where every
     distance is known by construction.
     """
     n_q, k = len(query_nidx), W.shape[1]
     out = np.zeros((n_q, k), dtype=np.float64)
+    shed = None if xy_m is None else np.full(n_q, np.nan, dtype=np.float64)
     if n_q == 0:
-        return out
+        return out, shed
     wnz = np.flatnonzero(np.abs(W).sum(axis=1) > 0)
-    if wnz.size == 0:
-        return out
+    if wnz.size == 0 and xy_m is None:
+        return out, shed
     Wsub = W[wnz]
     for s in range(0, n_q, batch):
         chunk = query_nidx[s:s + batch]
         D = dijkstra(A, directed=False, indices=chunk, limit=float(radius_m))
-        M = (D[:, wnz] <= radius_m).astype(np.float64)
-        out[s:s + batch] = M @ Wsub
-    return out
+        if wnz.size:
+            M = (D[:, wnz] <= radius_m).astype(np.float64)
+            out[s:s + batch] = M @ Wsub
+        if shed is not None:
+            reach = D <= radius_m
+            for r in range(len(chunk)):
+                shed[s + r] = hull_area_km2(xy_m[np.flatnonzero(reach[r])])
+    return out, shed
 
 
 # ------------------------------------------------------------ the baseline
@@ -533,14 +648,23 @@ def compute_supply_ratio(
     scope = homes[homes["borough"].isin(boroughs)].reset_index(drop=True)
     scope_nidx = home_nidx[homes["borough"].isin(boroughs).to_numpy()]
     uniq, inv = np.unique(scope_nidx, return_inverse=True)
-    acc = catchment_sums(A, uniq, W, radius_m=radius_m)[inv]
+    acc_u, shed_u = catchment_sums_and_shed(A, uniq, W, radius_m=radius_m,
+                                            xy_m=node_xy_m(Gp, idx))
+    acc, shed = acc_u[inv], shed_u[inv]
 
     hash_now = supply_hash(con, supply_set)
     run_at = dt.datetime.now()
+    # Owner ruling 2026-09-13, "rank by density": homes per km2 of the walk
+    # the address can actually make. Both the numerator and the denominator
+    # come off the same sweep, so they can never be measured over different
+    # reachable sets.
+    homes_400m = np.rint(acc[:, keys.index("homes")]).astype("int64")
     addr = pd.DataFrame({
         "address_id": scope["address_id"],
         "borough": scope["borough"],
-        "homes_400m": np.rint(acc[:, keys.index("homes")]).astype("int64"),
+        "homes_400m": homes_400m,
+        "walkshed_km2_400m": shed,
+        "density_400m": homes_400m / shed,
         "addressable_homes_400m_laundry": acc[:, keys.index("addressable")],
         "supply_ratio_radius_m": float(radius_m),
         "supply_ratio_supply_hash": hash_now,
@@ -581,6 +705,12 @@ def compute_supply_ratio(
         "home_rows": len(homes),
         "addresses": len(addr),
         "query_nodes": int(uniq.size),
+        "shed_crs": SHED_CRS,
+        "shed_km2_p10": float(np.nanpercentile(shed, 10)) if len(shed) else None,
+        "shed_km2_median": float(np.nanmedian(shed)) if len(shed) else None,
+        "shed_km2_p90": float(np.nanpercentile(shed, 90)) if len(shed) else None,
+        "shed_at_floor": int((shed <= MIN_SHED_KM2).sum()),
+        "density_median": float(np.nanmedian(addr["density_400m"])) if len(addr) else None,
         "have_evidence_table": bool(homes.attrs.get("have_evidence_table", False)),
         "evidence_bbls": int(homes["has_laundry_evidence"].sum()),
         "haircut_version": haircut.get("version"),

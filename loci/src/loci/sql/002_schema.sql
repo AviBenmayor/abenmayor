@@ -1077,3 +1077,42 @@ ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS revenue_p50      
 ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS revenue_p75           DOUBLE;
 ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS rent_ceiling          DOUBLE;
 ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS revenue_model_version VARCHAR;
+
+-- ==========================================================================
+-- THE WALK-SHED DENSITY EXTENSION (model/supply_ratio.py; owner ruling
+-- 2026-09-13, "rank by density"). Two more category-INDEPENDENT columns on
+-- analysis.address, written by the SAME sweep and the SAME Dijkstra rows that
+-- produce homes_400m, so numerator and denominator can never be measured over
+-- different reachable sets.
+--
+--   walkshed_km2_400m  area of the convex hull of the graph nodes within 400 m
+--                      NETWORK metres of the address's own node, in km2,
+--                      projected in EPSG:32618 and floored at 0.00785 km2
+--                      (a 50 m disc) so a degenerate two-node hull cannot
+--                      produce an infinite density.
+--   density_400m       homes_400m / walkshed_km2_400m -- residential UNITS per
+--                      km2 of reachable walk.
+--
+-- NOT pi*0.4^2. A nominal disc is a constant, and dividing by a constant ranks
+-- by homes_400m under another name; the measured shed is under half the
+-- nominal disc at the median and the difference IS the permeability signal.
+-- Convex and not concave because a concave hull needs an alpha knob that
+-- silently moves every area, and because the convex hull's error runs the
+-- conservative way: it spans holes (water, parks, rail cuts), overstating the
+-- shed and understating the density.
+--
+-- MOE-FREE, AND NOT A HOUSEHOLD DENSITY. The numerator is PLUTO UnitsRes, a
+-- register count with no margin of error to propagate and no occupancy
+-- adjustment. It must never be compared like-for-like with an ACS households
+-- per km2, which is a survey estimate that does carry one.
+--
+-- NON-FILTERING, exactly as the rest of the supply-ratio block: written by
+-- UPDATE only, on ADDRESS_RATIO_COLUMNS, and pinned disjoint from the screen's
+-- own columns by tests/test_supply_ratio.py. Nothing here moves gap_score,
+-- lead_category, n_missing, ratio or nearest_m; it changes the ORDER clusters
+-- are listed in, never which addresses are in the gap set.
+--
+-- At the TAIL of 002 for the same reason as every block above it.
+-- ==========================================================================
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS walkshed_km2_400m DOUBLE;
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS density_400m      DOUBLE;

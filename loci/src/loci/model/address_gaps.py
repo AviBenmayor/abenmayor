@@ -719,7 +719,15 @@ def address_gaps_view_sql() -> str:
             -- can reach one must be able to reach the other, or it prints the
             -- cap as if it were a measurement.
             a.lead_censored,
-            {censored_cols}
+            {censored_cols},
+            -- The WALK-SHED DENSITY columns (sql/002 tail,
+            -- model/supply_ratio.py; owner ruling 2026-09-13 "rank by
+            -- density"). APPENDED last, same reason as every block above.
+            -- `density_400m` = homes_400m / walkshed_km2_400m: residential
+            -- UNITS per km2 of the walk the address can actually make, NOT
+            -- ACS households per km2 and carrying no margin of error.
+            -- NULL until `loci supply-ratio` has run for the borough.
+            a.walkshed_km2_400m, a.density_400m
         FROM analysis.address a
         LEFT JOIN wide w ON w.address_id = a.address_id AND w.borough = a.borough
     """
@@ -745,7 +753,125 @@ def build_address_gaps(
 
 # ------------------------------------------------------------- reporting
 
-def summarize_gap_run(df: pd.DataFrame) -> dict:
+#: How a cluster list is ordered. `density` is the owner's 2026-09-13 ruling
+#: ("rank by density"); `units` is the pre-ruling order, kept selectable so the
+#: two can be compared rather than argued about.
+RANK_BY = ("density", "units")
+DEFAULT_RANK_BY = "density"
+
+
+def weighted_median(values, weights) -> float:
+    """Median of `values` weighted by `weights` -- the lower weighted median
+    (the first value whose cumulative weight reaches half the total).
+
+    Falls back to the UNWEIGHTED median when every usable weight is zero, so a
+    cluster of unit-less rows still gets a number instead of a NaN. Returns NaN
+    only when there is no finite value at all."""
+    v = np.asarray(values, dtype=np.float64)
+    w = np.asarray(weights, dtype=np.float64)
+    finite = np.isfinite(v)
+    if not finite.any():
+        return float("nan")
+    ok = finite & np.isfinite(w) & (w > 0)
+    if not ok.any():
+        ok, w = finite, np.ones(len(v), dtype=np.float64)
+    v, w = v[ok], w[ok]
+    order = np.argsort(v, kind="mergesort")
+    v, w = v[order], w[order]
+    cum = np.cumsum(w)
+    return float(v[int(np.searchsorted(cum, 0.5 * cum[-1], side="left"))])
+
+
+def cluster_table(df: pd.DataFrame, rank_by: str = DEFAULT_RANK_BY) -> pd.DataFrame:
+    """One row per `cluster_id`, ordered by `rank_by`. Pure, DB-free.
+
+    THE ORDERING IS THE OWNER'S, AND IT WAS NEVER A DECISION BEFORE
+    -----------------------------------------------------------------------
+    Until 2026-09-13 every cluster list in this project was sorted by
+    `Sum(units_capped)`, which nobody ever chose: it was the first plausible
+    weight to hand when D39 capped mega-lots, and it silently ranks by SIZE --
+    a big cluster of low-rise blocks outranks a small one of towers. The owner
+    ruled "rank by density", and confirmed the reading: households per km2
+    inside the walk-shed. `Sum(units_capped)` survives as the tiebreak and is
+    still printed, because "how dense" and "how many" are different questions
+    and the reader needs both.
+
+    WHY A WEIGHTED MEDIAN AND NOT A POOLED RATIO
+    -----------------------------------------------------------------------
+    The obvious cluster density -- `Sum(homes) / Sum(walkshed area)` -- is
+    wrong, and not slightly. Member addresses sit within 200 m of each other,
+    so their 400 m walk-sheds overlap almost completely: the numerator counts
+    the same homes once per member while the denominator counts the same land
+    once per member, and the ratio is neither a density nor stable under how
+    finely the block was subdivided into tax lots. So the cluster's density is
+    the `units_capped`-weighted MEDIAN of its members' own `density_400m` --
+    a statement about the typical doorway in the cluster, weighted by the
+    households behind it, and robust to the one mega-lot D39 capped for
+    exactly this reason. The unweighted MEAN is reported beside it as a
+    secondary: where the two diverge, the cluster is skewed and the reader
+    should look at the members.
+
+    Requires `density_400m` on `df` when `rank_by="density"` -- it is not
+    recomputed here (model/supply_ratio.py owns it, off the same sweep as
+    `homes_400m`). A frame whose `density_400m` is entirely NULL is a
+    supply-ratio that has not been run for the borough, and that is an error
+    rather than a silent fallback to the old ordering.
+    """
+    if rank_by not in RANK_BY:
+        raise ValueError(f"unknown rank_by {rank_by!r}; expected one of {RANK_BY}")
+    clustered = df.loc[df["cluster_id"].notna()]
+    if not len(clustered):
+        cols = ["cluster_id", "borough", "lead_category", "n_addresses", "units_capped",
+                "cluster_density_400m", "cluster_density_mean_400m", "median_lead_excess_m"]
+        return pd.DataFrame({c: pd.Series(dtype="float64") for c in cols})
+    has_density = "density_400m" in clustered.columns and \
+        pd.to_numeric(clustered["density_400m"], errors="coerce").notna().any()
+    if rank_by == "density" and not has_density:
+        raise ValueError(
+            "rank_by='density' needs a populated `density_400m` column "
+            "(analysis.address.density_400m) -- run `loci supply-ratio "
+            "--boroughs ...` first, or pass rank_by='units'")
+
+    work = clustered.copy()
+    work["_density"] = (pd.to_numeric(work["density_400m"], errors="coerce")
+                        if has_density else np.nan)
+    work["_units"] = pd.to_numeric(work["units_capped"], errors="coerce").fillna(0.0)
+
+    out = (
+        work.groupby("cluster_id")
+        .agg(
+            units_capped=("units_capped", "sum"),
+            n_addresses=("units_capped", "size"),
+            borough=("borough", "first"),
+            lead_category=("lead_category", "first"),
+            median_lead_excess_m=("lead_excess_m", "median"),
+            cluster_density_mean_400m=("_density", "mean"),
+        )
+        .reset_index()
+    )
+    wmed = {cid: weighted_median(g["_density"].to_numpy(), g["_units"].to_numpy())
+            for cid, g in work.groupby("cluster_id", sort=False)}
+    out["cluster_density_400m"] = out["cluster_id"].map(wmed)
+    if "nta_code" in work.columns:
+        mode = (work.groupby("cluster_id")["nta_code"]
+                    .agg(lambda s: s.dropna().mode().iloc[0] if s.notna().any() else None)
+                    .rename("nta_code").reset_index())
+        out = out.merge(mode, on="cluster_id", how="left")
+    if "neighborhood" in work.columns:
+        nb = (work.groupby("cluster_id")["neighborhood"]
+                  .agg(lambda s: s.dropna().mode().iloc[0] if s.notna().any() else None)
+                  .rename("neighborhood").reset_index())
+        out = out.merge(nb, on="cluster_id", how="left")
+
+    # Density first, capped units as the TIEBREAK -- never the other way round,
+    # and never density alone: two clusters on the same block face can share a
+    # density to the last decimal and the bigger one is the better lead.
+    by = (["cluster_density_400m", "units_capped"] if rank_by == "density"
+          else ["units_capped", "cluster_density_400m"])
+    return out.sort_values(by, ascending=False, na_position="last").reset_index(drop=True)
+
+
+def summarize_gap_run(df: pd.DataFrame, rank_by: str = DEFAULT_RANK_BY) -> dict:
     """Pure, DB-free summary from the address_gaps working DataFrame (the
     same shape build_address_gaps writes) -- shared by --dry-run and the
     post-write CLI summary, so both report the same numbers."""
@@ -778,25 +904,25 @@ def summarize_gap_run(df: pd.DataFrame) -> dict:
         .to_dict()
     )
 
-    clustered = df.loc[df["cluster_id"].notna()]
-    if len(clustered):
-        clusters = (
-            clustered.groupby("cluster_id")
-            .agg(
-                units_capped=("units_capped", "sum"),
-                n_addresses=("units_capped", "size"),
-                borough=("borough", "first"),
-                lead_category=("lead_category", "first"),
-                median_lead_excess_m=("lead_excess_m", "median"),
-            )
-            .reset_index()
-            .sort_values("units_capped", ascending=False)
-        )
-        top_clusters = clusters.head(10).to_dict("records")
-    else:
-        top_clusters = []
+    # Cluster ordering: the owner's 2026-09-13 ruling is density, and
+    # `cluster_table` REFUSES to pretend when `density_400m` is not there. The
+    # fallback is caught here rather than allowed to kill a --dry-run on a
+    # database where supply-ratio has not run yet -- but it is RECORDED and
+    # printed, never silent: a units-ordered list that claims to be
+    # density-ordered is the exact failure this ruling was correcting.
+    rank_fallback = None
+    try:
+        clusters = cluster_table(df, rank_by=rank_by)
+    except ValueError as exc:
+        if rank_by != "density":
+            raise
+        rank_fallback = str(exc).split(" -- ")[0]
+        rank_by, clusters = "units", cluster_table(df, rank_by="units")
+    top_clusters = clusters.head(10).to_dict("records")
 
     return {
+        "rank_by": rank_by,
+        "rank_by_fallback": rank_fallback,
         "n_addresses": n_addr,
         "n_units": n_units,
         "eligible_addr_share": eligible_addr_share,

@@ -1568,6 +1568,16 @@
       "Labels": "score,viz,rigor",
       "Project": "Loci",
       "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Clusters ranked by walk-shed density (units/km\u00b2 over the measured 400 m shed), not by capped units \u2014 owner ruling; units order kept selectable; gap set untouched",
+      "Description": "The owner said \"rank by density\" and confirmed the reading: households per km\u00b2 inside the walk-shed. What it replaces was never a decision \u2014 every cluster list in this project had been sorted by \u03a3`units_capped` since D39 capped mega-lots, because that was the first plausible weight to hand, and it silently ranked by SIZE, so forty low-rise blocks outranked four towers. The definition is `density_400m` = `homes_400m` \u00f7 `walkshed_km2_400m` at address grain, both written by the same `loci supply-ratio` sweep off the same Dijkstra rows so numerator and denominator can never be measured over different reachable sets. The walk-shed's area is the convex hull of the graph nodes within 400 m network metres, projected in EPSG:32618 and floored at a 50 m disc: NOT the nominal \u03c0\u00b70.4\u00b2 disc, because dividing by a constant ranks by `homes_400m` under a new name, and convex rather than concave because a concave hull needs an alpha knob that silently moves every area while the convex hull's error runs conservative \u2014 it spans water, parks and rail cuts, overstating the shed and understating the density. The measured shed's median is 0.267 km\u00b2, 0.53\u00d7 the nominal disc, and the density distribution is MN p10/p50/p90 14,418 / 22,810 / 39,825 against BK 4,218 / 8,444 / 14,020 units per km\u00b2, carried everywhere with the caveat that this is a PLUTO `UnitsRes` register count with no margin of error and not an ACS household density. A cluster's density is the `units_capped`-weighted MEDIAN of its members' own, never \u03a3homes/\u03a3area, because members sit within 200 m of each other so their sheds overlap almost entirely and the pooled ratio counts the same homes and the same land once per member; the unweighted mean ships beside it so skew is visible. The ordering moved almost everything \u2014 top-50 Jaccard 0.087 against the old list, borough mix flipping from 32 Brooklyn clusters to 44 Manhattan ones, median cluster size from 912 addresses to 13.5 \u2014 while the gap set and `gap_score` are byte-identical by checksum, because this changes an ORDER and nothing else; `--rank-by units` keeps the old order selectable, `loci clusters` lists the ranked table, and the webmap's `meta.rankBy`, `clusters.json` and the NTA index carry the ordering with the caveat. The one open edge is that density ranks a one-address cluster against a 700-address one on equal terms, so nine of the top fifty are single doorways; `loci clusters --min-addresses N` exists for it and the floor is deliberately left unset, as the owner's to choose. Suite 1,044 passed / 1 deliberate skip.\n\nDone 2026-09-13 (CHECKPOINT D83). Pushed to Linear 2026-09-13 as GTM-155.",
+      "Status": "Done",
+      "Priority": 2,
+      "Estimate": 5,
+      "Labels": "score,model,viz",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
     }
   ]
 }

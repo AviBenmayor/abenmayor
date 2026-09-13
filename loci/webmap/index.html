@@ -2044,7 +2044,17 @@ function allBanner(){
     (hiCat?` of ${(NTA.n||0).toLocaleString()} addresses missing ${esc(catLabel(hiCat))}`
           :` addresses missing at least one of ${META.cats.length}`)+
     ` · ${(NTA.pois.nSet||0).toLocaleString()} known locations · `+
-    `${esc(META.boroughNames[r.boro]||'')}</div></div>`;
+    `${esc(META.boroughNames[r.boro]||'')}${densityBit(r)}</div></div>`;
+}
+// The owner's 2026-09-13 ranking ruling, on the face of the map. The number is
+// the units-weighted MEDIAN of this neighborhood's gap addresses' own walk-shed
+// density, and it carries its caveat in the title attribute UNTRUNCATED: it is
+// a PLUTO register count over a measured walk-shed, not an ACS household
+// density, and it has no margin of error to compare against one.
+function densityBit(r){
+  if(!r||r.density==null) return '';
+  return ` · <span title="${esc(META.densityCaveat||'')}">`+
+    `${Math.round(r.density).toLocaleString()} units/km² walk-shed density</span>`;
 }
 // THREE marks, three meanings, and the legend has to name all three or the
 // grey crosses read as a fourth kind of dot: filled = corroborated supply,
@@ -2332,7 +2342,14 @@ function buildModeUI(){
   document.getElementById('ntaFine').innerHTML=
     'In <b>All opportunities</b> this also picks which neighborhood is drawn. '+
     'The map never switches neighborhoods on its own when you pan — an NTA is '+
-    'chosen, not guessed from the viewport.';
+    'chosen, not guessed from the viewport.'+
+    // Name the ordering rather than leaving the reader to infer it. `rankBy`
+    // says what the export actually sorted by, so a size order is never
+    // labelled as a density one.
+    (META.rankLabel?` Neighborhoods and clusters are ordered by <b>${esc(META.rankLabel)}</b>`+
+      (META.rankBy==='density'
+        ? ', with capped units as the tiebreak.'
+        : ' — walk-shed density is not available in this export.'):'');
 }
 // One place decides which mode is on, so the two selectors can never both look
 // pressed. `syncMode` also parks the per-category-only controls.

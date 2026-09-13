@@ -266,7 +266,7 @@ claim stands on.
 - **Status:** open
 - **Answered by:** (not ticketed yet)
 - **Fails if:** the two rankings agree on the top-50 (Jaccard ≥ 0.8) so the choice is immaterial.
-- **Current answer:** — (owner direction 2026-09-13: "rank by density" — interpreted as households per km² within the walk-shed, pending the owner's confirmation; D75 next action 2.)
+- **Current answer:** Settled by owner ruling 2026-09-13 (D83) — clusters rank by `cluster_density_400m` (the `units_capped`-weighted median of members' `homes_400m ÷ walkshed_km2_400m`, walk-shed = convex hull of the 400 m reachable nodes), with Σ`units_capped` as the tiebreak and still displayed; `--rank-by units` keeps the old order selectable, `gap_score` and the gap set are untouched; open: the minimum member count (9 of the top 50 are single addresses; `--min-addresses` exists, default 1).
 - **Unblocks:** E4 · Validation and Artifact
 
 ### D19 — Should `chains.loci_category` feed the `loci recommend` card as a "brand X opening nearby" line, and is that context or evidence?
