@@ -1598,6 +1598,26 @@
       "Labels": "ingest,validation",
       "Project": "Loci",
       "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Post-raise data wishlist: license riders, Places Insights trial, and the VivaCity data-sharing ask",
+      "Description": "35 wishlist entries booked at $301,565/yr (P1 $74,300) landed as `status: wishlist` registry entries (config with the code that reads it) with required cost/price_tier/price_note/license_note/closes_gap/priority/evidence/cost_basis, exempt from the $100 budget and the CONTEXT \u00a73 mirror, mirrored instead by generated docs/PAID-SOURCES.md with a byte-identical drift check in `check-sources` (commit 9488a6d). Three actions before spending: (1) get redistribution/derivative riders quoted from Placer, Data Axle, Esri, Advan/Dewey \u2014 license terms not price are binding (Dewey/Advan academic-only at any price, Claritas no derivatives, Placer no redistribution, Data Axle/Esri internal-use by default); (2) trial Google Places Insights in BigQuery (monthly POI snapshots since 2024-01) against the first-seen ledger (analysis.poi_first_seen, D79) to see how many of the 47.7% backfill_censored rows it resolves; (3) write to NYC DOT for VivaCity sensor data (~100 sites incl. residential blocks) \u2014 the non-corridor validation set GTM-147 needs. Strava Metro only under an agency contract.\n\nOpened 2026-09-13 (CHECKPOINT D86). Pushed to Linear 2026-09-13 as GTM-159.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 3,
+      "Labels": "ingest,blocker",
+      "Project": "Loci",
+      "Milestone": "E1 \u00b7 Ingest and Grid"
+    },
+    {
+      "Title": "Retrodiction: does supply ratio at opening predict survival? (gating test for any decision-value claim)",
+      "Description": "The GTM strategy memo (docs/GTM.md, CHECKPOINT D87) went through an investor-lens draft and a contrarian red-team; the red-team showed the value-prop math was the D1 reverse-causality error in a costume \u2014 Loci measures supply thinness, not site quality, and an address with no competitors may have none because the market already said no. The cheapest test the data supports today: take 2023-24 openings from the first-seen ledger (analysis.poi_first_seen, D79 \u2014 52.3% carry source dates) and the filings pipeline (analysis.storefront_pipeline, D80 \u2014 opened_on), score each at its opening date (supply_ratio_vs_base, gap_score, homes/jobs/transit within 400 m, character), and test whether the score predicts still-open in 2026-09 (last_seen_month, DOHMH activity, license status). Report AUC / rank correlation with confidence intervals and the contrarian's placebo. Until this runs, docs/GTM.md carries no demonstrated decision value.\n\nOpened 2026-09-13 (CHECKPOINT D87). Pushed to Linear 2026-09-13 as GTM-158.",
+      "Status": "Backlog",
+      "Priority": 1,
+      "Estimate": 5,
+      "Labels": "score,validation,rigor",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
     }
   ]
 }

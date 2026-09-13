@@ -420,6 +420,13 @@ claim stands on.
 - **Fails if:** the candidate feeds (NYS DOS licensed professions, NYS OCFS childcare licenses, DOH Article 28 clinics, DCWP laundry — already ingested but currently unmapped to a category) either don't exist in bulk-downloadable form, don't carry a usable address/BBL, or arrive with a lead time too short to matter (e.g. the license is issued at or after opening, not before it).
 - **Current answer:** Open, ticketed GTM-152.
 
+### T11 — Does the opening-time score (supply ratio, gap score) predict survival to today, and does it beat a placebo? · *predictive*
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** `Retrodiction: does supply ratio at opening predict survival? (gating test for any decision-value claim)`
+- **Fails if:** AUC / rank correlation on 2023–24 openings (first-seen ledger, D79; filings pipeline, D80) scored at opening date is indistinguishable from the contrarian's placebo, or its confidence interval includes the no-skill line — then the screen has no demonstrated ability to predict which sites survive, and every decision-value claim in docs/GTM.md is unsupported.
+- **Current answer:** Open, ticketed GTM-158 (Urgent) — the GTM red-team (D87) found the value-prop math was the D1 reverse-causality error in a costume (a thin-supply address may read thin because the market already said no), so this gates any decision-value claim rather than refining one already made.
+
 ### Tier C · Causal — deferred; requires identification
 
 ### C1 — Does adding daily-needs retail to a transit-rich, underserved hex *cause* residential growth?
@@ -521,6 +528,13 @@ questions here — a smaller remaining gap.
 - **Answered by:** `Extract universal interface; run a second city`
 - **Fails if:** the screen run on universal sources only (CONTEXT.md §10) produces a gap distribution with no usable spread in the second city, or its top-ranked neighborhoods are the ones with no policy tailwind — in which case "trying to become walkable" added nothing over the plain screen and H-L13's premise is wrong.
 - **Current answer:** — (Owner question, 2026-09-09, follow-up to H-L13. Depends on H-L13 producing a ranked city list first. The intent is that the second-city screen is joined to the policy signal: a neighborhood scores highest when it is both under-supplied on daily needs *and* inside the footprint of an adopted walkability program (upzoning, parking-minimum repeal, bike/pedestrian capital), since that is where a present-day gap is about to become an actionable one. This is C3's generalization test with an investment reading attached; it inherits C3's `deferred` risk and the NYC-only-controls threat (PLUTO has no national analogue). Investor-agent review before any build, as O6–O8 require.)
+
+### O11 — Which buyer segment pays first for an honesty-graded screen — brokers, lenders, or BIDs — and at what seat price? · *strategy / go-to-market*
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** — (not ticketed; the answer comes from the first three customer conversations, which docs/GTM.md (D87) says have not happened)
+- **Fails if:** n/a — go-to-market question, not a screen result to validate.
+- **Current answer:** — (Open. The GTM memo (D87) ranks the ICP brokers → lenders/feasibility shops → BID/SBS → 3–30-unit operators, and anchors seat price on Reonomy $4,800 / GrowthFactor $2,400, but no customer conversation has happened yet to confirm which segment actually pays first, or at what price — the memo is explicit that this is unverified.)
 
 ---
 
