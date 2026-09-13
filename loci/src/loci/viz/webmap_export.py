@@ -900,7 +900,8 @@ class _AgeFit:
 
 
 def pack_gaps(rows, boroughs: list[str], cat: str,
-              vacant_detail: dict[str, tuple] | None = None) -> dict:
+              vacant_detail: dict[str, tuple] | None = None,
+              character_detail: dict[str, tuple] | None = None) -> dict:
     """rows -> one layer dict. `pts` stride 12: lon, lat, borough index,
     capped units, then the four pipeline slots (`pipe_slots`) and the four
     storefront slots (`sf_slots`). `ratio` is dropped from the payload
@@ -917,11 +918,17 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
     not a 0. It rides in `censoring` as two parallel arrays of 1/0/null --
     `cat`, this layer's category, and `lead`, the address's lead category --
     plus `capM`, the metres the flag means, so the UI never hard-codes 2400.
+
+    The neighbourhood-character tint rides in `character` on the same terms and
+    for the same reason (see `_Character`): an address the character build
+    never reached has no label, and that null must survive the trip to the
+    browser as a null.
     """
     bidx = {b: i for i, b in enumerate(boroughs)}
     projects = _Projects()
     vacants = _Vacants(vacant_detail)
     fit = _AgeFit()
+    character = _Character(character_detail)
     npipe, nshop = len(PIPELINE_GAP_COLUMNS), len(STOREFRONT_GAP_COLUMNS)
     tail = 8 + npipe + nshop        # where the ranking block starts in a row
     cens_at = tail + 6              # ...and where the D75 censoring pair starts
@@ -938,6 +945,7 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
         c_cat, c_lead = row[cens_at:cens_at + 2]
         cens_cat.append(None if c_cat is None else int(bool(c_cat)))
         cens_lead.append(None if c_lead is None else int(bool(c_lead)))
+        character.add(address_id)
         ids.append(address_id)
     return {"category": cat, "label": CATEGORIES[cat].label, "stride": 12,
             "pts": pts, "ids": ids, "n": len(ids),
@@ -947,7 +955,8 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
             "storefrontColumns": list(STOREFRONT_GAP_COLUMNS),
             "ageFit": fit.pack(),
             "ageFitColumns": list(AGE_FIT_GAP_COLUMNS),
-            "censoring": {"cat": cens_cat, "lead": cens_lead, "capM": GAP_CAP_M}}
+            "censoring": {"cat": cens_cat, "lead": cens_lead, "capM": GAP_CAP_M},
+            "character": character.pack()}
 
 
 def _code_for(borough_name: str | None) -> str | None:
@@ -1569,6 +1578,720 @@ def collect_storefronts(con, boroughs: list[str]) -> dict:
     return layer
 
 
+# ---------------------------------------------------- neighbourhood character
+#
+# THE OWNER'S QUESTION (2026-09-13): "give color to neighborhoods for whether
+# they are retail- or corporate-dominated." Every other layer on this map is a
+# point; this one is an AREA, because "what kind of place is this" is not a
+# property of a doorway. It reads `analysis.address_character` (label and
+# intensity per address) and `analysis.nta_character` (the address-weighted
+# roll-up), both VIEWS generated from model/address_character.py's own
+# constants (sql/021) -- which is why the legend below states its thresholds by
+# FORMATTING those constants rather than by repeating their values. A retyped
+# "office floor area over 35%" outlives the constant it was copied from by
+# exactly one retune.
+#
+# A SIXTH OVERLAY, NOT A SIXTEENTH BUSINESS. Switching it on cannot move a gap
+# dot, cannot change a score and cannot filter the universe -- sql/021 caveat 4
+# says these columns enter no score, no supply ratio and no grade, and the map
+# has to keep that promise. It tints; it never selects.
+#
+# THE POLYGONS ARE DERIVED, NOT INGESTED. There is no NTA boundary file in this
+# project and there should not be one: `analysis.hex` already carries
+# `nta_code`, so the neighbourhood outline drawn here is the DISSOLVED H3 res-9
+# cover of it, simplified to ~40 m. The drawn edge is then exactly the edge the
+# rest of the warehouse means by "this NTA"; a shapefile from DCP would draw a
+# prettier boundary around a different set of addresses.
+#
+# NULL IS A CLASS. An address whose `loci address-character build` has not run
+# for its borough has no label (the view is explicit about this), and it is
+# drawn in the no-data grey with the popup saying so -- never as `residential`,
+# which is what any "default to the commonest class" shortcut produces and
+# which would be a data gap wearing a costume.
+
+#: The model module. OPTIONAL exactly the way `staging.alcohol_licences` is: a
+#: checkout predating sql/021 writes an empty layer and says why, rather than
+#: failing the whole export on an import error.
+try:                                             # pragma: no cover - import guard
+    from loci.model import address_character as character_model
+except Exception:                                # pragma: no cover
+    character_model = None
+
+CHARACTER_ADDRESS_VIEW = ("analysis", "address_character")
+CHARACTER_NTA_VIEW = ("analysis", "nta_character")
+
+#: Fallback legend order, used ONLY when the model is not importable. The live
+#: order is `character_labels()`, which reads the model's own LABEL_ORDER.
+CHARACTER_LABELS_FALLBACK = ("corporate", "industrial", "retail_mixed", "residential")
+
+#: Four-class categorical palette. VALIDATED (dataviz skill,
+#: scripts/validate_palette.js) against this page's surface #f3f0ea on the
+#: ALL-PAIRS pairlist a choropleth requires, not the weaker adjacent list:
+#:   lightness band pass; chroma floor pass;
+#:   worst-pair CVD dE 16.5 (target >= 8); worst-pair normal-vision dE 16.5
+#:   (floor 15); all four >= 3:1 against the surface, so no relief rule applies.
+#: The hues follow the zoning-map convention a New York planner already reads
+#: (R yellow, C red, M purple) with desk work as the blue. They are deliberately
+#: NOT steps of `COLORS`: those fifteen category dots are drawn ON TOP of these
+#: areas. With fifteen hues already spanning the wheel, distance in hue alone
+#: cannot separate the two palettes, so the separation is carried by MARK TYPE
+#: as well -- a translucent area fill under saturated points -- and the nearest
+#: `COLORS` neighbour to any of these four is 6.5 dE away.
+CHARACTER_COLORS = {
+    "residential":  "#a08920",   # ochre
+    "retail_mixed": "#9e231e",   # brick red
+    "corporate":    "#6288da",   # steel blue
+    "industrial":   "#783583",   # plum
+}
+#: The SAME four hues stepped for a dark surface (#17181a), not a second
+#: palette: validated all-pairs in dark mode -- worst-pair CVD dE 13.8, worst
+#: normal-vision dE 16.9, all four >= 3:1. The page is light-only today, so
+#: these are unreachable until it gains a dark theme; they ship anyway because
+#: the alternative is a future dark mode inventing its own colours. The UI
+#: selects between the two sets by reading the page's OWN background token, not
+#: by trusting `prefers-color-scheme` -- an OS preference the page does not
+#: honour must not repaint the map (see `charColors` in webmap/index.html).
+CHARACTER_COLORS_DARK = {
+    "residential":  "#ab9017",
+    "retail_mixed": "#a64e3d",
+    "corporate":    "#4886fe",
+    "industrial":   "#9346a4",
+}
+#: THE DEFAULT VIEW IS THE RAMP, NOT THE FOUR CLASSES (urban-planner review,
+#: 2026-09-13). Under the labels Brooklyn is ~90% `residential`, so a
+#: four-colour choropleth of MN+BK is very nearly a monochrome -- it answers
+#: "which class won here" when the owner's question was "how retail is this
+#: street". `retail_index` is continuous, so the fill is SEQUENTIAL: one hue,
+#: light -> dark, which is the only legal encoding for magnitude.
+#:
+#: The hue is the retail_mixed categorical hue (OKLCH H 27.9 deg), so "retail"
+#: means one colour everywhere on this map. Six stops, monotone in L with every
+#: adjacent gap >= 0.06, hue spread 1 deg (dataviz `--ordinal` report). The
+#: lightest stop sits at 1.09:1 on the page surface, below the ORDINAL 2:1
+#: floor and deliberately so: this is a SEQUENTIAL encoding on a choropleth,
+#: where the skill's palette reference allows the lightest step to recede
+#: toward the surface because it means "near zero". No-data is 25.9 dE from
+#: that stop AND carries its own dashed outline, so "no retail here" and "we
+#: did not measure here" never read as the same polygon.
+CHARACTER_RAMP = ("#ffe0db", "#fabfb6", "#f29c90", "#e57669", "#cf4e43", "#a52a24")
+#: The same ramp re-stepped for a dark surface: the anchor flips, so the
+#: LIGHTEST end is the one that recedes toward #17181a.
+CHARACTER_RAMP_DARK = ("#3a1a17", "#5c241e", "#7f3128", "#a54135", "#c65a4b", "#e58676")
+
+#: The two classes the ramp CANNOT carry, drawn as sparse categorical overlays
+#: on top of it: a distinct hue each plus a 45 deg / 135 deg hatch, which is
+#: the texture channel the dataviz skill reserves for exactly this. They are
+#: sparse by construction -- 9 corporate and 0 industrial NTAs in MN+BK -- so
+#: they read as annotations on the ramp rather than as a second choropleth.
+#: Validated all-pairs against the ramp's mid and dark stops on the page
+#: surface: worst pair #a52a24 <-> #783583, CVD dE 16.1, normal-vision dE 16.7.
+CHARACTER_OVERLAY_LABELS = ("corporate", "industrial")
+#: The no-data class. Grey, and a LEGEND KEY of its own rather than an absence.
+CHARACTER_NODATA_COLOR = "#9b968a"
+CHARACTER_NODATA_COLOR_DARK = "#7f7b71"
+
+#: Legend display names. The rule text beside each is built from the model's
+#: thresholds by `character_rules`.
+CHARACTER_LABEL_TEXT = {
+    "residential":  "Residential",
+    "retail_mixed": "Retail / mixed",
+    "corporate":    "Corporate",
+    "industrial":   "Industrial",
+}
+
+#: `analysis.nta_character` columns, by the key they take in the payload. One
+#: dict, so a rename in the view is one edit here and `character_missing`
+#: reports the drift instead of the export raising halfway through a run.
+CHARACTER_NTA_COLUMNS = {"n": "addresses", "dom": "dominant_character",
+                         "intensity": "mean_intensity",
+                         "ampm": "am_pm_share_median", "nAmPm": "n_am_pm"}
+#: ...the per-label ADDRESS shares (what fraction of the NTA carries the label).
+CHARACTER_SHARE_COLUMNS = {"corporate": "share_corporate",
+                           "industrial": "share_industrial",
+                           "retail_mixed": "share_retail_mixed",
+                           "residential": "share_residential"}
+#: ...the mean per-address FLOOR-AREA shares, over the four named uses.
+CHARACTER_AREA_COLUMNS = {"res": "mean_res_area_share",
+                          "retail": "mean_retail_area_share",
+                          "office": "mean_office_area_share",
+                          "factory": "mean_factory_area_share"}
+#: ...and the mean per-address JOB shares, which sum to 1 by construction.
+CHARACTER_JOBS_COLUMNS = {"retail": "mean_jobs_retail_share",
+                          "office": "mean_jobs_office_share",
+                          "other": "mean_jobs_other_share"}
+#: `analysis.address_character` columns the per-address tint reads.
+CHARACTER_ADDRESS_COLUMNS = ("character", "character_intensity")
+#: ...and the continuous measure the ramp is drawn from, plus the two
+#: commercial-overlay readings the popup prints. OPTIONAL: a database carrying
+#: the labels but not yet `retail_index` still exports a working layer, it just
+#: exports `ramp: false` and the UI falls back to the four-class fill. A
+#: half-shipped upstream must degrade, not take the map down.
+CHARACTER_RETAIL_ADDRESS_COLUMNS = ("retail_index", "commercial_overlay_100m",
+                                    "commercial_overlay_share_400m")
+#: The NTA roll-up's ramp columns, by payload key. Same one-dict-to-rename
+#: contract as the blocks above, and the same optionality.
+#: `ri` is the MEAN, not the median, and that is a map decision with a reason.
+#: `retail_index` is per address a CAPPED MAX over three witnesses, so at the
+#: NTA median 52% of live MN+BK neighbourhoods saturate at exactly 1.00 and a
+#: light-to-dark ramp on it is a dark monochrome -- the same failure the
+#: four-class map had, at the other end of the scale. The MEAN of the same
+#: per-address index keeps the spread (17% at the cap, deciles 0.44 -> 1.00)
+#: because the addresses clearing no threshold pull it down. The median still
+#: ships, as `riMed`, and the popup prints both: where they disagree, one
+#: avenue is carrying the neighbourhood.
+CHARACTER_RETAIL_NTA_COLUMNS = {"ri": "mean_retail_index",
+                                "riMed": "med_retail_index",
+                                "sup": "suppressed",
+                                "ovlBlock": "share_on_commercial_block",
+                                "ovlShare": "mean_overlay_share"}
+
+CHARACTER_SHARE_DP = 2        # "48%" -- more precision than that is not a map fact
+#: Douglas-Peucker tolerance for the dissolved NTA outline, in degrees. ~40 m
+#: at this latitude, which is shorter than an H3 res-9 edge: the result is the
+#: hex cover's shape with its staircase taken off, not a different polygon.
+CHARACTER_SIMPLIFY_DEG = 0.0004
+
+
+def character_labels() -> tuple[str, ...]:
+    """The four labels in the model's own rule order (corporate first, because
+    that is the order the CASE tests them in). Read from the model so a fifth
+    class added upstream reaches the legend, rather than being silently dropped
+    by a tuple in the presentation layer."""
+    if character_model is None:
+        return CHARACTER_LABELS_FALLBACK
+    return tuple(getattr(character_model, "LABEL_ORDER", None)
+                 or CHARACTER_LABELS_FALLBACK)
+
+
+def character_label_drift() -> str | None:
+    """`None` when every label the model emits has a colour and a display name
+    here, else a one-line description of the drift. The repo standard's
+    "machine-check the docs against the code" applied to a palette: a class the
+    model learned to emit but this file has no colour for must disable the
+    layer, not be drawn in somebody else's colour."""
+    if character_model is None:
+        return "model/address_character.py is not importable"
+    labels = set(character_labels())
+    unpainted = sorted(labels - set(CHARACTER_COLORS))
+    unshared = sorted(labels - set(CHARACTER_SHARE_COLUMNS))
+    if unpainted:
+        return f"model emits {unpainted} which webmap_export has no colour for"
+    if unshared:
+        return f"model emits {unpainted or unshared} which nta_character has no share column for"
+    return None
+
+
+def _pct(value: float) -> str:
+    return f"{round(float(value) * 100)}%"
+
+
+def character_rules() -> dict[str, str]:
+    """`{label: the one line that says when it fires}`, BUILT FROM THE MODEL'S
+    THRESHOLDS. Nothing here restates a number: every percentage in the text is
+    a format of the constant the view's CASE expression was generated from, so
+    the legend cannot claim a threshold the label was not computed with.
+
+    The wording mirrors model/address_character.py's own reasoning -- corporate
+    and industrial before retail because an IBZ edge with a brewery taproom is
+    still East Williamsburg -- because a legend that lists four independent
+    tests hides that the rules are an ORDERED chain."""
+    m = character_model
+    if m is None:
+        return {}
+    rules = {
+        "corporate": (
+            f"office is {_pct(m.CORPORATE_OFFICE_AREA_SHARE)}+ of the floor area "
+            f"within 400 m, or {_pct(m.CORPORATE_JOBS_OFFICE_SHARE)}+ of "
+            f"{m.CORPORATE_JOBS_FLOOR:,}+ jobs are desk jobs"),
+        "industrial": (
+            f"otherwise: factory floor area is "
+            f"{_pct(m.INDUSTRIAL_FACTORY_AREA_SHARE)}+ of the floor area within 400 m"),
+        "retail_mixed": (
+            f"otherwise: retail is {_pct(m.RETAIL_AREA_SHARE)}+ of the floor area, "
+            f"or {_pct(m.RETAIL_JOBS_SHARE)}+ of the jobs are shops and services"),
+        "residential": "otherwise: nothing within 400 m reaches any of the lines above",
+    }
+    return {lab: rules[lab] for lab in character_labels() if lab in rules}
+
+
+def character_copy() -> dict[str, dict]:
+    """`{label: {"text": what to CALL it, "caveat": the sentence beside it}}`,
+    READ FROM THE MODEL (`CHARACTER_COPY`).
+
+    It exists because `corporate` is the label the rules compute and NOT the
+    thing a reader should be told: the rule fires on office floor area and
+    desk-job share within a five-minute walk, which is a WEEKDAY-DAYTIME
+    catchment, not a claim about who owns the block or what trades there at
+    seven in the evening. The model owns that wording; this module only renders
+    it, and falls back to the plain display name when the constant is absent so
+    a checkout without it still draws a legend.
+
+    Accepts either shape the model may use -- `{label: "text"}` or
+    `{label: {"text": ..., "caveat": ...}}` -- because a legend that crashed on
+    a constant's shape would be a worse failure than one that read a bare
+    string."""
+    raw = getattr(character_model, "CHARACTER_COPY", None) or {}
+    cav = getattr(character_model, "CHARACTER_CAVEAT", None) or {}
+    out: dict[str, dict] = {}
+    for lab in character_labels():
+        entry, caveat = raw.get(lab), cav.get(lab)
+        if isinstance(entry, dict):
+            text = str(entry.get("text") or entry.get("label")
+                       or CHARACTER_LABEL_TEXT.get(lab, lab))
+            caveat = entry.get("caveat") or caveat
+        elif isinstance(entry, str):
+            text = entry
+        else:
+            text = CHARACTER_LABEL_TEXT.get(lab, lab)
+        # Title case for the legend, because the model writes the copy as a
+        # phrase ("weekday-office catchment") meant to sit mid-sentence too.
+        out[lab] = {"text": text, "title": text[:1].upper() + text[1:],
+                    "caveat": str(caveat) if caveat else None}
+    return out
+
+
+def character_caveat() -> str:
+    """The sentence the page is REQUIRED to print wherever a floor-area share
+    appears (sql/021 caveats 1-3). Rendered untruncated, same rule the age-fit
+    caveat already lives under."""
+    return (
+        "PLUTO RetailArea is a FLOOR on storefront floor area, not a measurement: a "
+        "mixed-use building's ground-floor store is often folded into ComArea and never "
+        "reaches RetailArea, and the under-count is worst on exactly the old rowhouse "
+        "retail strips this layer is asked about. LODES counts payroll jobs at a block "
+        "centroid, so remote and hybrid workers are counted at an office they may not "
+        "enter and most of the self-employed are not counted at all. Floor area is a "
+        "stock and jobs are a flow of payroll; where the two disagree, both shares are "
+        "in the popup so a reader can see which rule fired. None of this enters "
+        "gap_score, the supply ratio, the revenue model or any recommendation grade."
+    )
+
+
+def _character_columns(con, view: tuple[str, str]) -> set[str]:
+    schema, name = view
+    return {r[0] for r in con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = ? AND table_name = ?", [schema, name]).fetchall()}
+
+
+def character_missing(con) -> list[str]:
+    """Every named column the layer needs that this database does not have.
+    An empty list means the layer can be exported."""
+    addr = _character_columns(con, CHARACTER_ADDRESS_VIEW)
+    nta = _character_columns(con, CHARACTER_NTA_VIEW)
+    want = (list(CHARACTER_NTA_COLUMNS.values())
+            + [CHARACTER_SHARE_COLUMNS[lab] for lab in character_labels()
+               if lab in CHARACTER_SHARE_COLUMNS]
+            + list(CHARACTER_AREA_COLUMNS.values())
+            + list(CHARACTER_JOBS_COLUMNS.values()))
+    miss: list[str] = []
+    an, nn = ".".join(CHARACTER_ADDRESS_VIEW), ".".join(CHARACTER_NTA_VIEW)
+    if not addr:
+        miss.append(f"{an} (view absent)")
+    else:
+        miss += [f"{an}.{c}" for c in CHARACTER_ADDRESS_COLUMNS if c not in addr]
+    if not nta:
+        miss.append(f"{nn} (view absent)")
+    else:
+        miss += [f"{nn}.{c}" for c in want if c not in nta]
+    return miss
+
+
+def character_ramp_missing(con) -> list[str]:
+    """Every RAMP column absent from this database. The ramp is the default
+    view, but it is not a precondition for the layer: the labels shipped first,
+    `retail_index` follows, and between those two exports the map draws the
+    four-class fill and says so rather than going dark."""
+    addr = _character_columns(con, CHARACTER_ADDRESS_VIEW)
+    nta = _character_columns(con, CHARACTER_NTA_VIEW)
+    an, nn = ".".join(CHARACTER_ADDRESS_VIEW), ".".join(CHARACTER_NTA_VIEW)
+    miss = [f"{an}.{c}" for c in CHARACTER_RETAIL_ADDRESS_COLUMNS if c not in addr]
+    miss += [f"{nn}.{c}" for c in CHARACTER_RETAIL_NTA_COLUMNS.values() if c not in nta]
+    return miss
+
+
+def has_character_ramp(con) -> bool:
+    return not character_ramp_missing(con)
+
+
+def has_character(con) -> bool:
+    """True when both views exist carrying every column the layer names. A
+    database predating sql/021 exports an empty character layer and the UI
+    hides the toggle -- the same contract alcohol, pipeline and storefronts
+    already have."""
+    return not character_missing(con)
+
+
+def _character_detail_sql(boroughs: list[str], ramp: bool = True) -> tuple[str, list]:
+    """`(address_id, label, intensity)` for the exported boroughs.
+
+    BOROUGH CODES, not names. `analysis.address_character` is a view over
+    `analysis.address`, whose `borough` holds 'MN'/'BK' -- the same convention
+    `_gap_sql` uses and the OPPOSITE of `analysis.hex`, whose `borough` holds
+    'Manhattan'/'Brooklyn'. Both conventions appear in this section (the NTA
+    outlines come from hex), so each query says which one it is on.
+
+    Read ONCE
+    for all sixteen gap files and all 111 neighbourhood files -- the same rows
+    stand behind every one of them, exactly like `collect_vacant_detail`."""
+    ph = ", ".join("?" for _ in boroughs)
+    label, intensity = CHARACTER_ADDRESS_COLUMNS
+    # `retail_index` rides as a fourth column when the view has it; NULL when
+    # it does not, so `pack` has one row shape to read either way.
+    ri = CHARACTER_RETAIL_ADDRESS_COLUMNS[0] if ramp else "NULL"
+    return (f"""
+        SELECT address_id, {label}, {intensity}, {ri}
+        FROM {'.'.join(CHARACTER_ADDRESS_VIEW)}
+        WHERE borough IN ({ph}) AND {label} IS NOT NULL
+    """, list(boroughs))
+
+
+def collect_character_detail(con, boroughs: list[str]) -> dict[str, tuple]:
+    """`{address_id: (label index, intensity percent)}`, or `{}` when the views
+    are not there. Never raises, for the same reason `collect_vacant_detail`
+    does not: an absent optional layer must not take the export down with it.
+
+    An address MISSING from this dict is the no-data case, and that is the
+    point of building it from `character IS NOT NULL` rows only -- membership
+    is the test, so no sentinel label can leak into a file.
+
+    Intensity is carried as an INTEGER PERCENT rather than a float. Two
+    decimals on a 0-1 scale is all a tint can honestly show, and `81` costs
+    three bytes a point where `0.81` costs five -- across the sixteen gap files
+    that is the difference between +1.6 MB and +2.6 MB of payload."""
+    if not has_character(con):
+        return {}
+    sql, params = _character_detail_sql(boroughs, has_character_ramp(con))
+    idx = {lab: i for i, lab in enumerate(character_labels())}
+    out: dict[str, tuple] = {}
+    for address_id, label, intensity, retail in con.execute(sql, params).fetchall():
+        i = idx.get(label)
+        if i is None:
+            continue          # a class this map has no colour for: no data
+        out[address_id] = (i,
+                           None if intensity is None else round(float(intensity) * 100),
+                           None if retail is None else round(float(retail) * 100))
+    return out
+
+
+class _Character:
+    """The per-address character tint for one layer, as PARALLEL ARRAYS.
+
+    Not stride slots, and for the reason `_AgeFit` spells out: "no label" is a
+    third state, and a null dropped into a numeric stride arrives in the
+    browser as 0 -- which here would read as the FIRST label at zero intensity,
+    a class the address was never assigned. These two arrays carry a literal
+    JSON `null` instead, and the browser draws that in the no-data grey. Keeping
+    them out of `pts` also leaves every existing stride and every offset into it
+    untouched, so a reader written against the old files still reads the new
+    ones.
+
+    `label` indexes `labels` (the model's own order); `pct` is
+    character_intensity x 100 and `ri` is retail_index x 100, both rounded (see
+    `collect_character_detail`). `ri` is what the dots are TINTED by once the
+    ramp is the default view; `label` stays in the payload because the
+    recommendation card reads the four-class label, not the index."""
+
+    def __init__(self, detail: dict[str, tuple] | None = None) -> None:
+        self.detail = detail or {}
+        self.label: list = []
+        self.pct: list = []
+        self.ri: list = []
+
+    def add(self, address_id) -> None:
+        i, pct, ri = self.detail.get(address_id, (None, None, None))
+        self.label.append(i)
+        self.pct.append(pct)
+        self.ri.append(ri)
+
+    def pack(self) -> dict:
+        return {"label": self.label, "pct": self.pct, "ri": self.ri,
+                "labels": list(character_labels())}
+
+
+def _nta_character_sql(boroughs: list[str], ramp: bool = True) -> tuple[str, list]:
+    """One row per NTA out of `analysis.nta_character`, restricted to the
+    exported boroughs. Column NAMES come from the four dicts above, so a rename
+    upstream is one edit rather than a scavenger hunt through a format string.
+
+    Borough CODES again: this view groups `analysis.address_character`."""
+    ph = ", ".join("?" for _ in boroughs)
+    labels = [lab for lab in character_labels() if lab in CHARACTER_SHARE_COLUMNS]
+    cols = ([CHARACTER_NTA_COLUMNS[k] for k in ("n", "dom", "intensity", "ampm", "nAmPm")]
+            + [CHARACTER_SHARE_COLUMNS[lab] for lab in labels]
+            + [CHARACTER_AREA_COLUMNS[k] for k in ("res", "retail", "office", "factory")]
+            + [CHARACTER_JOBS_COLUMNS[k] for k in ("retail", "office", "other")])
+    # APPENDED, never inserted -- `character_block` reads the head by position
+    # and the ramp tail off its own end, so a database without the ramp
+    # columns produces the same row shape filled with NULL.
+    cols += [(CHARACTER_RETAIL_NTA_COLUMNS[k] if ramp else "NULL")
+             for k in ("ri", "riMed", "sup", "ovlBlock", "ovlShare")]
+    return (f"""
+        SELECT nta_code, {", ".join(cols)}
+        FROM {'.'.join(CHARACTER_NTA_VIEW)}
+        WHERE borough IN ({ph}) AND nta_code IS NOT NULL
+        ORDER BY nta_code
+    """, list(boroughs))
+
+
+def _nta_shapes_sql(boroughs: list[str]) -> tuple[str, list]:
+    """The dissolved H3 cover of each NTA, simplified. Read from
+    `analysis.hex`, the only place in this warehouse that knows which ground
+    belongs to which neighbourhood -- and the one table in this section whose
+    `borough` holds the full NAME rather than the code."""
+    ph = ", ".join("?" for _ in boroughs)
+    return (f"""
+        SELECT nta_code,
+               ST_AsGeoJSON(ST_Simplify(ST_Union_Agg(geom), {CHARACTER_SIMPLIFY_DEG}))
+        FROM analysis.hex
+        WHERE borough IN ({ph}) AND nta_code IS NOT NULL
+        GROUP BY nta_code
+        ORDER BY nta_code
+    """, [BOROUGH_NAMES[b] for b in boroughs])
+
+
+def _share_num(value):
+    return _num(value, CHARACTER_SHARE_DP)
+
+
+def character_block(row) -> dict:
+    """One `_nta_character_sql` row -> the small dict that rides in every NTA
+    file AND in the overlay. Short keys, two decimals; ~290 bytes, which is
+    what lets it ship in all 111 neighbourhood files instead of being a second
+    fetch the sidebar has to wait on.
+
+    `domShare` is NOT read from a column -- `analysis.nta_character` has none.
+    It is the dominant label's own share out of the same `shares` dict the
+    popup prints, so the headline number and the breakdown cannot disagree."""
+    labels = [lab for lab in character_labels() if lab in CHARACTER_SHARE_COLUMNS]
+    n, dom, intensity, ampm, n_ampm = row[1:6]
+    at = 6
+    shares = {lab: _share_num(v) for lab, v in zip(labels, row[at:at + len(labels)])}
+    at += len(labels)
+    area = row[at:at + 4]
+    jobs = row[at + 4:at + 7]
+    ri, ri_med, suppressed, ovl_block, ovl_share = row[at + 7:at + 12]
+    # A dominant label this map has no colour for is not a class it can draw,
+    # so it reads as no data rather than as a bad index.
+    dom = dom if dom in CHARACTER_COLORS else None
+    return {
+        "n": int(n or 0),
+        "dom": dom,
+        "domShare": None if dom is None else shares.get(dom),
+        "shares": shares,
+        "area": dict(zip(("res", "retail", "office", "factory"), map(_share_num, area))),
+        "jobs": dict(zip(("retail", "office", "other"), map(_share_num, jobs))),
+        "intensity": _share_num(intensity),
+        # THE DEFAULT FILL: the MEAN retail_index across the NTA's addresses.
+        # See CHARACTER_RETAIL_NTA_COLUMNS for why the mean and not the
+        # median. `riMed` rides along so the popup can show the two
+        # disagreeing -- a median of 1.00 under a mean of 0.55 is a
+        # neighbourhood whose avenues are retail and whose side streets are
+        # not, which is a different place from one that is uniformly 0.55.
+        "ri": _share_num(ri),
+        "riMed": _share_num(ri_med),
+        # Parks, cemeteries and NTAs under the model's address floor. Drawn as
+        # no-data, because a retail index computed over eleven addresses in
+        # Green-Wood Cemetery is a number, not a reading.
+        "sup": bool(suppressed) if suppressed is not None else False,
+        # Commercial-overlay context, printed beside the index: what share of
+        # the NTA's addresses sit on a C1/C2 block at all, and what share of
+        # the 400 m catchment is under an overlay. Zoning is what PERMITS a
+        # storefront; the index is what one IS, and the two disagreeing is the
+        # whole point of printing both -- a street allowed to have shops and
+        # not having them is a different lead from one that is not allowed.
+        "ovlBlock": _share_num(ovl_block),
+        "ovlShare": _share_num(ovl_share),
+        # Median AM/PM entry share (D76 addendum), CORROBORATION from a
+        # different source: high means people leave in the morning (a
+        # residential catchment), low means they arrive (a destination). NULL
+        # where no profiled station is within 400 m -- most of Brooklyn -- and
+        # `nAmPm` is how many addresses the median rests on, so the popup can
+        # decline to print a median that rests on eleven of them.
+        "ampm": _share_num(ampm),
+        "nAmPm": int(n_ampm or 0),
+    }
+
+
+def quantile_stops(values: list[float], n: int) -> list[float]:
+    """`n` breakpoints placed at evenly-spaced QUANTILES of `values`, strictly
+    increasing.
+
+    A LINEAR ramp on `retail_index` is nearly as useless as the four-class map
+    it replaces, and for the mirror-image reason. The index is a capped MAX
+    over three witnesses, so it saturates: Manhattan below 96th St sits at a
+    p50 of 1.0 and Brooklyn at 0.68, which on a linear scale spends most of the
+    ramp's resolution on a range almost nothing occupies and crushes the
+    0.5-1.0 band where the whole city actually lives. Stretching the stops over
+    the observed distribution puts the colour resolution where the
+    neighbourhoods are.
+
+    THE COST, AND WHY THE LEGEND HAS TO CARRY IT: a quantile-stretched ramp
+    encodes RANK, not magnitude -- two neighbourhoods one shade apart differ by
+    a decile, not by a fixed amount of retail. That is a real weakening of a
+    sequential scale and the map must say so, which is why the legend bar
+    places each colour at its VALUE (so the compression is visible) and prints
+    the stop values rather than a smooth 0-1 axis.
+
+    Ties are nudged apart by a hair because MapLibre's `interpolate` requires
+    strictly increasing stops and a saturated tail produces plenty of them."""
+    if not values or n < 2:
+        return []
+    xs = sorted(values)
+    out: list[float] = []
+    for i in range(n):
+        j = i * (len(xs) - 1) / (n - 1)
+        lo, frac = int(j), j - int(j)
+        v = xs[lo] if frac == 0 else xs[lo] + (xs[lo + 1] - xs[lo]) * frac
+        v = round(float(v), 4)
+        if out and v <= out[-1]:
+            v = out[-1] + 1e-4
+        out.append(round(v, 4))
+    return out
+
+
+def pack_character(char_rows, shape_rows, provenance: dict | None = None,
+                   ramp: bool = True, ramp_reason: str | None = None) -> dict:
+    """rows -> the `character.json` overlay: one block per NTA plus the
+    dissolved outlines as a GeoJSON FeatureCollection whose properties carry
+    only what the FILL needs (`nta`, `dom`, `domShare`). Everything the popup
+    shows is looked up by `nta` out of `ntas`, so the geometry is not also a
+    second copy of the table."""
+    blocks = {row[0]: character_block(row) for row in char_rows if row[0]}
+    feats = []
+    for code, geojson in shape_rows:
+        block = blocks.get(code)
+        if not code or not geojson or block is None:
+            continue
+        # Only what the FILL and the two overlays need. `ri` drives the ramp,
+        # `sup` routes the polygon to no-data, `dom` picks the hatch. Every
+        # other number the popup prints is looked up by `nta` out of `ntas`.
+        feats.append({"type": "Feature",
+                      "properties": {"nta": code, "dom": block["dom"],
+                                     "domShare": block["domShare"],
+                                     "ri": None if block["sup"] else block.get("ri"),
+                                     "sup": int(bool(block["sup"]))},
+                      "geometry": json.loads(geojson)})
+    counts = {lab: 0 for lab in character_labels()}
+    counts["none"] = 0
+    for block in blocks.values():
+        counts[block["dom"] or "none"] += 1
+    ri_vals = [b["ri"] for b in blocks.values() if b.get("ri") is not None and not b["sup"]]
+    return {"available": True, "reason": None,
+            # The ramp is the DEFAULT view; `ramp: false` means the database
+            # carries the labels but not `retail_index` yet, and the UI falls
+            # back to the four-class fill rather than drawing a blank one.
+            "ramp": bool(ramp and ri_vals),
+            "rampReason": ramp_reason,
+            "rampColors": list(CHARACTER_RAMP),
+            "rampColorsDark": list(CHARACTER_RAMP_DARK),
+            "overlayLabels": [lab for lab in CHARACTER_OVERLAY_LABELS
+                              if lab in character_labels()],
+            # The domain the ramp is stretched over, so the legend's end labels
+            # are the data's ends and not a hard-coded 0..1 that would make
+            # every neighbourhood look pale if the index never reaches 1.
+            "riRange": [min(ri_vals), max(ri_vals)] if ri_vals else [0.0, 1.0],
+            # ...and WHERE each colour sits inside that domain. Quantiles, not
+            # even spacing -- see `quantile_stops` for why, and for the honesty
+            # cost the legend is required to carry.
+            "riStops": quantile_stops(ri_vals, len(CHARACTER_RAMP)),
+            "riScale": "quantile",
+            "suppressed": sum(1 for b in blocks.values() if b["sup"]),
+            "copy": character_copy(),
+            "labels": list(character_labels()),
+            "labelText": {lab: CHARACTER_LABEL_TEXT.get(lab, lab)
+                          for lab in character_labels()},
+            "colors": {lab: CHARACTER_COLORS[lab] for lab in character_labels()
+                       if lab in CHARACTER_COLORS},
+            "colorsDark": {lab: CHARACTER_COLORS_DARK[lab] for lab in character_labels()
+                           if lab in CHARACTER_COLORS_DARK},
+            "noDataColor": CHARACTER_NODATA_COLOR,
+            "noDataColorDark": CHARACTER_NODATA_COLOR_DARK,
+            "rules": character_rules(), "caveat": character_caveat(),
+            "counts": counts, "n": len(blocks), "nShapes": len(feats),
+            "provenance": provenance or {},
+            "ntas": blocks,
+            "shapes": {"type": "FeatureCollection", "features": feats}}
+
+
+def empty_character(reason: str | None = None) -> dict:
+    """What the export writes when sql/021 has not run. `available: false` plus
+    a REASON naming the missing column -- the UI hides the toggle and the
+    terminal says what to run, rather than the map drawing a confident empty
+    choropleth."""
+    return {"available": False, "reason": reason,
+            "ramp": False, "rampReason": reason,
+            "rampColors": list(CHARACTER_RAMP),
+            "rampColorsDark": list(CHARACTER_RAMP_DARK),
+            "overlayLabels": [lab for lab in CHARACTER_OVERLAY_LABELS
+                              if lab in character_labels()],
+            "riRange": [0.0, 1.0], "riStops": [], "riScale": "quantile",
+            "suppressed": 0, "copy": character_copy(),
+            "labels": list(character_labels()),
+            "labelText": {lab: CHARACTER_LABEL_TEXT.get(lab, lab)
+                          for lab in character_labels()},
+            "colors": {lab: CHARACTER_COLORS[lab] for lab in character_labels()
+                       if lab in CHARACTER_COLORS},
+            "colorsDark": {lab: CHARACTER_COLORS_DARK[lab] for lab in character_labels()
+                           if lab in CHARACTER_COLORS_DARK},
+            "noDataColor": CHARACTER_NODATA_COLOR,
+            "noDataColorDark": CHARACTER_NODATA_COLOR_DARK,
+            "rules": character_rules(), "caveat": character_caveat(),
+            "counts": {}, "n": 0, "nShapes": 0, "provenance": {}, "ntas": {},
+            "shapes": {"type": "FeatureCollection", "features": []}}
+
+
+def character_provenance(con, boroughs: list[str]) -> dict:
+    """The facts the legend is REQUIRED to print beside a floor-area reading:
+    the radius the catchment used, the MapPLUTO version the areas came off, the
+    LODES year the jobs came from, and how many addresses the build never
+    reached. A floor-area share with no assessment-roll vintage ages into a lie
+    exactly the way the pipeline overlay's `cutoff` does."""
+    ph = ", ".join("?" for _ in boroughs)
+    try:
+        row = con.execute(f"""
+            SELECT max(character_radius_m), max(character_pluto_version),
+                   max(character_jobs_vintage), max(character_run_at),
+                   count(*) FILTER (WHERE character_run_at IS NULL)
+            FROM analysis.address WHERE borough IN ({ph})
+        """, list(boroughs)).fetchone()
+    except Exception:
+        return {}
+    radius, pluto, jobs, run_at, unrun = row
+    return {"radiusM": None if radius is None else round(float(radius)),
+            "plutoVersion": pluto, "jobsVintage": jobs,
+            "runAt": None if run_at is None else str(run_at)[:19],
+            "unrunAddresses": int(unrun or 0)}
+
+
+def collect_character(con, boroughs: list[str]) -> dict:
+    """Read the character overlay. Pure read; degrades to `empty_character`
+    with a reason rather than raising, so `loci export-webmap` still produces a
+    working map on a database where `loci address-character build` has not
+    run."""
+    missing = character_missing(con)
+    if missing:
+        return empty_character("missing: " + ", ".join(missing))
+    drift = character_label_drift()
+    if drift:
+        return empty_character(drift)
+    ramp_missing = character_ramp_missing(con)
+    csql, cparams = _nta_character_sql(boroughs, not ramp_missing)
+    char_rows = con.execute(csql, cparams).fetchall()
+    ssql, sparams = _nta_shapes_sql(boroughs)
+    try:
+        shape_rows = con.execute(ssql, sparams).fetchall()
+    except Exception:
+        # No spatial extension, no outlines. Legend, popups and the per-address
+        # tint all still work; only the fill is absent, and `nShapes` says so
+        # rather than leaving the UI to guess why the map is blank.
+        shape_rows = []
+    return pack_character(char_rows, shape_rows, character_provenance(con, boroughs),
+                          ramp=not ramp_missing,
+                          ramp_reason=("missing: " + ", ".join(ramp_missing))
+                          if ramp_missing else None)
+
+
 # --------------------------------------------------- all opportunities (NTA)
 #
 # THE OWNER'S QUESTION (2026-09-09): "when I zoom in on one neighborhood, can
@@ -1686,7 +2409,9 @@ def missing_list(ratios) -> list[tuple[int, float]]:
 
 def pack_nta(gap_rows, poi_rows, supply_set: str = DEFAULT_SUPPLY_SET,
              supply_hash: str | None = None,
-             vacant_detail: dict[str, tuple] | None = None) -> dict[str, dict]:
+             vacant_detail: dict[str, tuple] | None = None,
+             character_detail: dict[str, tuple] | None = None,
+             character_ntas: dict[str, dict] | None = None) -> dict[str, dict]:
     """rows -> {nta_code: layer}. Only NTAs with at least one gap address get a
     layer: an "all opportunities" file for a neighborhood with no opportunity
     is a file the picker must never offer. POI rows for such an NTA are
@@ -1694,6 +2419,8 @@ def pack_nta(gap_rows, poi_rows, supply_set: str = DEFAULT_SUPPLY_SET,
     out: dict[str, dict] = {}
     projects: dict[str, _Projects] = {}
     vacants: dict[str, _Vacants] = {}
+    characters: dict[str, _Character] = {}
+    character_ntas = character_ntas or {}
     head = 9
     npipe, nshop = len(PIPELINE_GAP_COLUMNS), len(STOREFRONT_GAP_COLUMNS)
     for row in gap_rows:
@@ -1707,6 +2434,7 @@ def pack_nta(gap_rows, poi_rows, supply_set: str = DEFAULT_SUPPLY_SET,
         if layer is None:
             projects[code] = _Projects()
             vacants[code] = _Vacants(vacant_detail)
+            characters[code] = _Character(character_detail)
             layer = out[code] = {
                 "nta": code, "name": name, "boro": boro,
                 "supplySet": supply_set, "supplyHash": supply_hash,
@@ -1716,6 +2444,11 @@ def pack_nta(gap_rows, poi_rows, supply_set: str = DEFAULT_SUPPLY_SET,
                 "pois": {"stride": 5, "pts": [], "names": [], "n": 0, "nSet": 0},
                 "pipelineColumns": list(PIPELINE_GAP_COLUMNS),
                 "storefrontColumns": list(STOREFRONT_GAP_COLUMNS),
+                # The neighbourhood's OWN character reading, ~290 bytes, so
+                # the sidebar can answer "what kind of place is this?" from the
+                # file it already fetched rather than waiting on the overlay.
+                # `None` where the character build has not reached this NTA.
+                "character": character_ntas.get(code),
             }
         u = round(float(units or 0))
         # Slots 0..5 are UNCHANGED and must stay so: the browser walks the
@@ -1726,6 +2459,7 @@ def pack_nta(gap_rows, poi_rows, supply_set: str = DEFAULT_SUPPLY_SET,
         layer["pts"].extend(pipe_slots(projects[code], row[head:head + npipe]))
         layer["pts"].extend(sf_slots(vacants[code],
                                      row[head + npipe:head + npipe + nshop]))
+        characters[code].add(address_id)
         layer["ids"].append(address_id)
         layer["units"] += u
         for i, ratio in missing:
@@ -1747,6 +2481,7 @@ def pack_nta(gap_rows, poi_rows, supply_set: str = DEFAULT_SUPPLY_SET,
         layer["n"] = len(layer["ids"])
         layer["projects"] = projects[code].pack()
         layer["vacants"] = vacants[code].pack()
+        layer["addressCharacter"] = characters[code].pack()
         p = layer["pois"]
         p["n"] = len(p["names"])
         p["nSet"] = sum(p["pts"][4::5])
@@ -1765,7 +2500,11 @@ def nta_index(layers: dict[str, dict], boroughs: list[str],
     fetching a 500 kB NTA file to count them."""
     rows = [{"nta": code, "name": L["name"], "boro": L["boro"], "n": L["n"],
              "units": L["units"], "pois": L["pois"]["n"], "nSet": L["pois"]["nSet"],
-             "gapCounts": L["gapCounts"], "bounds": L["bounds"], "center": L["center"]}
+             "gapCounts": L["gapCounts"], "bounds": L["bounds"], "center": L["center"],
+             # Dominant label only -- the index is the SMALL file the picker
+             # reads, and the four shares belong in the file it opens next.
+             "char": (L.get("character") or {}).get("dom"),
+             "charShare": (L.get("character") or {}).get("domShare")}
             for code, L in layers.items()]
     rows.sort(key=lambda r: (-r["n"], r["nta"]))
     return {"boroughs": boroughs, "cats": ALLCATS,
@@ -1776,16 +2515,26 @@ def nta_index(layers: dict[str, dict], boroughs: list[str],
 
 def collect_nta(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
                 supply_hash: str | None = None,
-                vacants: dict[str, tuple] | None = None) -> dict[str, dict]:
+                vacants: dict[str, tuple] | None = None,
+                characters: dict[str, tuple] | None = None,
+                character_ntas: dict[str, dict] | None = None) -> dict[str, dict]:
     """Read the all-opportunities layers. Pure read, same two tables the
-    per-category layers come from."""
+    per-category layers come from.
+
+    `characters` and `character_ntas` are PASSED IN rather than read here, for
+    the same reason `vacants` is: the same address-level labels and the same
+    111 NTA blocks stand behind the sixteen gap files too, and reading them
+    twice would be two chances to disagree."""
     gsql, gparams = _nta_gap_sql(boroughs, has_pipeline_columns(con),
                                  has_storefront_columns(con))
     psql, pparams = _nta_poi_sql(boroughs, supply_set)
     return pack_nta(con.execute(gsql, gparams).fetchall(),
                     con.execute(psql, pparams).fetchall(),
                     supply_set, supply_hash,
-                    vacants if vacants is not None else collect_vacant_detail(con, boroughs))
+                    vacants if vacants is not None else collect_vacant_detail(con, boroughs),
+                    characters if characters is not None
+                    else collect_character_detail(con, boroughs),
+                    character_ntas)
 
 
 # ------------------------------------------------------------------- export
@@ -2042,12 +2791,17 @@ def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
     # One read of the vacant-storefront lookup for all sixteen gap files: the
     # same ~3,800 rows stand behind every category.
     vacants = collect_vacant_detail(con, boroughs)
+    # One read of the character views for all sixteen gap files AND all 111
+    # neighbourhood files. `{}` when sql/021 has not run, which packs as a
+    # column of nulls the UI draws as "no data".
+    characters = collect_character_detail(con, boroughs)
+    character = collect_character(con, boroughs)
     gap_layers = {}
     for cat in ALLCATS:
         sql, params = _gap_sql(cat, boroughs, pipe_cols, shop_cols, age_cols, age_src,
                                cens_cols)
         gap_layers[cat] = pack_gaps(con.execute(sql, params).fetchall(), boroughs,
-                                    cat, vacants)
+                                    cat, vacants, characters)
 
     # Navigation bounds, derived from the addresses themselves rather than a
     # separate boundary file -- a neighborhood the export cannot show is a
@@ -2079,12 +2833,14 @@ def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
     # per-category ones -- they are the same rows, sliced by neighborhood
     # instead of by category, and a view that could not say what supply it was
     # measured against would be the one place on this map D52 did not reach.
-    nta = collect_nta(con, boroughs, supply_set, prov.get("supply_hash"), vacants)
+    nta = collect_nta(con, boroughs, supply_set, prov.get("supply_hash"), vacants,
+                      characters, character.get("ntas") or {})
     return {"boroughs": boroughs, "sources": sources, "detailCats": dcats,
             "pois": poi_layers, "gaps": gap_layers, "neighborhoods": nbhd,
             "boroBounds": boro_bounds, "alcohol": collect_alcohol(con, boroughs),
             "pipeline": collect_pipeline(con, boroughs),
             "storefronts": collect_storefronts(con, boroughs),
+            "character": character,
             "nta": nta,
             "supplySet": supply_set, "supplyProvenance": prov,
             "supplyWarning": supply_warning(supply_set, prov),
@@ -2141,7 +2897,41 @@ def summarize(bundle: dict) -> dict:
         gap_counts[cat] = gper
     return {"poi": poi_counts, "gap": gap_counts, "excluded": exc_counts,
             "pipeline": pipeline_summary(bundle.get("pipeline"), boroughs),
-            "storefront": storefront_summary(bundle.get("storefronts"), boroughs)}
+            "storefront": storefront_summary(bundle.get("storefronts"), boroughs),
+            "character": character_summary(bundle.get("character"),
+                                           bundle.get("gaps"))}
+
+
+def character_summary(layer: dict | None, gaps: dict | None = None) -> dict:
+    """Neighbourhoods per dominant label, and how many gap ADDRESSES carry no
+    label at all -- what `--dry-run` prints. Counted off the PACKED layer
+    rather than re-queried, so the numbers on the terminal are the numbers in
+    the files.
+
+    The unlabelled count is the one that matters before shipping: it is the
+    size of the grey class, and a large one means `loci address-character
+    build` has not finished, not that the city has no character."""
+    if not layer:
+        layer = empty_character("no character layer in this bundle")
+    labelled = unlabelled = 0
+    for glayer in (gaps or {}).values():
+        block = glayer.get("character") or {}
+        for i in block.get("label", []):
+            if i is None:
+                unlabelled += 1
+            else:
+                labelled += 1
+    return {"available": bool(layer.get("available")),
+            "reason": layer.get("reason"),
+            "ramp": bool(layer.get("ramp")),
+            "rampReason": layer.get("rampReason"),
+            "suppressed": layer.get("suppressed", 0),
+            "labels": layer.get("labels", []),
+            "counts": layer.get("counts", {}),
+            "n": layer.get("n", 0), "nShapes": layer.get("nShapes", 0),
+            "provenance": layer.get("provenance", {}),
+            "gapAddressesLabelled": labelled,
+            "gapAddressesUnlabelled": unlabelled}
 
 
 def storefront_summary(layer: dict | None, boroughs: list[str]) -> dict:
@@ -2229,6 +3019,13 @@ def write(bundle: dict, out_dir: pathlib.Path) -> dict[str, int]:
     # Same contract for the vacant-storefront overlay.
     shops = bundle.get("storefronts") or empty_storefronts(bundle["boroughs"])
     _dump("storefronts.json", shops)
+
+    # ...and for the neighbourhood-character overlay, which carries its own
+    # dissolved NTA outlines. One file, fetched only when the toggle is
+    # switched on, so the single-business view costs exactly what it did
+    # before this existed.
+    character = bundle.get("character") or empty_character("no character layer")
+    _dump("character.json", character)
 
     # One file per neighborhood plus a small index. Both are fetched only when
     # the all-opportunities mode is entered, so the single-business view costs
@@ -2332,6 +3129,44 @@ def write(bundle: dict, out_dir: pathlib.Path) -> dict[str, int]:
         "ageFit": bundle.get("ageFit") or age_fit_meta(
             bundle.get("supplyProvenance"), source_joined=False,
             columns_present=False),
+        # The neighbourhood-character legend (owner request 2026-09-13).
+        # DATA-FREE on purpose: the 111 blocks and the outlines live in
+        # character.json, and this is only what the sidebar needs to draw the
+        # toggle, the four keys and the rule beside each. `rules` and the
+        # thresholds inside them are FORMATTED FROM model/address_character.py's
+        # constants (see `character_rules`), never retyped, so a retuned
+        # threshold reaches this legend on the next export. `available` false
+        # means sql/021 or `loci address-character build` has not run, and
+        # `reason` names the missing column.
+        "character": {"available": bool(character.get("available")),
+                      "reason": character.get("reason"),
+                      "file": "character.json",
+                      "labels": character["labels"],
+                      "labelText": character["labelText"],
+                      # The DEFAULT view: a sequential ramp on retail_index.
+                      # `ramp: false` means `retail_index` has not shipped yet
+                      # and the UI draws the four-class fill instead.
+                      "ramp": character["ramp"],
+                      "rampReason": character["rampReason"],
+                      "rampColors": character["rampColors"],
+                      "rampColorsDark": character["rampColorsDark"],
+                      "riRange": character["riRange"],
+                      "riStops": character["riStops"],
+                      "riScale": character["riScale"],
+                      "overlayLabels": character["overlayLabels"],
+                      "suppressed": character["suppressed"],
+                      "copy": character["copy"],
+                      "colors": character["colors"],
+                      "colorsDark": character["colorsDark"],
+                      "noDataColor": character["noDataColor"],
+                      "noDataColorDark": character["noDataColorDark"],
+                      "rules": character["rules"],
+                      "caveat": character["caveat"],
+                      "counts": character["counts"],
+                      "provenance": character["provenance"],
+                      "n": character["n"], "nShapes": character["nShapes"],
+                      "labelled": counts["character"]["gapAddressesLabelled"],
+                      "unlabelled": counts["character"]["gapAddressesUnlabelled"]},
         "neighborhoods": bundle["neighborhoods"],
         "boroBounds": bundle["boroBounds"],
         # The all-opportunities mode. `available` false means this export

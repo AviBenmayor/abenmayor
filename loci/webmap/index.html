@@ -117,6 +117,42 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
 .rank .k{width:16px;display:flex;justify-content:center;flex:none}
 .rank .n{margin-left:auto;font-family:"IBM Plex Mono";font-size:10.5px;color:var(--muted)}
 .rank.off{opacity:.5}
+/* Neighborhood character (owner request 2026-09-13). Same legend layout as
+   every other overlay — it is the same KIND of thing — but the only one whose
+   mark is an AREA, so its key is a filled rounded rectangle rather than a dot
+   or a ring, and the rule that fires it is printed UNDER each key. Four
+   classes plus "no data", which is a key and never an absence.
+   Colours come from meta.json (charColors), so the legend swatch and the map
+   fill can never disagree; only the chrome is themed here, off the page's own
+   tokens, which is how this section follows the theme the rest of the page
+   follows. */
+.char{display:flex;flex-direction:column;gap:1px;margin-top:5px}
+.char .row{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--ink2);padding:3px 0}
+.char .k{width:18px;height:12px;border-radius:3px;flex:none;margin-top:2px;
+         border:1px solid rgba(28,26,22,.18)}
+.char .tx{min-width:0}
+.char .nm{font-weight:600;color:var(--ink)}
+.char .rule{font-size:10.5px;color:var(--muted);line-height:1.4;margin-top:1px}
+.char .n{margin-left:auto;padding-left:6px;font-family:"IBM Plex Mono";font-size:11px;color:var(--muted);flex:none}
+.char.off{opacity:.5}
+.chrow{display:flex;gap:8px;font-size:11.5px;margin-top:3px}
+.chrow b{font-weight:600}
+.chbar{display:flex;height:7px;border-radius:4px;overflow:hidden;margin-top:5px;
+       background:var(--line)}
+.chbar span{display:block;height:100%}
+/* The sequential legend. A continuous bar, not five swatches: the fill is a
+   continuous interpolation and a stepped key would promise bins that do not
+   exist. Its ends are labelled with the DATA's range (riRange), so a reader
+   is never told "1.0" about a map whose darkest polygon is 0.62. */
+.chramp{margin-top:6px}
+.chramp .bar{height:11px;border-radius:3px;border:1px solid rgba(28,26,22,.18)}
+.chramp .ends{display:flex;justify-content:space-between;margin-top:3px;
+              font-family:"IBM Plex Mono";font-size:10px;color:var(--muted)}
+.chramp .cap{font-size:11.5px;color:var(--ink2);margin-top:4px;line-height:1.4}
+/* The two sparse overlays. Their key shows the HATCH, not a flat chip, because
+   the hatch is what is on the map -- the hue alone is the ramp's job. */
+.chov .k{background-size:6px 6px}
+.chcav{font-size:10.5px;color:var(--muted);line-height:1.45;margin-top:2px}
 .chk input:disabled{cursor:default}
 .chk.off{opacity:.5;cursor:default}
 /* The caveat expander. One line closed, the WHOLE text open — no max-height,
@@ -190,6 +226,17 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
       </div>
       <div class="asof" id="sfAsof"></div>
       <div class="fine" id="sfFine"></div>
+    </div>
+    <div class="sec" id="charSec" hidden>
+      <h2>Neighborhood character <span class="hint">what is within 400 m</span></h2>
+      <label class="chk"><input type="checkbox" id="charTog"> Shade neighborhoods by retail character</label>
+      <label class="chk" id="charDotLbl"><input type="checkbox" id="charDotTog"> Tint addresses too</label>
+      <div class="chramp" id="charRamp"></div>
+      <div class="char" id="charLegend"></div>
+      <details class="cav" id="charCav"><summary>floor area is an assessment artefact; see caveat</summary>
+        <div class="cavtx" id="charCavTx"></div></details>
+      <div class="asof" id="charAsof"></div>
+      <div class="fine" id="charFine"></div>
     </div>
     <div class="sec" id="alcSec" hidden>
       <h2>Alcohol licences <span class="hint">overlay</span></h2>
@@ -352,7 +399,11 @@ function gapFC(){
     // score can never be mistaken for "no reading".
     const r=rankOf(L,i/st);
     f.push({type:'Feature',geometry:{type:'Point',coordinates:[p[i],p[i+1]]},
-      properties:{u:p[i+3],id:L.ids[i/st],j:i/st,sc:r==null?-1:r,rk:r==null?0:1}}); }
+      properties:{u:p[i+3],id:L.ids[i/st],j:i/st,sc:r==null?-1:r,rk:r==null?0:1,
+        // The character label and the retail index, baked in for the same
+        // reason `sc` is: a MapLibre expression cannot index a parallel
+        // array. '' / -1 are the no-data cases and reach the grey fallback.
+        ch:charProp(L,i/st), ri:charRiProp(L,i/st)}}); }
   return {type:'FeatureCollection',features:f};
 }
 // The four pipeline numbers for point j of a layer, plus the nearest large
@@ -960,6 +1011,426 @@ function sfHTMLPremises(p,full){
 // the index does carry bounding boxes, but bboxes of adjacent NTAs overlap,
 // so "the NTA you are looking at" is a guess — and a wrong guess here silently
 // re-labels every dot on screen.
+// -------------------------------------------------- neighborhood character
+// Owner request 2026-09-13: "give color to neighborhoods for whether they are
+// retail- or corporate-dominated."
+//
+// THE ONLY AREA LAYER ON THIS MAP. Everything else here is a point, because
+// everything else is a property of a doorway; "what kind of place is this" is
+// not. The fill is the DISSOLVED H3 cover of each NTA (see webmap_export's
+// character section).
+//
+// THE SHADE IS CONTINUOUS (urban-planner review, 2026-09-13). Under the four
+// labels Brooklyn is ~90% `residential`, so a four-colour choropleth of MN+BK
+// is very nearly a monochrome — it answers "which class won here" when the
+// question was "how retail is this street". So the fill is a SEQUENTIAL ramp
+// on `retail_index`: one hue, light to dark, which is the only legal encoding
+// for magnitude. `corporate` and `industrial` are not more or less retail, so
+// they cannot be positions on that ramp; they ride ON TOP as sparse
+// categorical overlays, each with its own hue AND its own hatch angle, which
+// is the texture channel reserved for exactly this. The four-class label stays
+// in the payload — the recommendation card reads the label, not the index.
+//
+// A DATABASE WITHOUT `retail_index` STILL DRAWS. `META.character.ramp` false
+// means the labels shipped but the index has not; the fill falls back to the
+// four classes and the legend says which view is on screen.
+//
+// IT TINTS, IT NEVER SELECTS. Switching this on cannot move a gap dot, change
+// a score or filter the universe (sql/021 caveat 4). The address tint is a
+// second, separate checkbox because recolouring the gap dots costs the
+// category hue that carries identity everywhere else on this map, and that is
+// a trade the reader should make deliberately.
+//
+// NO DATA IS A CLASS. An address or a neighborhood the character build has not
+// reached is grey, is in the legend as its own key, and says "no data" in the
+// popup. It is never drawn as `residential`.
+let showChar=false, showCharDots=false, CHAR=null, charLoading=false;
+const CH=()=>(META&&META.character)||{};
+//: Is the continuous view live? Everything below branches on this one test
+//: rather than on whether a particular field happens to be null.
+const charRampOn=()=>!!CH().ramp;
+const charRamp=()=>(charDark()?CH().rampColorsDark:CH().rampColors)||[];
+//: The domain the ramp is stretched over — the DATA's ends, not 0..1. A
+//: neighbourhood map whose darkest polygon is 0.62 must not be labelled "1.0".
+const charRange=()=>{const r=CH().riRange||[0,1];
+  return (r[1]-r[0])>0.02?r:[r[0],r[0]+0.02];};   // never a zero-width domain
+//: WHERE each ramp colour sits inside that domain. QUANTILES, computed in the
+//: export (`quantile_stops`), not even spacing: `retail_index` is a capped MAX
+//: and saturates — Manhattan below 96th St is at a p50 of 1.0, Brooklyn 0.68 —
+//: so an evenly-spaced ramp spends its resolution where nothing lives and
+//: crushes the 0.5–1.0 band the whole city occupies.
+//: The cost is that the shade then encodes RANK rather than magnitude, and the
+//: legend is required to show it: the bar places each colour at its VALUE, so
+//: the compression is visible rather than hidden behind a smooth gradient.
+function charStops(){
+  const st=CH().riStops||[], R=charRamp();
+  if(st.length===R.length) return st;
+  const [lo,hi]=charRange();                       // even fallback
+  return R.map((_,i)=>lo+(hi-lo)*i/(R.length-1));
+}
+//: What to CALL a label, and the sentence that must travel with it. Both come
+//: from model/address_character.py (CHARACTER_COPY / CHARACTER_CAVEAT) so a
+//: card and this legend cannot drift.
+const charCopy=lab=>((CH().copy||{})[lab])||{text:charText(lab),title:charText(lab),caveat:null};
+const charOverlays=()=>CH().overlayLabels||[];
+const charTip=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:2});
+
+// Which colour set to draw with. Read off the PAGE'S OWN background token, not
+// off `prefers-color-scheme`: this page is light-only, and an OS preference it
+// does not otherwise honour must not be allowed to repaint the map underneath
+// a light basemap. The moment `--bg` flips, so does this, with no edit here.
+function charDark(){
+  const bg=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  const m=/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(bg);
+  if(!m) return false;
+  const [r,g,b]=[1,2,3].map(i=>parseInt(m[i],16));
+  return (0.2126*r+0.7152*g+0.0722*b)<128;
+}
+const charColors=()=>(charDark()?CH().colorsDark:CH().colors)||{};
+const charNoData=()=>(charDark()?CH().noDataColorDark:CH().noDataColor)||'#9b968a';
+const charColorOf=lab=>charColors()[lab]||charNoData();
+const charText=lab=>((CH().labelText||{})[lab])||lab||'no data';
+const charLabels=()=>CH().labels||[];
+
+async function loadChar(){
+  if(CHAR||charLoading) return;
+  charLoading=true;
+  try{ CHAR=await fetch('data/'+(CH().file||'character.json')).then(r=>r.json()); }
+  catch(e){ CHAR={available:false,reason:'could not load '+(CH().file||'character.json'),
+                  ntas:{},shapes:{type:'FeatureCollection',features:[]}}; }
+  charLoading=false;
+  refreshChar(); renderCharLegend(); refresh();
+}
+const charBlock=code=>(CHAR&&CHAR.ntas&&CHAR.ntas[code])||null;
+
+// THE DEFAULT FILL: a continuous interpolation of `ri` over the ramp, spread
+// across the DATA's own range. `ri` null is the no-data class — an NTA the
+// build never reached, or one `suppressed` upstream (a park, a cemetery, an
+// airport, or fewer than the model's floor of addresses). Suppressed has to
+// land here and not at the pale end of the ramp: on a light-to-dark scale the
+// palest polygon is the most CONFIDENT "no retail at all", which is the
+// opposite of "we did not measure this".
+function charFillColor(){
+  if(!charRampOn()) return charClassColor();
+  const R=charRamp(), [lo,hi]=charRange();
+  if(!R.length) return charNoData();
+  const st=charStops();
+  const e=['case',['==',['get','ri'],null],charNoData(),
+    ['interpolate',['linear'],['get','ri']]];
+  R.forEach((c,i)=>{e[3].push(st[i],c);});
+  return e;
+}
+// The fallback fill, and still the thing the two overlays and the legend keys
+// are coloured by: the four-class palette.
+function charClassColor(){
+  const e=['match',['get','dom']];
+  charLabels().forEach(l=>{e.push(l,charColorOf(l));});
+  e.push(charNoData()); return e;
+}
+// One opacity for the ramp, because the ramp already carries the magnitude —
+// varying alpha as well would encode the same number twice and make a pale
+// polygon ambiguous between "little retail" and "little confidence".
+// No-data is drawn fainter so it recedes rather than competing.
+const charFillOpacity=['case',['==',['get','ri'],null],0.16,0.55];
+// The class fallback keeps the old rule: opacity IS the dominant share.
+const charClassOpacity=['case',['==',['get','domShare'],null],0.10,
+  ['interpolate',['linear'],['get','domShare'],0.25,0.13,0.55,0.28,1,0.46]];
+
+// A 45 deg / 135 deg hand-drawn-style hatch, one per overlay class, tone on
+// tone in that class's own hue. The texture is what separates the two overlays
+// from the ramp underneath them: hue alone cannot, because the ramp already
+// owns a hue and these sit on top of it at partial opacity.
+function charHatch(color,mirror){
+  const n=8,c=document.createElement('canvas');c.width=c.height=n*2;
+  const x=c.getContext('2d');x.scale(2,2);
+  x.clearRect(0,0,n,n);x.strokeStyle=color;x.lineWidth=1.6;x.lineCap='round';
+  // Drawn twice, offset by the tile, so the stripe is continuous across tiles.
+  for(const d of [0,n]){ x.beginPath();
+    if(mirror){x.moveTo(-1,d+1);x.lineTo(n+1,d-n-1);} else {x.moveTo(-1,d-n-1);x.lineTo(n+1,d+1);}
+    x.stroke(); }
+  return {width:n*2,height:n*2,data:new Uint8Array(x.getImageData(0,0,n*2,n*2).data)};
+}
+const charHatchImg=lab=>'char-hatch-'+lab;
+//: The hatch is registered per LABEL, at the index's own angle, so corporate
+//: and industrial never share a texture.
+function charHatchImages(){
+  charOverlays().forEach((lab,i)=>{
+    const id=charHatchImg(lab);
+    if(!map.hasImage(id)) map.addImage(id,charHatch(charColorOf(lab),i%2===1),{pixelRatio:2});
+  });
+}
+const charOverlayFilter=()=>['in',['get','dom'],['literal',charOverlays()]];
+function charHatchPattern(){
+  const e=['match',['get','dom']];
+  charOverlays().forEach(l=>{e.push(l,charHatchImg(l));});
+  e.push(charOverlays().length?charHatchImg(charOverlays()[0]):'');
+  return e;
+}
+// The outline. The two overlay classes get their own hue at full weight;
+// suppressed/no-data gets a dashed hairline so "we did not measure here" is a
+// different KIND of edge, not a paler one; everything else gets a faint
+// neutral so two same-shade neighbours still read as two neighbours.
+function charLineColor(){
+  const e=['case',['==',['get','sup'],1],charNoData()];
+  e.push(['in',['get','dom'],['literal',charOverlays()]], charClassColor(), 'rgba(28,26,22,0.22)');
+  return e;
+}
+// The overlay classes get a heavier edge; everything else a hairline.
+function charLineWidth(){
+  return ['case',['in',['get','dom'],['literal',charOverlays()]],1.8,1];
+}
+
+function charFC(){
+  if(!showChar||!CHAR||!CHAR.shapes) return EMPTY;
+  return CHAR.shapes;
+}
+function refreshChar(){
+  const src=map.getSource('char'); if(!src) return;
+  src.setData(charFC());
+  if(!showChar) return;
+  charHatchImages();
+  map.setPaintProperty('charfill','fill-color',charFillColor());
+  map.setPaintProperty('charfill','fill-opacity',
+    charRampOn()?charFillOpacity:charClassOpacity);
+  // Pattern and filter FIRST, visibility last: a fill layer with neither
+  // fill-color nor fill-pattern set paints solid black, and one frame of a
+  // black neighborhood is a frame too many.
+  if(charOverlays().length){
+    map.setFilter('charhatch',charOverlayFilter());
+    map.setPaintProperty('charhatch','fill-pattern',charHatchPattern());
+  }
+  map.setLayoutProperty('charhatch','visibility',
+    charOverlays().length?'visible':'none');
+  map.setPaintProperty('charline','line-color',charLineColor());
+  map.setPaintProperty('charline','line-width',charLineWidth());
+}
+
+// Per-address label/intensity. `gaps/<cat>.json` carries it as `character`;
+// `nta/<code>.json` carries the per-address arrays as `addressCharacter` and
+// uses `character` for something else entirely — the NEIGHBORHOOD's own block,
+// which has no `label` array. So `addressCharacter` is tried first and the
+// shape is CHECKED, not assumed: reading the neighborhood block as an address
+// block is a real crash, not a wrong answer.
+// Returns null when the export carried no address block at all (a file
+// predating sql/021), which is not the same as "this address has no label".
+function charAt(L,j){
+  const b=L&&(L.addressCharacter||L.character);
+  if(!b||!Array.isArray(b.label)) return null;
+  const i=b.label[j];
+  return {lab:(i==null?null:(b.labels||charLabels())[i]), pct:b.pct[j],
+          ri:(b.ri?b.ri[j]:null)};
+}
+// Baked into each feature, like `sc`/`rk`: MapLibre expressions cannot index a
+// parallel array. '' is the no-data class and reaches the match's fallback.
+function charProp(L,j){ const c=charAt(L,j); return (c&&c.lab)||''; }
+// ...and the address's own retail_index, as a percent, or -1 for no reading.
+// A separate slot rather than a negative sentinel inside `ch`, so a legitimate
+// index of 0 can never be mistaken for "not measured".
+function charRiProp(L,j){ const c=charAt(L,j); return (c&&c.ri!=null)?c.ri:-1; }
+// Dots follow the AREAS: the same ramp on the same measure, so a dot and the
+// polygon under it are never shaded by two different things.
+function charDotColor(){
+  if(!charRampOn()){
+    const e=['match',['get','ch']];
+    charLabels().forEach(l=>{e.push(l,charColorOf(l));});
+    e.push(charNoData()); return e;
+  }
+  const R=charRamp(), st=charStops();
+  const e=['case',['<',['get','ri'],0],charNoData(),
+    ['interpolate',['linear'],['get','ri']]];
+  R.forEach((c,i)=>{e[3].push(100*st[i],c);});
+  return e;
+}
+//: True only when the tint is BOTH switched on and has something to draw with.
+const charDotsOn=()=>showChar&&showCharDots&&!!CHAR&&CHAR.available!==false;
+
+function pctTxt(v){return v==null?'—':Math.round(v*100)+'%';}
+// The AM/PM reading is a RATIO of morning to evening entries, not a share:
+// model/address_transit_profile.am_pm_share_frame says >1 is a residential
+// (morning-outbound) catchment and <1 a job centre. 1.0 is therefore the
+// pivot, and it is the model's pivot, not one invented here.
+function ampmTxt(v,n){
+  if(v==null) return '';
+  const kind=v>1?'residential-type (people leave in the morning)'
+                :'destination-type (people arrive in the morning)';
+  return `AM/PM entry ratio <b>${(+v).toFixed(2)}</b> — ${kind}`+
+         (n?` · ${(+n).toLocaleString()} addresses`:'');
+}
+// The share bar: the four label shares in legend order, so the popup shows how
+// MIXED a neighborhood is, not only which class won.
+function charBar(b){
+  const parts=charLabels().map(l=>{
+    const v=(b.shares||{})[l]||0;
+    return v>0?`<span style="width:${(v*100).toFixed(1)}%;background:${charColorOf(l)}" title="${charText(l)} ${pctTxt(v)}"></span>`:'';
+  }).join('');
+  return parts?`<div class="chbar">${parts}</div>`:'';
+}
+// The retail index, rendered as the headline the shade stands for. `null` is
+// "not measured", which on a light-to-dark ramp must never be printed as a
+// number: the palest polygon is the most confident "no retail", and a
+// suppressed park would otherwise read as the emptiest street in Brooklyn.
+function riHTML(b){
+  if(!b) return '';
+  if(b.sup) return `<div class="ppop">Retail character: <b>not measured</b> — `+
+    `a park, cemetery or airport polygon, or too few addresses to read</div>`;
+  if(b.ri==null) return `<div class="ppop">Retail character: <b>no data</b></div>`;
+  // The chip has to be the colour the POLYGON is, so it is read off the same
+  // quantile stops the fill interpolates — a linear lookup here would hand the
+  // popup a different shade from the one under the cursor.
+  const R=charRamp(), st=charStops();
+  let k=0; while(k<st.length-1&&b.ri>st[k+1]) k++;
+  const col=R.length?R[Math.min(k+(b.ri>=(st[k]+st[k+1])/2?1:0),R.length-1)]:charNoData();
+  return `<div class="ppop"><span style="display:inline-block;width:10px;height:10px;`+
+    `border-radius:2px;background:${col};vertical-align:-1px"></span> `+
+    `Retail character <b>${b.ri.toFixed(2)}</b> of 1.00`+
+    // The median beside the mean when they part company: a median of 1.00
+    // under a mean of 0.55 is avenues-retail / side-streets-not, which is a
+    // different place from one that is uniformly 0.55.
+    (b.riMed!=null&&Math.abs(b.riMed-b.ri)>=0.08
+      ? ` <span style="color:var(--muted)">(median ${b.riMed.toFixed(2)})</span>`:'')+
+    `</div>`;
+}
+// The whole character reading for one neighborhood. Used by the area popup and
+// by the all-opportunities sidebar, so the two cannot drift.
+//
+// THE LABEL IS RENDERED IN THE MODEL'S WORDS. `corporate` is what the rule
+// computes and NOT what a reader should be told, so the popup prints
+// CHARACTER_COPY's phrase and CHARACTER_CAVEAT's sentence beside it — the
+// corporate one exists because the label's plain-English reading ("nobody
+// lives here") is the opposite of what the data says.
+function charHTML(b,name){
+  if(!b) return `<div class="ppop">Character: <b>no data</b> — `+
+                `<code>loci address-character build</code> has not reached this neighborhood</div>`;
+  const a=b.area||{}, jb=b.jobs||{}, copy=charCopy(b.dom);
+  const rule=(CH().rules||{})[b.dom];
+  return (name?`<div class="pnb">${esc(name)}</div>`:'')+
+    riHTML(b)+
+    `<div class="ppop">Character: <b>${esc(b.dom?copy.title:'no data')}</b>`+
+    (b.domShare!=null?` — ${pctTxt(b.domShare)} of its ${(+b.n).toLocaleString()} addresses`:'')+
+    `</div>`+charBar(b)+
+    `<div class="chrow">floor area: office ${pctTxt(a.office)} · retail ${pctTxt(a.retail)}`+
+    ` · residential ${pctTxt(a.res)} · factory ${pctTxt(a.factory)}</div>`+
+    `<div class="chrow">jobs: office ${pctTxt(jb.office)} · retail ${pctTxt(jb.retail)}`+
+    ` · other ${pctTxt(jb.other)}</div>`+
+    // Zoning PERMITS a storefront; the index is what one IS. Both, so a reader
+    // can see them disagree — an overlay count with a low index is a street
+    // that is allowed to have shops and does not.
+    (b.ovlBlock!=null||b.ovlShare!=null
+      ? `<div class="chrow">commercial overlay: `+
+        (b.ovlBlock!=null?`<b>${pctTxt(b.ovlBlock)}</b> of its addresses sit on a C1/C2 block`:'')+
+        (b.ovlShare!=null?`${b.ovlBlock!=null?' · ':''}${pctTxt(b.ovlShare)} of the 400 m catchment`:'')+
+        `</div>` : '')+
+    (b.ampm!=null?`<div class="chrow">${ampmTxt(b.ampm,b.nAmPm)}</div>`:'')+
+    (copy.caveat?`<div class="chcav">${esc(copy.caveat)}</div>`:'')+
+    (rule?`<div class="pmi">${esc(b.dom||'')}: ${esc(rule)}</div>`:'');
+}
+// ...and for ONE address, appended to the gap popups. Silent when the export
+// carried no character block, so an old file says nothing rather than "no data".
+function charDotHTML(L,j){
+  if(!showChar) return '';
+  const c=charAt(L,j); if(!c) return '';
+  if(!c.lab&&c.ri==null) return `<div class="chrow">character: <b>no data</b></div>`;
+  const copy=c.lab?charCopy(c.lab):null;
+  return `<div class="chrow"><span style="display:inline-block;width:9px;height:9px;`+
+         `border-radius:2px;background:${c.lab?charColorOf(c.lab):charNoData()}"></span> `+
+         (c.ri!=null?`retail character <b>${(c.ri/100).toFixed(2)}</b>`:'')+
+         (c.lab?`${c.ri!=null?' · ':''}<b>${esc(copy.text)}</b>`:'')+
+         (c.pct!=null?` <span style="color:var(--muted)">(${c.pct}% past the line)</span>`:'')+
+         `</div>`;
+}
+
+// A CSS gradient of the same stops the map interpolates, so the key and the
+// fill are the same ramp rather than two drawings of one idea.
+// The bar is drawn on the VALUE axis, not on the rank axis: each colour sits
+// at its own stop's position inside [lo,hi]. On a saturated index that makes
+// the dark end visibly bunched, which is the honest picture — a smooth even
+// gradient would hide exactly the compression the quantile stretch introduces.
+function charRampCSS(){
+  const R=charRamp(); if(!R.length) return charNoData();
+  const st=charStops(), [lo,hi]=charRange(), span=(hi-lo)||1;
+  return `linear-gradient(90deg,${R.map((c,i)=>
+    `${c} ${(100*Math.max(0,Math.min(1,(st[i]-lo)/span))).toFixed(1)}%`).join(',')})`;
+}
+function renderCharRamp(){
+  const el=document.getElementById('charRamp'); if(!el) return;
+  el.hidden=!charRampOn();
+  if(!charRampOn()){ el.innerHTML=''; return; }
+  const [lo,hi]=charRange();
+  el.style.opacity=showChar?'':'0.5';
+  const st=charStops(), span=(hi-lo)||1;
+  // Ticks at the interior stops, so a reader can see that one shade step is a
+  // decile of neighborhoods and not a fixed amount of retail.
+  const ticks=st.slice(1,-1).map(v=>
+    `<span style="position:absolute;left:${(100*(v-lo)/span).toFixed(1)}%;top:0;`+
+    `width:1px;height:100%;background:rgba(255,255,255,.65)"></span>`).join('');
+  el.innerHTML=`<div class="bar" style="position:relative;background:${charRampCSS()}">${ticks}</div>`+
+    `<div class="ends"><span>${lo.toFixed(2)} less retail</span>`+
+    `<span>more retail ${hi.toFixed(2)}</span></div>`+
+    `<div class="cap">Shade is <b>retail character</b> — the mean across a `+
+    `neighborhood's addresses. The index is an <i>upper envelope</i> of three `+
+    `witnesses (assessed retail floor area, retail payroll, C1/C2 zoning): any `+
+    `one firing is enough, so read it as evidence of retail character, not as a `+
+    `fraction. The scale is <b>stretched by rank</b> (each tick is a decile of `+
+    `neighborhoods) because the index saturates — Manhattan below 96th St sits `+
+    `at the top of it. Ends are this map's own range, not 0–1.</div>`;
+}
+function renderCharLegend(){
+  renderCharRamp();
+  const el=document.getElementById('charLegend'); if(!el) return;
+  el.className='char'+(showChar?'':' off');
+  const counts=(CHAR&&CHAR.counts)||CH().counts||{};
+  const rules=CH().rules||{};
+  // With the ramp on, only the two SPARSE classes get keys — the other two are
+  // positions on the ramp above, and repeating them as flat chips would say
+  // the map has six fills when it has one plus two annotations.
+  const keys=charRampOn()?charOverlays():charLabels();
+  const rows=keys.map(l=>{
+    const copy=charCopy(l), i=charOverlays().indexOf(l), hatched=charRampOn()&&i>=0;
+    const sw=hatched
+      ? `background-image:repeating-linear-gradient(${i%2?'-45deg':'45deg'},`+
+        `${charColorOf(l)} 0 1.6px,transparent 1.6px 5px);`+
+        `background-color:rgba(255,255,255,.35);border-color:${charColorOf(l)}`
+      : `background:${charColorOf(l)}`;
+    return `<div class="row${hatched?' chov':''}"><span class="k" style="${sw}"></span>`+
+      `<span class="tx"><span class="nm">${esc(copy.title)}</span>`+
+      `<span class="rule">${esc(rules[l]||'')}</span></span>`+
+      `<span class="n">${counts[l]==null?'':counts[l]}</span></div>`;}).join('');
+  const none=(counts.none||0)+((CHAR&&CHAR.suppressed)||CH().suppressed||0);
+  el.innerHTML=rows+
+    `<div class="row"><span class="k" style="background:${charNoData()}"></span>`+
+    `<span class="tx"><span class="nm">Not measured</span>`+
+    `<span class="rule">parks, cemeteries, airports and neighborhoods with too `+
+    `few addresses to read — drawn faint, never as "no retail"</span></span>`+
+    `<span class="n">${none}</span></div>`;
+  const cav=document.getElementById('charCavTx');
+  if(cav) cav.textContent=CH().caveat||'';
+  const prov=CH().provenance||{};
+  const asof=document.getElementById('charAsof');
+  if(asof) asof.innerHTML=prov.plutoVersion||prov.jobsVintage
+    ? `floor area <b>MapPLUTO ${esc(prov.plutoVersion||'—')}</b> · jobs <b>LODES `+
+      `${esc(String(prov.jobsVintage||'—'))}</b> · radius <b>${prov.radiusM||400} m</b> network`
+    : '';
+  const fine=document.getElementById('charFine');
+  if(fine) fine.textContent=CH().available===false
+    ? (CH().reason||'not exported')
+    : `${CH().n||0} neighborhoods · `+
+      (charRampOn()
+        ? 'shade is retail character, the two hatched classes sit on top of it'
+        : 'four-class view — retail_index is not in this export ('+
+          (CH().rampReason||'not built')+')')+
+      ' · context only, it enters no score';
+}
+function syncCharUI(){
+  const sec=document.getElementById('charSec'); if(!sec) return;
+  // Hidden only when the export carried NO character block at all. An
+  // `available: false` block is shown-but-disabled with its reason, the same
+  // way the alcohol overlay says "not loaded" rather than vanishing.
+  sec.hidden=!META.character;
+  const dot=document.getElementById('charDotLbl');
+  if(dot) dot.className='chk'+(showChar?'':' off');
+  const dtog=document.getElementById('charDotTog');
+  if(dtog) dtog.disabled=!showChar;
+}
 const ALL_MODE='__all__';
 const EMPTY={type:'FeatureCollection',features:[]};
 let NTAIDX=null, NTA=null, ntaSel=null, hiCat=null;
@@ -1021,6 +1492,7 @@ function allGapFC(){
     // per-feature list.
     f.push({type:'Feature',geometry:{type:'Point',coordinates:[p[i],p[i+1]]},
       properties:{u:p[i+2],lead:lead||'',gs:p[i+4],nm:p[i+5],j:j,
+        ch:charProp(NTA,j), ri:charRiProp(NTA,j),
         hi:hiCat?(missesCat(j,hiCat)?1:0):1}}); }
   return {type:'FeatureCollection',features:f};
 }
@@ -1084,6 +1556,19 @@ function renderHere(){
     el.innerHTML=`<b>${esc(nm)}</b> · ${esc(META.boroughNames[r?r.boro:''] ||'')}<br>`+
       `${(r?r.n:0).toLocaleString()} addresses missing something · `+
       `${(r?r.units:0).toLocaleString()} homes · ${(r?r.nSet:0).toLocaleString()} known locations`+
+      // The neighborhood's character rides in the NTA file this mode already
+      // fetched, so it costs no extra request — and it is shown here whether
+      // or not the overlay is switched on, because "what kind of place is
+      // this" is context for every gap in the list below.
+      ((NTA&&NTA.character)
+        ? `<br><span style="color:var(--muted)">character:</span> `+
+          `<b style="color:${charColorOf(NTA.character.dom)}">`+
+          `${esc(charCopy(NTA.character.dom).text)}</b>`+
+          (NTA.character.ri!=null&&!NTA.character.sup
+            ? ` · retail ${NTA.character.ri.toFixed(2)}`
+            : (NTA.character.domShare!=null
+               ? ` · ${pctTxt(NTA.character.domShare)} of addresses` : ''))
+        : '')+
       `<button class="clr" id="hereClr">clear</button>`;
   }
   const b=document.getElementById('hereClr');
@@ -1179,6 +1664,27 @@ map.on('load',async()=>{
     paint:{'circle-color':lc(),'circle-radius':['interpolate',['linear'],['zoom'],13,3,17,6],
       'circle-stroke-width':1,'circle-stroke-color':'#fff','circle-opacity':0.9}});
 
+  // Neighborhood character: the only AREA layer here, and deliberately the
+  // BOTTOM one — every point on this map has to stay readable on top of it,
+  // so it is added with beforeId 'cl' first, which puts it under the pipeline
+  // rings and the vacancy squares that are added with the same beforeId later.
+  // Registered EMPTY and filled only when the toggle is switched on, the same
+  // lazy contract the other four overlays have.
+  map.addSource('char',{type:'geojson',data:EMPTY});
+  map.addLayer({id:'charfill',type:'fill',source:'char',
+    paint:{'fill-color':'#9b968a','fill-opacity':charFillOpacity}},'cl');
+  // The two sparse classes, hatched on top of the ramp rather than instead of
+  // it: `corporate` and `industrial` are not positions on a retail scale, and
+  // the polygon underneath still has to show its index.
+  map.addLayer({id:'charhatch',type:'fill',source:'char',
+    filter:['==',['get','dom'],'__none__'],
+    layout:{visibility:'none'},
+    paint:{'fill-opacity':0.55}},'cl');
+  // A hairline, so two same-shade neighborhoods side by side still read as two
+  // neighborhoods — heavier and in its own hue on the overlay classes.
+  map.addLayer({id:'charline',type:'line',source:'char',
+    paint:{'line-color':'#9b968a','line-width':1,'line-opacity':0.5}},'cl');
+
   // Known locations sit ON TOP and read as a different mark entirely: small
   // ink dots, filled when 2+ sources corroborate the record and hollow when
   // only one source attests it (D47). The layer is FILTERED to the supply set
@@ -1266,6 +1772,33 @@ map.on('load',async()=>{
     layout:{'icon-image':['get','img'],'icon-allow-overlap':true,'icon-ignore-placement':true,
       'icon-size':['interpolate',['linear'],['zoom'],10,0.45,13,0.7,17,1.05]}},'cl');
 
+  // The area layer's own popup. It is the whole reading for one
+  // neighborhood — dominant label, how dominant, the floor-area and job
+  // splits behind it, and the independent AM/PM corroboration — because that
+  // is the question the layer exists to answer. Hover names it; click explains
+  // it. Registered here with the other handlers so the draw order above stays
+  // one readable block.
+  map.on('mousemove','charfill',e=>{
+    if(!showChar) return;
+    const f=e.features[0]; if(!f) return;
+    const b=charBlock(f.properties.nta), nm=(ntaRow(f.properties.nta)||{}).name;
+    charTip.setLngLat(e.lngLat).setHTML(
+      `<div class="pnb">${esc(nm||f.properties.nta)}</div>`+
+      (b&&b.sup?`<div class="ppop">not measured</div>`
+              :`<div class="ppop">`+
+               (b&&b.ri!=null?`retail character <b>${b.ri.toFixed(2)}</b> · `:'')+
+               `${esc(b&&b.dom?charCopy(b.dom).text:'no data')}</div>`)).addTo(map);});
+  map.on('mouseleave','charfill',()=>charTip.remove());
+  map.on('click','charfill',e=>{
+    if(!showChar) return;
+    const f=e.features[0]; if(!f) return;
+    const code=f.properties.nta, nm=(ntaRow(code)||{}).name;
+    charTip.remove();
+    new maplibregl.Popup({closeButton:false,maxWidth:'320px'}).setLngLat(e.lngLat)
+      .setHTML(charHTML(charBlock(code),nm||code)+
+        `<div class="pmi">${esc(code)} · context only — it enters no score</div>`)
+      .addTo(map);});
+
   document.getElementById('loading').hidden=true;
   buildUI(); refresh();
 
@@ -1284,6 +1817,7 @@ map.on('load',async()=>{
         afHTML(CACHE.gaps[biz],+p.j)+
         pipeHTML(pipeAt(CACHE.gaps[biz],+p.j,GAP_PIPE))+
         sfHTML(sfAt(CACHE.gaps[biz],+p.j,GAP_SF))+
+        charDotHTML(CACHE.gaps[biz],+p.j)+
         `<div class="pmi">bbl ${p.id}</div>`).addTo(map);});
   map.on('mouseenter','pt',()=>map.getCanvas().style.cursor='pointer');
   map.on('mouseleave','pt',()=>map.getCanvas().style.cursor='');
@@ -1335,6 +1869,7 @@ map.on('load',async()=>{
         `<div class="pmi">× is distance to the nearest one ÷ this category's reach tier</div>`+
         pipeHTML(pipeAt(NTA,j,NTA_PIPE))+
         sfHTML(sfAt(NTA,j,NTA_SF))+
+        charDotHTML(NTA,j)+
         `<div class="pmi">bbl ${esc(NTA.ids[j])}</div>`).addTo(map);});
   map.on('mouseenter','allpt',e=>{map.getCanvas().style.cursor='pointer';
     const p=e.features[0].properties;
@@ -1425,7 +1960,12 @@ function refresh(){
     map.getSource('poi').setData(EMPTY);
     map.getSource('allgap').setData(allGapFC());
     map.getSource('allpoi').setData(allPoiFC());
+    // The tint replaces the LEAD-CATEGORY hue, which is this mode's identity
+    // channel — so it is a separate, deliberate checkbox, never implied by
+    // switching the areas on.
+    map.setPaintProperty('allpt','circle-color',charDotsOn()?charDotColor():leadColor());
     updateBanner(); allLegend(); syncRankUI(); refreshAlc(); refreshPipe(); refreshSf();
+    refreshChar(); renderCharLegend(); syncCharUI();
     return;
   }
   map.getSource('allgap').setData(EMPTY);
@@ -1442,7 +1982,10 @@ function refresh(){
   const pf=poiFC();
   map.getSource('poi').setData(pf);
   map.setPaintProperty('cl','circle-color',lc());
-  map.setPaintProperty('pt','circle-color',lc());
+  // Clusters keep the CATEGORY hue even when the tint is on: a bubble holding
+  // 400 addresses of three different characters has no character of its own,
+  // and painting it one would be a claim the data does not make.
+  map.setPaintProperty('pt','circle-color',charDotsOn()?charDotColor():lc());
   // Shading is MAGNITUDE (the rank score); the hue stays the category's, which
   // is the only thing on this map that carries identity.
   map.setPaintProperty('cl','circle-opacity',clusterPaint());
@@ -1452,6 +1995,7 @@ function refresh(){
   // cross on screen is not a known location and must not inflate the banner.
   updateBanner(pf.features.reduce((n,f)=>n+(f.properties.s?1:0),0),gf.features.length);
   updateLegend(); refreshAlc(); refreshPipe(); refreshSf();
+  refreshChar(); renderCharLegend(); syncCharUI();
 }
 function sumOver(obj,pick){let n=0;META.boroughs.forEach(b=>{if(boroSel==='ALL'||b===boroSel)n+=pick(obj[b]);});return n;}
 function updateBanner(shown,gshown){
@@ -1641,7 +2185,7 @@ function buildUI(){
     scoreFit=e.target.checked; rankSig=''; refresh();};
   document.getElementById('cuiSel').onchange=e=>{cuiSel=e.target.value;refresh();};
   document.getElementById('actTog').onchange=e=>{activeOnly=e.target.checked;refresh();};
-  buildAlcUI(); buildPipeUI(); buildSfUI();
+  buildAlcUI(); buildPipeUI(); buildSfUI(); buildCharUI();
 }
 // The pipeline section carries TWO controls with different scopes: the overlay
 // toggle (a standalone layer) and the minimum-permitted-units filter (a filter
@@ -1835,6 +2379,42 @@ function buildAlcUI(){
     }
     refreshAlc();
   };
+}
+// Same contract as the alcohol overlay: the section is hidden entirely when
+// the export carried no character block, and shown-but-disabled with a REASON
+// when sql/021 has not run. The map never offers a toggle that would draw an
+// empty choropleth.
+function buildCharUI(){
+  const c=META.character, sec=document.getElementById('charSec'),
+        tog=document.getElementById('charTog'),
+        dtog=document.getElementById('charDotTog'),
+        fine=document.getElementById('charFine');
+  if(!c) return;
+  sec.hidden=false;
+  showChar=false; showCharDots=false;      // off by default, every load
+  tog.checked=false; dtog.checked=false;
+  if(!c.available){
+    tog.disabled=true; dtog.disabled=true;
+    fine.textContent='Not built — run `loci address-character build`, then '+
+      '`loci export-webmap`.'+(c.reason?' ('+c.reason+')':'');
+    return;
+  }
+  renderCharLegend(); syncCharUI();
+  tog.onchange=async e=>{
+    showChar=e.target.checked;
+    if(showChar&&!CHAR){
+      const ld=document.getElementById('loading');
+      ld.hidden=false; ld.textContent='Loading neighborhood character…';
+      await loadChar(); ld.hidden=true;
+      if(!CHAR||CHAR.available===false){ showChar=false; e.target.checked=false;
+        fine.textContent=(CHAR&&CHAR.reason)||'Could not load data/character.json.'; }
+    }
+    // Turning the areas off takes the address tint with it: a dot in a
+    // character colour with no legend on screen is an unlabelled colour.
+    if(!showChar){ showCharDots=false; dtog.checked=false; }
+    syncCharUI(); refreshChar(); renderCharLegend(); refresh();
+  };
+  dtog.onchange=e=>{ showCharDots=e.target.checked&&showChar; refresh(); };
 }
 function updateCounts(){
   document.querySelectorAll('[data-n]').forEach(el=>{

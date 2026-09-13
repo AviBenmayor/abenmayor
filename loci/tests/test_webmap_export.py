@@ -450,13 +450,13 @@ def test_write_emits_one_file_per_category_per_layer(con, tmp_path):
     _add_gap(con, "addr_mn", "MN")
     written = wx.write(wx.collect(con, ["MN", "BK"]), tmp_path)
 
-    # gaps + pois, then meta.json and the two standalone overlays, then one NTA
-    # + its index.
+    # gaps + pois, then meta.json and the four standalone overlays, then one
+    # NTA + its index.
     assert set(written) == (
         {f"gaps/{c}.json" for c in wx.ALLCATS}
         | {f"pois/{c}.json" for c in wx.ALLCATS}
         | {"meta.json", "alcohol.json", "pipeline.json", "storefronts.json",
-           "nta/MN0001.json", "nta/index.json"})
+           "character.json", "nta/MN0001.json", "nta/index.json"})
     import json
     meta = json.loads((tmp_path / "meta.json").read_text())
     assert meta["boroughs"] == ["MN", "BK"]
