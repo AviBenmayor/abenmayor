@@ -153,6 +153,38 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
    the hatch is what is on the map -- the hue alone is the ramp's job. */
 .chov .k{background-size:6px 6px}
 .chcav{font-size:10.5px;color:var(--muted);line-height:1.45;margin-top:2px}
+/* Pedestrian counts & cameras (DOT). A sixth standalone overlay, and the only
+   one whose mark is SIZED — a count point's area is its latest whole-round
+   total on a sqrt scale, which is the one encoding where a circle's AREA
+   reads as the number. So its legend needs a size ramp rather than a colour
+   key, drawn with the same sqrt law the map uses. The cameras below it are
+   deliberately a FIXED dot: the feed publishes no volume, and a sized camera
+   would invent one. */
+.ped{display:flex;flex-direction:column;gap:1px;margin-top:5px}
+.ped .row{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink2);padding:3px 0}
+.ped .k{width:30px;display:flex;align-items:center;justify-content:center;flex:none}
+.ped .tx{min-width:0;line-height:1.35}
+.ped .rule{display:block;font-size:10.5px;color:var(--muted);line-height:1.4}
+.ped .n{margin-left:auto;padding-left:6px;font-family:"IBM Plex Mono";font-size:11px;color:var(--muted);flex:none}
+.ped.off{opacity:.5}
+.pedsz{display:flex;align-items:flex-end;justify-content:space-around;gap:6px;
+       margin-top:7px;padding:7px 4px 4px;border:1px solid var(--line);border-radius:8px}
+.pedsz .b{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
+.pedsz .lab{font-family:"IBM Plex Mono";font-size:9.5px;color:var(--muted);white-space:nowrap}
+.pedsz.off{opacity:.5}
+/* The line that must never be cut: a count is a flow past a line, a camera
+   number is a stock in a frame. Printed from dot.json's own `caveats.compare`,
+   full text, no clamp — same contract the character caveat has. */
+.pedwarn{font-size:11px;color:var(--ink2);line-height:1.45;margin-top:7px;
+         padding:6px 8px;border-left:2px solid var(--accent);background:var(--bg);border-radius:0 6px 6px 0}
+/* The per-camera sample table inside a popup. Right-aligned numbers, one
+   border between rows, and it has to survive a 280px popup on a phone. */
+.dtab{border-collapse:collapse;margin-top:6px;font-size:11px;color:#57524a}
+.dtab th,.dtab td{text-align:right;padding:2px 0 2px 9px;white-space:nowrap}
+.dtab th:first-child,.dtab td:first-child{text-align:left;padding-left:0}
+.dtab th{font-weight:600;color:#948d80;font-size:9.5px;text-transform:uppercase;letter-spacing:.05em}
+.dtab tr+tr td{border-top:1px solid rgba(28,26,22,.09)}
+.dmono{font-family:"IBM Plex Mono";font-size:10px;color:#948d80;word-break:break-all}
 .chk input:disabled{cursor:default}
 .chk.off{opacity:.5;cursor:default}
 /* The caveat expander. One line closed, the WHOLE text open — no max-height,
@@ -239,6 +271,17 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
         <div class="cavtx" id="charCavTx"></div></details>
       <div class="asof" id="charAsof"></div>
       <div class="fine" id="charFine"></div>
+    </div>
+    <div class="sec" id="pedSec" hidden>
+      <h2>Pedestrian counts <span class="hint">DOT counts &amp; cameras</span></h2>
+      <label class="chk"><input type="checkbox" id="pedTog"> Show DOT counts &amp; cameras</label>
+      <div class="pedsz" id="pedSize"></div>
+      <div class="ped" id="pedLegend"></div>
+      <div class="pedwarn" id="pedWarn"></div>
+      <details class="cav" id="pedCav"><summary>114 screenlines are not a sample of the city; see caveat</summary>
+        <div class="cavtx" id="pedCavTx"></div></details>
+      <div class="asof" id="pedAsof"></div>
+      <div class="fine" id="pedFine"></div>
     </div>
     <div class="sec" id="alcSec" hidden>
       <h2>Alcohol licences <span class="hint">overlay</span></h2>
@@ -1474,6 +1517,324 @@ function syncCharUI(){
   const dtog=document.getElementById('charDotTog');
   if(dtog) dtog.disabled=!showChar;
 }
+
+// ------------------------------------------- DOT pedestrian counts & cameras
+// Owner request 2026-09-13: "we need NYC DOT data, both the bi-annual and the
+// camera data." Two point sets, one toggle, and one sentence that has to be on
+// screen whenever they are — because they are DIFFERENT PHYSICAL QUANTITIES
+// drawn as dots a few pixels apart:
+//
+//   a COUNT is a FLOW  — people past a screenline in a two- or three-hour
+//                        window, counted by hand, twice a year
+//   a CAMERA number is a STOCK — people standing in one frame at an instant
+//
+// Little's law (stock = flow x dwell) is the only bridge and nothing here
+// measures dwell, so the two are never compared, never divided, and never
+// drawn on the same scale. `caveats.compare` in dot.json is that sentence and
+// the legend prints it in full.
+//
+// SIZE IS ONLY ON THE COUNTS. A count point's radius is sqrt(latest whole-round
+// total), so the circle's AREA is the number — the one honest way to size a
+// symbol. The cameras are a FIXED dot forever: the NYCTMC feed publishes a
+// pole position and nothing else, so any size on a camera would be a volume
+// this project invented. A camera that HAS been sampled gets a ring, not a
+// bigger dot: the ring says "there is a reading here", which is a fact about
+// our sampling, not about the sidewalk.
+//
+// A STANDALONE LAYER, exactly like the other five: never read by gapFC() or
+// poiFC(), never touched by the business selector, and switching it on cannot
+// open or close a gap. It is CONTEXT and it enters no score.
+//
+// ITS OWN FILE AND ITS OWN COMMAND. data/dot.json is written by
+// `loci dot-export`, not by `loci export-webmap`, so the 90-second full export
+// is not the price of a fresh count. Fetched lazily: a viewer who never opens
+// the toggle never downloads it.
+let showPed=false, PED=null, pedLoading=false;
+const PED_FILE='data/dot.json';
+//: ONE categorical hue for the counts, deliberately far from both the fifteen
+//: category hues and the character ramp's reds (dataviz validator, light
+//: surface #f3f0ea, all-pairs against all 29 marks this map can draw: worst
+//: CVD dE 9.3 vs the bar hue #7a5cc0, above the 8.0 target). The camera dot is
+//: a NEUTRAL and fails the chroma floor on purpose — the same exemption the
+//: character no-data grey takes, because a mark that carries no magnitude must
+//: not read as a hue that does.
+const PED_COLORS={count:'#2c67fc', camera:'#6f695e'};
+//: The same two re-stepped for a dark surface (#17181a), not a second palette.
+//: The blue moves off #4886fe (character's dark `corporate`) — worst dark pair
+//: dE 10.7. Unreachable until the page gains a dark theme; shipped so that a
+//: future one does not invent its own colours. Selected by the page's OWN
+//: background token via charDark(), never by prefers-color-scheme.
+const PED_COLORS_DARK={count:'#394de7', camera:'#9a9385'};
+const pedPal=()=>charDark()?PED_COLORS_DARK:PED_COLORS;
+const pedTip=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:8});
+//: cols+rows packing, same as clusters.json. Named lookup, never a magic index.
+const pedIdx=cols=>{const o={};(cols||[]).forEach((c,i)=>{o[c]=i;});return o;};
+const pedOk=()=>!!(PED&&PED.counts&&PED.cameras&&!PED.error);
+const pedCav=k=>((PED&&PED.caveats)||{})[k]||'';
+const pedNum=v=>v==null?'—':Number(v).toLocaleString();
+
+async function loadPed(){
+  if(PED||pedLoading) return;
+  pedLoading=true;
+  try{
+    const r=await fetch(PED_FILE);
+    if(!r.ok) throw new Error(r.status);
+    PED=await r.json();
+  }catch(e){ PED={error:'could not load '+PED_FILE+' — run `loci dot-export`'}; }
+  pedLoading=false;
+  refreshPed(); renderPedLegend();
+}
+
+// Every layer on this map honours the borough selector, and this one covers a
+// city the map does not: DOT counts 25 points in Queens and 8 in the Bronx,
+// and 566 of the 969 cameras are outside Manhattan and Brooklyn. Those are
+// dropped, not drawn — a dot in a borough whose gaps are not on screen would
+// be the only mark here that answers a question this map is not asking.
+// BRIDGE MIDPOINTS carry no borough code (a span between two boroughs belongs
+// to neither) and are drawn whenever the layer is on; the legend says so.
+function pedKeep(bc,bridge){
+  if(bridge) return true;
+  if(!bc) return false;
+  return boroSel==='ALL'?META.boroughs.indexOf(bc)>=0:bc===boroSel;
+}
+//: The size scale is fitted to ALL 114 points, never to the visible ones: a
+//: circle has to mean the same number of people in every view, or switching
+//: borough silently rescales the map.
+function pedMaxTotal(){
+  if(!pedOk()) return 1;
+  const i=pedIdx(PED.counts.cols);
+  return PED.counts.rows.reduce((m,r)=>Math.max(m,r[i.total]||0),0)||1;
+}
+const PED_R_MIN=2.4, PED_R_Z14=21;
+//: sqrt, so AREA is the count. Zoom-and-property: the data expression is
+//: nested inside the zoom interpolation, which is the one legal shape for it.
+function pedRadius(){
+  const mx=Math.sqrt(pedMaxTotal());
+  const at=rmax=>['interpolate',['linear'],['sqrt',['get','t']],0,PED_R_MIN,mx,rmax];
+  return ['interpolate',['linear'],['zoom'],10,at(11),14,at(PED_R_Z14),17,at(30)];
+}
+//: The same law in plain JS, for the legend — one scale, drawn twice.
+const pedLegendR=(v,rmax)=>PED_R_MIN+(rmax-PED_R_MIN)*
+  Math.sqrt(Math.max(0,v||0))/Math.sqrt(pedMaxTotal());
+
+//: Features carry the ROW INDEX, not the row: the popup reads dot.json itself,
+//: so seventeen fields per point never enter the GeoJSON. Same trick `allpt`
+//: uses for the all-opportunities layer.
+function pedCountFC(){
+  if(!showPed||!pedOk()) return EMPTY;
+  const i=pedIdx(PED.counts.cols), out=[];
+  PED.counts.rows.forEach((r,j)=>{
+    const br=r[i.type]!=='on_street'?1:0;
+    if(!pedKeep(r[i.bc],br)) return;
+    out.push({type:'Feature',geometry:{type:'Point',coordinates:[r[i.lon],r[i.lat]]},
+      properties:{j:j,br:br,t:r[i.total]==null?0:r[i.total]}});
+  });
+  return {type:'FeatureCollection',features:out};
+}
+const pedSampled=()=>new Set(((PED&&PED.samples&&PED.samples.cameras)||[]));
+function pedCameraFC(){
+  if(!showPed||!pedOk()) return EMPTY;
+  const i=pedIdx(PED.cameras.cols), s=pedSampled(), out=[];
+  PED.cameras.rows.forEach((r,j)=>{
+    if(!pedKeep(r[i.boro],false)) return;
+    out.push({type:'Feature',geometry:{type:'Point',coordinates:[r[i.lon],r[i.lat]]},
+      properties:{j:j,s:s.has(r[i.id])?1:0}});
+  });
+  return {type:'FeatureCollection',features:out};
+}
+
+//: What is actually on screen, recorded by refreshPed so the legend can report
+//: it without rebuilding both feature collections a second time.
+let pedDrawn={pts:0,cams:0};
+function refreshPed(){
+  const cs=map.getSource('pedcam'), ps=map.getSource('pedpt');
+  if(!cs||!ps) return;
+  const cam=pedCameraFC(), pts=pedCountFC();
+  pedDrawn={pts:pts.features.length,cams:cam.features.length};
+  cs.setData(cam);
+  ps.setData(pts);
+  if(!showPed) return;
+  const p=pedPal();
+  map.setPaintProperty('pedcam','circle-color',p.camera);
+  map.setPaintProperty('pedcam','circle-stroke-color',
+    ['case',['==',['get','s'],1],p.count,'#fffdf9']);
+  map.setPaintProperty('pedpt','circle-radius',pedRadius());
+  // BRIDGE MIDPOINTS ARE HOLLOW. `loc` 101-114 are East and Harlem River
+  // midspans: real counts, but a point in the middle of the Williamsburg
+  // Bridge has no residential catchment, and every address measure in this
+  // project excludes them. Unfilled is that exclusion, drawn.
+  map.setPaintProperty('pedpt','circle-color',
+    ['case',['==',['get','br'],1],'#fffdf9',p.count]);
+  map.setPaintProperty('pedpt','circle-opacity',
+    ['case',['==',['get','br'],1],0.28,0.42]);
+  map.setPaintProperty('pedpt','circle-stroke-color',p.count);
+}
+
+//: 'pm_peak' -> 'pm peak', 'sunday' -> 'Sunday'. The vocabulary is the
+//: sampler's (mta_ridership's five dayparts); only the spacing is this file's.
+const pedWord=s=>String(s||'').replace(/_/g,' ');
+const pedCap=s=>{const w=pedWord(s);return w.charAt(0).toUpperCase()+w.slice(1);};
+//: '07–09'. The windows come from dot_pedestrian.WINDOWS via the payload, so
+//: the popup can never claim AM and PM are the same length (they are not: AM
+//: and MD are two hours, PM is three).
+function pedWin(per){
+  const w=((PED&&PED.counts&&PED.counts.windows)||{})[per];
+  return w?`${String(w[0]).padStart(2,'0')}–${String(w[1]).padStart(2,'0')}`:'';
+}
+function pedCountHTML(j,full){
+  const C=PED.counts, i=pedIdx(C.cols), r=C.rows[j];
+  const br=r[i.type]!=='on_street';
+  const per=(C.periods||['am','md','pm']);
+  const cells=per.map(pp=>
+    `<tr><td>${pp.toUpperCase()} <span class="dmono">${pedWin(pp)}</span></td>`+
+    `<td><b>${pedNum(r[i[pp]])}</b></td></tr>`).join('');
+  let h=`<div class="pnb">${esc(r[i.street]||'DOT count point '+r[i.id])}</div>`+
+    `<div class="ppop">${esc(r[i.from]||'—')} → ${esc(r[i.to]||'—')} · ${esc(r[i.boro]||'')}</div>`+
+    `<div class="ppop" style="margin-top:4px">Latest round <b>${esc(r[i.round]||'—')}</b>`+
+    (r[i.round]?'':' — no round with all three periods')+`</div>`+
+    `<table class="dtab">${cells}`+
+    `<tr><td>Seven counted hours</td><td><b>${pedNum(r[i.total])}</b></td></tr></table>`;
+  const tr=r[i.trend];
+  h+=`<div class="ppop" style="margin-top:6px">`+(tr==null
+    ? `No ${C.trendYears}-year trend — fewer than three complete rounds in the window`
+    : `${C.trendYears}-yr trend <b>${tr>0?'+':'−'}${pedNum(Math.abs(Math.round(tr)))}</b> people/yr`+
+      ` <span style="color:var(--muted)">over ${pedNum(r[i.trendN])} rounds</span>`)+
+    `</div>`;
+  if(!full) return h+`<div class="pmi">click for the trend caveat</div>`;
+  h+=`<div class="pmi">${pedNum(r[i.rounds])} rounds counted here since `+
+     `${esc((PED.source&&PED.source.counts&&PED.source.counts.firstRound)||'2007-05')}</div>`;
+  // UNTRUNCATED, every time. A slope fitted across a shutdown and a recovery
+  // is not a direction, and this is the only place the reader is told so.
+  if(pedCav('trend')) h+=`<div class="pmi" style="text-transform:none;letter-spacing:0;line-height:1.45;margin-top:5px">${esc(pedCav('trend'))}</div>`;
+  if(br) h+=`<div class="warn">Bridge midpoint — no residential catchment; `+
+            `excluded from every address measure in this project.</div>`;
+  return h;
+}
+function pedCamHTML(j,full){
+  const C=PED.cameras, i=pedIdx(C.cols), r=C.rows[j];
+  const area=((C.boroughNames||{})[r[i.boro]])||r[i.boro]||'—';
+  let h=`<div class="pnb">${esc(r[i.name]||'Traffic camera')}</div>`+
+    `<div class="ppop">${esc(area)} · NYCTMC camera</div>`;
+  const S=(PED.samples||{}), si=pedIdx(S.cols);
+  const mine=(S.rows||[]).filter(x=>x[si.cam]===r[i.id]);
+  if(!mine.length){
+    h+=`<div class="ppop" style="margin-top:5px">Persons in frame: <b>not sampled</b></div>`;
+    if(full) h+=`<div class="pmi" style="text-transform:none;letter-spacing:0;line-height:1.45">`+
+      `${S.available===false?'Nothing has been sampled yet':'This camera has no frames'} — `+
+      `<code>loci sidewalk-count sample --camera ${esc(r[i.id])} --minutes 10</code></div>`;
+  }else{
+    // Ordered by the sampler's OWN vocabulary, not by whatever the group-by
+    // returned: weekday before Sunday, morning before evening.
+    const dt=S.dayTypes||[], dp=S.dayparts||[];
+    const key=x=>[dt.indexOf(x[si.dayType]),dp.indexOf(x[si.daypart])];
+    mine.sort((a,b)=>{const ka=key(a),kb=key(b);return ka[0]-kb[0]||ka[1]-kb[1];});
+    h+=`<table class="dtab"><tr><th>when</th><th>mean</th><th>max</th><th>frames</th></tr>`+
+      mine.map(x=>`<tr><td>${esc(pedCap(x[si.dayType]))} · ${esc(pedWord(x[si.daypart]))}</td>`+
+        `<td><b>${x[si.mean]==null?'—':x[si.mean].toFixed(2)}</b></td>`+
+        `<td>${pedNum(x[si.max])}</td><td>${pedNum(x[si.frames])}</td></tr>`).join('')+
+      `</table>`;
+    const days=((S.dates||{})[r[i.id]])||[];
+    // The model id is NOT inside .pmi's uppercase: 'yolo11n@3770b4e01650' is a
+    // hash, and a hash rendered in capitals is a different string to anyone
+    // trying to match it against the table.
+    h+=`<div class="pmi">people in frame · sampled ${days.map(esc).join(', ')||'—'}</div>`+
+       `${(S.models||[]).length?`<div class="dmono">${esc(S.models.join(', '))}</div>`:''}`;
+    if(full&&pedCav('samples'))
+      h+=`<div class="pmi" style="text-transform:none;letter-spacing:0;line-height:1.45;margin-top:5px">${esc(pedCav('samples'))}</div>`;
+  }
+  if(full) h+=`<div class="dmono" style="margin-top:5px">${esc(r[i.id])}</div>`;
+  return h;
+}
+
+// The legend. A SIZE ramp for the counts (three circles drawn with the map's
+// own sqrt law), one key each for the bridge marker and the camera dot, and
+// the compare caveat in full underneath — the legend is where the two number
+// families sit next to each other, so it is where the warning belongs.
+function renderPedSize(){
+  const el=document.getElementById('pedSize'); if(!el) return;
+  if(!pedOk()){el.hidden=true;el.innerHTML='';return;}
+  const i=pedIdx(PED.counts.cols);
+  const tot=PED.counts.rows.map(r=>r[i.total]).filter(v=>v!=null).sort((a,b)=>a-b);
+  if(!tot.length){el.hidden=true;el.innerHTML='';return;}
+  el.hidden=false; el.className='pedsz'+(showPed?'':' off');
+  const p=pedPal();
+  el.innerHTML=[tot[0],tot[Math.floor(tot.length/2)],tot[tot.length-1]].map(v=>{
+    const r=pedLegendR(v,PED_R_Z14), d=Math.ceil(r*2)+4;
+    return `<div class="b"><svg width="${d}" height="${d}" viewBox="0 0 ${d} ${d}" aria-hidden="true">`+
+      `<circle cx="${(d/2).toFixed(1)}" cy="${(d/2).toFixed(1)}" r="${r.toFixed(1)}" `+
+      `fill="${p.count}" fill-opacity="0.42" stroke="${p.count}" stroke-width="1.6"/></svg>`+
+      `<span class="lab">${pedNum(v)}</span></div>`;}).join('');
+}
+function renderPedLegend(){
+  renderPedSize();
+  const el=document.getElementById('pedLegend'); if(!el) return;
+  el.className='ped'+(showPed?'':' off');
+  const p=pedPal();
+  const drawnPts=showPed?pedDrawn.pts:0, drawnCam=showPed?pedDrawn.cams:0;
+  const nSampled=pedOk()?((PED.samples&&PED.samples.cameras)||[]).length:0;
+  const dot=(r,fill,op,stroke,sw)=>
+    `<svg width="26" height="${2*r+6}" viewBox="0 0 26 ${2*r+6}" aria-hidden="true">`+
+    `<circle cx="13" cy="${r+3}" r="${r}" fill="${fill}" fill-opacity="${op}" `+
+    `stroke="${stroke}" stroke-width="${sw}"/></svg>`;
+  el.innerHTML=
+    `<div class="row"><span class="k">${dot(8,p.count,0.42,p.count,1.6)}</span>`+
+    `<span class="tx"><b>Count point</b><span class="rule">sized by the latest whole-round `+
+    `total — AM + MD + PM, seven counted hours</span></span></div>`+
+    `<div class="row"><span class="k">${dot(8,'#fffdf9',0.28,p.count,1.6)}</span>`+
+    `<span class="tx"><b>Bridge midpoint</b><span class="rule">hollow: a real count with no `+
+    `residential catchment, excluded from every address measure here</span></span></div>`+
+    `<div class="row"><span class="k">${dot(2.9,p.camera,0.75,'#fffdf9',0.8)}</span>`+
+    `<span class="tx"><b>Traffic camera</b><span class="rule">the pole, never sized — the feed `+
+    `publishes no volume, bearing or field of view</span></span>`+
+    `<span class="n">${pedNum(drawnCam)}</span></div>`+
+    `<div class="row"><span class="k">${dot(2.9,p.camera,0.75,p.count,2)}</span>`+
+    `<span class="tx"><b>Sampled camera</b><span class="rule">a ring, not a bigger dot: we have `+
+    `counted people in its frames</span></span><span class="n">${pedNum(nSampled)}</span></div>`;
+  const warn=document.getElementById('pedWarn');
+  if(warn) warn.textContent=pedCav('compare');
+  const cav=document.getElementById('pedCavTx');
+  if(cav) cav.textContent=[pedCav('counts'),pedCav('cameras')].filter(Boolean).join('\n\n');
+  const src=(PED&&PED.source&&PED.source.counts)||{};
+  const asof=document.getElementById('pedAsof');
+  if(asof) asof.innerHTML=src.rounds
+    ? `counts <b>${esc(String(src.firstRound))} → ${esc(String(src.lastRound))}</b> `+
+      `(${pedNum(src.rounds)} rounds) · cameras <b>NYCTMC</b>`
+    : '';
+  const fine=document.getElementById('pedFine');
+  // The sentence has to be true under BOTH states of the borough selector: on
+  // ALL the missing points are in boroughs this map does not cover, and on a
+  // single borough they are mostly in the other one this map does cover.
+  const where=boroSel==='ALL'
+    ? 'the rest are in boroughs this map does not cover'
+    : `the rest are outside the ${esc(META.boroughNames[boroSel]||boroSel)} filter`;
+  if(fine) fine.textContent=!pedOk()
+    ? (PED&&PED.error?PED.error:'not loaded')
+    : `${pedNum(drawnPts)} of ${pedNum(PED.counts.n)} count points and `+
+      `${pedNum(drawnCam)} of ${pedNum(PED.cameras.n)} cameras are drawn — ${where}. `+
+      `Bridge midpoints are drawn in every view: a span between two boroughs is in neither. `+
+      `Context only — it enters no score.`;
+}
+function buildPedUI(){
+  const sec=document.getElementById('pedSec'), tog=document.getElementById('pedTog'),
+        fine=document.getElementById('pedFine');
+  if(!sec||!tog) return;
+  // Shown always. dot.json has its OWN command, so meta.json cannot say
+  // whether it exists — the toggle finds out, and says what to run if not.
+  sec.hidden=false;
+  showPed=false; tog.checked=false;            // off by default, every load
+  renderPedLegend();
+  tog.onchange=async e=>{
+    showPed=e.target.checked;
+    if(showPed&&!PED){
+      const ld=document.getElementById('loading');
+      ld.hidden=false; ld.textContent='Loading DOT counts & cameras…';
+      await loadPed(); ld.hidden=true;
+      if(!pedOk()){ showPed=false; e.target.checked=false;
+        fine.textContent=(PED&&PED.error)||'Could not load '+PED_FILE+'.'; }
+    }
+    refreshPed(); renderPedLegend();
+  };
+}
 const ALL_MODE='__all__';
 const EMPTY={type:'FeatureCollection',features:[]};
 let NTAIDX=null, NTA=null, ntaSel=null, hiCat=null;
@@ -1734,6 +2095,25 @@ map.on('load',async()=>{
   map.addLayer({id:'charline',type:'line',source:'char',
     paint:{'line-color':'#9b968a','line-width':1,'line-opacity':0.5}},'cl');
 
+  // DOT counts & cameras. Registered EMPTY up front, with the same beforeId
+  // 'cl' the character fill used — added AFTER it, so these sit ABOVE the
+  // neighbourhood tint and BELOW the gap clusters and their dots. That is the
+  // whole of the ordering rule: this layer is context under the subject, and
+  // a 21-pixel count circle must never cover a gap address.
+  // The 969 camera dots go under the 114 count points: the small fixed mark
+  // yields to the sized one, or a dense arterial would hide its own count.
+  map.addSource('pedcam',{type:'geojson',data:EMPTY});
+  map.addLayer({id:'pedcam',type:'circle',source:'pedcam',
+    paint:{'circle-radius':['interpolate',['linear'],['zoom'],10,1.6,14,2.9,17,4.4],
+      'circle-color':PED_COLORS.camera,'circle-opacity':0.75,
+      'circle-stroke-width':['case',['==',['get','s'],1],2,0.8],
+      'circle-stroke-color':'#fffdf9','circle-stroke-opacity':0.9}},'cl');
+  map.addSource('pedpt',{type:'geojson',data:EMPTY});
+  map.addLayer({id:'pedpt',type:'circle',source:'pedpt',
+    paint:{'circle-radius':4,'circle-color':PED_COLORS.count,'circle-opacity':0.42,
+      'circle-stroke-width':1.6,'circle-stroke-color':PED_COLORS.count,
+      'circle-stroke-opacity':0.95}},'cl');
+
   // Known locations sit ON TOP and read as a different mark entirely: small
   // ink dots, filled when 2+ sources corroborate the record and hollow when
   // only one source attests it (D47). The layer is FILTERED to the supply set
@@ -1973,6 +2353,26 @@ map.on('load',async()=>{
     new maplibregl.Popup({closeButton:false,maxWidth:'280px'})
       .setLngLat(e.features[0].geometry.coordinates)
       .setHTML(sfHTMLPremises(e.features[0].properties,true)).addTo(map);});
+
+  // DOT: hover names the point and gives the round; click adds the caveat the
+  // number cannot be read without. Same two-tier contract as every overlay.
+  map.on('mouseenter','pedpt',e=>{map.getCanvas().style.cursor='pointer';
+    pedTip.setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(pedCountHTML(+e.features[0].properties.j,false)).addTo(map);});
+  map.on('mouseleave','pedpt',()=>{map.getCanvas().style.cursor='';pedTip.remove();});
+  map.on('click','pedpt',e=>{
+    new maplibregl.Popup({closeButton:false,maxWidth:'290px'})
+      .setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(pedCountHTML(+e.features[0].properties.j,true)).addTo(map);});
+
+  map.on('mouseenter','pedcam',e=>{map.getCanvas().style.cursor='pointer';
+    pedTip.setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(pedCamHTML(+e.features[0].properties.j,false)).addTo(map);});
+  map.on('mouseleave','pedcam',()=>{map.getCanvas().style.cursor='';pedTip.remove();});
+  map.on('click','pedcam',e=>{
+    new maplibregl.Popup({closeButton:false,maxWidth:'290px'})
+      .setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(pedCamHTML(+e.features[0].properties.j,true)).addTo(map);});
 });
 
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
@@ -2018,6 +2418,7 @@ function refresh(){
     map.setPaintProperty('allpt','circle-color',charDotsOn()?charDotColor():leadColor());
     updateBanner(); allLegend(); syncRankUI(); refreshAlc(); refreshPipe(); refreshSf();
     refreshChar(); renderCharLegend(); syncCharUI();
+    refreshPed(); renderPedLegend();
     return;
   }
   map.getSource('allgap').setData(EMPTY);
@@ -2052,6 +2453,9 @@ function refresh(){
   updateBanner(pf.features.reduce((n,f)=>n+(f.properties.s?1:0),0),gf.features.length);
   updateLegend(); syncStreetUI(); refreshAlc(); refreshPipe(); refreshSf();
   refreshChar(); renderCharLegend(); syncCharUI();
+  // The DOT layer honours the borough selector like every other layer, so it
+  // is redrawn here rather than only on its own toggle.
+  refreshPed(); renderPedLegend();
 }
 function sumOver(obj,pick){let n=0;META.boroughs.forEach(b=>{if(boroSel==='ALL'||b===boroSel)n+=pick(obj[b]);});return n;}
 function updateBanner(shown,gshown){
@@ -2252,7 +2656,7 @@ function buildUI(){
     scoreFit=e.target.checked; rankSig=''; refresh();};
   document.getElementById('cuiSel').onchange=e=>{cuiSel=e.target.value;refresh();};
   document.getElementById('actTog').onchange=e=>{activeOnly=e.target.checked;refresh();};
-  buildAlcUI(); buildPipeUI(); buildSfUI(); buildCharUI();
+  buildAlcUI(); buildPipeUI(); buildSfUI(); buildCharUI(); buildPedUI();
 }
 // The pipeline section carries TWO controls with different scopes: the overlay
 // toggle (a standalone layer) and the minimum-permitted-units filter (a filter

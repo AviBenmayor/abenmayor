@@ -107,6 +107,25 @@ PERIODS = ("am", "md", "pm")
 #: hours", which is what `count` means and all it means.
 WINDOWS = {"am": (7, 9), "md": (12, 14), "pm": (16, 19)}
 
+#: The rounds the programme did not run. DOT published no September 2019 round
+#: and no May 2020 round, and 2024's spring round was held in JUNE. These are
+#: DATA, not trivia: they are why a trend here is fitted on decimal years (see
+#: `point_summary`) and why the ten-year window straddles a pandemic.
+MISSING_ROUNDS = ("2019-09", "2020-05")
+MOVED_ROUNDS = {"2024-05": "2024-06"}
+
+#: THE SENTENCE THAT MUST TRAVEL WITH EVERY TREND COMPUTED FROM THIS TABLE.
+#: Defined here, beside the gaps it describes, so the webmap popup, a card and
+#: a memo all print the same words -- a caveat retyped at the point of display
+#: is a caveat that drifts from the data it is about.
+TREND_CAVEAT = (
+    "The series has holes. DOT ran no September 2019 round and no May 2020 "
+    "round (COVID), and 2024's spring round was June, not May. The slope is "
+    "fitted on decimal years, so the gaps are spaced correctly -- but a "
+    "ten-year window straddles the shutdown and the recovery, and a positive "
+    "slope over it can be a return to 2019 rather than growth past it. Read "
+    "it with the N of rounds beside it, and read it as description.")
+
 #: The non-count columns of the feed. Everything else is parsed as a round.
 META_FIELDS = ("the_geom", "objectid", "loc", "borough", "street_nam",
                "from_stree", "to_street", "iex")
