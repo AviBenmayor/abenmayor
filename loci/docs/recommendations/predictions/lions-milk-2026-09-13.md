@@ -467,3 +467,254 @@ including delivery (at merchant net) and private-event income.
   wrong *on traffic* and the owner's transaction count should come in under ~220/weekday. If
   truth is below $1.2M **and** the owner reports 270+ weekday transactions, the model is wrong
   *on ticket* instead, and the 1.30 repricing factor is the thing that failed.
+
+---
+
+## Bottom-up cost model and P&L (recorded before the owner's answer)
+
+**Written:** 2026-09-13, 18:40 ET. Cost side only — revenue is an *input* at the three
+scenarios already in this file. Scripts: `scratchpad/lions_milk/costs/cogs_model.py`,
+`pnl_mc.py`, `addendum.py`. All figures annual, **ex-sales-tax** (8.875% is pass-through
+and excluded throughout). 40,000-draw Monte Carlo, triangular priors, two **correlated**
+model-level factors on each side (`cost_level`, `price_level` on COGS; `staffing_level`,
+`offbar` on labour) because independent triangulars diversify away uncertainty that is in
+fact systematic — the same error this file's revenue section called out.
+
+### Baking: in-house or bought in?
+
+Evidence says **hybrid**, and it is carried as the base case. A 2019-vintage listing
+(shootnewyorkcity.com) reads: "pastries from Balthazar which they receive daily **and they
+also have freshly made sweet and savory Turkish food**." Western pastry is bought; the
+Turkish savouries (börek, simit, koulouri) are made on site. All three scenarios are run.
+*Note, flagged not resolved:* that same page carries "**Update** - they are no longer open,"
+and this file's §1 records a re-issued DOHMH permit (CAMIS 50185551, first inspected
+2026-08-31). Both are consistent with an ownership change; neither is confirmed.
+
+### 1. Labour
+
+Staffing plan from the posted hours (Mon–Fri 07:30–16:30 = 9.0 h; Sat–Sun 08:30–17:00 =
+8.5 h), with 45 min open prep and 45 min close on each side.
+
+| | Shifts | h/day |
+|---|---|---|
+| Weekday | opener 06:45–15:15 (8.5) · peak 07:30–14:00 (6.5) · closer 10:00–17:15 (7.25) | 22.25 |
+| Weekend | opener 07:45–15:45 (8.0) · peak 09:00–16:00 (7.0) · closer 10:00–17:45 (7.75) · peak extra 10:00–15:00 (5.0) | 27.75 |
+
+Counter = 5×22.25 + 2×27.75 = **166.75 h/wk**, of which 40 are a shift lead. Plus a baker
+40 h/wk (hybrid/in-house) and prep/dish/porter 28 h/wk. Plus an **off-bar multiplier**
+tri(1.06, **1.12**, 1.20) for ordering, inventory, scheduling, training, deep clean and
+sickness cover — labour the rota does not contain — and a correlated `staffing_level`
+tri(0.90, **1.05**, 1.25). Hours scale with revenue at elasticity tri(0.30, **0.45**, 0.60):
+labour is semi-fixed, you cannot staff below the minimum needed to open the door.
+
+Wages (base, **no tip credit taken**): lead $25–32, barista $18–22, baker $21–28, prep
+$17–20.
+
+| Revenue | h/wk | employees | fully-burdened labour p25 / **p50** / p75 | % of revenue |
+|---|---|---|---|---|
+| $900,000 | 269 | 10.4 | $333,359 / **$351,915** / $371,766 | **39.1%** |
+| $1,200,000 | 292 | 11.3 | $362,375 / **$382,302** / $403,962 | **31.9%** |
+| $1,500,000 | 315 | 12.1 | $390,614 / **$412,440** / $435,637 | **27.5%** |
+
+**Employer burden 13.5% of gross wages**, decomposed: FICA 7.65% · FUTA 0.14% · NY SUI
+2.58% · workers' comp 2.58% · DBL 0.48%. PFL is employee-paid (0.432% in 2026), so it is
+**not** an employer cost. Wages additionally carry ×1.028 for overtime + NY spread-of-hours
+and ×1.016 for NYC ESSTA paid sick leave actually used.
+
+*Sources.* NYC minimum wage **$16.50 (2025) → $17.00 (2026)**, CPI-indexed from 2027:
+[dol.ny.gov](https://dol.ny.gov/history-minimum-wage-new-york-state). Tip credit —
+NY Hospitality Wage Order Part 146; "food service worker" is defined by **function** (primarily
+serves food/beverages, regularly receives tips), not by table service, so a counter barista
+**can** qualify; 2026 NYC food-service cash wage $11.35 + $5.65 credit; an employer not taking
+the credit must pay the full minimum: [12 NYCRR 146-3.4](https://www.law.cornell.edu/regulations/new-york/12-NYCRR-146-3.4),
+[DOL CR146](https://dol.ny.gov/system/files/documents/2024/12/cr146.pdf). FUTA 0.6% on first
+$7,000, **no NY credit reduction for 2025**: [irs.gov](https://www.irs.gov/businesses/small-businesses-self-employed/futa-credit-reduction).
+NY SUI taxable wage base **$12,800 (2025) → $17,600 (2026)**, experienced band 1.7–9.5%:
+[dol.ny.gov](https://dol.ny.gov/unemployment-insurance-rate-information). Workers' comp —
+NYCIRB restaurant classes, $1.50–$4.00 per $100 payroll: [nycirb.org](https://www.nycirb.org/filings/2024/2024_Loss_Cost_Filing.pdf).
+ESSTA 1 h per 30 h, 40 h cap at 5–99 employees ≈ 1.9% of payroll:
+[nyc.gov DCWP](https://www.nyc.gov/site/dca/about/paid-sick-leave-FAQs.page). Spread of hours
+(+1 h at minimum wage above a 10-h spread, applies regardless of pay rate):
+[12 NYCRR 146-1.6](https://www.law.cornell.edu/regulations/new-york/12-NYCRR-146-1.6).
+**NYC Fair Workweek does not cover an independent café** (30+ location fast-food chains only).
+Brooklyn barista wages $16–$24, avg $18.51: [Indeed](https://www.indeed.com/career/barista/salaries/Brooklyn--NY).
+
+**The tip credit is the single largest discretionary labour lever: taking it would cut
+labour by $62k–$74k/yr** (labour 31.9% → 26.2% at $1.2M). The base case assumes it is *not*
+taken, which is the norm at NYC specialty cafés. This is checkable and it is the most
+consequential thing this model guesses about.
+
+### 2. Cost of goods
+
+Item-level, then weighted by the **same daypart item mix** the revenue section used, so the
+COGS blend and the revenue blend cannot drift apart. Unit costs: espresso shot 18 g of a
+specialty wholesale bean at $15–19/lb → $0.60–0.75; milk 9 oz at 65% dairy ($0.37) / 35% oat
+(Oatly Barista $0.10/oz → $0.91) → $0.56; cup+lid $0.14–0.15 all-in-one; wholesale croissant
+$1.83–2.38/unit; wine 20–25% pour cost at 5 pours/750 ml. Waste/spoilage/comps/staff drinks/
+espresso dial-in carried as a multiplier, **higher where fresh pastry is delivered daily**.
+
+| Scenario | p25 | **p50** | p75 | beverage COGS | food COGS |
+|---|---|---|---|---|---|
+| In-house | 22.3% | **23.7%** | 25.2% | 21.1% of bev rev | 26.6% of food rev |
+| **Hybrid (base)** | **24.6%** | **26.2%** | **27.9%** | 21.4% | 31.6% |
+| All purchased | 30.2% | **32.1%** | 34.2% | 21.8% | 43.8% |
+
+Revenue mix falls out at **53% beverage / 47% food**, alcohol only 3.4%. Benchmark for a café
+with a real food menu is 25–35% ([Bzz](https://www.bzz-app.com/industry-cost-benchmarks/coffee-shop),
+[Bellwether](https://bellwethercoffee.com/blog/coffee-shop-profit-margins)); the hybrid p50
+sits at the low end, which is correct for in-house production — **baking in-house trades COGS
+for a baker's wages**. Sources: [Oatly Barista case](https://www.webstaurantstore.com/oatly-barista-edition-oat-milk-32-fl-oz-case/110OTBAROAT.html),
+[12 oz cup+lid](https://www.webstaurantstore.com/sofi-12-oz-allinone-paper-hot-cup-and-lid-case/500SHCUP12.html),
+[whole milk $5.28/gal Jul-2025](https://pos.toasttab.com/blog/on-the-line/milk-prices),
+[Devoción](https://www.devocion.com), [wholesale pastry pricelist](https://www.breadalone.com/wholesale-pricelist).
+
+### 3. Occupancy and fixed (annual, p25 / p50 / p75)
+
+| Line | p25 | **p50** | p75 |
+|---|---|---|---|
+| Rent (central $9,500/mo) | $114,000 | **$114,000** | $114,000 |
+| **NYC Commercial Rent Tax** | **$0** | **$0** | **$0** |
+| RE tax / CAM escalation | $3,180 | $4,536 | $6,110 |
+| Electric | $8,844 | $10,062 | $11,502 |
+| Gas | $4,466 | $5,363 | $6,417 |
+| Water / sewer | $1,933 | $2,258 | $2,652 |
+| Internet / phone | $1,660 | $1,853 | $2,071 |
+| Insurance (BOP + liquor liability) | $4,503 | $5,181 | $6,014 |
+| Licences (DOHMH, SLA wine, outdoor) | $2,267 | $2,780 | $3,426 |
+| POS / payroll software | $3,863 | $4,518 | $5,292 |
+| Repairs & maintenance | $11,212 | $12,900 | $14,996 |
+| Waste / linen / cleaning | $9,172 | $10,534 | $12,112 |
+| Accounting / legal | $5,911 | $6,915 | $8,122 |
+| Smallwares / music / misc | $3,224 | $3,762 | $4,408 |
+| Bank / admin | $1,118 | $1,358 | $1,665 |
+| **TOTAL FIXED** | **$183,784** | **$187,227** | **$190,785** |
+
+**NYC Commercial Rent Tax does not apply**: it is levied only on premises in **Manhattan
+south of 96th Street** ([nyc.gov/finance](https://www.nyc.gov/site/finance/business/business-commercial-rent-tax-crt.page)).
+Electric uses Con Ed SC-2 all-in ≈ **$0.338/kWh**
+([Con Ed](https://www.coned.com/-/media/files/coned/documents/save-energy-money/using-private-generation/historical-average-full-service-electric-rates.pdf));
+DOHMH food-service permit **$280/yr** ([nyc-business](https://nyc-business.nyc.gov/nycbusiness/description/food-service-establishment-permit));
+waste is under DSNY Commercial Waste Zones ([nyc.gov/dsny](https://www.nyc.gov/site/dsny/businesses/commercial-waste-zones.page)).
+
+Variable-with-revenue lines at $1.2M: **card processing $38,784 (3.23%)**, delivery
+commission $14,131 (1.18%), marketing $12,090 (1.01%).
+
+**Finding on card processing.** At Square's card-present **2.6% + $0.15**
+([Square](https://squareup.com/us/en/the-bottom-line/managing-your-finances/credit-card-processing-fees-and-rates)),
+the fixed $0.15 on a **$14.40 ticket is 1.04 points on its own**, so the effective rate is
+~3.2% of total revenue, not the 2.6% headline. A low-ticket café pays a materially worse rate
+than the quoted number. Delivery: NYC's 15%+5% cap is **no longer the binding ceiling** —
+Int 762-B (May 2025) plus the litigation settlement let platforms add an optional 20%
+"enhanced services" fee plus 3% card fee ([NYC Admin Code §20-563.3](https://codelibrary.amlegal.com/codes/newyorkcity/latest/NYCadmin/0-0-0-134617),
+[Restaurant Business](https://restaurantbusinessonline.com/technology/new-york-city-council-votes-lift-cap-delivery-fees)),
+so effective commission is carried at tri(15%, **26%**, 38%).
+
+### 4. P&L at the three revenue scenarios
+
+Hybrid baking, rent $9,500/mo, no tip credit. Operating profit is **before owner draw and
+before debt service**; D&A and any capex reserve are excluded.
+
+| | $900,000 | | | $1,200,000 | | | $1,500,000 | | |
+|---|---|---|---|---|---|---|---|---|---|
+| | p25 | **p50** | p75 | p25 | **p50** | p75 | p25 | **p50** | p75 |
+| COGS | $221,496 | **$235,539** | $250,766 | $295,321 | **$313,975** | $334,305 | $369,411 | **$393,121** | $417,955 |
+| Labour (burdened) | $333,359 | **$351,915** | $371,766 | $362,375 | **$382,302** | $403,962 | $390,614 | **$412,440** | $435,637 |
+| Fixed + occupancy | $183,822 | **$187,297** | $190,824 | $183,772 | **$187,222** | $190,771 | $183,800 | **$187,245** | $190,828 |
+| Card / delivery / marketing | $46,075 | **$49,233** | $52,682 | $61,378 | **$65,573** | $70,173 | $76,763 | **$82,055** | $87,769 |
+| **OPERATING PROFIT** | **$49,507** | **$74,274** | **$98,113** | **$219,753** | **$248,879** | **$276,706** | **$389,154** | **$422,943** | **$455,561** |
+| *after $90k owner draw* | −$40,493 | **−$15,726** | $8,113 | $129,753 | **$158,879** | $186,706 | $299,154 | **$332,943** | $365,561 |
+| Prime cost % | 62.8% | **65.4%** | 68.1% | 55.9% | **58.2%** | 60.5% | 51.7% | **53.8%** | 56.0% |
+| Occupancy % | 13.0% | **13.2%** | 13.3% | 9.8% | **9.9%** | 10.0% | 7.8% | **7.9%** | 8.0% |
+| Operating margin % | 5.5% | **8.3%** | 10.9% | 18.3% | **20.7%** | 23.1% | 25.9% | **28.2%** | 30.4% |
+| **P(clears a $90k owner income)** | | **33%** | | | **100%** | | | **100%** | |
+
+Benchmarks: prime cost 58–62% ([Toast](https://pos.toasttab.com/blog/on-the-line/restaurant-prime-cost)),
+labour 32–38% for a food-led café, café **net margin 10–15%**
+([Bellwether](https://bellwethercoffee.com/blog/coffee-shop-profit-margins)). The $1.2M column
+sits on benchmark; **the $1.5M column does not** — 28% operating margin is a figure cafés do
+not post.
+
+**The baking question barely matters.** In-house vs all-purchased moves operating profit by
+−0.8% to +2.0% of revenue: in-house trades ~6 points of COGS for a baker's wages and the two
+nearly cancel. It is worth asking the owner, but it is not load-bearing.
+
+### 5. Break-even and sensitivity
+
+| | p25 | **p50** | p75 |
+|---|---|---|---|
+| Variable cost % | 44.3% | **46.1%** | 47.9% |
+| Fixed $ (incl. fixed labour) | $386,029 | **$397,531** | $409,905 |
+| **Break-even revenue** | $700,979 | **$738,761** | $779,412 |
+| **Break-even incl. $90k owner draw** | $863,194 | **$905,892** | $951,690 |
+
+Sensitivity, effect on operating profit of a 10% **adverse** move, from a $1.2M base
+(op profit $249,088):
+
+| Line | Operating profit | Δ |
+|---|---|---|
+| **Price level −10%** (units unchanged) | $135,516 | **−$113,572** |
+| **Traffic −10%** (revenue and COGS both fall) | $178,872 | **−$70,216** |
+| Labour +10% | $210,224 | −$38,864 |
+| COGS +10% | $217,089 | −$31,999 |
+| **Rent +10%** ($950/mo) | $237,650 | **−$11,439** |
+
+**Rent is the least important of the four**, by an order of magnitude. A 10% rent rise costs
+$11.4k; a 10% price cut costs $113.6k. Pricing power is the whole business.
+
+### 6. The struggle diagnostic
+
+**Inverting the cost model gives an independent, cost-side read on revenue.** Holding the cost
+structure fixed and sweeping revenue, the operating margin passes through the benchmark café
+band (10–15%) at:
+
+> **Cost-side revenue read: $933,326 – $1,042,040.**
+
+This is a **fourth estimate of revenue**, and it shares no inputs with the other three: it uses
+no demand pool, no EC/CBP anchor, and no transaction count — only wage law, wholesale prices
+and NYC fixed costs. It lands **below the bottom-up p25 ($1,349,970)** and **inside the top-down
+judgment range ($650k–$1.25M, central $900k)**, close to its upper half.
+
+At rent $9,500/mo:
+
+| Question | Answer |
+|---|---|
+| Does $900k clear a $90k owner income? | **No.** Op profit p50 $74,274; P(clears) = **33%** |
+| Does $1.2M? | Yes, comfortably — $248,879, P = 100% |
+| Does $1.5M? | Yes — $422,943. **An owner clearing $423k does not sell.** |
+| Minimum revenue that clears $90k | **$950,000** ≈ **172 weekday** / 218 weekend transactions/day |
+| Rent at which $1.2M stops clearing $90k | **$22,750/mo** (22.8% occupancy) — i.e. **rent cannot explain a struggle at $1.2M** |
+| Revenue at which $1.5M's staffing stops clearing $90k | below **$925,000** ≈ **167 weekday** transactions/day |
+
+**The model's read on "struggling and sold" — stated as the model's inference, not as a fact
+about the owner.** The combination most consistent with it is **revenue $800k–$950k, rent
+$9,500–$12,500/mo, labour at the full-wage (no tip credit) level**. In that cell operating
+profit is $9k–$74k before any owner draw, prime cost is 65–69%, and occupancy is 12–14% — a
+business that pays its staff and its landlord and leaves the operator below a Brooklyn living
+income. **Rent is not the cause in any cell**; under-scale revenue on a high fixed base is.
+
+This is the cost model's sharpest disagreement with this file's own bottom-up revenue section:
+**$1.5M is not merely a high revenue estimate, it is an estimate that contradicts the premise
+of the sale.** If revenue were $1.5M the model says the owner cleared >$400k/yr.
+
+### 7. What the owner's answers falsify
+
+| Checkable | Prediction | Falsifier |
+|---|---|---|
+| **Monthly base rent** | $8,000–$12,000, central $9,500 (pre-registered above) | Outside $8k–$12k |
+| **Headcount on payroll** | **10–12** at $1.2M-scale revenue (p50 11.3) | Fewer than 8, or more than 15 |
+| **Labour hours/week** | **~292 h/wk** incl. off-bar (269 at $900k) | Below 210 or above 370 |
+| **Wage level** | Barista base **$18–22**, lead $25–32 | Base below $17 or above $24 |
+| **Tip credit taken?** | **No** — full minimum paid, tips on top | If taken, labour is ~$68k/yr lower and the $900k column clears $90k after all |
+| **Bakes in-house?** | **Hybrid** — Turkish savouries in-house, western pastry bought | Either pure case; but this moves op profit <2% of revenue, so it is a weak test |
+| **Delivery share** | **4%** of gross (tri 2–8%) | Above 12% — would make platform commission a first-order cost line |
+| **Blended COGS %** | **26.2%** (hybrid) | Outside 22–34% |
+| **Labour % of revenue** | **31.9%** at $1.2M | Outside 26–40% |
+| **Cost-side revenue read** | **$933k–$1.04M** | Truth outside that band means the *cost* structure is wrong, not just the revenue model — and the line most likely wrong is labour hours |
+
+**The strongest single falsifier**: if the owner reports revenue **above $1.3M** *and*
+describes the business as having struggled, then the cost model is wrong somewhere large —
+most likely labour hours (a 1,000 sq ft café may simply carry far more staff than 292 h/wk),
+or an unmodelled cost the P&L has no line for (debt service on a build-out loan, a percentage-
+rent clause, a partner buy-out, or back taxes). In that case the finding is that **operating
+profit was never the binding constraint**, and a cost model built from wage law and wholesale
+prices cannot see what actually broke.
