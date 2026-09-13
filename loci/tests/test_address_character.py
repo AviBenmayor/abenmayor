@@ -828,9 +828,16 @@ def test_every_mn_bk_address_carries_a_label_on_the_real_warehouse():
         ).fetchone()[0]
         if not built:
             pytest.skip("`loci address-character build` has not been run")
+        # D84: LOT frame only on the label assertion. analysis.address now
+        # holds a second sampling frame, and a street midpoint on Randall's
+        # Island is legitimately UNBUILT -- it gets a NULL label by the same
+        # rule an unbuilt lot does (test above), which is right and is not what
+        # this assertion is about. The frame column reaches this view through
+        # the base CTE.
         bad = con.execute("""
             SELECT count(*) FROM analysis.address_character
             WHERE character_run_at IS NOT NULL AND NOT suppressed
+              AND COALESCE(frame, 'lot') = 'lot'
               AND (character IS NULL OR character_intensity IS NULL
                    OR character_intensity < 0 OR character_intensity > 1)
         """).fetchone()[0]

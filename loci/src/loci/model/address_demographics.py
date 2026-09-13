@@ -281,7 +281,29 @@ def build_address_demographics(
     _cross_check_b01001_vs_b01003(acs, year)
 
     tract_map = load_bbl_tract_map(pluto_csv)
-    merged = addresses_df[["address_id", "bbl"]].merge(tract_map, on="bbl", how="left")
+    # D84 GUARD. This table's grain IS the tax lot (D56): each value is the
+    # lot's OWN 2020 tract, found by a BBL lookup. analysis.address now also
+    # holds STREET-frame rows, whose bbl is NULL by construction -- and a merge
+    # on a NULL key would either drop them silently or, worse, match a lot
+    # whose BBL also normalised to blank. They are excluded here explicitly, so
+    # the exclusion is a decision rather than a side effect of `how="left"`.
+    # The right fix if street points ever need demographics is a census-tract
+    # POLYGON ingest and a point-in-polygon, never the nearest lot's tract:
+    # that would make an industrial street inherit the income of the one
+    # apartment building 300 m away and let the caveat machinery assert
+    # something about a population that does not live there.
+    frame = addresses_df[["address_id", "bbl"]].copy()
+    # Object dtype, not StringDtype: `tract_map.bbl` is object and pandas
+    # refuses to merge the two.
+    bbl_str = frame["bbl"].fillna("").astype(str).str.strip()
+    keep = bbl_str != ""
+    if not keep.all():
+        import warnings
+        warnings.warn(
+            f"address_demographics: skipping {int((~keep).sum()):,} rows with no BBL "
+            f"(street-frame points and blank-BBL lots) -- this table is keyed on the "
+            f"tax lot (D56/D84)")
+    merged = frame[keep].merge(tract_map, on="bbl", how="left")
 
     # Compute each distinct tract's stats once, not once per address --
     # NYC has ~767k addresses over ~2,300 tracts.

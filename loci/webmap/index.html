@@ -193,6 +193,8 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
       <label class="chk"><input type="checkbox" id="poiTog" checked> Show known locations</label>
       <label class="chk"><input type="checkbox" id="soloTog" checked> Include single-source records</label>
       <label class="chk"><input type="checkbox" id="excTog"> Show excluded records</label>
+      <label class="chk" id="stTogLbl" hidden><input type="checkbox" id="stTog"> Show street points <span class="hint">no lot here</span></label>
+      <div class="fine" id="stFine" hidden></div>
       <div class="fine" id="supFine"></div>
     </div>
     <div class="sec" id="rankSec" hidden>
@@ -339,6 +341,39 @@ let showSf=false, SF=null, sfLoading=false;
 // filter on the gap layer, not on the overlay: "show me the gaps that have
 // somewhere to actually put the thing". 0 = no filter, the default.
 let sfMin=0;
+// D84 THE TWO SAMPLING FRAMES. A 'lot' dot is a residential tax lot: people
+// live at it. A 'street' dot is a point every 100 m along a street centerline
+// where no residential lot exists — it is on the map because a street with no
+// residents yet is invisible to a screen built from residents, and it is OFF by
+// default because it means something different from every other dot and must
+// be asked for. Packed as a parallel array, never a stride slot, for the same
+// reason `censoring` is: a file written before D84 has no answer at all.
+let showStreet=false;
+const frameAt=(L,j)=>{const f=L&&L.frame; if(!f||!f.street) return null;
+  return {street:f.street[j]===1, frontageM:f.frontageM?f.frontageM[j]:null,
+          name:f.streetName?f.streetName[j]:null, caveat:f.caveat||''};};
+// The toggle only appears where there is something to toggle: a category whose
+// export carries no street points (or a file written before D84) never shows a
+// control that would do nothing.
+function syncStreetUI(){
+  const L=CACHE.gaps[biz], f=L&&L.frame;
+  const n=f&&f.n_street?f.n_street:0;
+  const lbl=document.getElementById('stTogLbl'), fine=document.getElementById('stFine');
+  if(!lbl) return;
+  lbl.hidden=!n; fine.hidden=!n;
+  if(!n) return;
+  document.getElementById('stTog').checked=showStreet;
+  fine.innerHTML=`<b>${n.toLocaleString()}</b> street points in this layer, drawn hollow. `+
+    esc(f.caveat||'');
+}
+function frameHTML(L,j){
+  const x=frameAt(L,j); if(!x||!x.street) return '';
+  return '<div class="warn"><b>Street point — no residential lot here.</b> '+
+    (x.name?esc(x.name)+'. ':'')+
+    (x.frontageM?'This dot stands for about '+(+x.frontageM).toLocaleString()+' m of street. ':'')+
+    'Nobody lives at it, it has no tax lot, and there is no floor-area or '+
+    'feasibility reading for it.</div>';
+}
 const SF_MIN_OPTS=[0,1,3];
 // Slot offsets of the four storefront numbers, APPENDED after the pipeline
 // block in both gap layers. These two constants are the only place they are
@@ -397,9 +432,17 @@ function gapFC(){
     // MapLibre expressions cannot index a parallel array — and `rk` is a
     // separate flag rather than a negative `sc` sentinel so that a legitimate
     // score can never be mistaken for "no reading".
+    // D84: street points are a separate frame and are hidden unless asked for.
+    const fr=frameAt(L,i/st);
+    const isStreet=fr?fr.street:false;
+    if(isStreet&&!showStreet) continue;
     const r=rankOf(L,i/st);
     f.push({type:'Feature',geometry:{type:'Point',coordinates:[p[i],p[i+1]]},
       properties:{u:p[i+3],id:L.ids[i/st],j:i/st,sc:r==null?-1:r,rk:r==null?0:1,
+        // `fr` is baked into the feature for the same reason `sc` is: a
+        // MapLibre expression cannot index a parallel array, and the street
+        // dots are drawn hollow so they are never mistaken for buildings.
+        fr:isStreet?1:0,
         // The character label and the retail index, baked in for the same
         // reason `sc` is: a MapLibre expression cannot index a parallel
         // array. '' / -1 are the no-data cases and reach the grey fallback.
@@ -1660,9 +1703,15 @@ map.on('load',async()=>{
   map.addLayer({id:'cln',type:'symbol',source:'gap',filter:['has','point_count'],
     layout:{'text-field':['get','point_count_abbreviated'],'text-size':11,'text-font':['Open Sans Bold']},
     paint:{'text-color':'#fff'}});
+  // D84: a street-frame dot is drawn HOLLOW — white fill, the category hue as
+  // its ring — so it is distinguishable from a lot dot at a glance and at any
+  // zoom, without a second layer or a second colour scale to reconcile. Fill
+  // and stroke both switch on `fr`, the frame flag baked into each feature.
   map.addLayer({id:'pt',type:'circle',source:'gap',filter:['!',['has','point_count']],
     paint:{'circle-color':lc(),'circle-radius':['interpolate',['linear'],['zoom'],13,3,17,6],
-      'circle-stroke-width':1,'circle-stroke-color':'#fff','circle-opacity':0.9}});
+      'circle-stroke-width':['case',['==',['get','fr'],1],2,1],
+      'circle-stroke-color':['case',['==',['get','fr'],1],lc(),'#fff'],
+      'circle-opacity':0.9}});
 
   // Neighborhood character: the only AREA layer here, and deliberately the
   // BOTTOM one — every point on this map has to stay readable on top of it,
@@ -1812,13 +1861,16 @@ map.on('load',async()=>{
   // this popup and has to arrive whole — see cavHTML.
   map.on('click','pt',e=>{const p=e.features[0].properties;
     new maplibregl.Popup({closeButton:false,maxWidth:'320px'}).setLngLat(e.lngLat)
-      .setHTML(`<div class="pnb">Gap address</div><div class="ppop">${p.u} homes · no ${label().toLowerCase()} in reach</div>`+
+      .setHTML(`<div class="pnb">${+p.fr===1?'Gap street point':'Gap address'}</div>`+
+        (+p.fr===1?`<div class="ppop">no ${label().toLowerCase()} in reach</div>`
+                  :`<div class="ppop">${p.u} homes · no ${label().toLowerCase()} in reach</div>`)+
+        frameHTML(CACHE.gaps[biz],+p.j)+
         censHTML(CACHE.gaps[biz],+p.j)+
         afHTML(CACHE.gaps[biz],+p.j)+
         pipeHTML(pipeAt(CACHE.gaps[biz],+p.j,GAP_PIPE))+
         sfHTML(sfAt(CACHE.gaps[biz],+p.j,GAP_SF))+
         charDotHTML(CACHE.gaps[biz],+p.j)+
-        `<div class="pmi">bbl ${p.id}</div>`).addTo(map);});
+        `<div class="pmi">${+p.fr===1?'street segment':'bbl'} ${p.id}</div>`).addTo(map);});
   map.on('mouseenter','pt',()=>map.getCanvas().style.cursor='pointer');
   map.on('mouseleave','pt',()=>map.getCanvas().style.cursor='');
 
@@ -1985,7 +2037,11 @@ function refresh(){
   // Clusters keep the CATEGORY hue even when the tint is on: a bubble holding
   // 400 addresses of three different characters has no character of its own,
   // and painting it one would be a claim the data does not make.
-  map.setPaintProperty('pt','circle-color',charDotsOn()?charDotColor():lc());
+  map.setPaintProperty('pt','circle-color',
+    ['case',['==',['get','fr'],1],'#ffffff',
+     charDotsOn()?charDotColor():lc()]);
+  map.setPaintProperty('pt','circle-stroke-color',
+    ['case',['==',['get','fr'],1],lc(),'#fff']);
   // Shading is MAGNITUDE (the rank score); the hue stays the category's, which
   // is the only thing on this map that carries identity.
   map.setPaintProperty('cl','circle-opacity',clusterPaint());
@@ -1994,7 +2050,7 @@ function refresh(){
   // Only IN-SET features count towards "known locations shown" -- an excluded
   // cross on screen is not a known location and must not inflate the banner.
   updateBanner(pf.features.reduce((n,f)=>n+(f.properties.s?1:0),0),gf.features.length);
-  updateLegend(); refreshAlc(); refreshPipe(); refreshSf();
+  updateLegend(); syncStreetUI(); refreshAlc(); refreshPipe(); refreshSf();
   refreshChar(); renderCharLegend(); syncCharUI();
 }
 function sumOver(obj,pick){let n=0;META.boroughs.forEach(b=>{if(boroSel==='ALL'||b===boroSel)n+=pick(obj[b]);});return n;}
@@ -2181,6 +2237,7 @@ function buildUI(){
     document.getElementById('excTog').disabled=!showPois; refresh();};
   document.getElementById('soloTog').onchange=e=>{showSingle=e.target.checked;refresh();};
   document.getElementById('excTog').onchange=e=>{showExcluded=e.target.checked;refresh();};
+  document.getElementById('stTog').onchange=e=>{showStreet=e.target.checked;refresh();};
   document.getElementById('supFine').innerHTML=
     `Known locations are the <b>${esc(supplySet())}</b> supply set — the same set `+
     `<code>analysis.address_gaps</code> used, so a gap and the businesses around it are `+

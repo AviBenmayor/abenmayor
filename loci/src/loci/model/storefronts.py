@@ -122,6 +122,10 @@ ADDRESS_SCREEN_COLUMNS = [
     "reach_source", "reach_hash", "graph_version",
     "supply_set", "supply_hash", "run_at",
     "lead_censored",          # D75, appended
+    # D84, appended: the sampling frame and the street-row descriptors. Owned
+    # by the SCREEN (model/address_gaps.py writes them on INSERT); this list
+    # exists so no annotation writer can name one.
+    "frame", "frontage_m", "street_name", "frame_source", "frame_vintage",
 ]
 
 #: D63's age-fit annotation columns at analysis.address grain

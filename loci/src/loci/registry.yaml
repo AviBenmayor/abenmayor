@@ -800,6 +800,42 @@ sources:
       REQUIRED CONTROL (CONTEXT.md 1.3). Also the dasymetric ancillary surface
       (UnitsRes) and the development-capacity term (ResidFAR - BuiltFAR).
 
+  - id: nyc_cscl
+    name: NYC Street Centerline (CSCL)
+    tier: city
+    city: nyc
+    role: control
+    status: verified
+    url: https://data.cityofnewyork.us/City-Government/NYC-Street-Centerline-CSCL-/exts8-4k5w
+    dataset_id: inkn-q76z
+    geography: line
+    temporal: {start: 2013, end: current, grain: weekly}
+    cost: {amount: 0, unit: total}
+    fields: [physicalid, the_geom, rw_type, status, nonped, trafdir, boroughcode,
+             segmentlength, full_street_name, from_level_code, to_level_code, streetwidth]
+    bias: >
+      shape_length is WEB MERCATOR metres (x1.32 at NYC latitude), NOT a length;
+      segmentlength is US feet and disagrees with the geometry on a minority of
+      rows (p05 0.30, p95 1.64 of geodesic). Compute length from the geometry,
+      reprojected to EPSG:2263 with always_xy. segment_type / segment_type_value
+      are 100% NULL in MN+BK. physicalid is NEAR-unique, not unique (3 duplicates
+      in MN+BK). COVERAGE OF THE FRAME: paper streets are excluded (rw_type=12,
+      CSCL's own "Non-Physical Street Segment", 2 rows in MN+BK);
+      pedestrian-prohibited roadway is excluded (nonped='V', 318 rows); park and
+      greenway drives and paths are excluded as rw_type=6 Path/Trail (2,602 rows,
+      which is how the private drives inside Central and Prospect Park leave the
+      frame) while the at-grade park DRIVES that CSCL types as Street stay in;
+      pedestrian malls and plazas (trafdir='NV', 161 rows) are deliberately KEPT
+      because they are real retail streets. nonped='D' is undocumented and
+      self-contradictory (it covers park drives AND the Williamsburg Bridge
+      pedestrian path) and is not used.
+    notes: >
+      THE STREET SAMPLING FRAME (D84, docs/street_midpoint_frame.md). status='2'
+      AND rw_type=1 AND nonped<>'V' AND at-grade keeps 32,291 of 41,784 MN+BK
+      rows (3,476.8 km); L=100 m gives 48,969 scored points. Not a POI source;
+      never joined into staging.poi. Read only by
+      sources/cities/nyc/street_centerline.py.
+
   - id: nyc_ll84_benchmarking
     name: NYC Energy and Water Data Disclosure (Local Law 84 / LL133)
     tier: city

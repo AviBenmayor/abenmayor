@@ -326,6 +326,57 @@ def _synthetic_db():
     return con
 
 
+def test_street_frame_rows_never_enter_an_area_aggregate(monkeypatch):
+    """D84. Every number `area_facts` produces is a median or a share over "the
+    area's addresses". A street midpoint has ZERO homes and no tax lot, and an
+    industrial box holds roughly as many street points as lots -- so admitting
+    them would halve the median homes_400m of exactly the areas this card is
+    most often asked about and drag every share toward the street network's
+    geometry. The pin lives in ONE fragment (`base`) that every section's query
+    reuses, so it cannot be applied to five queries out of six.
+
+    The street rows here are deliberately ADVERSARIAL: same box, homes_400m 0,
+    supply_ratio_vs_base 9.0, no vacancy. If they leaked in, every assertion
+    below would move."""
+    from loci.model import supply_ratio as sr
+
+    con = _synthetic_db()
+    monkeypatch.setattr("loci.score.supply.supply_hash",
+                        lambda c, s="principled": sr.load_baselines()["supply_hash"])
+    before = rec.area_facts(con, "Test box", bbox=(40.67, -74.0, 40.68, -73.95),
+                            boroughs=("BK",))
+
+    street = [(f"seg:{i}:0", None, -73.99 + 0.0001 * i, 40.675, "BK", "Testville",
+               "BK0601", True, 12, 3, "tiers", "h", "g", "2026-09-11",
+               0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, "2024-12-31", "767b28674e30",
+               "street")
+              for i in range(120)]
+    con.executemany(
+        "INSERT INTO analysis.address (address_id, bbl, lon, lat, borough, neighborhood, "
+        "nta_code, eligible, present_count, n_missing, reach_source, reach_hash, "
+        "graph_version, run_at, homes_400m, addressable_homes_400m_laundry, "
+        "units_permitted_400m, units_active_400m, units_stalled_400m, "
+        "vacant_storefronts_400m, storefronts_400m, storefront_asof, "
+        "supply_ratio_supply_hash, frame) VALUES (" + ",".join("?" * 24) + ")", street)
+    con.executemany(
+        "INSERT INTO analysis.address_category (address_id, borough, category, eligible, "
+        "supply_400m, supply_per_1k, supply_ratio_vs_base, frame) VALUES (?,?,?,?,?,?,?,?)",
+        [(f"seg:{i}:0", "BK", c, True, 0.0, 9.0, 9.0, "street")
+         for i in range(120) for c in CATEGORIES])
+
+    after = rec.area_facts(con, "Test box", bbox=(40.67, -74.0, 40.68, -73.95),
+                           boroughs=("BK",))
+    assert after["n_addresses"] == before["n_addresses"] == 120
+    assert after["homes_400m_median"] == before["homes_400m_median"]
+    assert after["units_permitted_sum"] == before["units_permitted_sum"]
+    assert after["share_with_vacant"] == before["share_with_vacant"]
+    for cat in ("laundry", "grocery"):
+        assert after["categories"][cat]["ratio_median"] == \
+            before["categories"][cat]["ratio_median"]
+        assert after["categories"][cat]["n_ratio_addresses"] == \
+            before["categories"][cat]["n_ratio_addresses"] == 120
+
+
 def test_end_to_end_on_a_synthetic_warehouse(monkeypatch):
     con = _synthetic_db()
     # pin the live hash to the committed baseline's so the drift path is OFF

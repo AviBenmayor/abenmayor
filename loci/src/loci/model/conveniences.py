@@ -164,8 +164,16 @@ def convenience_report(
     """
     conveniences = load_conveniences(conveniences_path)
     b = borough.upper()
+    # D84: LOT frame only, everywhere in this report. Its two headline
+    # statistics are unit-weighted (a street point's units are 0, so those are
+    # unchanged either way) but its ADDRESS counts and the per-address
+    # n_unsatisfied distribution are not: a street midpoint is not an address
+    # whose residents are or are not served, and pooling the frames would
+    # rewrite "what share of addresses have everything within a walk" into a
+    # statement about the street network's geometry.
     n_addr = con.execute(
-        "SELECT count(*) FROM analysis.address WHERE borough = ?", [b]).fetchone()[0]
+        "SELECT count(*) FROM analysis.address "
+        "WHERE borough = ? AND COALESCE(frame, 'lot') = 'lot'", [b]).fetchone()[0]
     if not n_addr:
         raise ValueError(
             f"analysis.address has no rows for borough={b} -- run `loci address-gaps` first")
@@ -173,7 +181,8 @@ def convenience_report(
     case_sql = _threshold_case_sql(conveniences)
     row = con.execute(
         f"""SELECT count(*), sum(a.units)
-            FROM analysis.address a WHERE a.borough = ?""", [b]).fetchone()
+            FROM analysis.address a
+            WHERE a.borough = ? AND COALESCE(a.frame, 'lot') = 'lot'""", [b]).fetchone()
     total_addr, total_units = row[0], (row[1] or 0.0)
 
     cat_rows = con.execute(
@@ -194,7 +203,7 @@ def convenience_report(
                        sum(CASE WHEN c.nearest_m IS NULL OR c.nearest_m > {case_sql}
                                 THEN 1 ELSE 0 END) AS n_unsatisfied
                 FROM analysis.address_category c
-                WHERE c.borough = ?
+                WHERE c.borough = ? AND COALESCE(c.frame, 'lot') = 'lot'
                 GROUP BY c.address_id
             )
             SELECT sum(a.units) FROM per_addr p
@@ -275,7 +284,7 @@ def n_unsatisfied_distribution(
                        sum(CASE WHEN c.nearest_m IS NULL OR c.nearest_m > {case_sql}
                                 THEN 1 ELSE 0 END) AS n_unsatisfied
                 FROM analysis.address_category c
-                WHERE c.borough = ?
+                WHERE c.borough = ? AND COALESCE(c.frame, 'lot') = 'lot'
                 GROUP BY c.address_id
             )
             SELECT p.n_unsatisfied, count(*) n_addr, sum(a.units) n_units

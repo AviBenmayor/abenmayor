@@ -508,7 +508,17 @@ def area_facts(con, area: str, *, bbox=None, nta=None, boroughs=("MN", "BK"),
 
     where, params = _area_predicate(bbox, nta)
     boro_holes = ", ".join("?" for _ in boroughs)
+    # D84: LOT frame only, and in the ONE fragment every section's query reuses
+    # so the pin cannot be applied to five of six. Every number below is a
+    # median or a share over "the area's addresses": homes_400m, the supply
+    # ratios, the active/stalled shares, the vacancy rate, the revenue band.
+    # The street frame roughly doubles the point count in an industrial area
+    # and contributes ZERO homes, so leaving it in would halve the median
+    # homes_400m of exactly the areas this card is most often asked about, and
+    # dilute every share toward the street network's geometry rather than the
+    # neighbourhood's.
     base = (f"FROM analysis.address a WHERE a.borough IN ({boro_holes}) AND {where}"
+            + " AND COALESCE(a.frame, 'lot') = 'lot'"
             + (" AND COALESCE(a.eligible, FALSE)" if eligible_only else ""))
     p = [*boroughs, *params]
 
@@ -536,6 +546,7 @@ def area_facts(con, area: str, *, bbox=None, nta=None, boroughs=("MN", "BK"),
         FROM analysis.address_demographics d
         JOIN analysis.address a USING (address_id)
         WHERE a.borough IN ({boro_holes}) AND COALESCE(a.eligible, FALSE)
+          AND COALESCE(a.frame, 'lot') = 'lot'
     """, list(boroughs)).fetchdf().iloc[0]
 
     cats = con.execute(f"""

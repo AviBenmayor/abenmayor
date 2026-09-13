@@ -234,6 +234,10 @@ ADDRESS_SCREEN_COLUMNS = [
     "reach_source", "reach_hash", "graph_version",
     "supply_set", "supply_hash", "run_at",
     "lead_censored",          # D75, appended
+    # D84, appended: the sampling frame and the street-row descriptors. Owned
+    # by the SCREEN (model/address_gaps.py writes them on INSERT); this list
+    # exists so no annotation writer can name one.
+    "frame", "frontage_m", "street_name", "frame_source", "frame_vintage",
 ]
 
 
@@ -341,9 +345,22 @@ def load_supply_points(con, supply_set: str = DEFAULT_SUPPLY_SET) -> pd.DataFram
     """).fetchdf()
 
 
-def load_home_points(con, haircut: dict) -> pd.DataFrame:
-    """Every address in the warehouse, CITYWIDE (same edge-effect reason as
+#: Which sampling frame carries HOMES (D84). A street midpoint has no
+#: residents: its `units` is 0, so including it in the weight set would add
+#: exactly nothing and would only make the arithmetic look approximate. The
+#: home set is pinned to the LOT frame so "homes within 400 m" cannot drift
+#: with the sampling density of the street frame.
+HOME_FRAMES = ("lot",)
+
+
+def load_home_points(con, haircut: dict, frames: tuple[str, ...] = HOME_FRAMES) -> pd.DataFrame:
+    """Every LOT address in the warehouse, CITYWIDE (same edge-effect reason as
     load_supply_points), with `units` and the laundry-haircut evidence flag.
+
+    `frames` is the D84 guard: these rows are the WEIGHTS -- the homes every
+    other point's catchment sums -- and only the lot frame has residents.
+    Street points are scored FOR their homes_400m (see `load_query_points`)
+    and contribute ZERO to anybody else's.
 
     The evidence join is on BBL against analysis.address_laundry_evidence and
     fires only on a POSITIVE assertion from either source. The table may be
@@ -361,11 +378,13 @@ def load_home_points(con, haircut: dict) -> pd.DataFrame:
     except Exception:                                       # pragma: no cover
         ev, have_ev = pd.DataFrame({"bbl": []}), False
 
-    df = con.execute("""
+    holes = ", ".join("?" for _ in frames)
+    df = con.execute(f"""
         SELECT address_id, borough, bbl, lon, lat, COALESCE(units, 0) AS units
         FROM analysis.address
         WHERE lon IS NOT NULL AND lat IS NOT NULL
-    """).fetchdf()
+          AND COALESCE(frame, 'lot') IN ({holes})
+    """, list(frames)).fetchdf()
     df["has_laundry_evidence"] = df["bbl"].isin(set(ev["bbl"].astype(str)))
     df["addressable_units"] = [
         addressable_units(u, e, haircut)
@@ -373,6 +392,27 @@ def load_home_points(con, haircut: dict) -> pd.DataFrame:
     ]
     df.attrs["have_evidence_table"] = have_ev
     return df
+
+
+def load_query_points(con, boroughs: list[str]) -> pd.DataFrame:
+    """Every scored point in scope, BOTH FRAMES (D84) -- the rows that RECEIVE
+    homes_400m, the walk-shed area and the density.
+
+    Deliberately separate from `load_home_points`, which is the weight set.
+    Before D84 the two were the same query and the same list, which was right
+    while every row was a residential lot. They are different questions now: a
+    street point has no homes of its own to contribute and every reason to be
+    told how many homes are within 400 m of it -- that catchment is exactly
+    what makes a street in the Navy Yard rank below a street in Bushwick
+    instead of above it (the censored, homes-free points then sort to the
+    bottom by density with no gate and no special case).
+    """
+    holes = ", ".join("?" for _ in boroughs)
+    return con.execute(f"""
+        SELECT address_id, borough, COALESCE(frame, 'lot') AS frame, lon, lat
+        FROM analysis.address
+        WHERE lon IS NOT NULL AND lat IS NOT NULL AND borough IN ({holes})
+    """, list(boroughs)).fetchdf()
 
 
 # ------------------------------------------------------------- the engine
@@ -481,7 +521,20 @@ def catchment_sums_and_shed(A, query_nidx: np.ndarray, W: np.ndarray,
 
 # ------------------------------------------------------------ the baseline
 
-def fit_baselines(long_df: pd.DataFrame, eligible_only: bool = True) -> dict:
+#: The universe the baseline is FITTED over (D84). The norm every
+#: `supply_ratio_vs_base` in the project is measured against was fitted on
+#: 281,842 residential addresses; letting street points into it would move the
+#: ruler itself -- 49k units-0 points, disproportionately on industrial and
+#: park streets, would drag every category's median supply_per_1k down and make
+#: every existing address look better supplied than it was yesterday, with no
+#: supply having changed. The fit is pinned; the APPLY is not (a street point
+#: gets a real ratio against the lot-frame norm, which is the comparison a
+#: reader wants).
+BASELINE_FIT_FRAMES = ("lot",)
+
+
+def fit_baselines(long_df: pd.DataFrame, eligible_only: bool = True,
+                  frames: tuple[str, ...] = BASELINE_FIT_FRAMES) -> dict:
     """Per-category median / p25 / p75 of `supply_per_1k`, plus the
     home-weighted `aggregate_per_1k`, over the addresses in `long_df`.
 
@@ -504,6 +557,10 @@ def fit_baselines(long_df: pd.DataFrame, eligible_only: bool = True) -> dict:
     df = long_df
     if eligible_only and "eligible" in df.columns:
         df = df[df["eligible"].astype(bool)]
+    # D84: pin the fit universe to the LOT frame. A frame column that is
+    # absent means a pre-D84 frame, which was all lots.
+    if "frame" in df.columns:
+        df = df[df["frame"].fillna("lot").isin(frames)]
     out: dict[str, dict] = {}
     for cat in ALLCATS:
         sub = df[df["category"] == cat]
@@ -558,7 +615,11 @@ _BASELINE_HEADER = """\
 # within reach. Before D75 (2026-09-13) the universe was the subset the
 # eligibility gate admitted; the owner retired the gate, so the baseline was
 # re-fit once on the gate-free universe (MN+BK n 267,329 -> 281,842) with the
-# supply set itself unchanged. `aggregate_per_1k` is the home-weighted alternative --
+# supply set itself unchanged. Since D84 (2026-09-13) analysis.address holds TWO
+# sampling frames and the fit universe is pinned to `frame='lot'`: a street
+# midpoint has no residents, and letting 49k units-0 points into the fit would
+# move the ruler every existing ratio is measured against without any supply
+# having changed. `aggregate_per_1k` is the home-weighted alternative --
 # total supply over total homes -- and is NOT what the ratio divides by; it is
 # here because the two disagree and the gap is informative.
 #
@@ -617,6 +678,9 @@ def compute_supply_ratio(
             f"set. Writing zeros onto every address would read as 'there is no "
             f"retail anywhere in New York' -- a confident false negative.")
     homes = load_home_points(con, haircut)
+    # D84: the WEIGHTS are lot rows (homes); the QUERY set is every scored
+    # point in scope, both frames. Before D84 one query served both roles.
+    query = load_query_points(con, boroughs)
 
     with pathlib.Path(graph_path).open("rb") as fh:
         G = pickle.load(fh)
@@ -630,6 +694,9 @@ def compute_supply_ratio(
     home_nodes = ox.distance.nearest_nodes(
         Gp, X=homes["lon"].tolist(), Y=homes["lat"].tolist())
     home_nidx = np.array([idx[n] for n in np.atleast_1d(home_nodes)], dtype=np.int64)
+    query_nodes = ox.distance.nearest_nodes(
+        Gp, X=query["lon"].tolist(), Y=query["lat"].tolist())
+    query_nidx_all = np.array([idx[n] for n in np.atleast_1d(query_nodes)], dtype=np.int64)
 
     nodes_of, weights = {}, {}
     cat_arr = pois["category"].to_numpy()
@@ -645,8 +712,8 @@ def compute_supply_ratio(
     keys = [*ALLCATS, "homes", "addressable"]
     W = node_weights(idx, nodes_of, {k: weights[k] for k in keys}, n_nodes)
 
-    scope = homes[homes["borough"].isin(boroughs)].reset_index(drop=True)
-    scope_nidx = home_nidx[homes["borough"].isin(boroughs).to_numpy()]
+    scope = query.reset_index(drop=True)
+    scope_nidx = query_nidx_all
     uniq, inv = np.unique(scope_nidx, return_inverse=True)
     acc_u, shed_u = catchment_sums_and_shed(A, uniq, W, radius_m=radius_m,
                                             xy_m=node_xy_m(Gp, idx))
@@ -686,6 +753,10 @@ def compute_supply_ratio(
         frames.append(pd.DataFrame({
             "address_id": scope["address_id"],
             "borough": scope["borough"],
+            # D84: carried so `fit_baselines` can pin its universe to the lot
+            # frame without a second query, and so any reader of the long frame
+            # can slice it the same way.
+            "frame": scope["frame"],
             "category": cat,
             "eligible": elig.to_numpy(),
             "homes_400m": addr["homes_400m"],
@@ -703,7 +774,11 @@ def compute_supply_ratio(
         "graph_version": graph_version(graph_path),
         "pois": len(pois),
         "home_rows": len(homes),
+        "home_frames": list(HOME_FRAMES),
         "addresses": len(addr),
+        # D84: how much of the swept set is each frame. The street frame
+        # RECEIVES homes_400m/walkshed/density and CONTRIBUTES zero homes.
+        "addresses_by_frame": scope["frame"].value_counts().to_dict(),
         "query_nodes": int(uniq.size),
         "shed_crs": SHED_CRS,
         "shed_km2_p10": float(np.nanpercentile(shed, 10)) if len(shed) else None,
@@ -840,8 +915,17 @@ def build_supply_ratio(
             # D75: the eligibility gate is retired, so this is every address
             # with a denominator. The string is stamped into the YAML and is
             # how a later reader tells a post-D75 baseline from a pre-D75 one.
-            "universe": "all addresses with homes_400m > 0",
-            "n_addresses": len(addr),
+            # D84: and only the LOT frame -- `fit_baselines` filters on it, so
+            # the string and the fit cannot disagree. `n_addresses` is the fit
+            # universe, not the swept universe: the sweep now also covers the
+            # street frame, which receives ratios and never moves the norm.
+            "universe": "all LOT addresses with homes_400m > 0",
+            # Every category's `n` is the same number -- supply_per_1k is NULL
+            # exactly where homes_400m is 0, which does not vary by category --
+            # so the max IS the fit universe, read off the fit itself rather
+            # than recomputed from a second predicate that could drift from it.
+            "n_addresses": max((v["n"] for v in cats.values()), default=0),
+            "n_swept": len(addr),
             "graph_version": report["graph_version"],
             "categories": cats,
         }

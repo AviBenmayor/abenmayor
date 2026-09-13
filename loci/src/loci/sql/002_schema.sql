@@ -1116,3 +1116,60 @@ ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS revenue_model_ver
 -- ==========================================================================
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS walkshed_km2_400m DOUBLE;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS density_400m      DOUBLE;
+
+-- ==========================================================================
+-- THE TWO SAMPLING FRAMES (D84, 2026-09-13, owner direction: "for addresses,
+-- we should be sampling an address near the middle of every known street in
+-- the borough"). docs/street_midpoint_frame.md is the verified design.
+--
+-- Until now every row of analysis.address was a residential PLUTO tax lot
+-- (D38). That frame is built FROM RESIDENTS, so a street nobody lives on yet
+-- -- the Navy Yard, the Gowanus and Red Hook industrial blocks, a new street
+-- through a rezoned superblock -- was not merely low-scoring, it was absent.
+-- 9.3% of the street frame's points have no residential lot within 100 m, and
+-- they are a DIFFERENT population (median gap_score 2.07 vs 1.27, three times
+-- the missing categories), not more of the same.
+--
+--   frame = 'lot'     one PLUTO tax lot with UnitsRes > 0. bbl set, units > 0.
+--   frame = 'street'  one point every 100 m along a kept CSCL street segment
+--                     (sources/cities/nyc/street_centerline.py). address_id is
+--                     'seg:<physicalid>:<k>', bbl NULL, units 0, units_capped 0.
+--
+-- WHY A COLUMN AND NOT A SIBLING TABLE (D61's no-proliferation rule). A street
+-- midpoint is not a new GRAIN -- it is the same grain, a scored point with a
+-- lon/lat, sampled a different way. Measured: where a street point lies within
+-- 50 m of a lot it reproduces that lot's lead_category 93.1% of the time with a
+-- median gap_score difference of exactly 0.000. A sibling table would assert a
+-- distinction the data says is not there, and would fork every UPDATE-only
+-- annotation layer (D62/D67/D73/D76/D81/D82) into two code paths.
+--
+-- WHAT EVERY CONSUMER MUST NOW DECIDE. A row is no longer necessarily a
+-- residential tax lot with a BBL and units > 0. The frames are pinned to 'lot'
+-- wherever a street point would change a POPULATION statistic or a fitted
+-- parameter: the supply baseline fit, the revenue calibration/backtest/apply,
+-- `loci recommend`'s area medians, validation/sample.py's income deciles and
+-- conveniences' per-address distribution. Everything catchment-shaped
+-- (homes_400m, walkshed, pipeline, storefronts, access, transit, character)
+-- runs FOR street points and is correct there. A street row contributes ZERO
+-- homes to any other row's catchment, exactly, because units is 0 and not NULL.
+--
+-- DEFAULT 'lot' on the ALTER, so every pre-D84 row is right with no backfill.
+-- DuckDB refuses to ALTER-ADD a column carrying ANY constraint ("Adding columns
+-- with constraints not yet supported"), so neither the NOT NULL nor the
+-- two-value CHECK can live in the DDL on an existing warehouse. Both are
+-- enforced in code instead and asserted by tests/test_street_frame.py:
+-- model/address_gaps.py validates every value against FRAMES before a row is
+-- written, and every reader spells the column COALESCE(frame, 'lot') so a NULL
+-- that somehow appeared would read as a lot rather than vanish from both sides
+-- of a filter.
+--
+-- At the TAIL of 002 for the same reason as every block above it:
+-- db.init_schema() rebuilds the generated VIEW analysis.address_gaps
+-- immediately after this file, and that view now selects a.frame.
+-- ==========================================================================
+ALTER TABLE analysis.address          ADD COLUMN IF NOT EXISTS frame         VARCHAR DEFAULT 'lot';
+ALTER TABLE analysis.address          ADD COLUMN IF NOT EXISTS frontage_m    DOUBLE;   -- street rows only: metres of street the point stands for
+ALTER TABLE analysis.address          ADD COLUMN IF NOT EXISTS street_name   VARCHAR;  -- street rows only: CSCL full_street_name
+ALTER TABLE analysis.address          ADD COLUMN IF NOT EXISTS frame_source  VARCHAR;  -- 'nyc_cscl' on street rows, NULL on lot rows
+ALTER TABLE analysis.address          ADD COLUMN IF NOT EXISTS frame_vintage DATE;     -- the CSCL extract date behind a street row
+ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS frame         VARCHAR DEFAULT 'lot';

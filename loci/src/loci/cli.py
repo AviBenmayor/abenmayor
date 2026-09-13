@@ -17,11 +17,21 @@
     loci spacing                                        (read-only)
     loci conveniences [--borough MN]                    (read-only, D58: queries
                                                         analysis.address_category)
+    loci street-frame [--borough MNBK|MN|BK] [--spacing-m 100] [--refresh] [--dry-run]
+                                                        (D84: the STREET sampling frame --
+                                                         one point every 100 m along every
+                                                         known CSCL street. Writes
+                                                         data/interim/street_points.parquet;
+                                                         run BEFORE address-gaps, which
+                                                         consumes it.)
     loci address-gaps [--borough MNBK|MN|BK] [--reach tiers|p80] [--supply-set principled]
-                      [--limit 0] [--dry-run] [--allow-out-of-scope]
+                      [--limit 0] [--street-frame/--no-street-frame] [--dry-run]
+                      [--allow-out-of-scope]
                                                         (D48/D78: the screen is
                                                         Manhattan+Brooklyn; any other
-                                                        borough needs --allow-out-of-scope)
+                                                        borough needs --allow-out-of-scope.
+                                                        D84: scores the lot AND street
+                                                        frames in one run.)
     loci address-demand [--borough MNBK|MN|BK|ALL] [--dry-run]  (D49 annotation, GTM-110)
     loci address-access [--boroughs MN,BK] [--months 3] [--complex-point] [--dry-run]
                                                        (transit_entries_400m + jobs_400m
@@ -887,6 +897,139 @@ def conveniences(
                   f"(unit-weighted) have all 15 categories satisfied")
 
 
+def _load_street_frame(boroughs: list[str], limit: int = 0):
+    """`data/interim/street_points.parquet` shaped like a lot frame, or None
+    when `loci street-frame` has not run.
+
+    The street frame arrives with the SAME column contract the PLUTO loader
+    produces -- address_id, bbl, lon, lat, units, borough -- plus `frame` and
+    the four street descriptors. `units` is 0 and not NULL on purpose: every
+    catchment sum downstream is `COALESCE(units, 0)`, and a 0 contributes
+    EXACTLY nothing to another row's homes_400m, which is what makes the D84
+    non-filtering proof arithmetic rather than approximate. `bbl` is NULL, so
+    every BBL join (PLUTO character, demographics, the laundry evidence views)
+    drops street rows by construction.
+    """
+    import pandas as pd
+
+    from loci.model import address_gaps as ag
+    from loci.sources.cities.nyc import street_centerline as sc
+
+    path = sc.POINTS_PARQUET
+    if not path.exists():
+        return None
+    df = pd.read_parquet(path)
+    df = df[df["borough"].isin(boroughs)].reset_index(drop=True)
+    if df.empty:
+        return None
+    if limit:
+        df = (df.groupby("borough", group_keys=False).head(limit).reset_index(drop=True))
+    out = pd.DataFrame({
+        "address_id": df["point_id"],
+        "bbl": None,
+        "lon": df["lon"],
+        "lat": df["lat"],
+        "units": 0.0,
+        "address": df["street_name"],
+        "borough": df["borough"],
+        "frame": ag.STREET_FRAME,
+        "frontage_m": df["frontage_m"],
+        "street_name": df["street_name"],
+        "frame_source": sc.SOURCE_ID,
+        # Carried IN the parquet, not inferred from its mtime: a file copied
+        # between machines keeps its extract date, and "how old is this frame"
+        # must survive a `cp`.
+        "frame_vintage": pd.to_datetime(df["frame_vintage"]).dt.date,
+    })
+    return out
+
+
+@app.command(name="street-frame")
+def street_frame_cmd(
+    borough: str = typer.Option("MNBK", help="MNBK (default, the D78 screen scope) | MN | BK."),
+    spacing_m: float = typer.Option(100.0, "--spacing-m",
+                                    help="Metres between street points (L). 100 m is the "
+                                         "D84 choice: the smallest round value at or above "
+                                         "the MN+BK median block face (81.9 m), so one point "
+                                         "stands for at most one block face."),
+    refresh: bool = typer.Option(False, "--refresh",
+                                 help="Re-fetch CSCL from the portal instead of reading "
+                                      "the cached extract under data/raw/nyc_cscl/."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Fetch, filter and print the ladder; write no parquet."),
+) -> None:
+    """Build the STREET sampling frame (D84): one scored point every `L` metres
+    along every known street in scope.
+
+    THE OWNER'S DIRECTION (2026-09-13): "for addresses, we should be sampling an
+    address near the middle of every known street in the borough." The screen's
+    frame was the residential tax lot (D38) -- built FROM RESIDENTS, so a street
+    nobody lives on yet was not low-scoring, it was ABSENT. 9.3% of street
+    points have no residential lot within 100 m, and they are a different
+    population: median gap_score 2.07 against the lot frame's 1.27, three times
+    the missing categories, half of them led by laundry.
+
+    Writes `data/interim/street_points.parquet` and NOTHING ELSE. It does not
+    touch the warehouse on purpose: `loci address-gaps` does
+    `DELETE FROM analysis.address WHERE borough = ?` and would drop any street
+    rows written here, so `address-gaps` CONSUMES this parquet and writes both
+    frames in one delete-then-insert, under one provenance stamp, with neither
+    frame able to end up a run ahead of the other (docs/street_midpoint_frame.md
+    section 5). Run this BEFORE `loci address-gaps`.
+
+    The keep rule (verified live 2026-09-13): status='2' AND rw_type=1 AND
+    nonped<>'V' AND at grade -- 32,291 of 41,784 MN+BK segments, 3,476.8 km. The
+    ladder is printed on every build so the filter is auditable rather than
+    asserted, and the build REFUSES if the kept count has moved more than 10%
+    from the verified baseline (CSCL refreshes weekly; drift is expected, a
+    factor is not).
+    """
+    from loci.sources.cities.nyc import street_centerline as sc
+    from loci.sources.cities.nyc.addresses import BOROCODE, SCREEN_BOROUGHS
+
+    b = borough.upper()
+    if b in ("MNBK", "DEFAULT"):
+        boros = tuple(SCREEN_BOROUGHS)
+    else:
+        boros = tuple(x.strip() for x in b.split(",") if x.strip())
+        bad = [x for x in boros if x not in BOROCODE]
+        if bad:
+            raise typer.BadParameter(f"unknown borough(s) {bad}; expected MNBK or "
+                                     f"one of {sorted(BOROCODE)}")
+
+    console.print(f"[dim]CSCL {sc.DATASET} ({'+'.join(boros)}), L = {spacing_m:.0f} m; "
+                  f"{'re-fetching' if refresh else 'cached extract if present'}…[/]")
+    try:
+        points, report = sc.build_frame(boros, spacing_m=spacing_m,
+                                        use_cache=not refresh,
+                                        log=lambda s: console.print(f"[dim]{s}[/]"))
+    except sc.StreetFrameError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1)
+
+    console.print(f"[bold]{report['segments_kept']:,}[/] segments kept of "
+                  f"{report['rows_fetched']:,} fetched "
+                  f"({report['km_kept']:,.1f} km, {report['multipart_segments']:,} multipart) "
+                  f"-> [bold]{report['points']:,}[/] points")
+    for boro, n in sorted(report["points_by_borough"].items()):
+        console.print(f"  {boro}  {n:>8,} points")
+    console.print(f"[dim]length check: computed / segmentlength = "
+                  f"{report['length_check_ratio']:.4f} (must be 1.00 ± 1%); "
+                  f"frontage median {points['frontage_m'].median():.1f} m; "
+                  f"vintage {report['frame_vintage']}[/]")
+
+    if dry_run:
+        console.print("[dim]--dry-run: nothing written.[/]")
+        return
+    out = sc.POINTS_PARQUET
+    out.parent.mkdir(parents=True, exist_ok=True)
+    points["frame_vintage"] = report["frame_vintage"]
+    points.to_parquet(out, index=False)
+    console.print(f"[green]ok[/] wrote {len(points):,} street points -> {out}")
+    console.print("[dim]next: `uv run loci address-gaps` — it unions this frame in and "
+                  "scores both frames in one run.[/]")
+
+
 @app.command(name="address-gaps")
 def address_gaps_cmd(
     borough: str = typer.Option("MNBK", help="MNBK (default, the D48/D78 screen scope) | MN | BK | "
@@ -897,6 +1040,12 @@ def address_gaps_cmd(
                                         "corroborated (D52, score/supply.py). Recorded in "
                                         "analysis.address_gaps.supply_set/supply_hash."),
     limit: int = typer.Option(0, help="Cap addresses per borough, for smoke runs (0 = all)."),
+    street_frame: bool = typer.Option(
+        True, "--street-frame/--no-street-frame",
+        help="Score the STREET frame beside the lot frame (D84), reading "
+             "data/interim/street_points.parquet (built by `loci street-frame`). "
+             "--no-street-frame scores lots only, which is the pre-D84 screen and "
+             "the way to reproduce a pre-D84 run."),
     rank_by: str = typer.Option("density", "--rank-by",
                                 help="Order the cluster list by 'density' (owner ruling "
                                      "2026-09-13, default: the units_capped-weighted median "
@@ -969,8 +1118,27 @@ def address_gaps_cmd(
     if addresses_df.empty:
         console.print(f"[yellow]no residential addresses for borough={b}[/]")
         raise typer.Exit(0)
+    addresses_df["frame"] = ag.LOT_FRAME
+    n_lot = len(addresses_df)
 
-    console.print(f"[dim]{len(addresses_df):,} addresses (borough={b}); "
+    # D84: the STREET frame, unioned in here rather than written by its own
+    # command, because write_address_gaps delete-then-inserts per BOROUGH and
+    # would drop street rows written before it. One union -> one run -> one
+    # provenance stamp, and the two frames can never be one run apart.
+    n_street = 0
+    if street_frame:
+        street_df = _load_street_frame(boros, limit=limit)
+        if street_df is None:
+            console.print("[yellow]no street frame[/] "
+                          "(data/interim/street_points.parquet is missing) — scoring the "
+                          "LOT frame only. Run `uv run loci street-frame` first, or pass "
+                          "--no-street-frame to say you meant lots only (D84).")
+        else:
+            n_street = len(street_df)
+            addresses_df = pd.concat([addresses_df, street_df], ignore_index=True)
+
+    console.print(f"[dim]{len(addresses_df):,} scored points (borough={b}): "
+                  f"{n_lot:,} lot + {n_street:,} street; "
                   f"loading walk graph + 15 Dijkstra passes…[/]")
 
     if dry_run:
@@ -1007,8 +1175,19 @@ def address_gaps_cmd(
         ).fetchdf(),
         on=["address_id", "borough"], how="left")
     summary = ag.summarize_gap_run(df, rank_by=rank_by)
-    console.print(f"{summary['n_addresses']:,} addresses, {summary['n_units']:,.0f} units, "
+    console.print(f"{summary['n_addresses']:,} scored points, {summary['n_units']:,.0f} units, "
                   f"borough={b}, reach={reach}")
+    # D84: the two frames side by side, never pooled into one headline. A
+    # street point has no residents; counting it as an address would inflate
+    # every "N addresses have a gap" number by ~17% for free.
+    if len(summary["by_frame"]) > 1:
+        console.print("[bold]by sampling frame (D84):[/]")
+        for fr, s in summary["by_frame"].items():
+            console.print(
+                f"  {fr:7} {s['n_addresses']:>8,} points  {s['n_units']:>10,.0f} units  "
+                f"{s['n_gap_addresses']:>8,} with a gap  median gap_score "
+                f"{s['median_gap_score']:.2f}  {s['n_clusters']:>5,} clusters  "
+                f"{s['lead_censored']:>7,} censored leads")
     console.print(f"eligible: [bold]{100*summary['eligible_addr_share']:.1f}%[/] of addresses, "
                   f"[bold]{100*summary['eligible_unit_share']:.1f}%[/] of units "
                   f"[dim](retired D75 — always 100%; every address is in the universe)[/]")
@@ -1054,8 +1233,14 @@ def _print_clusters(rows) -> None:
         # "BK:bank:12") and rich's default emoji shortcode parsing mangles
         # ":bank:" into a bank-emoji glyph, garbling the id -- data-derived
         # text with colons must never be printed with emoji parsing on.
+        # D84: the frame is printed because a street cluster has NO residents
+        # and no tax lot -- its feasibility is not assessed and its density is
+        # a catchment over OTHER rows' homes. Reading one as a lot cluster is
+        # the misread this column exists to prevent.
+        fr = row.get("frame") or "lot"
         console.print(
-            f"  {row['cluster_id']:28} {row['borough']:3} lead={row['lead_category']:14} "
+            f"  {row['cluster_id']:28} {row['borough']:3} {fr:6} "
+            f"lead={row['lead_category']:14} "
             f"density={dens} u/km²  units_capped={row['units_capped']:>8,.0f}  "
             f"n_addr={row['n_addresses']:>5}  "
             f"median_lead_excess_m={row['median_lead_excess_m']:>7.0f}"
@@ -1070,6 +1255,12 @@ def clusters_cmd(
     rank_by: str = typer.Option("density", "--rank-by",
                                 help="'density' (owner ruling 2026-09-13, default) or 'units'."),
     category: str = typer.Option("", help="Restrict to clusters with this lead category."),
+    frame: str = typer.Option("all", "--frame",
+                              help="'lot' (residential tax lots, the pre-D84 list), "
+                                   "'street' (the street-midpoint frame: no residents, no "
+                                   "tax lot, feasibility not assessed) or 'all' (default, "
+                                   "both, with the frame printed on every row). Clusters are "
+                                   "built WITHIN a frame (D84), so this never splits one."),
     min_addresses: int = typer.Option(1, "--min-addresses",
                                       help="Drop clusters with fewer than this many member "
                                            "addresses. Density ranks a one-lot cluster against "
@@ -1110,8 +1301,13 @@ def clusters_cmd(
     if category:
         where += " AND lead_category = ?"
         params.append(category)
+    if frame.lower() != "all":
+        if frame.lower() not in ag.FRAMES:
+            raise typer.BadParameter(f"--frame must be 'all' or one of {ag.FRAMES}")
+        where += " AND frame = ?"
+        params.append(frame.lower())
     df = con.execute(
-        f"""SELECT address_id, borough, cluster_id, units_capped, lead_category,
+        f"""SELECT address_id, borough, frame, cluster_id, units_capped, lead_category,
                    lead_excess_m, nta_code, neighborhood, density_400m, walkshed_km2_400m
             FROM analysis.address WHERE {where}""", params).fetchdf()
     if df.empty:

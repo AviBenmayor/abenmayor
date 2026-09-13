@@ -623,3 +623,72 @@ def test_sigma_shape_counts_a_systematic_offset_rather_than_centring_it_away():
     offset = rev.sigma_shape(med, folds, (1.0, 0.0), edges, floor)
     assert offset > 0.0
     assert float(np.std([0.0] * 10)) == 0.0        # what a std would have said
+
+
+# ------------------------------------------- D84: the frames, and the fit
+
+
+def test_the_homes_query_is_pinned_to_the_lot_frame():
+    """`compute_rings`'s one `analysis.address` read plays BOTH roles: it is the
+    homes WEIGHT vector and it is the query set that gets predictions. Both are
+    lot-only since D84.
+
+    As weights, a street point carries units 0 and would change no number -- but
+    leaving it in would make "the spend pool is unchanged" an arithmetic
+    coincidence rather than a guarantee. As the query set it matters much more:
+    lambda_c is fitted so the MEAN prediction over a county's establishments
+    equals the Economic Census mean, and the leave-one-ZIP-out backtest scores
+    ZIP folds. 50,199 units-0 points would enter every fold as structural zeros
+    and pull the fit toward a model that predicts nothing well."""
+    import inspect
+
+    from loci.model import revenue as rv
+
+    src = inspect.getsource(rv.compute_rings)
+    assert "COALESCE(frame, 'lot') = 'lot'" in src
+
+
+def test_a_street_row_gets_no_revenue_and_leaves_every_lot_row_untouched():
+    """The write path, on a real warehouse. Revenue is NOT applied to street
+    rows: their revenue_* stay NULL, which is this module's own convention for
+    "not modelled" and is never a revenue of zero. And the lot rows are
+    byte-identical with and without a street row beside them."""
+    import pandas as pd
+
+    from loci import db as locidb
+    from loci.model import revenue as rv
+
+    con = locidb.connect(":memory:")
+    locidb.init_schema(con)
+    con.executemany(
+        "INSERT INTO analysis.address (address_id, bbl, lon, lat, borough, units, "
+        "present_count, eligible, n_missing, reach_source, reach_hash, graph_version, "
+        "run_at, frame) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,now(),?)",
+        [("3001", "3001", -73.99, 40.67, "BK", 10.0, 12, True, 1, "tiers", "h", "g", "lot"),
+         ("seg:5:0", None, -73.99, 40.67, "BK", 0.0, 12, True, 1, "tiers", "h", "g",
+          "street")])
+    con.executemany(
+        "INSERT INTO analysis.address_category (address_id, borough, category, frame) "
+        "VALUES (?,?,?,?)",
+        [("3001", "BK", "restaurant", "lot"), ("seg:5:0", "BK", "restaurant", "street")])
+
+    # Only the LOT row is predicted -- exactly what predict_addresses returns
+    # when compute_rings' query is pinned.
+    long_df = pd.DataFrame({
+        "address_id": ["3001"], "borough": ["BK"], "category": ["restaurant"],
+        "revenue_p25": [1.0e6], "revenue_p50": [1.5e6], "revenue_p75": [2.0e6],
+        "rent_ceiling": [11_000.0], "revenue_model_version": ["v0"],
+    })
+    rv.write_revenue(con, long_df, ["BK"])
+    rv.write_address_revenue(
+        con, pd.DataFrame({"address_id": ["3001"], "borough": ["BK"],
+                           "homes_800m": [4200]}), ["BK"])
+
+    got = dict(con.execute(
+        "SELECT address_id, revenue_p50 FROM analysis.address_category").fetchall())
+    assert got["3001"] == pytest.approx(1.5e6)
+    assert got["seg:5:0"] is None, "a street point was given a revenue"
+    homes = dict(con.execute(
+        "SELECT address_id, homes_800m FROM analysis.address").fetchall())
+    assert homes["3001"] == 4200
+    assert homes["seg:5:0"] is None

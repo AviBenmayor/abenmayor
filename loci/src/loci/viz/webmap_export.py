@@ -372,6 +372,21 @@ VACANT_M_ROUND = 10
 #: added there forces a decision here instead of quietly never shipping.
 AGE_FIT_GAP_COLUMNS = ["age_fit_lead", "age_fit_lead_moe", "gap_score_fit"]
 
+#: What a street-frame dot means, in the UI's own words. Rendered on every
+#: street point's popup and in the layer toggle's help, because the one thing a
+#: reader must not do is read a street dot as an address: it has no residents,
+#: no tax lot and therefore no feasibility reading, and its rank score is a
+#: statement about what is within a walk of a piece of street, not about anyone
+#: who lives there.
+STREET_FRAME_CAVEAT = (
+    "Street point — no residential lot here. This dot is a sample of the street "
+    "itself (one point every 100 m of centerline), not a building: nobody lives at "
+    "it, it has no tax lot, and no floor-area or feasibility reading. It is on the "
+    "map because a street with no residents yet would otherwise be invisible to a "
+    "screen built from residents."
+)
+
+
 #: The D75 right-censoring flags on analysis.address_gaps. The first is
 #: per-CATEGORY and its name depends on the layer (`{cat}_censored`), so this
 #: list names only the address-grain one; `_gap_sql` builds the pair.
@@ -520,7 +535,8 @@ def _poi_sql(boroughs: list[str], dcats: list[str],
 
 def _gap_sql(cat: str, boroughs: list[str], pipeline: bool = True,
              storefront: bool = True, age_fit: bool = True,
-             age_source: bool = True, censoring: bool = True) -> tuple[str, list]:
+             age_source: bool = True, censoring: bool = True,
+             frame: bool = True) -> tuple[str, list]:
     """Addresses whose `cat` is beyond its reach tier (ratio > 1) --
     model/address_gaps.py's own `n_missing` definition, one category at a
     time. NO eligibility filter: the gate is retired (D75, owner ruling) and
@@ -562,12 +578,21 @@ def _gap_sql(cat: str, boroughs: list[str], pipeline: bool = True,
           ", " + ", ".join("NULL" for _ in AGE_FIT_GAP_COLUMNS)
     src = f", ac.{AGE_FIT_SOURCE_COLUMN}" if age_source else ", NULL"
     cens = (f", g.{cat}_censored, g.lead_censored") if censoring else ", NULL, NULL"
+    # D84: the SAMPLING FRAME, APPENDED after the censoring pair, same rule as
+    # every block above -- every tail is read by position from its own end. A
+    # 'street' row is a point on a street with NO residential lot under it: no
+    # residents, no BBL, no feasibility reading, units 0. The map must be able
+    # to say so, and must be able to hide the 26k of them by default, or the
+    # gap layer silently grows 17% of dots that mean something different from
+    # every other dot on it.
     join = f"""
         LEFT JOIN {'.'.join(AGE_FIT_SOURCE_TABLE)} ac
                ON ac.address_id = g.address_id
               AND ac.borough = g.borough
               AND ac.category = g.lead_category
     """ if age_source else ""
+    frm = (", COALESCE(g.frame, 'lot') AS frame, g.frontage_m, g.street_name"
+           if frame else ", 'lot' AS frame, NULL, NULL")
     sql = f"""
         SELECT g.address_id,
                round(g.lon, {COORD_DP}) AS lon,
@@ -580,6 +605,7 @@ def _gap_sql(cat: str, boroughs: list[str], pipeline: bool = True,
                {pipe}
                {shop}
                , g.gap_score, g.lead_category {age} {src} {cens}
+               {frm}
         FROM analysis.address_gaps g
         {join}
         WHERE g.borough IN ({placeholders})
@@ -932,8 +958,10 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
     npipe, nshop = len(PIPELINE_GAP_COLUMNS), len(STOREFRONT_GAP_COLUMNS)
     tail = 8 + npipe + nshop        # where the ranking block starts in a row
     cens_at = tail + 6              # ...and where the D75 censoring pair starts
+    frame_at = cens_at + 2          # ...and the D84 frame triple after that
     pts, ids = [], []
     cens_cat, cens_lead = [], []
+    frames, frontages, streets = [], [], []
     for row in rows:
         address_id, lon, lat, boro, units = row[:5]
         if lon is None or lat is None or boro not in bidx:
@@ -945,6 +973,16 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
         c_cat, c_lead = row[cens_at:cens_at + 2]
         cens_cat.append(None if c_cat is None else int(bool(c_cat)))
         cens_lead.append(None if c_lead is None else int(bool(c_lead)))
+        # D84: 1 = street frame, 0 = lot. A parallel array and NOT a stride
+        # slot, for the same reason `censoring` is one: the map must be able to
+        # index it per point without every existing reader's fixed offsets
+        # moving, and a file written before D84 has no answer at all.
+        # A row shorter than the frame block is a caller that predates D84 --
+        # one frame, every dot a lot, which is exactly what it was.
+        fr, frontage, street = (tuple(row[frame_at:frame_at + 3]) + (None, None, None))[:3]
+        frames.append(1 if fr == "street" else 0)
+        frontages.append(_num(frontage, 0))
+        streets.append(street)
         character.add(address_id)
         ids.append(address_id)
     return {"category": cat, "label": CATEGORIES[cat].label, "stride": 12,
@@ -956,6 +994,8 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
             "ageFit": fit.pack(),
             "ageFitColumns": list(AGE_FIT_GAP_COLUMNS),
             "censoring": {"cat": cens_cat, "lead": cens_lead, "capM": GAP_CAP_M},
+            "frame": {"street": frames, "frontageM": frontages, "streetName": streets,
+                      "n_street": sum(frames), "caveat": STREET_FRAME_CAVEAT},
             "character": character.pack()}
 
 
@@ -2332,9 +2372,15 @@ SCORE_DP = 3
 
 
 def _nta_gap_sql(boroughs: list[str], pipeline: bool = True,
-                 storefront: bool = True) -> tuple[str, list]:
+                 storefront: bool = True, lot_only: bool = False) -> tuple[str, list]:
     """Every address in `boroughs` with its fifteen ratios (no eligibility
-    filter -- the gate is retired, D75). The
+    filter -- the gate is retired, D75).
+
+    `lot_only` is the D84 pin, and it is TRUE wherever the column exists. This
+    is the NEIGHBOURHOOD roll-up: its numbers are "how many addresses in this
+    neighbourhood are missing X" and its dots are read as buildings. A street
+    midpoint is neither, so the street frame rides in the per-category gap
+    layers -- which carry a frame flag and a toggle -- and not here. The
     missing LIST is assembled in Python rather than by an UNPIVOT: one pass
     over 267k rows beats fifteen self-joins, and the same `ratio > 1` test then
     lives in exactly one place for both the count and the payload."""
@@ -2348,12 +2394,14 @@ def _nta_gap_sql(boroughs: list[str], pipeline: bool = True,
                      else ["NULL"] * len(PIPELINE_GAP_COLUMNS))
     shop = ", ".join(STOREFRONT_GAP_COLUMNS if storefront
                      else ["NULL"] * len(STOREFRONT_GAP_COLUMNS))
+    frm = "AND COALESCE(frame, 'lot') = 'lot'" if lot_only else ""
     sql = f"""
         SELECT nta_code, neighborhood, borough, address_id,
                round(lon, {COORD_DP}) AS lon, round(lat, {COORD_DP}) AS lat,
                units_capped, gap_score, lead_category, {pipe}, {shop}, {ratios}
         FROM analysis.address_gaps
         WHERE borough IN ({ph}) AND nta_code IS NOT NULL
+          {frm}
         ORDER BY nta_code, address_id
     """
     return sql, list(boroughs)
@@ -2515,7 +2563,13 @@ DENSITY_CAVEAT = (
 #: any reader of it are generated from the same list.
 CLUSTER_COLUMNS = ["cluster_id", "borough", "lead_category", "nta_code",
                    "cluster_density_400m", "cluster_density_mean_400m",
-                   "units_capped", "n_addresses", "median_lead_excess_m"]
+                   "units_capped", "n_addresses", "median_lead_excess_m",
+                   # D84, APPENDED and never inserted -- this list is read
+                   # POSITIONALLY by clusters.json's consumers, so a new column
+                   # goes on the end. 'lot' or 'street': a street cluster has no
+                   # residents and no tax lot, so its density is a catchment
+                   # over OTHER rows' homes and its feasibility is not assessed.
+                   "frame"]
 
 
 def _fnum(value, dp: int = 0):
@@ -2614,7 +2668,7 @@ def collect_clusters(con, boroughs: list[str], rank_by: str = "density") -> dict
         return unavailable
     ph = ", ".join("?" for _ in boroughs)
     df = con.execute(
-        f"""SELECT address_id, borough, cluster_id, units_capped, lead_category,
+        f"""SELECT address_id, borough, frame, cluster_id, units_capped, lead_category,
                    lead_excess_m, nta_code, density_400m
             FROM analysis.address
             WHERE cluster_id IS NOT NULL AND borough IN ({ph})""", list(boroughs)).fetchdf()
@@ -2635,7 +2689,7 @@ def collect_clusters(con, boroughs: list[str], rank_by: str = "density") -> dict
     rows = [[r["cluster_id"], r["borough"], r["lead_category"], r.get("nta_code"),
              _fnum(r["cluster_density_400m"]), _fnum(r["cluster_density_mean_400m"]),
              _fnum(r["units_capped"]), int(r["n_addresses"]),
-             _fnum(r["median_lead_excess_m"])]
+             _fnum(r["median_lead_excess_m"]), r.get("frame") or "lot"]
             for r in table.to_dict("records")]
     return {"available": available, "rankBy": rank_by, "rankLabel": RANK_LABELS[rank_by],
             "caveat": DENSITY_CAVEAT, "cols": CLUSTER_COLUMNS,
@@ -2655,7 +2709,8 @@ def collect_nta(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
     111 NTA blocks stand behind the sixteen gap files too, and reading them
     twice would be two chances to disagree."""
     gsql, gparams = _nta_gap_sql(boroughs, has_pipeline_columns(con),
-                                 has_storefront_columns(con))
+                                 has_storefront_columns(con),
+                                 lot_only=has_frame_columns(con))
     psql, pparams = _nta_poi_sql(boroughs, supply_set)
     return pack_nta(con.execute(gsql, gparams).fetchall(),
                     con.execute(psql, pparams).fetchall(),
@@ -2713,6 +2768,14 @@ def has_censoring_columns(con) -> bool:
     degrade-don't-lie contract as the three blocks above)."""
     cols = _gaps_columns(con)
     return set(CENSORED_GAP_COLUMNS) <= cols and all(f"{c}_censored" in cols for c in ALLCATS)
+
+
+def has_frame_columns(con) -> bool:
+    """True when analysis.address_gaps exposes the D84 sampling-frame columns.
+    A database written before D84 holds one frame and exports every dot as a
+    lot, which is exactly what it was -- the same degrade-don't-lie contract as
+    the blocks above."""
+    return {"frame", "frontage_m", "street_name"} <= _gaps_columns(con)
 
 
 def has_age_fit_source(con) -> bool:
@@ -2926,6 +2989,8 @@ def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
     age_src = has_age_fit_source(con)
     # Same contract again for the D75 censoring flags.
     cens_cols = has_censoring_columns(con)
+    # ...and for the D84 sampling frame.
+    frame_cols = has_frame_columns(con)
     # One read of the vacant-storefront lookup for all sixteen gap files: the
     # same ~3,800 rows stand behind every category.
     vacants = collect_vacant_detail(con, boroughs)
@@ -2937,7 +3002,7 @@ def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
     gap_layers = {}
     for cat in ALLCATS:
         sql, params = _gap_sql(cat, boroughs, pipe_cols, shop_cols, age_cols, age_src,
-                               cens_cols)
+                               cens_cols, frame_cols)
         gap_layers[cat] = pack_gaps(con.execute(sql, params).fetchall(), boroughs,
                                     cat, vacants, characters)
 

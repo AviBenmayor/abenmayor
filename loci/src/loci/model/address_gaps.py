@@ -138,7 +138,20 @@ ADDRESS_COLUMNS = [
     # category's nearest_m is AT the 2,400 m Dijkstra cap, i.e. gap_score is
     # a floor rather than a measurement for this address.
     "lead_censored",
+    # D84, APPENDED for the same reason: which SAMPLING FRAME this row came
+    # from. 'lot' is a residential PLUTO tax lot (D38, bbl set, units > 0);
+    # 'street' is a point every 100 m along a kept CSCL street segment
+    # (sources/cities/nyc/street_centerline.py, bbl NULL, units 0). The four
+    # after it describe a street row and are NULL on a lot row.
+    "frame", "frontage_m", "street_name", "frame_source", "frame_vintage",
 ]
+
+#: The two values `frame` may take. Declared here rather than as a DDL CHECK
+#: because DuckDB cannot ALTER-ADD a CHECK to an existing table; the domain is
+#: asserted by tests/test_street_frame.py on a real warehouse.
+FRAMES = ("lot", "street")
+LOT_FRAME = "lot"
+STREET_FRAME = "street"
 
 #: analysis.address_category's SCREEN-owned columns (D38/D58 split) -- the
 #: ones write_address_gaps is allowed to touch. The demand annotation columns
@@ -151,6 +164,11 @@ ADDRESS_CATEGORY_SCREEN_COLUMNS = [
     # D75, APPENDED: nearest_m is AT the 2,400 m cap -- there is no location
     # of this category within the cap, so `nearest_m` and `ratio` are floors.
     "censored",
+    # D84, APPENDED: denormalised from analysis.address for the same reason
+    # `is_lead`/`eligible`/`censored` are (D61) -- a reader must be able to
+    # slice the long table by frame without a join, and every "lot only"
+    # aggregate over this table is one WHERE clause.
+    "frame",
 ]
 
 
@@ -377,6 +395,24 @@ def _cluster_gap_addresses(lon: np.ndarray, lat: np.ndarray, radius_m: float = C
     return labels
 
 
+def cluster_key(borough: str, frame: str, lead: str, label: int) -> str:
+    """The cluster id for one connected component, namespaced by FRAME.
+
+    A LOT cluster keeps exactly the pre-D84 form `"{borough}:{lead}:{n}"` --
+    byte-identical, because the whole claim of D84 is that adding street rows
+    changes nothing about the lot frame, and a moved cluster id is the first
+    thing that would falsify it (tests/test_street_frame.py checksums it).
+    A STREET cluster takes an `S` prefix on the local id --
+    `"{borough}:{lead}:S{n}"`, e.g. `BK:bar:S12` -- so the two namespaces are
+    disjoint by construction, still split into the same three fields for any
+    reader, and visibly different in a cluster list, a popup or a CSV.
+    """
+    if frame not in FRAMES:
+        raise ValueError(f"unknown frame {frame!r}; expected one of {FRAMES}")
+    return (f"{borough}:{lead}:{label}" if frame == LOT_FRAME
+            else f"{borough}:{lead}:S{label}")
+
+
 def _reach_hash(reach: dict[str, float]) -> str:
     """Short, stable hash of the {category: reach_m} actually used for a
     run, independent of dict insertion order -- same rationale as
@@ -384,6 +420,13 @@ def _reach_hash(reach: dict[str, float]) -> str:
     edited concurrently this session, so this module stays self-contained)."""
     blob = json.dumps({c: reach[c] for c in sorted(reach)}, sort_keys=True)
     return hashlib.sha256(blob.encode()).hexdigest()[:12]
+
+
+def _col(df: pd.DataFrame, name: str, n: int):
+    """`df[name]` if the caller supplied it, else a column of None. The street
+    descriptors (frontage_m, street_name, frame_source, frame_vintage) exist
+    only on the street frame; a lot-only caller must not have to invent them."""
+    return df[name].to_numpy() if name in df.columns else np.full(n, None, dtype=object)
 
 
 def _nan_to_none(arr: np.ndarray) -> list:
@@ -416,6 +459,17 @@ def compute_address_gaps(
     """
     if "borough" not in addresses_df.columns:
         raise ValueError("addresses_df must carry a 'borough' column (see the CLI)")
+    # D84: which sampling frame each row came from. Defaults to 'lot' so every
+    # caller that predates the street frame -- and every test that hands this
+    # function a bare (address_id, lon, lat, units, borough) frame -- keeps
+    # working and keeps meaning what it meant. Validated HERE, before the
+    # fifteen Dijkstra passes: a bad frame value is a caller bug, and finding
+    # it ten minutes in would be ten minutes wasted.
+    frame_arr = (addresses_df["frame"].to_numpy() if "frame" in addresses_df.columns
+                 else np.full(len(addresses_df), LOT_FRAME, dtype=object))
+    bad = sorted(set(map(str, frame_arr)) - set(FRAMES))
+    if bad:
+        raise ValueError(f"unknown frame(s) {bad}; expected one of {FRAMES}")
 
     reach = load_reach(reach_source)
     reach_hash_ = _reach_hash(reach)
@@ -433,19 +487,34 @@ def compute_address_gaps(
     lead_category = metrics["lead_category"]
     gap_score = metrics["gap_score"]
 
-    # ---- clustering: gap_score > 1, grouped by (borough, lead) ----
+    # ---- clustering: gap_score > 1, grouped by (borough, FRAME, lead) ----
     # D75: no `eligible &` term any more -- the gate is retired and every
     # address is in the universe, so a cluster is now purely "addresses near
     # each other whose worst category is the same and is beyond its reach".
+    #
+    # D84: WITHIN FRAME, and the frame is in the id. Clustering the union
+    # measured 429 of the 571 existing lot clusters changing membership and id
+    # and 12 net MERGING (BK bar 57 -> 44), because a street point bridges two
+    # lot clusters the screen previously called distinct opportunities. That is
+    # a merge bug in the same family as the dedup failures this project has
+    # already been bitten by -- a point with ZERO residents silently becoming
+    # the bridge that makes two markets look like one -- and it would destroy
+    # the run-to-run cluster continuity (D75's top-50 Jaccard) for a reason
+    # that has nothing to do with retail. Street-only clusters are the new
+    # signal and they get their own namespace. The adjacency a reader will want
+    # ("this street cluster is next to that lot cluster") is a derived,
+    # non-mutating lookup, never a shared id.
     gap_mask = np.nan_to_num(gap_score, nan=-1.0) > 1.0
     cluster_id = np.full(len(addresses_df), None, dtype=object)
     gap_idx = np.flatnonzero(gap_mask)
     if len(gap_idx):
-        keys = pd.DataFrame({"borough": boro_arr[gap_idx], "lead": lead_category[gap_idx]})
-        for (b, cat), sub in keys.groupby(["borough", "lead"]):
+        keys = pd.DataFrame({"borough": boro_arr[gap_idx],
+                             "frame": frame_arr[gap_idx],
+                             "lead": lead_category[gap_idx]})
+        for (b, fr, cat), sub in keys.groupby(["borough", "frame", "lead"]):
             local_idx = gap_idx[sub.index.to_numpy()]
             labels = _cluster_gap_addresses(lon_arr[local_idx], lat_arr[local_idx], CLUSTER_RADIUS_M)
-            cluster_id[local_idx] = [f"{b}:{cat}:{int(lab)}" for lab in labels]
+            cluster_id[local_idx] = [cluster_key(b, fr, cat, int(lab)) for lab in labels]
 
     # ---- h3 res-9 cell -> analysis.hex (borough, nta_code), same join
     # convention as model/conveniences.py's build_address_convenience.
@@ -489,6 +558,16 @@ def compute_address_gaps(
         "n_missing": metrics["n_missing"],
         "cluster_id": cluster_id,
         "lead_censored": metrics["lead_censored"],
+        "frame": frame_arr,
+        # Street-row descriptors, NULL on a lot row. `frontage_m` is how much
+        # street one point stands for: the screen varies at the block scale
+        # (adjacent points 120-160 m apart disagree on lead_category 39.7% of
+        # the time), so a street point is a SAMPLE of its segment and the
+        # reader has to be able to see the sample's span.
+        "frontage_m": _col(addresses_df, "frontage_m", len(addresses_df)),
+        "street_name": _col(addresses_df, "street_name", len(addresses_df)),
+        "frame_source": _col(addresses_df, "frame_source", len(addresses_df)),
+        "frame_vintage": _col(addresses_df, "frame_vintage", len(addresses_df)),
     }
     ratio = metrics["ratio"]
     censored = metrics["censored"]
@@ -518,6 +597,17 @@ def _split_wide(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     and nearest_m/ratio/is_lead/eligible/censored on one row per (address,
     category) -- ALLCATS rows per address, always, present or missing
     alike."""
+    # D84: a frame built before the street frame existed (and every test that
+    # assembles one by hand) carries no `frame` columns. Fill them rather than
+    # requiring every caller to invent five columns whose answer is "this is a
+    # lot, like everything was" -- the same tolerance `_col` gives the
+    # street-only descriptors upstream.
+    df = df.copy()
+    if "frame" not in df.columns:
+        df["frame"] = LOT_FRAME
+    for c in ("frontage_m", "street_name", "frame_source", "frame_vintage"):
+        if c not in df.columns:
+            df[c] = None
     addr_df = df[ADDRESS_COLUMNS].copy()
     lead = df["lead_category"]
     long_frames = [
@@ -534,6 +624,7 @@ def _split_wide(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
             "is_lead": lead.notna() & (lead == cat),
             "eligible": df["eligible"],
             "censored": df[f"{cat}_censored"],
+            "frame": df["frame"],
         })
         for cat in ALLCATS
     ]
@@ -727,7 +818,17 @@ def address_gaps_view_sql() -> str:
             -- UNITS per km2 of the walk the address can actually make, NOT
             -- ACS households per km2 and carrying no margin of error.
             -- NULL until `loci supply-ratio` has run for the borough.
-            a.walkshed_km2_400m, a.density_400m
+            a.walkshed_km2_400m, a.density_400m,
+            -- THE SAMPLING FRAME (D84, sql/002 tail). APPENDED last, same
+            -- reason as every block above. 'lot' is a residential PLUTO tax
+            -- lot (bbl set, units > 0); 'street' is a point every 100 m along
+            -- a kept CSCL street segment (bbl NULL, units 0, frontage_m set).
+            -- EVERY consumer of this view that reads a row as "a residential
+            -- address" must now filter on it: a street point has no residents,
+            -- so counting street rows as addresses inflates any "N addresses
+            -- have a gap" headline by ~17%, and a units-weighted statistic is
+            -- unaffected only because street units are 0 and not NULL.
+            a.frame, a.frontage_m, a.street_name
         FROM analysis.address a
         LEFT JOIN wide w ON w.address_id = a.address_id AND w.borough = a.borough
     """
@@ -821,8 +922,9 @@ def cluster_table(df: pd.DataFrame, rank_by: str = DEFAULT_RANK_BY) -> pd.DataFr
         raise ValueError(f"unknown rank_by {rank_by!r}; expected one of {RANK_BY}")
     clustered = df.loc[df["cluster_id"].notna()]
     if not len(clustered):
-        cols = ["cluster_id", "borough", "lead_category", "n_addresses", "units_capped",
-                "cluster_density_400m", "cluster_density_mean_400m", "median_lead_excess_m"]
+        cols = ["cluster_id", "borough", "frame", "lead_category", "n_addresses",
+                "units_capped", "cluster_density_400m", "cluster_density_mean_400m",
+                "median_lead_excess_m"]
         return pd.DataFrame({c: pd.Series(dtype="float64") for c in cols})
     has_density = "density_400m" in clustered.columns and \
         pd.to_numeric(clustered["density_400m"], errors="coerce").notna().any()
@@ -833,6 +935,11 @@ def cluster_table(df: pd.DataFrame, rank_by: str = DEFAULT_RANK_BY) -> pd.DataFr
             "--boroughs ...` first, or pass rank_by='units'")
 
     work = clustered.copy()
+    # D84: a cluster belongs to exactly one frame (clustering is WITHIN frame),
+    # so `first` is the whole truth and not a summary. A frame missing from the
+    # caller's frame means a lot-only query, which is what it was before D84.
+    if "frame" not in work.columns:
+        work["frame"] = LOT_FRAME
     work["_density"] = (pd.to_numeric(work["density_400m"], errors="coerce")
                         if has_density else np.nan)
     work["_units"] = pd.to_numeric(work["units_capped"], errors="coerce").fillna(0.0)
@@ -843,6 +950,7 @@ def cluster_table(df: pd.DataFrame, rank_by: str = DEFAULT_RANK_BY) -> pd.DataFr
             units_capped=("units_capped", "sum"),
             n_addresses=("units_capped", "size"),
             borough=("borough", "first"),
+            frame=("frame", "first"),
             lead_category=("lead_category", "first"),
             median_lead_excess_m=("lead_excess_m", "median"),
             cluster_density_mean_400m=("_density", "mean"),
@@ -920,9 +1028,31 @@ def summarize_gap_run(df: pd.DataFrame, rank_by: str = DEFAULT_RANK_BY) -> dict:
         rank_by, clusters = "units", cluster_table(df, rank_by="units")
     top_clusters = clusters.head(10).to_dict("records")
 
+    # D84: the two frames, side by side and never pooled into one headline.
+    # "N addresses have a gap" means residential addresses; a street point has
+    # no residents, so pooling the two inflates that number by ~17% for free.
+    frame_col = df["frame"] if "frame" in df.columns else pd.Series(
+        [LOT_FRAME] * n_addr, index=df.index)
+    by_frame = {}
+    for fr in FRAMES:
+        m = frame_col == fr
+        if not bool(m.any()):
+            continue
+        by_frame[fr] = {
+            "n_addresses": int(m.sum()),
+            "n_units": float(df.loc[m, "units"].sum()),
+            "n_gap_addresses": int((df.loc[m, "n_missing"] > 0).sum()),
+            "n_clustered": int(df.loc[m, "cluster_id"].notna().sum()),
+            "n_clusters": int(df.loc[m, "cluster_id"].dropna().nunique()),
+            "median_gap_score": float(pd.to_numeric(
+                df.loc[m, "gap_score"], errors="coerce").median()),
+            "lead_censored": int(df.loc[m, "lead_censored"].astype(bool).sum()),
+        }
+
     return {
         "rank_by": rank_by,
         "rank_by_fallback": rank_fallback,
+        "by_frame": by_frame,
         "n_addresses": n_addr,
         "n_units": n_units,
         "eligible_addr_share": eligible_addr_share,

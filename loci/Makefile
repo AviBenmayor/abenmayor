@@ -17,7 +17,8 @@ check:         ## Registry + URL sweep + QUESTIONS drift + decisions + ledger co
 	uv run loci check-presence
 	uv run pytest tests/test_chains_normalize.py tests/test_chains_detect.py \
 	              tests/test_chains_watchlist.py tests/test_poi_presence.py \
-	              tests/test_webmap_character.py -q
+	              tests/test_webmap_character.py tests/test_sidewalk_count.py \
+	              tests/test_street_frame.py -q
 
 tickets:       ## Regenerate docs/TICKETS.md + docs/linear-*.{csv,json}
 	uv run loci gen-tickets

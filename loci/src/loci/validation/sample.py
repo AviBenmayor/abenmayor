@@ -166,6 +166,12 @@ def draw_sample(con, categories: list[str] | None = None, per_stratum: int = 20,
     arbitrarily by NTILE; with ~265k addresses over ~2.3k distinct tract
     medians the effect on a stratum of 20 is negligible.
 
+    LOT FRAME ONLY (D84). The stratification is NTILE(10) over the tract
+    median household income a street midpoint does not have -- the inner join
+    to address_demographics already drops street rows, and the predicate is
+    written out anyway because a silent NULL stratum would change the Google
+    Places budget plan without anybody deciding to.
+
     `eligible_only` applies `analysis.address_gaps.eligible`. That column is
     RETIRED and always TRUE since D75 (2026-09-13, owner ruling: an address in
     a genuinely under-developed area must not be dropped), so on any run of the
@@ -202,6 +208,7 @@ def draw_sample(con, categories: list[str] | None = None, per_stratum: int = 20,
           ON d.address_id = g.address_id AND d.acs_year = ?
         WHERE g.borough IN ({boro_ph})
           AND d.median_hh_income IS NOT NULL
+          AND COALESCE(g.frame, 'lot') = 'lot'
           {eligible_sql}
     """, [acs_year, *boroughs]).fetchall()
     if not rows:

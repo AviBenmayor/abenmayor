@@ -838,10 +838,24 @@ def compute_rings(con, boroughs: list[str], spec: dict | None = None,
     # Homes are CITYWIDE (edge effects: a Bushwick address is served by, and
     # serves, the block across the Queens line) -- same reasoning as
     # supply_ratio.load_home_points.
+    #
+    # D84: and LOT-frame only, for both of the roles this one query plays.
+    # As WEIGHTS, a street point contributes units 0 -- including it would
+    # change no number and would make the "spend pool is unchanged" claim
+    # approximate instead of arithmetic. As the QUERY set, a street point is
+    # not an observation of realised receipts: lambda_c is fitted so that the
+    # mean prediction over a county's establishments matches the Economic
+    # Census, and the leave-one-ZIP-out backtest scores predictions against
+    # ZIP-level CBP employment. A units-0 point has no spend pool, so it would
+    # enter every fold as a structural zero and drag the fit toward a model
+    # that predicts nothing well. So revenue is NOT applied to street rows:
+    # their revenue_* columns stay NULL, which is this module's own convention
+    # for "not modelled" and never a revenue of zero.
     homes = con.execute("""
         SELECT address_id, borough, lon, lat, COALESCE(units, 0) AS units
         FROM analysis.address
         WHERE lon IS NOT NULL AND lat IS NOT NULL
+          AND COALESCE(frame, 'lot') = 'lot'
     """).fetchdf()
     demo = con.execute("""
         SELECT address_id, median_hh_income, median_hh_income_moe

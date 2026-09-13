@@ -1110,12 +1110,19 @@ CREATE OR REPLACE VIEW analysis.address_character AS
 WITH nta_size AS (
     -- The suppression denominator (D82). Counted over BUILT addresses only,
     -- so a borough that has not been run does not suppress itself to nothing.
+    -- D84: LOT frame only. "Fewer than 50 addresses" is a statement about
+    -- residential addresses; counting street midpoints would un-suppress small
+    -- NTAs on the strength of points where nobody lives.
     SELECT borough, nta_code, count(*) AS nta_addresses
     FROM analysis.address
-    WHERE character_run_at IS NOT NULL
+    WHERE character_run_at IS NOT NULL AND COALESCE(frame, 'lot') = 'lot'
     GROUP BY borough, nta_code
 ), base AS (
     SELECT a.address_id, a.borough, a.nta_code, a.neighborhood, a.lon, a.lat,
+           -- D84: the sampling frame travels onto the view so the NTA roll-up
+           -- below can stay a statement about residential addresses while a
+           -- street midpoint still carries its own character reading.
+           COALESCE(a.frame, 'lot') AS frame,
            a.homes_400m, a.jobs_400m, a.transit_entries_400m,
            a.transit_am_pm_share_400m,
            a.retail_area_400m, a.office_area_400m, a.office_area_incl_inst_400m,
@@ -1244,7 +1251,12 @@ SELECT borough,
        median(transit_am_pm_share_400m)                               AS am_pm_share_median,
        count(transit_am_pm_share_400m)                                AS n_am_pm
 FROM analysis.address_character
-WHERE character_run_at IS NOT NULL
+-- D84: LOT frame only. Every share, mean and median here is "over this
+-- neighbourhood's addresses", and D82's published numbers were measured over
+-- residential lots. Street midpoints carry their own character on the address
+-- view; letting them into this GROUP BY would move every share in the
+-- neighbourhood layer without any building having changed.
+WHERE character_run_at IS NOT NULL AND COALESCE(frame, 'lot') = 'lot'
 GROUP BY borough, nta_code
 """
 
