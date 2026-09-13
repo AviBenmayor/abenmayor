@@ -51,6 +51,17 @@ def init_schema(con: duckdb.DuckDBPyConnection) -> None:
             # circular.
             from loci.model.address_gaps import address_gaps_view_sql
             con.execute(address_gaps_view_sql())
+        if path.name == "021_address_character.sql":
+            # analysis.address_character / analysis.nta_character are VIEWS
+            # generated from model/address_character.py, for the same reason
+            # address_gaps is: the label thresholds must have ONE definition in
+            # the codebase, and a CASE expression copied into a .sql file is a
+            # second one waiting to drift. They must be created AFTER 021's
+            # ALTERs (DuckDB resolves a view's query at CREATE time and the
+            # columns would not exist yet), and nothing else references them, so
+            # here is the right moment.
+            from loci.model.address_character import create_views
+            create_views(con)
 
 
 # DuckDB's ST_Distance_Sphere reads POINT(x, y) as (LATITUDE, LONGITUDE); our geometry

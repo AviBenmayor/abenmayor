@@ -4043,3 +4043,248 @@ def storefront_pipeline_stats() -> None:
     console.print("[dim]Neighbourhood means are ADDRESS-WEIGHTED. Never sum a catchment "
                   "column across addresses: a filing within 400 m of N addresses is "
                   "counted N times by design.[/]")
+
+
+# ---------------------------------------------------------------------------
+# loci address-character -- retail- vs corporate-dominated, at address grain
+# ---------------------------------------------------------------------------
+
+address_character_app = typer.Typer(add_completion=False, help=(
+    "Neighbourhood CHARACTER at address grain: is what is inside a five-minute "
+    "walk retail-facing, desk-facing, industrial or residential?\n\n"
+    "`build` sweeps MapPLUTO floor area (RetailArea / OfficeArea / ResArea / "
+    "FactryArea / BldgArea, square feet) and LODES8 WAC jobs split into three "
+    "disjoint sector groups over the SAME pedestrian walk graph, the SAME 400 m "
+    "network radius and the SAME scipy Dijkstra as homes_400m and jobs_400m, and "
+    "UPDATEs twelve columns on analysis.address. `stats` prints the label "
+    "distribution, the share deciles the thresholds were read off, and the NTA "
+    "roll-up.\n\n"
+    "The shares and the label are VIEWS (analysis.address_character, "
+    "analysis.nta_character), not stored columns: they are pure arithmetic on "
+    "the stored numbers, so materialising them would create a second thing to "
+    "keep in sync every time a threshold moves.\n\n"
+    "These columns are CONTEXT beside the screen. They do NOT enter gap_score, "
+    "supply_ratio_vs_base, the revenue model or any recommendation grade."))
+app.add_typer(address_character_app, name="address-character")
+
+
+@address_character_app.command("build")
+def address_character_build(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL."),
+    radius_m: float = typer.Option(400.0, "--radius-m",
+                                   help="Catchment radius in NETWORK metres (default 400 = the 5-min tier)."),
+    jobs_vintage: int = typer.Option(2023, "--jobs-vintage",
+                                     help="LODES8 WAC vintage on disk (data/raw/lodes)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """Sweep PLUTO floor area + LODES sector jobs within 400 m of every address.
+
+        retail_area_400m / office_area_400m / res_area_400m /
+        factory_area_400m / bldg_area_400m       MapPLUTO, SQUARE FEET
+        jobs_retail_400m / jobs_office_400m / jobs_other_400m
+                                                 LODES8 WAC, summing to jobs_400m
+
+    THE LOT SET IS EVERY PLUTO LOT, not analysis.address's lots. analysis.address
+    is `PLUTO lots WHERE UnitsRes > 0`, so reusing it -- which is what "the exact
+    lot set homes_400m uses" would have meant -- would report the Financial
+    District and Industry City as ZERO office and ZERO factory floor area and
+    label Midtown East residential. The catchment ENGINE is identical; only the
+    weight set is widened, and filtering these lots to UnitsRes > 0 reproduces
+    homes_400m's set exactly.
+
+    UPDATE-only on analysis.address (twelve columns), pinned disjoint from the
+    screen's own columns and from every sibling annotation.
+
+    RE-APPLY AFTER EVERY SCREEN RE-RUN. `loci address-gaps` DELETEs and
+    re-INSERTs analysis.address, so these twelve columns come back NULL exactly
+    as every other annotation does; `character_run_at IS NULL` is the flag.
+
+        loci address-character build --boroughs MN,BK
+    """
+    from loci.model import address_character as ac
+
+    boros = _parse_boroughs(boroughs)
+    con = locidb.connect(read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+    if abs(radius_m - ac.DEFAULT_RADIUS_M) > 1e-6:
+        console.print(f"[yellow]warning:[/] --radius-m {radius_m:.0f} differs from the "
+                      f"{ac.DEFAULT_RADIUS_M:.0f} m the COLUMN NAMES encode; "
+                      f"character_radius_m records what was actually used.")
+
+    console.print(f"[dim]PLUTO floor area + LODES sector jobs for {','.join(boros)} at "
+                  f"{radius_m:.0f} m network…[/]")
+    df, report = ac.build_character(
+        con, boros, radius_m=radius_m, jobs_vintage=jobs_vintage, dry_run=dry_run)
+
+    console.print(f"MapPLUTO [bold]{report['pluto_version']}[/] · {report['lots']:,} lots in "
+                  f"the scope bbox ({report['lots_residential']:,} with UnitsRes > 0 -- the "
+                  f"set homes_400m uses) · {report['lot_bldg_area_total'] / 1e6:,.0f} M sq ft "
+                  f"built, {report['lot_office_area_total'] / 1e6:,.0f} M office, "
+                  f"{report['lot_retail_area_total'] / 1e6:,.0f} M retail")
+    console.print(f"LODES WAC {report['jobs_vintage']} · {report['job_blocks']:,} blocks with "
+                  f"jobs · {report['job_total_in_bbox']:,.0f} total, "
+                  f"{report['job_retail_in_bbox']:,.0f} retail-facing "
+                  f"({'+'.join(report['retail_sectors'])}), "
+                  f"{report['job_office_in_bbox']:,.0f} desk-facing "
+                  f"({'+'.join(report['office_sectors'])})")
+    console.print(f"{report['addresses']:,} addresses over {report['query_nodes']:,} distinct "
+                  f"graph nodes (graph {report['graph_version']})")
+
+    tab = Table(title=f"walkable character inputs — {','.join(boros)} @ {radius_m:.0f} m network")
+    for col, j in (("borough", "left"), ("addresses", "right"),
+                   ("office ksf p50", "right"), ("office ksf p90", "right"),
+                   ("retail ksf p50", "right"), ("factory ksf p90", "right"),
+                   ("jobs retail p50", "right"), ("jobs office p90", "right")):
+        tab.add_column(col, justify=j)
+    for b in [*boros, "ALL"]:
+        s = df if b == "ALL" else df[df["borough"] == b]
+        if s.empty:
+            continue
+        tab.add_row(b, f"{len(s):,}",
+                    f"{s['office_area_400m'].median() / 1e3:,.0f}",
+                    f"{s['office_area_400m'].quantile(0.9) / 1e3:,.0f}",
+                    f"{s['retail_area_400m'].median() / 1e3:,.0f}",
+                    f"{s['factory_area_400m'].quantile(0.9) / 1e3:,.0f}",
+                    f"{s['jobs_retail_400m'].median():,.0f}",
+                    f"{s['jobs_office_400m'].quantile(0.9):,.0f}")
+    console.print(tab)
+    console.print("[dim]Zero is an observation ('nothing built within a five-minute walk'), "
+                  "never a missing value. NEVER sum a catchment column across addresses: a "
+                  "lot within 400 m of N addresses is counted N times by design.[/]")
+
+    if dry_run:
+        console.print("[dim]--dry-run:[/] nothing written.")
+        raise typer.Exit(0)
+    console.print(f"[green]ok[/] {report['_written']:,} rows -> analysis.address; "
+                  f"analysis.address_character / analysis.nta_character refreshed")
+    console.print("[dim]Now run `loci address-character stats`.[/]")
+
+
+@address_character_app.command("stats")
+def address_character_stats(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL."),
+    top: int = typer.Option(10, "--top", help="Rows per NTA table."),
+    min_addresses: int = typer.Option(200, "--min-addresses",
+                                      help="Skip NTAs with fewer residential lots than this. "
+                                           "Park and cemetery polygons hold a handful each and "
+                                           "would otherwise take every top slot on any share."),
+    deciles: bool = typer.Option(True, "--deciles/--no-deciles",
+                                 help="Print the share deciles the thresholds were read off."),
+) -> None:
+    """Validation, label counts, share deciles and the NTA roll-up.
+
+    The deciles are the table the thresholds have to be justified against. They
+    are NOT how the thresholds were set: a cut placed at the 90th percentile of
+    a share fixes the label rate at 10% BY CONSTRUCTION (D34's quantile-artefact
+    lesson), so the cuts here are absolute and the deciles are what says whether
+    an absolute cut lands somewhere meaningful.
+    """
+    import pandas as pd
+
+    from loci.model import address_character as ac
+
+    boros = _parse_boroughs(boroughs)
+    con = locidb.connect(read_only=True)
+
+    v = con.execute(ac.VALIDATION_SQL).fetchdf()
+    t = Table(title="validation — analysis.address (ROLLUP; NULL borough = all)")
+    for c in v.columns:
+        t.add_column(str(c), justify="right")
+    for r in v.itertuples(index=False):
+        t.add_row(*[("ALL" if pd.isna(x) else f"{x:,}" if isinstance(x, (int, float)) else str(x))
+                    for x in r])
+    console.print(t)
+    console.print("[dim]jobs_sum_mismatch counts addresses where jobs_retail + jobs_office + "
+                  "jobs_other <> jobs_400m. It must be 0: the three are a partition of the "
+                  "SAME LODES C000 over the SAME blocks, so a non-zero means this sweep and "
+                  "`loci address-access` saw different geography (different graph, different "
+                  "radius, or one of the two was never re-applied after the last "
+                  "`loci address-gaps`).[/]")
+
+    lv = con.execute(ac.LABEL_VALIDATION_SQL).fetchdf()
+    t2 = Table(title="validation — analysis.address_character (labels)")
+    for c in lv.columns:
+        t2.add_column(str(c), justify="right")
+    for r in lv.itertuples(index=False):
+        t2.add_row(*[("ALL" if pd.isna(x) else f"{x:,}" if isinstance(x, (int, float)) else str(x))
+                     for x in r])
+    console.print(t2)
+
+    lc = ac.label_counts(con)
+    t3 = Table(title="label counts")
+    for c in ("borough", "character", "addresses", "share", "mean_intensity"):
+        t3.add_column(c, justify="right")
+    totals = lc[lc["borough"].isna()]["addresses"].sum() if len(lc) else 0
+    for b, grp in lc.groupby(lc["borough"].fillna("ALL"), sort=False):
+        n = grp["addresses"].sum()
+        for r in grp.itertuples(index=False):
+            t3.add_row(str(b), str(r.character), f"{r.addresses:,}",
+                       f"{r.addresses / n:.1%}", f"{r.mean_intensity}")
+    console.print(t3)
+
+    ov = ac.rule_overlap(con)
+    console.print("[dim]rule overlap (why LABEL_ORDER is load-bearing): "
+                  + " · ".join(f"{c}={int(ov[c].iloc[0]):,}" for c in ov.columns) + "[/]")
+
+    if deciles:
+        d = ac.deciles(con, boros)
+        t4 = Table(title=f"share deciles — {','.join(boros)}")
+        for c in d.columns:
+            t4.add_column(str(c), justify="right")
+        for r in d.itertuples(index=False):
+            t4.add_row(*[f"{x:.4f}" if isinstance(x, float) else str(x) for x in r])
+        console.print(t4)
+        console.print(f"[dim]thresholds: corporate office_area_share >= "
+                      f"{ac.CORPORATE_OFFICE_AREA_SHARE} or jobs_office_share >= "
+                      f"{ac.CORPORATE_JOBS_OFFICE_SHARE} with >= "
+                      f"{ac.CORPORATE_JOBS_FLOOR:,} jobs; industrial factory_area_share >= "
+                      f"{ac.INDUSTRIAL_FACTORY_AREA_SHARE}; retail_mixed retail_area_share >= "
+                      f"{ac.RETAIL_AREA_SHARE} or jobs_retail_share >= {ac.RETAIL_JOBS_SHARE}; "
+                      f"else residential. Order: {' -> '.join(ac.LABEL_ORDER)}.[/]")
+
+    amp = ac.am_pm_corroboration(con)
+    t6 = Table(title="corroboration — AM share of subway entries by label (D76)")
+    for col in amp.columns:
+        t6.add_column(str(col), justify="right")
+    for r in amp.itertuples(index=False):
+        t6.add_row(*[("—" if pd.isna(x) else f"{x:,}" if isinstance(x, int) else str(x))
+                     for x in r])
+    console.print(t6)
+    console.print("[dim]This is the only EXTERNAL check available. transit_am_pm_share_400m "
+                  "comes from MTA turnstile entries by hour and knows nothing about PLUTO or "
+                  "LODES: it is high where people LEAVE in the morning (residential catchment) "
+                  "and low where they ARRIVE. If the label means anything it should fall "
+                  "monotonically from residential to corporate — nothing in the label's "
+                  "construction could have produced that.[/]")
+
+    for title, order in (("most CORPORATE", "share_corporate"),
+                         ("most RETAIL-MIXED", "share_retail_mixed"),
+                         ("most INDUSTRIAL", "share_industrial"),
+                         ("most RESIDENTIAL", "share_residential")):
+        n = ac.nta_table(con, boros, order_by=order, limit=top,
+                         min_addresses=min_addresses)
+        # A deliberately narrow column set: the four label shares plus the two
+        # corroborating numbers. The mean per-address shares stay on
+        # analysis.nta_character for anyone querying it; eight columns is what
+        # fits a terminal without rich squeezing every heading to one letter.
+        n = n[["nta_code", "neighborhood", "addr", "dominant", "corp", "retail",
+               "indus", "resid", "jobs_p50", "am_pm"]].copy()
+        n["neighborhood"] = n["neighborhood"].str.slice(0, 24)
+        t5 = Table(title=f"NTAs — {title} ({','.join(boros)}, address-weighted)")
+        for col in n.columns:
+            t5.add_column(str(col), justify="left" if col in ("nta_code", "neighborhood",
+                                                              "dominant") else "right")
+        for r in n.itertuples(index=False):
+            t5.add_row(*[("—" if pd.isna(x) else f"{x:,}" if isinstance(x, int)
+                          else str(x)) for x in r])
+        console.print(t5)
+
+    console.print("[dim]NTA means are ADDRESS-WEIGHTED over RESIDENTIAL lots, so they read "
+                  "'what the average resident's five-minute walk contains', not 'what the "
+                  "average acre contains'. In an NTA with a big non-residential district and "
+                  "a small residential pocket (the Sunset Park waterfront, the FiDi fringe) "
+                  "those are very different numbers. am_pm is the D76 morning share of subway "
+                  "ENTRIES -- high where people LEAVE in the morning (residential catchment), "
+                  "low where they ARRIVE -- and rests on n_am_pm addresses, not all of "
+                  "them.[/]")
