@@ -17,8 +17,11 @@
     loci spacing                                        (read-only)
     loci conveniences [--borough MN]                    (read-only, D58: queries
                                                         analysis.address_category)
-    loci address-gaps [--borough ALL] [--reach tiers|p80] [--supply-set principled]
-                      [--limit 0] [--dry-run]
+    loci address-gaps [--borough MNBK|MN|BK] [--reach tiers|p80] [--supply-set principled]
+                      [--limit 0] [--dry-run] [--allow-out-of-scope]
+                                                        (D48/D78: the screen is
+                                                        Manhattan+Brooklyn; any other
+                                                        borough needs --allow-out-of-scope)
     loci address-demand [--borough MNBK|MN|BK|ALL] [--dry-run]  (D49 annotation, GTM-110)
     loci address-access [--boroughs MN,BK] [--months 3] [--complex-point] [--dry-run]
                                                        (transit_entries_400m + jobs_400m
@@ -886,7 +889,8 @@ def conveniences(
 
 @app.command(name="address-gaps")
 def address_gaps_cmd(
-    borough: str = typer.Option("ALL", help="ALL|MN|BX|BK|QN|SI"),
+    borough: str = typer.Option("MNBK", help="MNBK (default, the D48/D78 screen scope) | MN | BK | "
+                                            "a comma list | ALL (needs --allow-out-of-scope)."),
     reach: str = typer.Option("tiers", help="'tiers' (CHECKPOINT D41, default) or 'p80' (reach.yaml)."),
     supply_set: str = typer.Option(SUPPLY_DEFAULT, "--supply-set",
                                    help="Which POIs count as supply: all | principled | "
@@ -894,21 +898,55 @@ def address_gaps_cmd(
                                         "analysis.address_gaps.supply_set/supply_hash."),
     limit: int = typer.Option(0, help="Cap addresses per borough, for smoke runs (0 = all)."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print the summary; write nothing."),
+    allow_out_of_scope: bool = typer.Option(
+        False, "--allow-out-of-scope",
+        help="Permit boroughs outside the D48/D78 screen scope (MN+BK). Deliberate, "
+             "documented runs only -- the screen tables are read as the deliverable, and "
+             "an out-of-scope run puts rows in them that the owner has ruled out of scope. "
+             "Also suppresses the prune that otherwise removes such rows."),
 ) -> None:
     """Address-level gap screen (CHECKPOINT D33/D38/D39/D41): a fixed 800m/
     >=12-of-15 walkability gate (reach-independent), then a CONTINUOUS
     max(nearest_m/reach_m) ranking per residential PLUTO lot, clustered by
     lead category and proximity. Supersedes the old 800m/80% rule entirely.
-    Writes analysis.address_gaps unless --dry-run."""
+    Writes analysis.address_gaps unless --dry-run.
+
+    SCOPE (D48, re-ruled as D78 2026-09-13): the screen is Manhattan and
+    Brooklyn. `--borough ALL`, or any borough outside MN+BK, is REFUSED unless
+    --allow-out-of-scope is passed; and a normal in-scope run prunes any
+    out-of-scope rows a previous wider run left behind, so the screen tables
+    hold MN+BK and nothing else. The data foundation underneath -- the raw
+    sources, poi_dedup/poi_supply, the hex tables, analysis.address_demographics
+    -- stays citywide and is untouched by this."""
     import pandas as pd
 
     from loci.model import address_gaps as ag
-    from loci.sources.cities.nyc.addresses import BOROCODE, load_residential_addresses
+    from loci.sources.cities.nyc.addresses import (
+        BOROCODE,
+        SCREEN_BOROUGHS,
+        load_residential_addresses,
+    )
 
     b = borough.upper()
-    if b != "ALL" and b not in BOROCODE:
-        raise typer.BadParameter(f"unknown borough {borough!r}; expected ALL or one of {sorted(BOROCODE)}")
-    boros = list(BOROCODE) if b == "ALL" else [b]
+    if b in ("MNBK", "DEFAULT"):
+        boros = list(SCREEN_BOROUGHS)
+    elif b == "ALL":
+        boros = sorted(BOROCODE)
+    else:
+        boros = [x.strip() for x in b.split(",") if x.strip()]
+        bad = [x for x in boros if x not in BOROCODE]
+        if bad:
+            raise typer.BadParameter(
+                f"unknown borough(s) {bad}; expected MNBK, ALL, or one of {sorted(BOROCODE)}")
+    out_of_scope = [x for x in boros if x not in SCREEN_BOROUGHS]
+    if out_of_scope and not allow_out_of_scope:
+        raise typer.BadParameter(
+            f"{','.join(out_of_scope)} is outside the screen scope "
+            f"{'+'.join(SCREEN_BOROUGHS)} (CHECKPOINT D48, owner ruling D78: "
+            f"\"we are still focused on Manhattan and Brooklyn\"). analysis.address and "
+            f"analysis.address_category are the deliverable and hold MN+BK only; the data "
+            f"foundation stays citywide. Pass --allow-out-of-scope if you really mean to "
+            f"write out-of-scope rows into the screen tables.")
 
     con = locidb.connect(read_only=dry_run)
     if not dry_run:
@@ -939,6 +977,15 @@ def address_gaps_cmd(
         console.print(f"[green]ok[/] wrote {n:,} rows -> analysis.address_gaps "
                       f"(borough={b}, reach={reach}, supply_set={supply_set}, "
                       f"supply_hash={df['supply_hash'].iloc[0]})")
+        if not allow_out_of_scope:
+            # D78: the writer only delete-then-inserts the boroughs it was
+            # handed, so a narrower run cannot clean up after a wider one.
+            # Idempotent: a no-op on every run after the first.
+            n_addr, n_cat = ag.prune_out_of_scope(con, SCREEN_BOROUGHS)
+            if n_addr or n_cat:
+                console.print(f"[yellow]pruned[/] {n_addr:,} address and {n_cat:,} "
+                              f"address_category rows outside "
+                              f"{'+'.join(SCREEN_BOROUGHS)} (D48/D78)")
 
     summary = ag.summarize_gap_run(df)
     console.print(f"{summary['n_addresses']:,} addresses, {summary['n_units']:,.0f} units, "
