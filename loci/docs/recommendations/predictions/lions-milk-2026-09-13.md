@@ -718,3 +718,9 @@ or an unmodelled cost the P&L has no line for (debt service on a build-out loan,
 rent clause, a partner buy-out, or back taxes). In that case the finding is that **operating
 profit was never the binding constraint**, and a cost model built from wage law and wholesale
 prices cannot see what actually broke.
+
+---
+
+## Owner evidence log (after the predictions; dated)
+
+- **2026-09-13, via the owner's contact:** "during covid he made more money." Qualitative; no figure. Model read: consistent with a labour-fixed-cost-bound café — in 2020–21 the fixed base fell (shortened hours, takeout-only, 1–2 staff instead of three shifts), the patio/outdoor-dining program added seats at zero rent, PPP/RRF grants and rent relief added cash, competitors closed, and Williamsburg's work-from-home residents became all-day customers for a café that lives on its 400 m shed. Post-2022 every one of those reversed: full 62-hour rota at $16.50 → $17.00 minimum wage with the SUI base tripling, weekday daytime thinned by return-to-office, delivery commissions uncapped in 2025, competitors back. Nothing in this datum distinguishes the $900k and $1.5M revenue camps; it does favour the cost model's mechanism (profit driven by the labour base and local daytime demand, not by rent).
