@@ -394,10 +394,17 @@ claim stands on.
 
 ### T9 — What is the median lead time from first government filing (liquor application, fit-out filing, license application) to first DOHMH inspection or license issue, by category — and is it stable enough to turn filings into an "opening within N months" forecast?
 - **Status:** open
-- **Answered by:** (not ticketed) — D80 (in flight), staging.storefront_filing
+- **Answered by:** D80 (2026-09-13), analysis.storefront_pipeline
 - **Why it matters:** T7's kill check found no storefront opening/closing time series anywhere in Loci; government filings (SLA pending licenses, DOB NOW job filings, DCWP license applications, DOHMH promoted inspections) are the closest candidate the project has assembled since, and a stable per-category lead time is what would let the chains/pipeline work (T7, T8) turn a filing into a dated forecast rather than a bare count.
 - **Fails if:** lead time varies too widely across category or borough to support a single-N forecast, or the filing-to-open correlation disappears once withdrawn/never-opened filings are accounted for — in which case filings are context (like transit, D76) rather than a forecast input.
-- **Current answer:** Pending D80 numbers. staging.storefront_filing is staged with lifecycle stages across the four filing sources; the median lead-time computation itself has not yet been run.
+- **Current answer:** fitout_filing → first_inspection strict N=67 median 259 d (p25 178 / p75 378); reconciled N=741 median 221 d — but the reconciliation linking those pairs is 92% sole-pair-in-BBL (only one candidate filing existed at that BBL, not a confirmed multi-agency match), so strict is the reference, not the larger reconciled N. liquor_application → first_inspection N=22 median 73 d; fitout → license_issued N=35 median 183 d. Same-agency clocks (DCWP 11 d, SLA pending→active 26 d) are excluded — they measure the agency's own processing time, not the store. N is still small per category and the pipeline is filing-blind for 10 of 15 categories (see T10), so this is not yet stable enough to ship as an "opening within N months" forecast.
+
+### T10 — Which government feeds would make the 10 filing-blind categories visible (NYS DOS professions, OCFS childcare, DOH clinics, DCWP laundry mapping), and at what lead time?
+- **Status:** open
+- **Answered by:** (not ticketed) — GTM-152
+- **Why it matters:** D80's `openings_pipeline_400m` reads structurally zero for laundry, hair, nails, childcare, clinic, fitness, bank, hardware, convenience, and tailor — not because nothing is opening in those trades, but because they are licensed by NYS DOS or NYS Education Department, or not licensed at all, and no DOB feed carries a trade field that would attribute a filing to one of them. Left unaddressed, a zero pipeline count in these categories risks being misread as "nothing coming" on the recommend card, when it is actually "not tracked."
+- **Fails if:** the candidate feeds (NYS DOS licensed professions, NYS OCFS childcare licenses, DOH Article 28 clinics, DCWP laundry — already ingested but currently unmapped to a category) either don't exist in bulk-downloadable form, don't carry a usable address/BBL, or arrive with a lead time too short to matter (e.g. the license is issued at or after opening, not before it).
+- **Current answer:** Open, ticketed GTM-152.
 
 ### Tier C · Causal — deferred; requires identification
 
