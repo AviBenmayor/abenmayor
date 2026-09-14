@@ -1778,6 +1778,36 @@
       "Labels": "validation,blocker",
       "Project": "Loci",
       "Milestone": "E4 \u00b7 Validation and Artifact"
+    },
+    {
+      "Title": "Citi Bike phase 1: station-month trips since 2019, bike_starts/ends_400m context measures, DOT validation, map layer",
+      "Description": "Owner 2026-09-14 (\"yes absolutely. make sure we dont forget to finish this\"): ingest tripdata (S3 tripdata, monthly; 2021-02 schema with stable station ids; JC files excluded) to station \u00d7 month \u00d7 day_type \u00d7 daypart \u00d7 member/casual. Registry entry cost 0 under the NYCBS data-use licence (derived measures OK, no redistribution of the raw dataset). bike_starts_400m / bike_ends_400m / bike_evening_ends_share_400m / bike_casual_share_400m computed on the address grain via the walk graph like transit \u2014 CONTEXT ONLY until it clears the D76 graduation test. Validate against DOT bi-annual counts per window (expect corridor-only correlation). Map layer beside transit.\n\nCaveats: rider skew, dock siting endogenous to density and retail, seasonality, the COVID break, and e-bike growth since 2022.\n\nOpened 2026-09-14 (CHECKPOINT D93). Pushed to Linear 2026-09-14 as GTM-166.",
+      "Status": "Backlog",
+      "Priority": 2,
+      "Estimate": 3,
+      "Labels": "ingest,validation",
+      "Project": "Loci",
+      "Milestone": "E1 \u00b7 Ingest and Grid"
+    },
+    {
+      "Title": "Citi Bike phase 2: origin-destination leakage per NTA \u00d7 category ('where residents of this gap area go') and the card line",
+      "Description": "Evening/weekend trips from residential-type stations (AM/PM share > 1) to destination NTAs, as revealed-preference leakage. analysis.bike_od_leakage(origin_nta, destination_nta, daypart, trips, share); join to supply gaps \u2014 does a gap area's evening flow land where the missing category exists? Feeds the revenue model's leakage \u03bb with within-borough geometry (today county-level to Economic Census). Card line: \"residents here ride mostly to X in the evening.\" The only free OD mobility data for NYC.\n\nDepends on GTM-166 (Citi Bike phase 1) landing the station-month ingest first.\n\nOpened 2026-09-14 (CHECKPOINT D93). Pushed to Linear 2026-09-14 as GTM-167.",
+      "Status": "Backlog",
+      "Priority": 2,
+      "Estimate": 3,
+      "Labels": "model,ingest",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Citi Bike phase 3: station activity growth as a retrodiction/forecast feature; Divvy (Chicago) adapter as the portability probe",
+      "Description": "13 years of station-month activity predates the first-seen ledger. Test activity growth 2019\u21922023 as an ex-ante feature in the entry retrodiction panel, with the same NTA-blocked folds and placebo (D88/D92); if it survives, add to the forecast model as a new version. Lyft-run systems (Divvy, Indego, Bay Wheels, Bluebikes) share the trip schema \u2014 one adapter parameterised by system serves the second-city portability probe (D93).\n\nDepends on GTM-166 (Citi Bike phase 1) landing the station-month ingest first.\n\nOpened 2026-09-14 (CHECKPOINT D93). Pushed to Linear 2026-09-14 as GTM-168.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 3,
+      "Labels": "model,infra",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
     }
   ]
 }
