@@ -5,7 +5,7 @@ Strategy memo — 2026-09-13 — drafted by the investor lens, red-teamed by the
 > ## What we will not claim
 >
 > 1. "No buyer has seen Loci: every price here derives from published competitor contracts rather than a quote we have issued, and the first three customer conversations may invalidate §4."
-> 2. "Loci measures supply thinness, not site quality — an address with no competitors may have none because the location cannot support retail — and we have not run the retrodiction (score 2023–24 openings, test whether supply ratio predicts survival) that would show our screen improves a siting decision at all."
+> 2. "Loci measures supply thinness, not site quality — an address with no competitors may have none because the location cannot support retail — and the retrodiction we ran (entry AUC 0.866 vs 0.854 for the same model without the score; LL157 go-dark AUC 0.549 vs 0.535, sign flips with the outcome definition) did not show our screen improves a siting decision at all."
 > 3. "Our lead-time medians rest on N=67 / N=741 / N=22, our ledger holds one month with 47.7% censored, and Google Places Insights already sells monthly POI snapshots back to January 2024 — the asset we call a moat is thinner and younger than a substitute anyone can buy."
 
 ---
@@ -16,7 +16,7 @@ Strategy memo — 2026-09-13 — drafted by the investor lens, red-teamed by the
 
 **What we sell is cost of search, not better decisions.** The honest claim is that assembling this for one address — fifteen categories, walk-network distances, borough baselines, seven filing feeds, zoning and character — takes an analyst days and takes Loci minutes. That is measurable and defensible. The claim that Loci *avoids a bad site* is not established: Loci measures supply thinness, and an address with no competitors may have none because the market already tested it. Foot traffic is context-only with 65% of Brooklyn addresses reading zero (D76), so we cannot separate "underserved" from "unviable" in exactly the addresses we flag. That is the same reverse causality that killed the causal thesis. **No build-out-percentage framing, no failure-rate math, in any deck.**
 
-**The next analytical deliverable is the retrodiction, and it gates the sales claim.** Score 2023–24 openings (52.3% carry source dates) and test whether the supply ratio at open predicts still-open today. If it does, we have a decision-value claim for the first time. If it doesn't, we say so and sell cost-of-search only. Until it runs, there is no demonstrated decision value.
+**The retrodiction gated the sales claim, and it ran on 2026-09-14.** The frozen 2023 screen ranks where the 2023–24 openings landed out of sample: NTA-blocked AUC 0.866 vs 0.854 for the same model without the score, with a supply coefficient of +1.17 [0.87, 1.47] that survives NTA fixed effects and conditioning on other-category supply. That means the screen ranks retail streets, not unmet demand — openings clustered where supply was already thick, not thin. The LL157 go-dark test, the one survival-adjacent outcome the city publishes, is a null (AUC 0.549 vs 0.535; the sign flips with the outcome definition), and business-level survival is not identified at all — Foursquare's closure panel ascertains only ~3% of closures. Loci therefore claims cost of search only, and no decision value, in any deck.
 
 **Three things we can prove today.** (i) Address-grain walk-network supply and a borough-baseline supply ratio, city-wide, MN+BK, fifteen categories (D73) — competitors deliver block-group rings or one subject property. (ii) A storefront lifecycle assembled from 232,667 filings across seven agency feeds, reconciled to 135,912 business-at-BBL pipelines (D80). (iii) An evidence grade on every claim: the first Gowanus card read *"do not act on this data"* for 14 of 15 categories (D74).
 
@@ -119,6 +119,8 @@ Two ICPs is no ICP. The evidence grade is an asset **only where the buyer's liab
 
 **Duration.** The head start is measured in **months, not years**. Placer or Esri could add a filings layer; Live XYZ already holds the census and the city relationship. Incumbent economics point away from it — Placer monetises a panel, Esri retired its gap product rather than rebuild it — which is a reason to move, not a reason to relax. **The moat resets to zero in city number two**, which is the central tension in §8.
 
+**Closures are now partly observable.** `closed_on` lands on the first-seen ledger from a re-pulled Foursquare feed (~3% ascertainment) — not enough to fit a survival model, but the pre-2026 closure panel it exposes (54,190 venues that opened and closed before our snapshot) is the next analytical asset once an ascertainment model is built.
+
 ---
 
 ## 8. The business — narrative, raise, TAM, capacity
@@ -161,3 +163,4 @@ Two ICPs is no ICP. The evidence grade is an asset **only where the buyer's liab
 - **The $-per-avoided-bad-site math — rejected.** It is the rejected causal thesis in percentage clothing: Loci measures supply thinness, not site quality, and cannot separate "underserved" from "unviable". Accepted: argue cost of search, and gate any decision-value claim on the retrodiction.
 - **The ledger as moat — rejected.** One month, 47.7% censored, against a purchasable 32-month substitute at €3,300/mo. Accepted: the moat is the BBL reconciliation and the operator, and it is months long.
 - **"SaaS" as the narrative — rejected.** Every SKU is founder time and the data licence is blocked. Accepted: consulting-funded data company, priced on earnings, until a self-serve path exists.
+- **Retrodiction result (2026-09-14) — a decision-value claim, rejected by our own test.** Entry AUC lifts +0.013 over the same model without the score (0.866 vs 0.854), but the sign points at thick supply, not thin, and the LL157 go-dark test returns a null (AUC 0.549 vs 0.535, sign flips with the outcome definition). Accepted: cost of search only, no decision-value claim in the pitch; business-level survival — blocked today on ~3% closure ascertainment — is the next thing to solve, not something to imply we've already solved.
