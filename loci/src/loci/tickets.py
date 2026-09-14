@@ -33,6 +33,9 @@ TICKET_COVERAGE_SINCE_DATE = "2026-09-03"
 RULINGS: dict[str, str] = {
     "D46": "Owner scope ruling (NYC only, indefinitely). Its whole effect is to PARK E8 "
            "and forbid city-agnostic design work — a ticket would be a ticket to do nothing.",
+    "D95": "Owner-approved charter ruling (the four layers: modeled/realized/scored/"
+           "learned, CONTEXT.md §4.7). It names a vocabulary for existing and future "
+           "claims — a ticket would be a ticket to do nothing.",
 }
 
 # Tickets that ARE live in Linear but never wrote their GTM id into the

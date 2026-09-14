@@ -400,6 +400,19 @@ Three checks the result must survive:
    up something generic about neighborhood trajectory.
 3. **MAUP sweep.** Re-run at H3 res 8 and res 10. Report coefficient stability.
 
+### 4.7 Four layers
+
+Four layers. Loci's claims sort into four layers, and every new claim should say which one
+it belongs to. MODELED: computed from public data — gap score, supply ratio, character,
+recommendations, the forecast ledger's p_opening. REALIZED: observed in the world — the
+first-seen ledger, closures, filings lifecycle, chain snapshots, DOT counts. SCORED: where
+modeled meets realized on a schedule — retrodiction, recommendation fill checks, forecast
+outcomes. LEARNED: what survived a test against realized data and travels — FINDINGS.md,
+carrying capacity, portability, planner verdicts. The scoreboard, not any single map, is the
+compounding asset.
+
+Approved by the owner 2026-09-14; decision D95.
+
 ---
 
 ## 5. Visualization plan
