@@ -111,6 +111,495 @@ FIRST_SEEN_FIELDS: tuple[tuple[str, str], ...] = (
 )
 
 
+
+# ===========================================================================
+# THE OPEN/CLOSED/UNKNOWN PREDICATE (owner ask 2026-09-14, GTM-153)
+# ===========================================================================
+# "Any time we have 2 businesses in the same address, we should do a check if
+# one of them closed down."  GTM-153 is one cafe counted TWICE in the revenue
+# supply pool: D36/GTM-121 established that score/dedup.py merges only
+# NAME-MATCHED points within MATCH_METERS, so a departed tenant and its
+# successor sharing one building coordinate are two DIFFERENT names and both
+# survive as canonical supply.  Resolving such a pair needs one thing the
+# warehouse never had: a single, documented answer to "is this POI still
+# open".  That answer is here, and ONLY here, so that supply, retrodiction,
+# the recommendations ledger and the forecast cannot each invent their own.
+#
+# THREE STATES, NEVER TWO.  'open' | 'closed' | 'unknown'.  Collapsing
+# 'unknown' into 'closed' would delete supply on the strength of nothing and
+# manufacture exactly the fake retail gaps this project exists to avoid;
+# collapsing it into 'open' would keep the GTM-153 ghost.  Most of the POI
+# universe is legitimately 'unknown' -- Overture, OSM, Foursquare's open cache
+# and USDA SNAP publish no status field at all.
+#
+# ------------------------------------------------------------------ D79
+# ABSENCE FROM A SNAPSHOT IS NEVER A CLOSURE.  Only a value the SOURCE
+# PUBLISHED counts as evidence.  Two consequences that are easy to get wrong
+# and are therefore spelled out:
+#
+#  (a) A DOHMH record that is ABSENT from the current pull is NOT a closure.
+#      DOHMH publishes active establishments only, so "it stopped appearing"
+#      is indistinguishable from a source outage, a geocode shift or a rename.
+#      Only a published status/expiry value in `attrs` is evidence here.
+#      For the same reason `attrs.last_inspection_date` is read ONLY as a
+#      freshness stamp on an OPEN verdict.  It is a LAST-seen date and must
+#      never be read as a first-seen date -- see FIRST_SEEN_FIELDS above,
+#      tests/test_poi_presence.py and tests/test_chains_detect.py.
+#
+#  (b) DOHMH `active=false` with `active_basis LIKE 'stale_%'` is NOT a
+#      closure either, and this predicate returns 'unknown' for it.  That
+#      verdict is derived from the ABSENCE of a recent inspection (dohmh.py's
+#      own caveat: "'not inspected in 24 months' is a proxy for 'closed', not
+#      an observation of closure"), which is precisely what D79 forbids as
+#      evidence.  It remains visible in the basis string so a co-located pair
+#      split stale-vs-fresh can still be COUNTED (`loci colocation` reports
+#      it) without being ACTED on.
+#
+# THIS PREDICATE NEVER DELETES OR MUTATES A LEDGER ROW.  A closed location
+# stays in analysis.poi_presence / analysis.poi_first_seen with its
+# closed_on / closed_src intact -- that is the closure ledger's whole point,
+# and survival analysis needs those rows.  Exclusion happens ONLY in the
+# supply set (score/supply.canonical_poi_sql), downstream of here.
+#
+# ------------------------------------------- WHAT EACH SOURCE PUBLISHES
+# Keys are `staging.poi.attrs` unless stated.  Verified against the 2026-09-14
+# warehouse by `SELECT source_id, unnest(json_keys(attrs)) ... GROUP BY`.
+#
+#  foursquare_os_places   the LEDGER's closed_on/closed_src (sql/027), from the
+#                         source-published `date_closed`.  Read via the VIEW
+#                         analysis.poi_first_seen, never the base table.
+#                         -> CLOSED.  (The open cache itself carries no status:
+#                         `attrs` is {labels, refreshed} only.)
+#  nyc_dohmh_restaurants  active, active_basis, last_inspection_date,
+#                         closed_at_last_inspection.
+#                         basis 'closed_at_last_inspection' -> CLOSED (a
+#                         published DOHMH action).  basis 'inspected_<n>d_ago'
+#                         + a last_inspection_date inside the window -> OPEN.
+#                         basis 'stale_<n>d' -> UNKNOWN (see (b)).
+#                         basis 'never_inspected' -> UNKNOWN: active=true there
+#                         is a DEFAULT, not a finding (sql/003's own warning).
+#  nyc_dcwp_inspections   active, active_basis, latest_status,
+#                         last_inspection_date.  basis 'out_of_business',
+#                         'unable_to_locate', 'no_evidence_of_activity'
+#                         -> CLOSED (DCWP publishes the inspector's verdict).
+#                         'inspected_*' / 'dead_marker_overridden_same_day'
+#                         + fresh last_inspection_date -> OPEN.
+#                         'no_status' -> UNKNOWN.
+#  nys_sla_liquor_licenses      expires (ISO date), active, active_basis.
+#  nys_dos_appearance_enhancement  license_expiration_date (ISO date).
+#                         expiry < today -> CLOSED (licence lapsed);
+#                         expiry >= today -> OPEN (the expiry IS an as-of
+#                         statement, so no extra freshness test).
+#                         'no_expiration_date' -> UNKNOWN.
+#  nys_medicaid_pharmacies      basis 'published_active_medicaid_ffs_roster'
+#  nyc_dohmh_childcare          basis 'published_active_roster'
+#                         The publisher's file IS the active roster, so
+#                         presence is the observation -> OPEN while the row's
+#                         `observed_on` is inside the window.  These two can
+#                         NEVER say CLOSED: their only closure signal would be
+#                         disappearance from the roster, which D79 forbids.
+#  overture_places, osm_overpass, usda_snap_retailers, foursquare_os_places
+#                         no status field -> always UNKNOWN.
+#
+# CAVEATS THE DATABASE CANNOT ENFORCE
+#  1. THE EXPIRY BRANCH FIRES ON LICENCES THAT LAPSED SINCE THE PULL, and only
+#     those.  Both nys_sla and nys_dos fetch an ACTIVE-ONLY file
+#     (nys_dos.assert_active_only pins it), so no row is ingested already
+#     expired and `active_basis` is 'valid_to_<date>' on every one of them.
+#     The predicate therefore reads the EXPIRY DATE itself rather than the
+#     ingest-time verdict: 30 canonical DOS rows on the 2026-09-14 build carry
+#     'valid_to_<a past date>' -- the licence ran out after the extract, and
+#     that is a published closure the moment it does.  Reading `active` alone
+#     would have missed every one of them.
+#  2. A DOHMH regulatory closure is usually TEMPORARY (a health closure, often
+#     re-opened days later) -- dohmh.py says so explicitly.  102 rows carry it.
+#     It is read as CLOSED because it is a published, dated, source-issued
+#     statement that the establishment was not trading; the direction of the
+#     error is a small over-count of closures, which for the supply gate is
+#     the conservative direction ONLY if you believe the successor is present.
+#     If a future run finds re-opened establishments being gated out, the fix
+#     is to read the re-open action, not to widen the staleness window.
+#  3. FRESHNESS IS A WINDOW, NOT A FACT.  OPEN_EVIDENCE_MAX_AGE_DAYS is the
+#     same 24 months dohmh.py derived as ~1.4x the p90 inter-inspection gap.
+#     A POI whose only evidence is older is 'unknown', not 'closed'.
+
+#: How old a source's own "still trading" evidence may be and still support an
+#: OPEN verdict.  Deliberately the SAME number as dohmh.STALE_DAYS (24 months,
+#: ~1.4x the empirical p90 inter-inspection gap) so that a DOHMH record cannot
+#: be 'open' here and 'stale' there.  Imported rather than re-derived would be
+#: a circular import (sources/ imports nothing from model/, but model/ importing
+#: a city adapter would bind this city-agnostic predicate to NYC), so it is
+#: restated and tests/test_poi_colocation.py asserts the two agree.
+OPEN_EVIDENCE_MAX_AGE_DAYS = 731
+
+#: `active_basis` values that are a SOURCE-PUBLISHED statement of NOT TRADING.
+#: Membership here is the ONLY way a status field can produce 'closed'; a basis
+#: not listed can at most produce 'unknown'.  Every one of these is a value the
+#: publisher wrote, never something Loci inferred from a row's absence (D79).
+PUBLISHED_CLOSED_BASES = frozenset({
+    "out_of_business",              # nyc_dcwp_inspections -- DCWP's own verdict
+    "unable_to_locate",             # nyc_dcwp_inspections
+    "no_evidence_of_activity",      # nyc_dcwp_inspections
+    "closed_at_last_inspection",    # nyc_dohmh_restaurants -- see caveat 2
+})
+
+#: `active_basis` values that are an INFERENCE FROM ABSENCE and therefore may
+#: never produce 'closed' (D79).  Matched as a PREFIX because the DOHMH basis
+#: carries the age: 'stale_1043d'.
+ABSENCE_DERIVED_BASIS_PREFIXES = ("stale_",)
+
+#: `active_basis` values that are a DEFAULT the adapter applied when it had no
+#: evidence either way.  active=true on these is not a finding, so they yield
+#: 'unknown' -- reading a default as a finding is the mistake sql/003's
+#: `active_testable` column was added to make visible.
+DEFAULTED_ACTIVE_BASES = frozenset({
+    "never_inspected",          # nyc_dohmh_restaurants: permitted, not yet inspected
+    "no_status",                # nyc_dcwp_inspections: no inspection outcome recorded
+    "no_expiration_date",       # nys_sla / nys_dos: licence with no expiry published
+})
+
+#: `active_basis` values whose freshness stamp is `attrs.last_inspection_date`.
+#: Prefix-matched ('inspected_412d_ago', 'inspected_pass', ...) plus the one
+#: DCWP basis that does not start with the prefix.
+INSPECTION_BASIS_PREFIXES = ("inspected_", "inspected")
+INSPECTION_BASES_EXTRA = frozenset({"dead_marker_overridden_same_day"})
+
+#: `active_basis` values whose freshness stamp is the ROW's `observed_on`,
+#: because for these sources presence in the publisher's file IS the
+#: observation.  They can never say 'closed' (D79).
+ROSTER_ACTIVE_BASES = frozenset({
+    "published_active_roster",                  # nyc_dohmh_childcare
+    "published_active_medicaid_ffs_roster",     # nys_medicaid_pharmacies
+})
+
+#: `attrs` keys carrying a licence expiry, in the order they are coalesced.
+EXPIRY_ATTR_KEYS = ("expires", "license_expiration_date")
+
+STATUS_OPEN = "open"
+STATUS_CLOSED = "closed"
+STATUS_UNKNOWN = "unknown"
+STATUSES = (STATUS_OPEN, STATUS_CLOSED, STATUS_UNKNOWN)
+
+
+def poi_status(attrs: dict | None, *,
+               source_id: str | None = None,
+               closed_on=None,
+               observed_on=None,
+               today: dt.date | None = None,
+               max_age_days: int = OPEN_EVIDENCE_MAX_AGE_DAYS,
+               ) -> tuple[str, str]:
+    """(status, basis) for ONE POI, in pure Python. See the section header.
+
+    `attrs` is the decoded `staging.poi.attrs`; `closed_on` is the LEDGER's
+    closure date, read from the VIEW `analysis.poi_first_seen` (never the base
+    table) so the D79 rule and the closure-precedence rule in sql/027 are
+    applied exactly once, upstream. `observed_on` is the POI row's own
+    observation date, used only as the freshness stamp for roster sources.
+
+    This is the REFERENCE implementation; `poi_is_open()` emits the same rule
+    as SQL and tests/test_poi_colocation.py runs both over the same fixture
+    and asserts they agree row for row. Two copies of a rule is how a rule
+    drifts, so they are tested as one.
+    """
+    today = today or dt.date.today()
+    src = source_id or "?"
+
+    def _date(v):
+        if v is None or v == "":
+            return None
+        if isinstance(v, dt.datetime):
+            return v.date()
+        if isinstance(v, dt.date):
+            return v
+        try:
+            return dt.date.fromisoformat(str(v)[:10])
+        except ValueError:
+            return None
+
+    if _date(closed_on) is not None:
+        return STATUS_CLOSED, f"ledger:closed_on_{_date(closed_on).isoformat()}"
+
+    a = attrs or {}
+    basis = a.get("active_basis")
+    basis = str(basis) if basis is not None else None
+
+    if basis in PUBLISHED_CLOSED_BASES:
+        return STATUS_CLOSED, f"{src}:{basis}"
+
+    expiry = None
+    for key in EXPIRY_ATTR_KEYS:
+        expiry = _date(a.get(key))
+        if expiry is not None:
+            break
+    if expiry is not None and expiry < today:
+        return STATUS_CLOSED, f"{src}:expired_{expiry.isoformat()}"
+
+    if basis and basis.startswith(ABSENCE_DERIVED_BASIS_PREFIXES):
+        # D79: derived from the absence of a recent inspection, not published.
+        return STATUS_UNKNOWN, f"{src}:{basis}:absence_derived_not_a_closure"
+
+    active = a.get("active")
+    is_active = (active is True or str(active).lower() == "true")
+    if not is_active:
+        return STATUS_UNKNOWN, (f"{src}:{basis}" if basis else f"{src}:no_status_field")
+
+    if basis in DEFAULTED_ACTIVE_BASES:
+        return STATUS_UNKNOWN, f"{src}:{basis}:default_not_evidence"
+
+    if expiry is not None:                       # and, by the branch above, >= today
+        return STATUS_OPEN, f"{src}:valid_to_{expiry.isoformat()}"
+
+    if basis and (basis.startswith(INSPECTION_BASIS_PREFIXES)
+                  or basis in INSPECTION_BASES_EXTRA):
+        seen = _date(a.get("last_inspection_date"))
+        if seen is not None and (today - seen).days <= max_age_days:
+            return STATUS_OPEN, f"{src}:{basis}"
+        return STATUS_UNKNOWN, f"{src}:{basis}:evidence_older_than_{max_age_days}d"
+
+    if basis in ROSTER_ACTIVE_BASES:
+        seen = _date(observed_on)
+        if seen is not None and (today - seen).days <= max_age_days:
+            return STATUS_OPEN, f"{src}:{basis}"
+        return STATUS_UNKNOWN, f"{src}:{basis}:evidence_older_than_{max_age_days}d"
+
+    return STATUS_UNKNOWN, (f"{src}:{basis}" if basis else f"{src}:no_status_field")
+
+
+def _sql_list(values) -> str:
+    return ", ".join("'" + str(v).replace("'", "''") + "'" for v in sorted(values))
+
+
+def poi_is_open(poi: str = "p", closed_on: str = "NULL",
+                today: str = "current_date",
+                max_age_days: int = OPEN_EVIDENCE_MAX_AGE_DAYS) -> str:
+    """THE predicate, as a SQL CASE expression yielding 'open'/'closed'/'unknown'.
+
+    It is named for the question it answers, but it is TRI-STATE on purpose --
+    compare it with `= 'closed'` or `<> 'closed'`, never as a boolean, and
+    never write `NOT poi_is_open(...)`.
+
+    `poi` is the alias of a `staging.poi` row (needs `.attrs`, `.observed_on`,
+    `.source_id`); `closed_on` is a SQL expression for the ledger's closure
+    date -- pass `'f.closed_on'` when joined to the VIEW analysis.poi_first_seen
+    (D79: read closures there, never from the base table). The default `NULL`
+    makes the expression usable without the ledger, at the cost of losing the
+    Foursquare closures, so callers that can join SHOULD.
+
+    Emits the same rule as `poi_status()` above; see that docstring and the
+    section header for the per-source keys and the D79 reasoning.
+    """
+    a = f"json_extract_string({poi}.attrs, '$.active')"
+    b = f"json_extract_string({poi}.attrs, '$.active_basis')"
+    insp = f"try_cast(json_extract_string({poi}.attrs, '$.last_inspection_date') AS DATE)"
+    exp = "coalesce(" + ", ".join(
+        f"try_cast(json_extract_string({poi}.attrs, '$.{k}') AS DATE)"
+        for k in EXPIRY_ATTR_KEYS) + ")"
+    obs = f"try_cast({poi}.observed_on AS DATE)"
+    absence = " OR ".join(f"{b} LIKE '{p}%'" for p in ABSENCE_DERIVED_BASIS_PREFIXES)
+    insp_pred = "(" + " OR ".join(
+        [f"{b} LIKE '{p}%'" for p in INSPECTION_BASIS_PREFIXES]
+        + [f"{b} IN ({_sql_list(INSPECTION_BASES_EXTRA)})"]) + ")"
+    return f"""CASE
+    WHEN {closed_on} IS NOT NULL THEN 'closed'
+    WHEN {b} IN ({_sql_list(PUBLISHED_CLOSED_BASES)}) THEN 'closed'
+    WHEN {exp} IS NOT NULL AND {exp} < {today} THEN 'closed'
+    WHEN {absence} THEN 'unknown'
+    WHEN NOT coalesce(lower({a}) = 'true', FALSE) THEN 'unknown'
+    WHEN {b} IN ({_sql_list(DEFAULTED_ACTIVE_BASES)}) THEN 'unknown'
+    WHEN {exp} IS NOT NULL THEN 'open'
+    WHEN {insp_pred} THEN
+        CASE WHEN {insp} IS NOT NULL
+              AND date_diff('day', {insp}, {today}) <= {max_age_days}
+             THEN 'open' ELSE 'unknown' END
+    WHEN {b} IN ({_sql_list(ROSTER_ACTIVE_BASES)}) THEN
+        CASE WHEN {obs} IS NOT NULL
+              AND date_diff('day', {obs}, {today}) <= {max_age_days}
+             THEN 'open' ELSE 'unknown' END
+    ELSE 'unknown'
+END"""
+
+
+def poi_status_basis(poi: str = "p", closed_on: str = "NULL",
+                     today: str = "current_date",
+                     max_age_days: int = OPEN_EVIDENCE_MAX_AGE_DAYS) -> str:
+    """The `basis` string that goes with `poi_is_open()`, as SQL. Provenance:
+    every verdict says which source key produced it, so a reader can tell a
+    published closure ('nyc_dcwp_inspections:out_of_business') from an
+    absence-derived non-verdict ('nyc_dohmh_restaurants:stale_900d:...')."""
+    a = f"json_extract_string({poi}.attrs, '$.active')"
+    b = f"json_extract_string({poi}.attrs, '$.active_basis')"
+    src = f"{poi}.source_id"
+    insp = f"try_cast(json_extract_string({poi}.attrs, '$.last_inspection_date') AS DATE)"
+    exp = "coalesce(" + ", ".join(
+        f"try_cast(json_extract_string({poi}.attrs, '$.{k}') AS DATE)"
+        for k in EXPIRY_ATTR_KEYS) + ")"
+    obs = f"try_cast({poi}.observed_on AS DATE)"
+    absence = " OR ".join(f"{b} LIKE '{p}%'" for p in ABSENCE_DERIVED_BASIS_PREFIXES)
+    insp_pred = "(" + " OR ".join(
+        [f"{b} LIKE '{p}%'" for p in INSPECTION_BASIS_PREFIXES]
+        + [f"{b} IN ({_sql_list(INSPECTION_BASES_EXTRA)})"]) + ")"
+    stale = f"{src} || ':' || {b} || ':absence_derived_not_a_closure'"
+    return f"""CASE
+    WHEN {closed_on} IS NOT NULL
+        THEN 'ledger:closed_on_' || strftime({closed_on}, '%Y-%m-%d')
+    WHEN {b} IN ({_sql_list(PUBLISHED_CLOSED_BASES)}) THEN {src} || ':' || {b}
+    WHEN {exp} IS NOT NULL AND {exp} < {today}
+        THEN {src} || ':expired_' || strftime({exp}, '%Y-%m-%d')
+    WHEN {absence} THEN {stale}
+    WHEN NOT coalesce(lower({a}) = 'true', FALSE)
+        THEN {src} || ':' || coalesce({b}, 'no_status_field')
+    WHEN {b} IN ({_sql_list(DEFAULTED_ACTIVE_BASES)})
+        THEN {src} || ':' || {b} || ':default_not_evidence'
+    WHEN {exp} IS NOT NULL THEN {src} || ':valid_to_' || strftime({exp}, '%Y-%m-%d')
+    WHEN {insp_pred} THEN
+        CASE WHEN {insp} IS NOT NULL
+              AND date_diff('day', {insp}, {today}) <= {max_age_days}
+             THEN {src} || ':' || {b}
+             ELSE {src} || ':' || {b} || ':evidence_older_than_{max_age_days}d' END
+    WHEN {b} IN ({_sql_list(ROSTER_ACTIVE_BASES)}) THEN
+        CASE WHEN {obs} IS NOT NULL
+              AND date_diff('day', {obs}, {today}) <= {max_age_days}
+             THEN {src} || ':' || {b}
+             ELSE {src} || ':' || {b} || ':evidence_older_than_{max_age_days}d' END
+    ELSE {src} || ':' || coalesce({b}, 'no_status_field')
+END"""
+
+
+
+# --------------------------------------------------------------------------
+# CO-LOCATION: "two businesses at the same address" (GTM-153)
+# --------------------------------------------------------------------------
+#: Decimal places the coordinate is rounded to before grouping. staging.poi has
+#: NO address_id and NO bbl -- there is no address key in the contract -- so
+#: "same address" has to be expressed geometrically. 5 dp is ~1.1 m N-S and
+#: ~0.85 m E-W at NYC's latitude, i.e. an EXACT-COORDINATE match to the
+#: precision the feeds publish: DOHMH, SLA, DCWP and the childcare roster all
+#: geocode to the BUILDING (a rooftop/parcel centroid), so two tenants of one
+#: building land on one identical point rather than on two nearby ones. A
+#: looser radius would fuse genuinely distinct storefronts next door to each
+#: other -- the failure score/dedup.py's comments are about, and the one that
+#: manufactures fake retail gaps.
+#:
+#: CAVEAT THE DATABASE CANNOT ENFORCE: this is a GRID, not a radius. Two points
+#: 0.3 m apart can straddle a cell boundary and NOT group (a false negative,
+#: the safe direction); two points 1.4 m apart in the same cell do group. The
+#: same trade poi_presence.KEY_PRECISION already makes, one decimal finer.
+#: Coordinates are EPSG:4326 by convention -- DuckDB GEOMETRY carries no SRID,
+#: and nothing here reprojects, because degrees are what is being rounded.
+COORD_DP = 5
+
+#: The four verdicts a co-located group can carry. 'unresolved' is the one that
+#: matters: it is a group the published evidence CANNOT split, and it is
+#: counted AS-IS in supply by default (see score/supply.COLLAPSE_UNRESOLVED).
+RESOLUTIONS = ("one_closed", "all_closed", "both_open", "unresolved")
+
+
+def _resolution_sql(n_closed: str, n_open: str, n_poi: str) -> str:
+    """The resolution CASE, in ONE place, over three count expressions.
+
+    Order is load-bearing: 'all_closed' must be tested before 'one_closed',
+    and 'both_open' requires EVERY member to be positively open -- a group of
+    one open and one unknown is UNRESOLVED, never 'both_open'. Collapsing
+    unknown into open there would quietly re-assert the GTM-153 double count
+    as a finding."""
+    return (f"CASE WHEN {n_closed} = {n_poi} THEN 'all_closed'"
+            f" WHEN {n_closed} > 0 THEN 'one_closed'"
+            f" WHEN {n_open} = {n_poi} THEN 'both_open'"
+            f" ELSE 'unresolved' END")
+
+
+def colocation_view_sql(coord_dp: int = COORD_DP) -> str:
+    """The DDL for analysis.poi_supply_status + analysis.poi_colocation.
+
+    GENERATED, for the same reason model/address_gaps.address_gaps_view_sql
+    and model/address_character.create_views are generated: the open/closed
+    rule must have ONE definition in the codebase, and a CASE expression
+    copy-pasted into a .sql file is a second one waiting to drift.
+    sql/029_poi_colocation.sql is the committed RENDERING of this function and
+    tests/test_poi_colocation.py::test_sql_file_matches_generator fails if the
+    two ever disagree -- so `loci colocation --emit-sql > src/loci/sql/029_...`
+    is how the file is regenerated, never a hand edit.
+
+    Both objects are VIEWS. Nothing is materialised, so neither can go stale
+    relative to staging.poi / analysis.poi_dedup / analysis.poi_presence, and
+    no base table is added (owner rule: a pivot is a view).
+    """
+    status = poi_is_open("p", "f.closed_on")
+    basis = poi_status_basis("p", "f.closed_on")
+    key = (f"(s.category || '@' || printf('%.{coord_dp}f,%.{coord_dp}f', "
+           f"round(ST_X(s.geom), {coord_dp}), round(ST_Y(s.geom), {coord_dp})))")
+    res = _resolution_sql("g.n_closed", "g.n_open", "g.n_poi")
+    res_agg = _resolution_sql(
+        "count(*) FILTER (WHERE poi_status = 'closed')",
+        "count(*) FILTER (WHERE poi_status = 'open')", "count(*)")
+    return f"""
+CREATE OR REPLACE VIEW analysis.poi_supply_status AS
+WITH ledger AS (
+    -- ONE row per poi_id. analysis.poi_first_seen is the D79 surface for
+    -- closures (never the base table); two ledger rows could in principle
+    -- point at one poi_id_latest, and a fan-out here would DOUBLE a supply
+    -- row -- the double-count bug this whole exercise exists to remove. min()
+    -- also matches sql/027's closure_precedence: the EARLIEST closure wins.
+    SELECT poi_id_latest AS poi_id,
+           min(closed_on)  AS closed_on,
+           min(closed_src) AS closed_src
+    FROM analysis.poi_first_seen
+    WHERE poi_id_latest IS NOT NULL
+    GROUP BY 1
+),
+base AS (
+    SELECT s.*,
+           {key} AS colocation_key,
+           f.closed_on  AS ledger_closed_on,
+           f.closed_src AS ledger_closed_src,
+           {status} AS poi_status,
+           {basis} AS poi_status_basis
+    FROM analysis.poi_supply s
+    JOIN staging.poi p ON p.poi_id = s.poi_id
+    LEFT JOIN ledger f ON f.poi_id = s.poi_id
+),
+g AS (
+    SELECT colocation_key,
+           count(*)                                      AS n_poi,
+           count(*) FILTER (WHERE poi_status = 'closed')  AS n_closed,
+           count(*) FILTER (WHERE poi_status = 'open')    AS n_open,
+           count(*) FILTER (WHERE poi_status = 'unknown') AS n_unknown
+    FROM base GROUP BY 1
+)
+SELECT base.*,
+       g.n_poi                                   AS colocation_n,
+       {res}                                     AS colocation_resolution,
+       (g.n_poi >= 2 AND {res} = 'unresolved')   AS is_colocated_unresolved,
+       (base.poi_status = 'closed')              AS is_evidenced_closed
+FROM base JOIN g USING (colocation_key);
+
+CREATE OR REPLACE VIEW analysis.poi_colocation AS
+SELECT
+    colocation_key                                  AS group_key,
+    any_value(category)                             AS category,
+    round(any_value(ST_X(geom)), {coord_dp})        AS lon,
+    round(any_value(ST_Y(geom)), {coord_dp})        AS lat,
+    count(*)                                        AS n_poi,
+    list(poi_id ORDER BY poi_id)                    AS poi_ids,
+    count(*) FILTER (WHERE poi_status = 'closed')   AS n_closed,
+    count(*) FILTER (WHERE poi_status = 'open')     AS n_open,
+    count(*) FILTER (WHERE poi_status = 'unknown')  AS n_unknown,
+    {res_agg}                                       AS resolution,
+    to_json(list(struct_pack(
+        poi_id     := poi_id,
+        source_id  := source_id,
+        name       := name,
+        status     := poi_status,
+        basis      := poi_status_basis,
+        closed_on  := ledger_closed_on,
+        closed_src := ledger_closed_src
+    ) ORDER BY poi_id))                             AS evidence
+FROM analysis.poi_supply_status
+GROUP BY colocation_key
+HAVING count(*) >= 2;
+""".strip() + "\n"
+
+
 @dataclass
 class SnapshotResult:
     month: str

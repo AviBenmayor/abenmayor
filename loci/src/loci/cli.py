@@ -6954,3 +6954,157 @@ def _capacity_fit_table(doc: dict) -> None:
                      "itself the portability parameter: a second city reproduces it "
                      "only as well as it reproduces NYC's licence rosters.")
         console.print(t)
+
+
+# ---------------------------------------------------------------------------
+# loci colocation -- two businesses at one address, and whether one closed
+# (owner ask 2026-09-14; defect GTM-153, cause D36/GTM-121)
+# ---------------------------------------------------------------------------
+
+@app.command(name="colocation")
+def colocation(
+    supply_set: str = typer.Option("principled", "--supply-set",
+                                   help="all | principled | corroborated"),
+    category: str = typer.Option(None, "--category",
+                                 help="restrict the per-group detail to one category"),
+    collapse_unresolved: bool = typer.Option(
+        False, "--collapse-unresolved",
+        help="ALSO show the set with unresolved co-located groups collapsed to one "
+             "row each. Never applied to the warehouse; the module default stays OFF "
+             "pending an owner ruling."),
+    emit_sql: bool = typer.Option(
+        False, "--emit-sql",
+        help="print the generated DDL for sql/029_poi_colocation.sql and exit"),
+    examples: int = typer.Option(0, "--examples",
+                                 help="print N resolved groups as worked evidence"),
+):
+    """Co-located same-category POIs, by resolution, and what the closure gate costs.
+
+    READ-ONLY: opens the warehouse read_only and runs only SELECTs. The gate
+    itself lives in score/supply.canonical_poi_sql (GATE_CLOSED, default ON);
+    this command only reports it, and `--collapse-unresolved` only PRICES the
+    alternative -- it changes nothing.
+    """
+    from loci.model.poi_presence import (COORD_DP, OPEN_EVIDENCE_MAX_AGE_DAYS,
+                                         colocation_view_sql)
+    from loci.model.recommend import connect_read_only
+    from loci.score.supply import (COLLAPSE_UNRESOLVED, GATE_CLOSED, canonical_poi_sql,
+                                   colocation_report)
+
+    if emit_sql:
+        print(colocation_view_sql())
+        raise typer.Exit(0)
+
+    con = connect_read_only(retries=8, wait_s=30.0)
+    try:
+        df, tot = colocation_report(con, supply_set)
+
+        t = Table(title=f"Co-located same-category groups — {supply_set} supply set",
+                  show_header=True, header_style="bold")
+        for col, just in (("category", "left"), ("canonical", "right"),
+                          ("closed", "right"), ("gated", "right"),
+                          ("groups", "right"), ("one_closed", "right"),
+                          ("all_closed", "right"), ("both_open", "right"),
+                          ("unresolved", "right"), ("collapse −", "right")):
+            t.add_column(col, justify=just)
+        for r in df.sort_values("n_canonical", ascending=False).to_dict("records"):
+            t.add_row(r["category"], f"{r['n_canonical']:,}",
+                      f"[red]{r['n_closed']:,}[/]" if r["n_closed"] else "0",
+                      f"{r['n_gated']:,}", f"{r['n_groups']:,}",
+                      f"{r['groups_one_closed']:,}", f"{r['groups_all_closed']:,}",
+                      f"{r['groups_both_open']:,}",
+                      f"[yellow]{r['groups_unresolved']:,}[/]"
+                      if r["groups_unresolved"] else "0",
+                      f"{r['n_collapse_would_drop']:,}")
+        t.caption = (
+            f"'closed' = the predicate's EVIDENCED closures only (a ledger closed_on "
+            f"or a source-published status); 'unknown' is never gated. Groups are "
+            f"exact-coordinate ({COORD_DP} dp ≈ 1 m) and PER CATEGORY. "
+            f"'collapse −' is what --collapse-unresolved WOULD remove; it is OFF "
+            f"(COLLAPSE_UNRESOLVED={COLLAPSE_UNRESOLVED}) because a large building "
+            f"legitimately holds two restaurants at one geocode.")
+        console.print(t)
+
+        n_ungated = con.execute(
+            "SELECT count(*) FROM (" +
+            canonical_poi_sql(supply_set, "s.poi_id", gate_closed=False) + ")"
+        ).fetchone()[0]
+        n_gated = con.execute(
+            "SELECT count(*) FROM (" +
+            canonical_poi_sql(supply_set, "s.poi_id", gate_closed=True) + ")"
+        ).fetchone()[0]
+        console.print(
+            f"\n[bold]supply count[/]  ungated {n_ungated:,}  →  gated {n_gated:,}  "
+            f"([red]−{n_ungated - n_gated:,}[/], "
+            f"{100 * (n_ungated - n_gated) / max(n_ungated, 1):.2f}%)   "
+            f"GATE_CLOSED={GATE_CLOSED}, open-evidence window "
+            f"{OPEN_EVIDENCE_MAX_AGE_DAYS} d")
+        console.print(
+            f"[bold]co-location blast radius[/]  {tot['n_colocated']:,} of "
+            f"{tot['n_canonical']:,} canonical POIs "
+            f"({100 * tot['share_affected']:.2f}%) sit in a same-category "
+            f"co-located group; {tot['groups_unresolved']:,} groups "
+            f"({tot['n_unresolved_poi']:,} POIs) the published evidence cannot split.")
+
+        if collapse_unresolved:
+            n_collapsed = con.execute(
+                "SELECT count(*) FROM (" +
+                canonical_poi_sql(supply_set, "s.poi_id", gate_closed=True,
+                                  collapse_unresolved=True) + ")").fetchone()[0]
+            console.print(
+                f"[bold]--collapse-unresolved[/]  would be {n_collapsed:,} "
+                f"([yellow]−{n_gated - n_collapsed:,}[/] further, "
+                f"{100 * (n_gated - n_collapsed) / max(n_gated, 1):.2f}%). "
+                "NOT APPLIED — this is the alternative, priced, pending an owner "
+                "ruling.")
+
+        # How often a published DOHMH verdict is what splits a restaurant pair --
+        # the D36 question, asked of the data rather than assumed.
+        cat = category or "restaurant"
+        d = con.execute(f"""
+            WITH s AS (SELECT * FROM analysis.poi_supply_status
+                       WHERE {_supply_col(supply_set)} AND category = ?),
+            g AS (SELECT colocation_key, count(*) AS n_poi,
+                         any_value(colocation_resolution) AS res,
+                         count(*) FILTER (WHERE poi_status_basis LIKE 'nyc_dohmh%'
+                                            AND poi_status <> 'unknown') AS n_dohmh,
+                         count(*) FILTER (WHERE poi_status_basis LIKE '%:stale\\_%'
+                                                ESCAPE '\\') AS n_stale,
+                         count(*) FILTER (WHERE poi_status = 'open') AS n_open
+                  FROM s GROUP BY 1 HAVING count(*) >= 2)
+            SELECT count(*) AS groups,
+                   count(*) FILTER (WHERE res <> 'unresolved') AS resolved,
+                   count(*) FILTER (WHERE res <> 'unresolved' AND n_dohmh > 0)
+                       AS resolved_with_dohmh,
+                   count(*) FILTER (WHERE res = 'unresolved' AND n_stale > 0
+                                      AND n_open > 0) AS stale_vs_open
+            FROM g""", [cat]).fetchone()
+        if d and d[0]:
+            console.print(
+                f"\n[bold]{cat}[/]  {d[0]:,} co-located groups; {d[1]:,} resolved "
+                f"({100 * d[1] / d[0]:.1f}%), {d[2]:,} of those with a published "
+                f"DOHMH verdict among the members ({100 * d[2] / d[0]:.1f}% of all "
+                f"groups). {d[3]:,} unresolved groups pair a DOHMH 'stale_*' record "
+                "with a positively-open one — the D36 turnover signature, which D79 "
+                "refuses to call a closure because it is derived from the ABSENCE of "
+                "a recent inspection, not from anything DOHMH published.")
+
+        if examples:
+            rows = con.execute("""
+                SELECT category, group_key, n_poi, resolution, evidence
+                FROM analysis.poi_colocation
+                WHERE resolution = 'one_closed'
+                  AND (? IS NULL OR category = ?)
+                ORDER BY n_poi, group_key LIMIT ?
+            """, [category, category, examples]).fetchall()
+            for c, key, n, res, ev in rows:
+                console.print(f"\n[bold]{c}[/] {key}  n={n}  {res}")
+                console.print(f"  {ev}")
+    finally:
+        con.close()
+    raise typer.Exit(0)
+
+
+def _supply_col(supply_set: str) -> str:
+    from loci.score.supply import supply_predicate
+    return supply_predicate(supply_set)
