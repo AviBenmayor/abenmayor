@@ -1618,6 +1618,16 @@
       "Labels": "score,validation,rigor",
       "Project": "Loci",
       "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Site-revenue model v0.2: gate-chosen pool elasticity, median anchor, capacity ceiling, site-level \u03b3 cap \u2014 restaurant \u03c1_oos 0.82; every level cut 3\u20135\u00d7",
+      "Description": "Owner after v0 (D81) overshot Lion's Milk at 104 Roebling: build the fix. Revenue scaling linearly with spend pool (elasticity 1 by construction, overstated borough average by 2.6\u00d7); \u03bb anchored to EC MEAN, pulled up by large operators (Kings caf\u00e9s MEAN $675k vs CBP median $575k); no capacity term; ZIP-level agglomeration sign (\u03b3 < 0) applied at address grain, turning 28 neighbours into \u00d76.7 multiplier. Built v0.2 (src/loci/model/revenue.py, sql/025_revenue_capacity.sql): (1) \u03b5 per category refit per leave-one-ZIP-out fold \u2014 unconstrained argmax DEGENERATE at \u03b5=0 for 7 of 9 categories (spend pool deleted, leaving retail-predicts-retail; caught by cross-category placebo). Gated epsilon: refit at each \u03b5, ship the smallest passing, floored at 0.3. Restaurant passes at 0.6, backtest rejects owner's 0.3\u20130.5. (2) \u03bb calibrated to CBP median \u00d7 EC revenue per employee; \u03bb_median/\u03bb_mean restaurant 0.31 Kings / 0.77 NY. (3) revenue_cap_p50 = PLUTO retailarea \u00d7 $/sq ft band; p50 = min(model, cap); binds 62% MN, 1% Gowanus, 0.2% BK. (4) site-level \u03b3 multiplier capped at 1.0 \u2014 neighbours cannot raise site above corridor-neutral; ZIP-level sign does not transfer to address. Bugs fixed: \u03bb fitted on uncapped, applied to capped (MN median $130k vs $1.67M anchor); numpy nan**0 == 1 inflated \u03b5=0 sample. Result: restaurant alone passes (\u03c1_oos 0.819, R\u00b2 0.68, beats county 0.573 and homes-only 0.629). 104 Roebling $2.49M \u2192 $495k; 376 Graham $1.28M \u2192 $369k; Gowanus core $1.67M \u2192 $454k, rent $11.2k \u2192 $3.0k/mo. Caveat: median describes 2\u20133 person shop \u2014 for fully-staffed 1,000 sq ft caf\u00e9 v0.2 is a FLOOR. Two owner-facing Loci-predicted sites (Lion's Milk, El Punto) pre-registered with judgment/bottom-up/cost-side comps. Dedup defect GTM-153 (caf\u00e9 counted twice in supply pool).  Done 2026-09-14 (CHECKPOINT D91). Pushed to Linear 2026-09-14 as GTM-160.",
+      "Status": "Done",
+      "Priority": 2,
+      "Estimate": 5,
+      "Labels": "model,rigor,validation",
+      "Project": "Loci",
+      "Milestone": "E4 \u00b7 Validation and Artifact"
     }
   ]
 }
