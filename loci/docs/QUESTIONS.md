@@ -355,6 +355,13 @@ claim stands on.
 - **Fails if:** the rank correlation between camera person-counts and DOT screenline counts is weak, inconsistent across the AM/MD/PM windows, or inconsistent across cameras (i.e. driven by field-of-view differences rather than true footfall) — in which case sidewalk counts remain a self-comparison tool only, never a cross-location verification signal.
 - **Current answer:** Open. First samples (2026-09-13) were a Sunday evening, so `validate` reports N=0 against DOT's weekday counts; weekday AM/MD/PM sampling at the 15 DOT-adjacent cameras is ticketed as GTM-157.
 
+### X10 — Which of the NYC carrying-capacity parameters replicate in Chicago / LA / Philadelphia on CBP alone (the CBP↔POI ratio, the grocery flattening point, the accelerating categories)?
+- **Status:** open
+- **Answered by:** (not ticketed) — GTM-164
+- **Why it matters:** docs/carrying-capacity-2026-09.md (D93) fits the NYC curve on Loci's own POIs, overlapping 400 m walksheds; every calibrated constant in it is NYC-fitted, and D93's portability claim — that the CBP-to-POI ratio, not the raw curve, is what travels — has never been checked against a second city's own CBP data. Chicago, Philadelphia and LA are the nearest metros to NYC by dense population and the candidates for the first check.
+- **Fails if:** a closed-catchment (NTA/CD-partition) refit of the gated forms does not survive at all, in which case there is no NYC parameter stable enough to even ask the portability question of; or, if it does survive, the CBP-only replication in a second city returns a ratio or flattening point far outside the NYC range, in which case the curve is NYC-specific and only the METHOD (gate, fit form, closed-catchment design) travels, not the numbers.
+- **Current answer:** Open, ticketed GTM-164 (ticket b). Blocked on the closed-catchment refit (same ticket) — the open-shed fit cannot itself be handed to a second city as the number to reproduce.
+
 ### Tier T · Predictive — temporal ordering, no identification claim
 
 ### T1 — Does a negative residual in 2013 predict above-average growth 2013→2023?
@@ -433,6 +440,20 @@ claim stands on.
 - **Answered by:** `Retrodiction: does supply ratio at opening predict survival? (gating test for any decision-value claim)` — GTM-158, Done
 - **Fails if:** AUC / rank correlation on 2023–24 openings (first-seen ledger, D79; filings pipeline, D80) scored at opening date is indistinguishable from the contrarian's placebo, or its confidence interval includes the no-skill line — then the screen has no demonstrated ability to predict which sites survive, and every decision-value claim in docs/GTM.md is unsupported.
 - **Current answer:** Answered 2026-09-14 (D88): "The frozen 2023-01-01 screen predicts where 2023-24 openings landed out of sample (NTA-blocked AUC 0.866 vs 0.854 for the same model without the score, and above a spatially structured placebo at p95 0.8545), with a positive supply coefficient that survives NTA fixed effects and conditioning on other-category density (+1.17 [0.87, 1.47]) — so the screen ranks retail streets, not unserved demand, and Loci may claim cost of search only; decision value remains unclaimed because the one survival-adjacent outcome we can test returns a null and the business-level outcome remains untested rather than absent." (LL157 go-dark, the one survival-adjacent outcome tested: AUC 0.549 vs 0.535, sign flips with the attrition definition — null.) See docs/retrodiction-2026-09.md.
+
+### T12 — Do planners confirm the legality-vs-herding reading on the ground (Packet A), and does the 20-lot overlay threshold survive the ten held-out corridors (Packet B)?
+- **Status:** open
+- **Answered by:** (not ticketed) — GTM-165
+- **Why it matters:** T11/D88 found the screen ranks retail streets, and the D92 legality addendum found that reading survives controlling for present-day legal-capacity — but "survives a regression" and "matches what someone who knows the block sees" are different tests. Packet A asks a planner whether openings clustering into already-thick supply reads as demand herding or as the geometry of where retail is legal and re-lettable, on streets they know. Packet B asks whether the COMMERCIAL_OVERLAY_MIN_LOTS=20 threshold (D82) — tuned on the same corridors it was later checked against — holds on ten it never saw.
+- **Fails if:** a planner reviewer says the legality-vs-herding reading does not match a corridor they know (send both packets to at least two reviewer types per docs/planner-review.md §5, contrast a broker's read against a planner's), or the 20-lot threshold flips sign or coverage badly on the held-out corridors — either result changes a rule, not just an answer, and lands in the CHECKPOINT decision log per docs/planner-review.md §4.
+- **Current answer:** Open. Packets are send-ready in docs/planner-packets-2026-09.md; ticketed GTM-165 (ticket c).
+
+### T13 — Does the 2026-09 forecast vintage keep its ranking power when scored live in 2027-09, and does per-category recalibration fix the level errors?
+- **Status:** open
+- **Answered by:** (not ticketed) — GTM-163
+- **Why it matters:** D92's forecast ledger backtested 2023-01 (AUC 0.899 vs 0.860 no-score at 12 months) with a vintage the model form was itself chosen after seeing — specification-search leakage that makes the backtest optimistic. 2026-09 is the first vintage frozen before its outcome exists, and its pooled calibration gap (0.12) hides opposite-signed per-category errors (restaurant 0.38, bar 0.28) that a live score would expose for real.
+- **Fails if:** the 2027-09 score reproduces the 2023-01 backtest's AUC lift within its confidence interval but per-category isotonic recalibration (fit on the same folds as the model) does not shrink the restaurant/bar calibration gap — in which case the pooled number is masking a defect recalibration cannot fix, and a capacity term or a structural respecification is needed instead.
+- **Current answer:** Open. Blocked on the calendar (scored 2027-09) and on shipping a retention rule first (ticket a, GTM-163) so the DB holds the vintage to score.
 
 ### Tier C · Causal — deferred; requires identification
 

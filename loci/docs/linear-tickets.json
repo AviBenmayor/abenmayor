@@ -1648,6 +1648,36 @@
       "Labels": "model,rigor,validation",
       "Project": "Loci",
       "Milestone": "E4 \u00b7 Validation and Artifact"
+    },
+    {
+      "Title": "Forecast ledger: retention rule, per-category calibration, and the 2027-09 first live score",
+      "Description": "Each issue+score cycle adds ~1.4 GB (DB 1.8 \u2192 4.6 GB) with no retention rule; per-category level miscalibration (restaurant gap 0.38, bar 0.28 in opposite directions) is hidden by the pooled 0.12 calibration gap; the 2023-01 vintage carries specification-search leakage (the model form was chosen in 2026, after seeing 2023-01's outcomes), so only the 2026-09 vintage counts as a genuine forecast, scored 2027-09.\n\nCandidates: per-category isotonic recalibration fitted on the same fit folds as the model itself; a capacity term (Manhattan's saturated corridors already show negative surprise in analysis.forecast_surprise_nta); retention = keep the latest 3 vintages' predictions plus all outcomes/runs, drop the rest.\n\nOpened 2026-09-14 (CHECKPOINT D92). Pushed to Linear 2026-09-14 as GTM-163.",
+      "Status": "Backlog",
+      "Priority": 2,
+      "Estimate": 5,
+      "Labels": "score,rigor,blocker",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Carrying capacity: closed-catchment version and the CBP\u2194POI ratio as a portability parameter",
+      "Description": "The 400 m shed (docs/carrying-capacity-2026-09.md) is not a closed catchment, so the seven categories fitted as accelerating are inflated by non-resident trade; three of those sit with Emax pinned at its fit bound; N and density are collinear at a fixed radius (shed area varies only 0.195\u20130.312 km\u00b2 p10\u2013p90), so the NYC curve cannot separate 'more people' from 'denser people'.\n\nNext: fit the same gated forms (proportional / power / Michaelis-Menten / Hill / Hill\u00d7density) on NTA or Community District partitions \u2014 a closed catchment, no double counting \u2014 publish the CBP-vs-POI ratio per category (clinic 0.94\u00d7 \u2026 fitness 7.42\u00d7) as the number a second city must reproduce on CBP alone, and test the grocery flattening point (~16,104 residents in 400 m) against the D91 revenue-model capacity bound.\n\nOpened 2026-09-14 (CHECKPOINT D93). Pushed to Linear 2026-09-14 as GTM-164.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 5,
+      "Labels": "model,rigor",
+      "Project": "Loci",
+      "Milestone": "E1 \u00b7 Ingest and Grid"
+    },
+    {
+      "Title": "Planner review: send Packet A (legality vs herding) and Packet B (held-out corridors); record verdicts",
+      "Description": "docs/planner-packets-2026-09.md holds three send-ready packets (process in docs/planner-review.md). Packet A already has a statistical answer: legality sets the level (16% vs 72% opening rate within 400 m of zero vs \u226520 commercially-zoned lots) but the ranking survives inside the legal retail set at +1.40 [1.05, 1.75], and legality absorbs only 0.0002 of the score's +0.0126 AUC lift while other-category supply absorbs ~48% \u2014 the planner verdict is whether that reading matches the ground, not whether the statistics are right. Packet B's ten held-out corridors were never used to tune the COMMERCIAL_OVERLAY_MIN_LOTS=20 threshold (D82), so they are the first honest test of it.\n\nVerdicts enter QUESTIONS.md in the finding's tier, attributed by role and date, never paraphrased into agreement; a verdict that changes a rule also lands in the CHECKPOINT decision log.\n\nOpened 2026-09-14 (CHECKPOINT D92). Pushed to Linear 2026-09-14 as GTM-165.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 2,
+      "Labels": "docs,infra",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
     }
   ]
 }
