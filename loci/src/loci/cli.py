@@ -5723,12 +5723,16 @@ def retrodiction_run(
 
     rep = rd.run(window=window, radius_m=radius_m, sample_n=sample_n,
                  permutations=permutations, out=out, strict_dated=strict_dated)
+    e = rep["entry"]
+    nos = e.get("auc_no_score", e["permutation_null"]["mean"])
     console.print(f"[green]ok[/] cohort {rep['cohort_n']:,}; "
-                  f"observable closures "
+                  f"POI-cohort closures "
                   f"{rep['survival']['n_events_observable']} of "
                   f"{rep['survival']['min_events_required']} required; "
-                  f"entry AUC {rep['entry']['auc_full']:.3f} vs homes-only "
-                  f"{rep['entry']['auc_homes_only']:.3f}")
+                  f"entry AUC {e['auc_full']:.4f} vs {nos:.4f} for the SAME "
+                  f"model without the score (lift "
+                  f"{e['auc_full'] - nos:+.4f}) — the homes-only figure "
+                  f"{e['auc_homes_only']:.3f} is not the fair comparator")
     console.print("[yellow]`loci retrodiction report` renders the full result.[/]")
 
 
@@ -5790,11 +5794,17 @@ def retrodiction_report(
         t.add_row("blocked-CV AUC (full)",
                   f"{e['auc_full']:.3f}  [{e['auc_full_ci'][0]:.3f}, "
                   f"{e['auc_full_ci'][1]:.3f}]")
+        nos = e.get("auc_no_score", e["permutation_null"]["mean"])
+        t.add_row("[bold]blocked-CV AUC (same model, NO score)[/]",
+                  f"[bold]{nos:.4f}[/]  <- the fair comparator")
+        t.add_row("[bold]HEADLINE lift over the no-score model[/]",
+                  f"[bold]{e['auc_full'] - nos:+.4f}[/]")
         t.add_row("blocked-CV AUC (homes only)",
                   f"{e['auc_homes_only']:.3f}  [{e['auc_homes_only_ci'][0]:.3f}, "
-                  f"{e['auc_homes_only_ci'][1]:.3f}]")
-        t.add_row("lift over baseline", f"{e['auc_lift']:+.3f}  "
-                  f"beats baseline: {e['beats_baseline']}")
+                  f"{e['auc_homes_only_ci'][1]:.3f}]  (flatters — density + "
+                  f"retail_index + category FE alone reach the no-score figure)")
+        t.add_row("lift over homes-only (NOT the headline)",
+                  f"{e['auc_lift']:+.3f}  beats baseline: {e['beats_baseline']}")
         t.add_row("permutation null (p95 / max)",
                   f"{e['permutation_null']['p95']:.3f} / "
                   f"{e['permutation_null']['max']:.3f}  "
@@ -5831,3 +5841,247 @@ def retrodiction_report(
                   "never whether it was right to go there. A positive sign on the t0 "
                   "supply ratio means openings followed existing supply — which is "
                   "D87's attack surviving, not the screen being validated.[/]")
+
+
+# ---------------------------------------------------------------------------
+# poi-closures -- make CLOSURES observable (docs/retrodiction-2026-09.md §4)
+# ---------------------------------------------------------------------------
+poi_closures_app = typer.Typer(help="Source-published storefront CLOSURES.")
+app.add_typer(poi_closures_app, name="poi-closures")
+
+
+@poi_closures_app.command("ingest")
+def poi_closures_ingest(
+    release: str = typer.Option(None, "--release",
+                                help="Foursquare OS Places release, e.g. 2026-08-11. "
+                                     "Default: the adapter's LOCI_FSQ_RELEASE."),
+    refetch: bool = typer.Option(False, "--refetch",
+                                 help="Re-download the unfiltered NYC extract even if "
+                                      "it is already cached."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Count and print; write nothing."),
+) -> None:
+    """Re-pull Foursquare OS Places WITHOUT the open-only filter and load the
+    closed venues into `staging.poi_closure`.
+
+    The 2026-09 retrodiction found ZERO observable closures in the warehouse —
+    not because New York closes no storefronts, but because
+    `sources/universal/foursquare_places._ensure_cache` fetched with
+    `WHERE date_closed IS NULL`. The column was in the schema all along. This
+    pulls the same release and bbox into its OWN file
+    (`data/raw/foursquare_closed/`) and loads only the closed rows.
+
+    THE SUPPLY SET IS NOT TOUCHED. Nothing here writes `staging.poi`,
+    `analysis.poi_dedup` or `analysis.poi_supply`; the open cache and the
+    adapter's `normalize()` are unchanged, so no closed venue can enter the
+    screen's supply. Then run `loci poi-snapshot` to fill the ledger's
+    `closed_on` / `closed_src`.
+
+        loci poi-closures ingest
+    """
+    from loci.model import poi_closure as pc
+    from loci.model import poi_presence as pp
+    from loci.sources.universal import foursquare_places as fsq
+
+    rel = release or fsq.RELEASE
+    console.print(f"[dim]Foursquare OS Places release {rel} — NYC bbox, "
+                  "no open-only filter…[/]")
+    try:
+        path = fsq.ensure_closed_cache(rel, force=refetch)
+    except RuntimeError as exc:
+        console.print(f"[red]FAIL[/] {exc}")
+        raise typer.Exit(1) from exc
+    console.print(f"[green]raw[/] {path}")
+
+    con = pp.connect_write()
+    try:
+        report = pc.load(con, release=rel, dry_run=dry_run)
+    except RuntimeError as exc:
+        console.print(f"[red]FAIL[/] {exc}")
+        raise typer.Exit(1) from exc
+
+    t = Table(title=f"poi-closures ingest {rel}"
+                    + (" — DRY RUN, nothing written" if dry_run else ""))
+    t.add_column("metric"); t.add_column("n", justify="right")
+    t.add_row("closed venues loaded", f"{report['rows']:,}")
+    t.add_row("  mapped to a Loci category", f"{report['mapped']:,}")
+    t.add_row("  carrying a ledger key", f"{report['keyed']:,}")
+    console.print(t)
+
+    y = Table(title="date_closed by year")
+    y.add_column("year"); y.add_column("n", justify="right")
+    for yr, n in sorted(report["by_year"].items()):
+        y.add_row(str(yr), f"{n:,}")
+    console.print(y)
+
+    if dry_run:
+        console.print("[yellow]--dry-run: staging.poi_closure not written.[/]")
+        raise typer.Exit(0)
+    console.print("[yellow]NOTE[/] a NULL closed_on is “no closure observed”, never "
+                  "“still open”. Foursquare marks a venue closed when its pipeline "
+                  "learns of it — late for a check-in base, and often never for the "
+                  "categories nobody checks in at. Survival built on this is an "
+                  "UPPER BOUND, and the bias is categorical, so it does not cancel.")
+    console.print("[dim]next: `loci poi-snapshot` fills analysis.poi_presence."
+                  "closed_on / closed_src from this table.[/]")
+
+
+@poi_closures_app.command("stats")
+def poi_closures_stats() -> None:
+    """Counts for `staging.poi_closure` and its join to the first-seen ledger.
+
+    Read-only. The number that matters is how many LEDGER rows now carry a
+    closure date — that is the event count a survival model would be fitted on.
+    """
+    from loci.model import poi_closure as pc
+    from loci.model.recommend import connect_read_only
+
+    con = connect_read_only()
+    try:
+        s = pc.stats(con)
+    except Exception as exc:            # noqa: BLE001 -- duckdb raises several
+        console.print(f"[red]FAIL[/] {exc} — run `loci poi-closures ingest` first")
+        raise typer.Exit(1) from exc
+
+    t = Table(title="staging.poi_closure")
+    t.add_column("metric"); t.add_column("n", justify="right")
+    t.add_row("closed venues", f"{s['closures']:,}")
+    t.add_row("  mapped to a Loci category", f"{s['mapped']:,}")
+    t.add_row("  no ledger row at this key", f"{s['unmatched']:,}")
+    t.add_row("ledger rows", f"{s['ledger_rows']:,}")
+    t.add_row("  with an observed closure", f"{s['ledger_closed']:,}")
+    console.print(t)
+
+    c = Table(title="ledger closures by category")
+    for col in ("category", "closed", "rows", "rate"):
+        c.add_column(col, justify="right" if col != "category" else "left")
+    for cat, closed, rows in s["ledger_closed_by_category"]:
+        c.add_row(str(cat), f"{closed:,}", f"{rows:,}",
+                  f"{(closed / rows if rows else 0):.1%}")
+    console.print(c)
+
+    k = Table(title="ledger closures by first_seen_kind")
+    for col in ("first_seen_kind", "closed", "rows"):
+        k.add_column(col, justify="right" if col != "first_seen_kind" else "left")
+    for kind, closed, rows in s["ledger_closed_by_kind"]:
+        k.add_row(str(kind), f"{closed:,}", f"{rows:,}")
+    console.print(k)
+
+    console.print("[yellow]A closure here is a SOURCE-PUBLISHED date_closed and "
+                  "nothing else. Absence from a snapshot is not a closure (D79); "
+                  "`last_seen_month` falling behind is a prompt to look.[/]")
+
+
+# ===========================================================================
+# retrodiction go-dark (GTM-158) -- the LL157 premises outcome the first pass
+# wrongly rejected. Appended at the END of this file, after the poi-closures
+# block; nothing above is touched.
+# ===========================================================================
+@retrodiction_app.command("go-dark")
+def retrodiction_go_dark(
+    base_year: int = typer.Option(2022, "--base-year",
+                                  help="Premises must be OCCUPIED at this year's 12-31."),
+    outcome_year: int = typer.Option(2024, "--outcome-year",
+                                     help="Vacancy is read at this year's 12-31."),
+    radius_m: float = typer.Option(400.0, "--radius-m",
+                                   help="Straight-line catchment, EPSG:32618."),
+    out: str = typer.Option(None, "--out", help="Output directory."),
+) -> None:
+    """Does a THIN-supply score at 2023-01-01 predict a storefront going dark?
+
+    Business-level survival for the POI cohort is not identified (one snapshot,
+    current-state sources). Premises-level go-dark IS: `analysis.storefront` is
+    a premises x year panel and, in MN+BK, 1,080 premises occupied at 2022-12-31
+    were vacant at 2024-12-31. That is 22x the pre-declared 48-event floor,
+    inside the window, with no new data.
+
+    Reported in BOTH attrition variants, because the 3,510 premises that stop
+    filing are plausibly the distressed ones and nothing inside LL157 can say.
+    Split on `construction_reported`, because a gut renovation is not a failure.
+    """
+    from loci.validation import retrodiction as rd
+
+    rep = rd.run_go_dark(base_year=base_year, outcome_year=outcome_year,
+                         radius_m=radius_m, out=out)
+    s = rep["strict"]
+    console.print(f"[green]ok[/] strict n {s['n']:,} / {s['events']:,} events "
+                  f"({s['event_rate']:.1%}); AUC {s['auc_full']:.3f} vs "
+                  f"{s['auc_no_score']:.3f} without the score")
+    console.print("[yellow]`loci retrodiction go-dark-report` renders it.[/]")
+
+
+@retrodiction_app.command("go-dark-report")
+def retrodiction_go_dark_report(
+    out: str = typer.Option(None, "--out", help="Directory holding go_dark.json."),
+) -> None:
+    """Render the go-dark run: both attrition variants, splits, calibration."""
+    from loci.validation import retrodiction as rd
+
+    rep = rd.load_go_dark(out)
+    p = rep["params"]
+    console.print(Panel.fit(
+        f"occupied {p['base_year']}-12-31 -> vacant {p['outcome_year']}-12-31\n"
+        f"score frozen 2023-01-01, {p['radius_m']:.0f} m {p['distance']}\n"
+        f"ran {p['ran_at']}",
+        title="LL157 go-dark"))
+
+    for label in ("strict", "attrition_as_event"):
+        v = rep[label]
+        console.print(f"\n[bold]{label}[/] — n {v['n']:,}, {v['events']:,} events "
+                      f"({v['event_rate']:.1%}), {v['n_ntas']} NTAs, "
+                      f"{v['n_blocks']} spatial blocks, NTA fixed effects "
+                      f"{v['nta_fixed_effects']}")
+        t = Table(show_header=True, header_style="bold")
+        for c in ("measure", "value"):
+            t.add_column(c, overflow="fold")
+        t.add_row("block-held-out AUC (with score)", f"{v['auc_full']:.4f}")
+        t.add_row("block-held-out AUC (no score)", f"{v['auc_no_score']:.4f}")
+        t.add_row("lift", f"{v['auc_lift']:+.4f}")
+        t.add_row("t0 supply score coef",
+                  f"{v['log_score_coef']:+.3f}  95% CI "
+                  f"[{v['log_score_ci'][0]:+.3f}, {v['log_score_ci'][1]:+.3f}]  "
+                  f"p {v['log_score_p']:.3g}")
+        t.add_row("SIGN", f"[bold]{v['sign']}[/]")
+        console.print(t)
+
+        t = Table(title="by LL157 activity group (Bonferroni alpha = 0.0167)",
+                  show_header=True, header_style="bold")
+        for c in ("group", "n", "events", "rate", "coef (95% CI)", "p", "survives"):
+            t.add_column(c, overflow="fold")
+        for g, r in sorted(v["by_activity_group"].items()):
+            if "skipped" in r:
+                t.add_row(g, f"{r['n']:,}", "—", "—", r["skipped"], "—", "—")
+                continue
+            t.add_row(g, f"{r['n']:,}", f"{r['events']:,}", f"{r['rate']:.1%}",
+                      f"{r['log_score_coef']:+.3f} [{r['log_score_ci'][0]:+.3f}, "
+                      f"{r['log_score_ci'][1]:+.3f}]", f"{r['p']:.3g}",
+                      "yes" if r["survives_bonferroni"] else "no")
+        console.print(t)
+
+        t = Table(title="split on construction_reported", show_header=True,
+                  header_style="bold")
+        for c in ("split", "n", "events", "rate", "coef (95% CI)"):
+            t.add_column(c, overflow="fold")
+        for g, r in v["by_construction"].items():
+            if "skipped" in r:
+                t.add_row(g, f"{r['n']:,}", "—", "—", r["skipped"])
+                continue
+            t.add_row(g, f"{r['n']:,}", f"{r['events']:,}", f"{r['rate']:.1%}",
+                      f"{r['log_score_coef']:+.3f} [{r['log_score_ci'][0]:+.3f}, "
+                      f"{r['log_score_ci'][1]:+.3f}]")
+        console.print(t)
+
+        t = Table(title="calibration (in-sample deciles)", show_header=True,
+                  header_style="bold")
+        for c in ("decile", "n", "predicted", "observed"):
+            t.add_column(c, justify="right")
+        for c in v["calibration"]:
+            t.add_row(str(c["decile"]), f"{c['n']:,}", f"{c['predicted']:.3f}",
+                      f"{c['observed']:.3f}")
+        console.print(t)
+
+    console.print("\n[yellow]LL157 is LANDLORD SELF-REPORT. Vacancy is not failure "
+                  "(hence the construction split), a premises is a building not a "
+                  "shop (any reported unit going dark counts), and the filing "
+                  "universe is selected. This is the identifiable survival-adjacent "
+                  "outcome Loci has today — not a business-level survival rate.[/]")

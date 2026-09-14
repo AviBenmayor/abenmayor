@@ -216,3 +216,105 @@ class FoursquarePlacesAdapter(SourceAdapter):
                        "refreshed": str(r.get("refreshed") or "")[:10] or None},
             )
         self.unmapped_leaves = dict(sorted(unmapped.items(), key=lambda kv: -kv[1])[:40])
+
+
+# ---------------------------------------------------------------------------
+# THE CLOSED PARTITION (GTM: make closures observable)
+# ---------------------------------------------------------------------------
+# `_ensure_cache` above filters `date_closed IS NULL`. That filter is why the
+# 2026-09 retrodiction found ZERO observable closures in 821,397 cached NYC
+# rows: the column exists, the fetch threw the rows away. It STAYS as it is --
+# the open cache feeds staging.poi and the dedup, and the screen's supply set
+# is open businesses only.
+#
+# This second, SEPARATE extract re-pulls the same release and the same bbox
+# with NO open-only filter, into its own directory. Nothing here is ever
+# yielded by `fetch()` / `normalize()`, so no closed venue can reach
+# staging.poi. The closure ledger (`staging.poi_closure`, sql/027) reads this
+# file directly.
+CLOSED_DIR = Path("data/raw/foursquare_closed")
+
+
+def closed_cache_path(release: str = RELEASE) -> Path:
+    """The unfiltered NYC extract for a release. Named by release because the
+    closed set GROWS between releases and two of them must never be confused."""
+    return CLOSED_DIR / f"fsq_places_nyc_all_{release}.parquet"
+
+
+def ensure_closed_cache(release: str = RELEASE, *, force: bool = False) -> Path:
+    """Download the NYC bbox WITHOUT the open-only filter. Fail loud.
+
+    Same download-once pattern as `_ensure_cache`, one difference that matters:
+    a partial or empty result RAISES rather than leaving a zero-row parquet on
+    disk that a later run would treat as cached. A silent zero here would read
+    downstream as "no closures in New York", which is the exact failure the
+    retrodiction caught."""
+    path = closed_cache_path(release)
+    if path.exists() and path.stat().st_size > 0 and not force:
+        return path
+    token = os.environ.get("HF_TOKEN")
+    if not token:
+        raise RuntimeError(
+            "Foursquare OS Places is gated. Accept the terms at "
+            "https://huggingface.co/datasets/foursquare/fsq-os-places, create a read "
+            "token, set HF_TOKEN, and re-run.")
+    import duckdb
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".parquet.partial")
+    glob = f"hf://datasets/foursquare/fsq-os-places/release/dt={release}/places/parquet/*.parquet"
+    con = duckdb.connect()
+    try:
+        con.execute("INSTALL httpfs; LOAD httpfs;")
+        con.execute("CREATE SECRET hf (TYPE HUGGINGFACE, TOKEN ?)", [token])
+        w, s, e, n = BBOX
+        con.execute(f"""
+            COPY (SELECT fsq_place_id, name, fsq_category_labels, latitude, longitude,
+                         date_created, date_refreshed, date_closed, address, locality, postcode
+                  FROM read_parquet('{glob}')
+                  WHERE latitude BETWEEN {s} AND {n} AND longitude BETWEEN {w} AND {e})
+            TO '{tmp}' (FORMAT PARQUET)""")
+        n_rows, n_closed = con.execute(
+            "SELECT count(*), count(date_closed) FROM read_parquet(?)", [str(tmp)]).fetchone()
+        if not n_rows:
+            raise RuntimeError(f"Foursquare release {release} returned 0 NYC rows -- refusing "
+                               "to cache an empty extract.")
+        if not n_closed:
+            raise RuntimeError(
+                f"Foursquare release {release} returned {n_rows} NYC rows but 0 with "
+                "date_closed. Either the release genuinely publishes no closures or the "
+                "open-only filter leaked back in -- refusing to cache, because a zero here "
+                "reads downstream as 'no closures in New York'.")
+    finally:
+        con.close()
+    tmp.replace(path)
+    return path
+
+
+def iter_closed(release: str = RELEASE):
+    """Yield the CLOSED rows only, normalized to the closure-ledger contract.
+
+    Categories are mapped with the SAME `map_leaf` the open path uses, so a
+    closure is counted against a Loci category on exactly the rule that put its
+    open neighbours there. Rows that do not map yield `category=None`; the
+    ledger keeps them (with the mapping recorded) so the unmapped share is
+    visible rather than silently dropped."""
+    import duckdb
+    path = closed_cache_path(release)
+    if not path.exists():
+        raise RuntimeError(f"{path} missing -- run `loci poi-closures ingest` first.")
+    con = duckdb.connect()
+    try:
+        cur = con.execute(
+            "SELECT fsq_place_id, name, fsq_category_labels, latitude, longitude, "
+            "date_created, date_closed, date_refreshed FROM read_parquet(?) "
+            "WHERE date_closed IS NOT NULL", [str(path)])
+        while True:
+            rows = cur.fetchmany(10_000)
+            if not rows:
+                break
+            for r in rows:
+                yield {"fsq_place_id": r[0], "name": r[1], "category": map_leaf(r[2]),
+                       "lat": r[3], "lon": r[4], "date_created": _as_date(r[5]),
+                       "date_closed": _as_date(r[6]), "date_refreshed": _as_date(r[7])}
+    finally:
+        con.close()

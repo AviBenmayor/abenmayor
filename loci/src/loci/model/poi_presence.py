@@ -124,11 +124,24 @@ class SnapshotResult:
     hash_collisions: int = 0  # live clusters sharing one minted key
     upgraded: int = 0         # censored/observed rows a source finally dated
     dry_run: bool = False
+    closures: dict = field(default_factory=dict)   # poi_closure.apply_to_ledger report
 
 
 def ensure_schema(con) -> None:
-    """Apply sql/018_poi_presence.sql. Idempotent."""
+    """Apply sql/018_poi_presence.sql, then the later files that EXTEND the
+    ledger. Idempotent.
+
+    018 re-creates `analysis.poi_first_seen` in its ORIGINAL form, so applying
+    it alone silently reverts the reporting view: `first_seen_on` would stop
+    covering 'gov_filing' rows (as sql/020 fixed) and `closed_on` would vanish
+    off the surface altogether (sql/027). 027 carries the current definition of
+    that view -- 020's, plus the closure columns -- and only CREATE ... IF NOT
+    EXISTS / ALTER ... IF NOT EXISTS / CREATE OR REPLACE VIEW, so re-applying it
+    here costs nothing and keeps the view at the newest migration's shape."""
     con.execute(SQL_018.read_text())
+    sql_027 = SQL_018.parent / "027_poi_closure.sql"
+    if sql_027.exists():
+        con.execute(sql_027.read_text())
 
 
 def connect_write(path=None, retries: int = 20, wait_s: float = 30.0):
@@ -411,8 +424,18 @@ _UPGRADE_SQL = """pp.first_seen_kind <> 'source_date'
              AND (pp.first_seen_src_date IS NULL
                   OR excluded.first_seen_src_date < pp.first_seen_src_date)"""
 
+#: THE TARGET COLUMN LIST IS EXPLICIT, and that is not style. Without it
+#: DuckDB binds `excluded` to EVERY column of the table, so the day sql/027
+#: added `closed_on` / `closed_src` the upsert died with "table excluded has 17
+#: columns available but 19 columns specified" -- i.e. any later ALTER breaks
+#: every snapshot. Naming the seventeen columns the snapshot actually writes
+#: leaves the closure columns to `poi_closure.apply_to_ledger`, which owns them.
 _UPSERT_TEMPLATE = """
 INSERT INTO analysis.poi_presence AS pp
+    (location_key, category, name_key, display_name, lon, lat, borough,
+     first_seen_month, last_seen_month, first_seen_kind, first_seen_src_date,
+     first_seen_src_field, n_months_seen, cluster_id_latest, poi_id_latest,
+     ledger_started_month, last_snapshot_at)
 SELECT location_key, category, name_key, display_name, lon, lat, borough,
        first_seen_month, last_seen_month, first_seen_kind, first_seen_src_date,
        first_seen_src_field, n_months_seen, cluster_id_latest, poi_id_latest,
@@ -602,6 +625,24 @@ def snapshot(con, *, month: str | None = None, dry_run: bool = False,
     result.kinds = dict(con.execute(
         "SELECT first_seen_kind, count(*) FROM analysis.poi_presence "
         "GROUP BY 1 ORDER BY 1").fetchall())
+
+    # THE OTHER END OF THE SPELL (sql/027). `closed_on` / `closed_src` are
+    # re-derived from staging.poi_closure on EVERY snapshot, so a retracted
+    # closure disappears instead of being frozen in.
+    #
+    # THEY ARE NEVER WRITTEN FROM THE ABSENCE OF A ROW IN THIS SNAPSHOT, and
+    # that is D79, not a preference: `n_gone` above counts locations that
+    # stopped appearing, and a source outage, a geocode shift past 40 m or a
+    # rename past the name rule all produce that just as readily as a shutter.
+    # Only a source-published `date_closed` closes a location. Imported here
+    # rather than at module level because model/poi_closure imports THIS module.
+    from loci.model import poi_closure as pc
+    try:
+        result.closures = pc.apply_to_ledger(con)
+    except Exception as exc:        # noqa: BLE001 -- duckdb raises several
+        # The closure table is optional: a warehouse that has never run
+        # `loci poi-closures ingest` still snapshots. Reported, never silent.
+        result.closures = {"error": str(exc)}
     return result
 
 

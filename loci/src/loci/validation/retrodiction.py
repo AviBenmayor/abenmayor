@@ -361,6 +361,38 @@ def closure_audit(con, start: dt.date = WINDOW_START,
             f"the open-only filter is the cheapest closure panel available to "
             f"this project and needs no new vendor."))
 
+    # (d2) the ledger's own closed_on, once a source publishes one. Added
+    # 2026-09-14 after the Foursquare open-only filter was removed upstream.
+    # It puts EVENTS on the cohort for the first time -- and immediately runs
+    # into the harder problem, which is not identification but ASCERTAINMENT.
+    has_closed = con.execute(
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_schema = 'analysis' AND table_name = 'poi_presence' "
+        "AND column_name = 'closed_on'").fetchone()[0]
+    if has_closed:
+        n_ledger, n_cohort_events = con.execute(
+            f"""SELECT count(closed_on),
+                      count(*) FILTER (
+                        WHERE closed_on IS NOT NULL
+                          AND first_seen_kind IN ('source_date', 'gov_filing')
+                          AND first_seen_src_date BETWEEN ? AND ?
+                          AND closed_on >= first_seen_src_date
+                          AND borough IN ({", ".join(f"'{b}'" for b in BOROUGHS_FULL)}))
+               FROM analysis.poi_presence""", [start, end]).fetchone()
+        out.append(ClosureInstrument(
+            "poi_presence.closed_on (Foursquare)", True, int(n_cohort_events),
+            f"{int(n_ledger):,} ledger rows now carry a source-published "
+            f"closing date; {int(n_cohort_events):,} of them are cohort "
+            f"openings that closed after they opened. ABOVE the "
+            f"{MIN_EVENTS_FOR_HAZARD}-event floor -- and still not a survival "
+            f"outcome. {int(n_cohort_events):,} events on a cohort of this "
+            f"size implies roughly 99% two-year survival, against a true NYC "
+            f"food-service rate near 75-80%: Foursquare ascertains on the "
+            f"order of 3% of closures, and not at random (a bar closing is "
+            f"announced, a tailor closing is not). Any hazard ratio fitted "
+            f"here is a statement about Foursquare's editorial pipeline. It "
+            f"is a lead, not an outcome, until an ascertainment model exists."))
+
     # (e) DOHMH — active-only by publication policy
     dohmh = con.execute(
         "SELECT count(*) FROM staging.poi WHERE source_id = 'nyc_dohmh_restaurants'"
@@ -398,6 +430,10 @@ def observable_closures(audit: list[ClosureInstrument]) -> int:
     categories, so they are counted at zero HERE while being reported honestly
     in the audit — a closure of a pedicab licence is not an observation of a
     café's survival."""
+    # `poi_presence.closed_on` is deliberately NOT in this set. It carries real
+    # events, but at ~3% ascertainment and categorically non-random, counting
+    # them would open the hazard gate on a panel that measures Foursquare, not
+    # New York. It is reported in the audit and excluded from the gate.
     usable = {"poi_presence.last_seen_month", "foursquare.date_closed"}
     return sum(i.observable_closures for i in audit if i.name in usable)
 
@@ -877,6 +913,14 @@ def fit_entry(panel: pd.DataFrame, *, permutations: int = PERMUTATIONS) -> dict:
         "auc_homes_only": auc_base, "auc_homes_only_ci": [ci_lo_b, ci_hi_b],
         "auc_lift": float(auc_full - auc_base),
         "permutation_null": null,
+        # THE HONEST BASELINE (statistician, 2026-09-14). Permuting the score
+        # inside the FULL model refits everything-but-the-score, so the null's
+        # mean IS the no-score AUC -- confirmed by refitting directly (0.8537).
+        # The homes-only comparator flatters the result: density + retail_index
+        # + category fixed effects alone reach 0.854, so the score's real
+        # marginal contribution is ~+0.013, not the +0.048 against homes-only.
+        "auc_no_score": float(null["mean"]),
+        "auc_lift_vs_no_score": float(auc_full - null["mean"]),
         "hard_outcome": hi_block,
         "beats_baseline": bool(auc_full > auc_base and ci_lo > auc_base),
         "beats_placebo": bool(auc_full > null["p95"]),
@@ -957,4 +1001,322 @@ def load(out: pathlib.Path | str | None = None) -> dict:
     path = (pathlib.Path(out) if out else OUT_DIR) / "summary.json"
     if not path.exists():
         raise FileNotFoundError(f"no run at {path} — run `loci retrodiction run` first")
+    return json.loads(path.read_text())
+
+
+# ===========================================================================
+# 8. LL157 GO-DARK — the outcome the first pass wrongly rejected
+# ===========================================================================
+# The first version of this module dismissed the DOF Storefront Registry as
+# "premises grain with no business identity". That objection is correct about
+# ATTRIBUTING a closure to a particular cohort POI. It is wrong about the
+# OUTCOME. `analysis.storefront` is a premises x reporting-year panel carrying
+# `vacant_1231`, and in MN+BK, keyed on `premises_id` with `bool_or` within a
+# year:
+#
+#     occupied 2022-12-31 -> VACANT 2024-12-31        1,080   <- events
+#     occupied 2022-12-31 -> occupied 2024-12-31     11,641
+#     occupied 2022-12-31 -> no 2024 filing           3,510   <- attrition
+#     vacant  2022-12-31 -> occupied 2024-12-31       1,050
+#
+# 1,080 go-dark events is 22x the 48-event floor, inside the exact window, with
+# no new data. So the honest statement is NOT "survival is unidentified" but:
+# **business-level survival for the 12,572-POI cohort is not identified;
+# premises-level go-dark is.**
+#
+# What it can and cannot resolve, stated before it is used:
+#   * It is LANDLORD SELF-REPORT under Local Law 157. The filing universe is
+#     selected, and the 3,510 premises that stop filing are plausibly the
+#     distressed ones, so attrition is modelled BOTH ways and both are reported.
+#   * Vacancy is not failure. A unit can go dark for a gut renovation, so the
+#     model is also split on `construction_reported`.
+#   * `bool_or(vacant_1231)` within a premises means ANY unit in the building
+#     went dark, not all of them. A premises is a building address, not a shop.
+#   * `primary_business_activity` is far too coarse for the fifteen categories
+#     — RETAIL / FOOD SERVICES / OTHER is the finest honest split, so the
+#     per-category view is three groups, Bonferroni-corrected over three tests,
+#     not fifteen.
+
+GO_DARK_BASE_YEAR = 2022
+GO_DARK_OUTCOME_YEAR = 2024
+#: Coarser than NTA, for the blocking robustness the statistician asked for.
+#: A 6 x 5 quantile tiling of projected NTA centroids -- deterministic, needs no
+#: clustering dependency, and is by construction coarser than the 103 NTAs.
+GO_DARK_BLOCKS_X = 6
+GO_DARK_BLOCKS_Y = 5
+
+ACTIVITY_GROUPS = {
+    "FOOD SERVICES": "food",
+    "RETAIL": "retail",
+}
+
+
+def _activity_group(raw: str | None) -> str:
+    return ACTIVITY_GROUPS.get((raw or "").strip().upper(), "other")
+
+
+def go_dark_panel(con, *, base_year: int = GO_DARK_BASE_YEAR,
+                  outcome_year: int = GO_DARK_OUTCOME_YEAR,
+                  t0: dt.date = WINDOW_START, radius_m: float = RADIUS_M,
+                  attrition_is_event: bool = False,
+                  include_censored: bool = True) -> pd.DataFrame:
+    """Premises occupied at `base_year`-12-31, scored at t0, outcome at
+    `outcome_year`-12-31.
+
+    THE BOUNDARY THE TESTS PIN: a premises already VACANT at base year is not
+    at risk and cannot be an event — including it would count landlords who
+    were already dark as failures of the screen. `attrition_is_event` decides
+    what "stopped filing" means, and the two answers are reported side by side
+    because the direction of that bias is unknowable from inside the data.
+    """
+    rows = con.execute(f"""
+        WITH yr AS (
+          SELECT premises_id, reporting_year,
+                 bool_or(vacant_1231)             AS vacant,
+                 bool_or(COALESCE(construction_reported, FALSE)) AS constr,
+                 any_value(bbl)                   AS bbl,
+                 any_value(nta_code)              AS nta_code,
+                 any_value(borough)               AS borough,
+                 any_value(primary_business_activity) AS activity,
+                 avg(ST_X(geom))                  AS lon,
+                 avg(ST_Y(geom))                  AS lat
+          FROM analysis.storefront
+          WHERE borough IN ({", ".join(f"'{b}'" for b in BOROUGHS_CODE)})
+            AND geom IS NOT NULL
+          GROUP BY 1, 2)
+        SELECT b.premises_id, b.lon, b.lat, b.nta_code, b.borough, b.bbl,
+               b.activity, (b.constr OR COALESCE(o.constr, FALSE)) AS constr,
+               o.vacant AS vacant_out,
+               (o.premises_id IS NULL) AS no_outcome_filing
+        FROM yr b LEFT JOIN yr o
+          ON o.premises_id = b.premises_id AND o.reporting_year = {int(outcome_year)}
+        WHERE b.reporting_year = {int(base_year)} AND b.vacant IS NOT DISTINCT FROM FALSE
+    """).fetchdf()
+
+    rows["activity_group"] = rows["activity"].map(_activity_group)
+    rows["point_id"] = rows["premises_id"]
+    ev = rows["vacant_out"].fillna(False).astype(bool)
+    if attrition_is_event:
+        rows["event"] = (ev | rows["no_outcome_filing"]).astype(int)
+    else:
+        rows = rows[~rows["no_outcome_filing"]].copy()
+        rows["event"] = ev[rows.index].astype(int)
+
+    pts = rows[["point_id", "lon", "lat"]].dropna()
+    homes_src = con.execute(f"""
+        SELECT lon, lat, units_capped AS weight FROM analysis.address
+        WHERE frame = 'lot' AND borough IN ({", ".join(f"'{b}'" for b in BOROUGHS_CODE)})
+          AND units_capped > 0 AND lon IS NOT NULL""").fetchdf()
+    homes = (count_within(con, pts, homes_src, radius_m=radius_m, by="")
+             .rename(columns={"wsum": "homes_t0"})[["point_id", "homes_t0"]])
+
+    from loci.categories import CATEGORIES
+    cats = tuple(CATEGORIES)
+    sup = supply_as_of(con, pts, asof=t0, radius_m=radius_m,
+                       include_censored=include_censored, categories=cats)
+    total = sup.groupby("point_id")["supply"].sum().rename("supply_all_t0").reset_index()
+    food = (sup[sup["category"].isin(("restaurant", "cafe_bakery", "bar"))]
+            .groupby("point_id")["supply"].sum().rename("supply_food_t0").reset_index())
+
+    char = con.execute(f"""
+        SELECT a.lon, a.lat, c.retail_index AS weight
+        FROM analysis.address a JOIN analysis.address_character c USING (address_id)
+        WHERE a.frame = 'lot' AND a.borough IN ({", ".join(f"'{b}'" for b in BOROUGHS_CODE)})
+          AND c.retail_index IS NOT NULL AND a.lon IS NOT NULL""").fetchdf()
+    ri = count_within(con, pts, char, radius_m=200.0, by="")
+    ri["retail_index"] = ri["wsum"] / ri["n"]
+    ri = ri[["point_id", "retail_index"]]
+
+    p = (rows.merge(homes, on="point_id", how="left")
+             .merge(total, on="point_id", how="left")
+             .merge(food, on="point_id", how="left")
+             .merge(ri, on="point_id", how="left"))
+    p[["supply_all_t0", "supply_food_t0"]] = p[["supply_all_t0", "supply_food_t0"]].fillna(0.0)
+    p = p[(p["homes_t0"].fillna(0) > 0) & p["nta_code"].notna()].copy()
+
+    p["supply_per_1k_t0"] = p["supply_all_t0"] / p["homes_t0"] * 1000.0
+    p["score_t0"] = p["supply_per_1k_t0"] / p["supply_per_1k_t0"].median()
+    p["log_score"] = np.log1p(p["score_t0"])
+    p["log_homes"] = np.log(p["homes_t0"] + 1.0)
+    p["retail_index"] = p["retail_index"].fillna(p["retail_index"].median())
+    p["construction_reported"] = p["constr"].fillna(False).astype(bool)
+    p["block"] = _spatial_blocks(p)
+    p["attrition_is_event"] = attrition_is_event
+    p["t0"] = t0
+    return p.reset_index(drop=True)
+
+
+def _spatial_blocks(panel: pd.DataFrame, nx: int = GO_DARK_BLOCKS_X,
+                    ny: int = GO_DARK_BLOCKS_Y) -> pd.Series:
+    """Blocks coarser than NTA, for the coarser-blocking robustness check.
+
+    A quantile tiling of projected NTA CENTROIDS, so whole NTAs always land in
+    one block and a fold never splits a neighbourhood. Deterministic and
+    dependency-free; the point is only that the folds are coarser than NTAs,
+    not that the tiles are administrative units."""
+    cen = panel.groupby("nta_code")[["lon", "lat"]].mean()
+    x, y = _project(cen["lon"].to_numpy(), cen["lat"].to_numpy())
+    bx = pd.qcut(pd.Series(x, index=cen.index), nx, labels=False, duplicates="drop")
+    by = pd.qcut(pd.Series(y, index=cen.index), ny, labels=False, duplicates="drop")
+    key = (bx.astype(str) + ":" + by.astype(str))
+    return panel["nta_code"].map(key)
+
+
+def _gd_design(panel: pd.DataFrame, cols: list[str], nta_fe: bool) -> np.ndarray:
+    X = panel[cols].copy().astype(float)
+    if nta_fe:
+        d = pd.get_dummies(panel["nta_code"], prefix="nta", drop_first=True)
+        # An NTA with no variation in the outcome separates perfectly and the
+        # fit will not converge; drop those columns rather than the rows, so
+        # the sample stays the sample.
+        keep = [c for c in d.columns if d[c].sum() >= 10]
+        X = pd.concat([X, d[keep].astype(float)], axis=1)
+    X.insert(0, "const", 1.0)
+    return X
+
+
+def _gd_fit(panel: pd.DataFrame, cols: list[str], nta_fe: bool = True):
+    import statsmodels.api as sm
+    X = _gd_design(panel, cols, nta_fe)
+    return sm.Logit(panel["event"].to_numpy(dtype=float), X.to_numpy()).fit(
+        disp=0, maxiter=300, cov_type="cluster",
+        cov_kwds={"groups": panel["nta_code"].to_numpy(), "use_correction": True}), list(X.columns)
+
+
+def _gd_cv_auc(panel: pd.DataFrame, cols: list[str], nta_fe: bool = True) -> float:
+    """Out-of-sample AUC with whole SPATIAL BLOCKS held out (coarser than NTA)."""
+    import statsmodels.api as sm
+    idx = panel.reset_index(drop=True)
+    preds = np.full(len(idx), np.nan)
+    for blk in sorted(idx["block"].dropna().unique()):
+        te = (idx["block"] == blk).to_numpy()
+        tr = ~te
+        if idx.loc[tr, "event"].nunique() < 2 or te.sum() == 0:
+            continue
+        Xtr = _gd_design(idx[tr], cols, nta_fe)
+        Xte = _gd_design(idx[te], cols, nta_fe).reindex(columns=Xtr.columns, fill_value=0.0)
+        try:
+            m = sm.Logit(idx.loc[tr, "event"].to_numpy(dtype=float),
+                         Xtr.to_numpy()).fit(disp=0, maxiter=300)
+            preds[te] = m.predict(Xte.to_numpy())
+        except Exception:
+            continue
+    ok = ~np.isnan(preds)
+    return _auc(idx.loc[ok, "event"].to_numpy(), preds[ok]) if ok.sum() else float("nan")
+
+
+def _calibration(y: np.ndarray, p: np.ndarray, bins: int = 10) -> list[dict]:
+    q = pd.qcut(pd.Series(p), bins, labels=False, duplicates="drop")
+    out = []
+    for b in sorted(pd.Series(q).dropna().unique()):
+        m = (q == b).to_numpy()
+        out.append({"decile": int(b) + 1, "n": int(m.sum()),
+                    "predicted": float(np.mean(p[m])), "observed": float(np.mean(y[m]))})
+    return out
+
+
+def fit_go_dark(panel: pd.DataFrame, *, nta_fe: bool = True) -> dict:
+    """Does a THIN-supply score at t0 predict a storefront going dark by 2024?
+
+    THE SIGN IS THE WHOLE POINT. `log_score` rises with supply per resident, so
+    a NEGATIVE coefficient means thin supply predicts going dark — the screen's
+    gaps are places the market has already judged, which is D87's attack
+    landing on the outcome margin. A POSITIVE coefficient means churn is
+    concentrated where retail is thick. Zero means the screen is silent about
+    survival, which is its own answer."""
+    cols = ["log_score", "log_homes", "retail_index"]
+    p = panel.dropna(subset=cols + ["event", "nta_code", "block"]).copy()
+
+    res, names = _gd_fit(p, cols, nta_fe)
+    i = names.index("log_score")
+    ci = res.conf_int()
+    auc_full = _gd_cv_auc(p, cols, nta_fe)
+    auc_nos = _gd_cv_auc(p, ["log_homes", "retail_index"], nta_fe)
+
+    import statsmodels.api as sm
+    X = _gd_design(p, cols, nta_fe)
+    fitted = sm.Logit(p["event"].to_numpy(dtype=float), X.to_numpy()).fit(
+        disp=0, maxiter=300).predict(X.to_numpy())
+
+    groups = {}
+    tests = 3
+    for g, sub in p.groupby("activity_group"):
+        if len(sub) < 300 or sub["event"].nunique() < 2:
+            groups[g] = {"n": int(len(sub)), "skipped": "n < 300 or no variance"}
+            continue
+        try:
+            r, nm = _gd_fit(sub, cols, nta_fe=False)
+            j = nm.index("log_score")
+            groups[g] = {
+                "n": int(len(sub)), "events": int(sub["event"].sum()),
+                "rate": float(sub["event"].mean()),
+                "log_score_coef": float(r.params[j]),
+                "log_score_ci": [float(r.conf_int()[j][0]), float(r.conf_int()[j][1])],
+                "p": float(r.pvalues[j]),
+                "survives_bonferroni": bool(r.pvalues[j] < 0.05 / tests)}
+        except Exception as exc:
+            groups[g] = {"n": int(len(sub)), "skipped": str(exc)[:100]}
+
+    splits = {}
+    for label, sub in (("construction_reported", p[p["construction_reported"]]),
+                       ("no_construction_reported", p[~p["construction_reported"]])):
+        if len(sub) < 300 or sub["event"].nunique() < 2:
+            splits[label] = {"n": int(len(sub)), "skipped": "n < 300 or no variance"}
+            continue
+        r, nm = _gd_fit(sub, cols, nta_fe=False)
+        j = nm.index("log_score")
+        splits[label] = {"n": int(len(sub)), "events": int(sub["event"].sum()),
+                         "rate": float(sub["event"].mean()),
+                         "log_score_coef": float(r.params[j]),
+                         "log_score_ci": [float(r.conf_int()[j][0]),
+                                          float(r.conf_int()[j][1])]}
+
+    coef = float(res.params[i])
+    lo, hi = float(ci[i][0]), float(ci[i][1])
+    sign = ("NEGATIVE — thin supply at t0 predicts going dark" if hi < 0 else
+            "POSITIVE — thick supply at t0 predicts going dark" if lo > 0 else
+            "INDISTINGUISHABLE FROM ZERO — the score is silent about going dark")
+
+    return {
+        "n": int(len(p)), "events": int(p["event"].sum()),
+        "event_rate": float(p["event"].mean()),
+        "n_ntas": int(p["nta_code"].nunique()), "n_blocks": int(p["block"].nunique()),
+        "attrition_is_event": bool(panel["attrition_is_event"].iloc[0]),
+        "nta_fixed_effects": bool(nta_fe),
+        "log_score_coef": coef, "log_score_ci": [lo, hi],
+        "log_score_p": float(res.pvalues[i]),
+        "auc_full": float(auc_full), "auc_no_score": float(auc_nos),
+        "auc_lift": float(auc_full - auc_nos),
+        "calibration": _calibration(p["event"].to_numpy(dtype=float), fitted),
+        "by_activity_group": groups, "by_construction": splits,
+        "sign": sign,
+    }
+
+
+def run_go_dark(*, base_year: int = GO_DARK_BASE_YEAR,
+                outcome_year: int = GO_DARK_OUTCOME_YEAR,
+                radius_m: float = RADIUS_M,
+                out: pathlib.Path | str | None = None) -> dict:
+    """Both attrition variants, written beside the entry run."""
+    out_dir = pathlib.Path(out) if out else OUT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    con = connect(read_only=True)
+    payload = {"params": {"base_year": base_year, "outcome_year": outcome_year,
+                          "radius_m": radius_m, "distance": "straight-line EPSG:32618",
+                          "ran_at": dt.datetime.now().isoformat(timespec="seconds")}}
+    for label, attr in (("strict", False), ("attrition_as_event", True)):
+        panel = go_dark_panel(con, base_year=base_year, outcome_year=outcome_year,
+                              radius_m=radius_m, attrition_is_event=attr)
+        panel.to_parquet(out_dir / f"go_dark_{label}.parquet", index=False)
+        payload[label] = fit_go_dark(panel)
+    (out_dir / "go_dark.json").write_text(json.dumps(payload, indent=2, default=str))
+    con.close()
+    return payload
+
+
+def load_go_dark(out: pathlib.Path | str | None = None) -> dict:
+    path = (pathlib.Path(out) if out else OUT_DIR) / "go_dark.json"
+    if not path.exists():
+        raise FileNotFoundError(f"no go-dark run at {path} — "
+                                f"run `loci retrodiction go-dark` first")
     return json.loads(path.read_text())

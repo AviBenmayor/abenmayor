@@ -195,3 +195,109 @@ def test_observable_closures_excludes_closures_of_other_industries():
         rd.ClosureInstrument("foursquare.date_closed", False, 0, ""),
     ]
     assert rd.observable_closures(audit) == 0
+
+
+# ===========================================================================
+# LL157 go-dark: the panel construction, and the two boundaries that decide
+# whether the outcome means anything
+# ===========================================================================
+@pytest.fixture()
+def gd_con(con):
+    """The premises-year panel plus the lot register the score is built on."""
+    con.execute("""CREATE TABLE analysis.storefront (
+        storefront_id VARCHAR, premises_id VARCHAR, reporting_year INTEGER,
+        vacant_1231 BOOLEAN, construction_reported BOOLEAN, bbl VARCHAR,
+        nta_code VARCHAR, borough VARCHAR, primary_business_activity VARCHAR,
+        geom GEOMETRY)""")
+    con.execute("""CREATE TABLE analysis.address (
+        address_id VARCHAR, frame VARCHAR, borough VARCHAR, lon DOUBLE,
+        lat DOUBLE, units_capped DOUBLE, nta_code VARCHAR)""")
+    con.execute("""CREATE TABLE analysis.address_character (
+        address_id VARCHAR, retail_index DOUBLE)""")
+    for i in range(40):                      # homes, so homes_t0 > 0 everywhere
+        con.execute("INSERT INTO analysis.address VALUES (?,?,?,?,?,?,?)",
+                    [f"a{i}", "lot", "BK", LON + 0.0001 * i, LAT, 50.0, "BK99"])
+        con.execute("INSERT INTO analysis.address_character VALUES (?, ?)",
+                    [f"a{i}", 0.5])
+    return con
+
+
+def _premises(con, pid, year, vacant, activity="RETAIL", constr=False, jitter=0.0):
+    con.execute(
+        "INSERT INTO analysis.storefront VALUES (?,?,?,?,?,?,?,?,?,ST_Point(?,?))",
+        [f"{pid}#{year}", pid, year, vacant, constr, "3000010001", "BK99", "BK",
+         activity, LON + jitter, LAT])
+
+
+def test_a_premises_already_vacant_at_base_year_is_not_at_risk(gd_con):
+    """THE BOUNDARY THAT MATTERS. A landlord already dark in 2022 is not a
+    failure of a screen frozen in January 2023 — counting them would manufacture
+    events out of pre-existing vacancy."""
+    _premises(gd_con, "already_dark", 2022, True)
+    _premises(gd_con, "already_dark", 2024, True)
+    _premises(gd_con, "went_dark", 2022, False)
+    _premises(gd_con, "went_dark", 2024, True)
+    _premises(gd_con, "stayed", 2022, False)
+    _premises(gd_con, "stayed", 2024, False)
+
+    p = rd.go_dark_panel(gd_con, attrition_is_event=False)
+    assert set(p["premises_id"]) == {"went_dark", "stayed"}
+    assert int(p.set_index("premises_id").loc["went_dark", "event"]) == 1
+    assert int(p.set_index("premises_id").loc["stayed", "event"]) == 0
+
+
+def test_attrition_is_handled_both_ways_and_the_two_disagree(gd_con):
+    """"Stopped filing" is either a censored observation or a distressed exit,
+    and nothing inside LL157 can say which. Both must be runnable, and the two
+    must give different N — a switch that changes nothing is decoration."""
+    _premises(gd_con, "quiet", 2022, False)          # no 2024 row at all
+    _premises(gd_con, "stayed", 2022, False)
+    _premises(gd_con, "stayed", 2024, False)
+
+    strict = rd.go_dark_panel(gd_con, attrition_is_event=False)
+    attr = rd.go_dark_panel(gd_con, attrition_is_event=True)
+
+    assert set(strict["premises_id"]) == {"stayed"}
+    assert set(attr["premises_id"]) == {"stayed", "quiet"}
+    assert int(attr.set_index("premises_id").loc["quiet", "event"]) == 1
+    assert len(attr) > len(strict)
+
+
+def test_any_unit_vacant_makes_the_premises_dark(gd_con):
+    """`bool_or` within a premises-year is the documented definition: a building
+    counts as going dark when ANY reported unit does. Pinned so the grain
+    cannot drift to 'all units' without a test failing."""
+    gd_con.execute(
+        "INSERT INTO analysis.storefront VALUES "
+        "('m#2022a','mixed',2022,FALSE,FALSE,'3000010001','BK99','BK','RETAIL',"
+        " ST_Point(?,?))", [LON, LAT])
+    gd_con.execute(
+        "INSERT INTO analysis.storefront VALUES "
+        "('m#2022b','mixed',2022,FALSE,FALSE,'3000010001','BK99','BK','RETAIL',"
+        " ST_Point(?,?))", [LON, LAT])
+    _premises(gd_con, "mixed", 2024, False)
+    gd_con.execute(
+        "INSERT INTO analysis.storefront VALUES "
+        "('m#2024b','mixed',2024,TRUE,FALSE,'3000010001','BK99','BK','RETAIL',"
+        " ST_Point(?,?))", [LON, LAT])
+
+    p = rd.go_dark_panel(gd_con, attrition_is_event=False)
+    assert int(p.set_index("premises_id").loc["mixed", "event"]) == 1
+
+
+def test_the_score_counts_only_what_existed_at_t0(gd_con):
+    """The same leakage rule as the entry model, at the premises grain."""
+    _premises(gd_con, "p1", 2022, False)
+    _premises(gd_con, "p1", 2024, False)
+    _add(gd_con, "old", "restaurant", LON + 0.001, LAT, "source_date", dt.date(2021, 1, 1))
+    _add(gd_con, "new", "restaurant", LON + 0.0011, LAT, "source_date", dt.date(2024, 1, 1))
+
+    p = rd.go_dark_panel(gd_con, attrition_is_event=False, include_censored=False)
+    assert float(p["supply_all_t0"].iloc[0]) == 1.0
+
+
+def test_activity_groups_are_the_three_ll157_publishes():
+    assert rd._activity_group("FOOD SERVICES") == "food"
+    assert rd._activity_group("RETAIL") == "retail"
+    assert rd._activity_group("HEALTH CARE or SOCIAL ASSISTANCE") == "other"
+    assert rd._activity_group(None) == "other"
