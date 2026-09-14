@@ -130,6 +130,20 @@ claim stands on.
 - **Fails if:** ascertainment cannot be estimated per category against the LL157 go-dark base rate (8.4% strict / 28% with attrition) and DOHMH absence with usable precision, and Google Places Insights (GTM-159) does not materially improve coverage — in which case business-level survival stays out of reach until a new source lands.
 - **Current answer:** Open, ticketed GTM-161.
 
+### M14 — Should fitness's Google type map drop sports_club and marina, the type-map defect the GTM-48 coverage validation found?
+- **Status:** in-progress
+- **Answered by:** `Fitness type map: remove sports_club and marina from GOOGLE_TYPES (validator-only)`
+- **Why it matters:** M6/D50's Google type map for fitness is validator-only — it decides what GTM-48 counts as a fitness hit, not loci's own fitness category or its POI adapters. CHECKPOINT D90's coverage-validation run found fitness's apparent 35.6% true-coverage-hole rate was entirely sports_club and marina returns (yacht clubs, tennis clubs), 0 of 180 sampled Google hits actually a gym — a type-map defect inherited from D50, not a real hole.
+- **Fails if:** n/a — measurement/validator fix, not a claim to validate.
+- **Current answer:** Ruled 2026-09-14 (owner, "yes to all 4," see CHECKPOINT D90): drop sports_club and marina from fitness's GOOGLE_TYPES. Implementation in progress (GTM-173); once landed, fitness's true-coverage-hole rate must be re-measured on the fixed type map rather than quoting the 35.6% figure.
+
+### M15 — Should cross-category name+distance dedup run before per-category dedup?
+- **Status:** in-progress
+- **Answered by:** `Cross-category name+distance dedup before per-category dedup (Lion's Milk / GTM-153 proper)`
+- **Why it matters:** extends M4 — per-category dedup cannot catch a single storefront filed under two different categories by two sources (Lion's Milk: DOHMH restaurant vs Overture cafe_bakery, 11 m apart, both reading open — flagged inline in D91 as GTM-153), so every count-based measure downstream (supply ratio, gap score, the D90 coverage validation, the D91/D93 revenue and carrying-capacity models) can double-count a business that crosses a category boundary.
+- **Fails if:** n/a — data-quality fix, not a claim to validate; but a similarity threshold loose enough to merge genuinely mixed-use sites (a bakery-café that legitimately sells restaurant-grade meals) would wrongly collapse real supply.
+- **Current answer:** Ruled 2026-09-14 (owner, "yes to all 4," see CHECKPOINT D90): run cross-category dedup before per-category dedup, GTM-153 proper. Implementation and the resulting supply re-fit/re-run are in progress and will be recorded in a later CHECKPOINT entry (D94 territory).
+
 ### Tier D · Descriptive — what is where
 
 ### D1 — How complete is the daily-needs bundle within a 10-minute walk across NYC, and how is completeness distributed?
@@ -289,6 +303,34 @@ claim stands on.
 - **Answered by:** Site-revenue model v0 (D81, GTM-150): CEX spend pool × fitted capture share, leakage calibrated to Economic Census 2022 county receipts, gated by a leave-one-ZIP-out backtest and cross-category placebo.
 - **Fails if:** —
 - **Current answer:** Restaurant alone passes the gate — ρ_oos 0.763, R² 0.577, β 0.50, γ −0.25 (agglomerative, 65 of 73 folds stable), placebo pass — and grades C on the recommendation card ("modelled, uncalibrated to local P&Ls"). Nine other categories honestly not modelled: café/grocery/hair/nails/pharmacy beat baselines but fail placebo (commercial intensity proxy); laundry/convenience/bar fail baselines; fitness too sparse. Gowanus core restaurant revenue p25/p50/p75 $1.08M / $1.67M / $2.66M (1.81× Kings county average); rent ceiling $11.2k/mo vs one local comp $7.3k/mo (1.53×). Caveats: county anchors blur Park Slope with Gowanus; CEX quintiles are national; the MN+BK-only universe drops edge-shed households; λ (leakage) is right by construction with no out-of-sample test; backtest target is establishment count, a revenue proxy only if per-employee revenue is flat within category; a model output is never an operator forecast, and C is the highest grade a modelled category can earn — real P&Ls are the only path to B.
+
+### D21 — Should `poi_is_open` gain a "stale" state for a DOHMH record whose last inspection is well beyond a fresher co-located record's?
+- **Status:** open
+- **Answered by:** `poi_is_open: add a 'stale' state for inspection-gap-beside-fresh co-located records`
+- **Why it matters:** the co-location closure gate (commit a67f03e, `analysis.poi_colocation`) built `poi_is_open` as a tri-state predicate (open / closed / unresolved) but has no way to flag a record that is merely stale: Okozushi at 376 Graham was last inspected 384 days ago and still reads "open" under the current predicate, sitting beside a co-located record with a much fresher inspection. D79 forbids treating absence-as-closure, so a plain "no recent inspection → closed" rule is exactly the mistake that decision exists to prevent — but an aging gap next to a fresher neighbor is a weaker, different signal than either open or closed, and today it is silently folded into "open."
+- **Fails if:** n/a — data-quality/method question; but a stale-age threshold set without reference to a co-located comparator would reintroduce the absence-as-closure mistake D79 already rejected.
+- **Current answer:** Open. Not part of the 2026-09-14 "yes to all 4" ruling (CHECKPOINT D90).
+
+### D22 — What is the numeric Wilson-upper coverage-grade ladder (G9) that replaces presence-only grade A?
+- **Status:** in-progress
+- **Answered by:** `Coverage grade G9: numeric Wilson-upper ladder replacing presence-only grade A`
+- **Why it matters:** GTM-112's category-expansion fail-closed checklist (commit 766d9a2) found gate G9 has no numeric threshold — a category's coverage grade reads A on bare presence with no test of how confident that presence is.
+- **Fails if:** n/a — method/grading question; but a ladder that ignores per-category sample size would over- or under-state confidence exactly where the D90 statistician review found the first coverage-validation pass had made that mistake (row-level, not stratum-level, inference).
+- **Current answer:** Ruled 2026-09-14 (owner, "yes to all 4," see CHECKPOINT D90): adopt the Wilson-upper ladder — coverage-hole rate's Wilson upper bound ≤10% → A, ≤25% → B, else → C. Applied to the D90 rates this grades grocery and hardware B and hair_barber, tailor_repair and clinic C, everything else A. Implementation in progress (GTM-174).
+
+### D23 — Are the bank/hardware/clinic anchor NAICS-vs-adapter contradictions (Next-actions item 21) resolved?
+- **Status:** open
+- **Answered by:** (not ticketed) — CHECKPOINT Next-actions item 21, D90
+- **Why it matters:** `categories.yaml`'s bank anchor (NAICS 522110) excludes the credit unions Overture feeds in; hardware's anchor (444140) excludes the home centers the adapters ingest; clinic's anchor lists 621111 while `foursquare_places.py` deliberately excludes solo doctors' offices. These concern the ZBP anchor measure itself, not the Google validation calls, so GTM-48 running does not resolve them.
+- **Fails if:** n/a — data/method question.
+- **Current answer:** Open. Explicitly NOT part of the 2026-09-14 "yes to all 4" ruling (CHECKPOINT D90) — the owner ruled only on the three Google-validation follow-ups plus cross-category dedup.
+
+### D24 — Should unresolved co-located POI pairs from the closure gate collapse, or count as-is?
+- **Status:** open
+- **Answered by:** (not ticketed) — CHECKPOINT D90/D94
+- **Why it matters:** the co-location closure gate (commit a67f03e) flags 2,527 groups / 7,597 POIs as unresolved rather than collapsing them; collapsing would remove 4,270 more POIs from the supply set. The default is OFF (count as-is), which is conservative for supply counts but leaves a known duplication risk uncorrected wherever a group really is one business under two records.
+- **Fails if:** n/a — data-quality/method question; but leaving this open indefinitely means every supply-based count downstream carries an unquantified, undecided bias in one direction.
+- **Current answer:** Open. This is the one item the 2026-09-14 "yes to all 4" ruling (CHECKPOINT D90) did NOT cover — it stays open pending a separate owner ruling.
 
 ### Tier X · Explanatory — conditional structure, no temporal claim
 
