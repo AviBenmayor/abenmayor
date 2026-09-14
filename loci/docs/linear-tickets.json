@@ -1611,11 +1611,31 @@
     },
     {
       "Title": "Retrodiction: does supply ratio at opening predict survival? (gating test for any decision-value claim)",
-      "Description": "The GTM strategy memo (docs/GTM.md, CHECKPOINT D87) went through an investor-lens draft and a contrarian red-team; the red-team showed the value-prop math was the D1 reverse-causality error in a costume \u2014 Loci measures supply thinness, not site quality, and an address with no competitors may have none because the market already said no. The cheapest test the data supports today: take 2023-24 openings from the first-seen ledger (analysis.poi_first_seen, D79 \u2014 52.3% carry source dates) and the filings pipeline (analysis.storefront_pipeline, D80 \u2014 opened_on), score each at its opening date (supply_ratio_vs_base, gap_score, homes/jobs/transit within 400 m, character), and test whether the score predicts still-open in 2026-09 (last_seen_month, DOHMH activity, license status). Report AUC / rank correlation with confidence intervals and the contrarian's placebo. Until this runs, docs/GTM.md carries no demonstrated decision value.\n\nOpened 2026-09-13 (CHECKPOINT D87). Pushed to Linear 2026-09-13 as GTM-158.",
-      "Status": "Backlog",
+      "Description": "The GTM strategy memo (docs/GTM.md, CHECKPOINT D87) went through an investor-lens draft and a contrarian red-team; the red-team showed the value-prop math was the D1 reverse-causality error in a costume \u2014 Loci measures supply thinness, not site quality, and an address with no competitors may have none because the market already said no. The cheapest test the data supports today: take 2023-24 openings from the first-seen ledger (analysis.poi_first_seen, D79 \u2014 52.3% carry source dates) and the filings pipeline (analysis.storefront_pipeline, D80 \u2014 opened_on), score each at its opening date (supply_ratio_vs_base, gap_score, homes/jobs/transit within 400 m, character), and test whether the score predicts still-open in 2026-09 (last_seen_month, DOHMH activity, license status). Report AUC / rank correlation with confidence intervals and the contrarian's placebo. Until this runs, docs/GTM.md carries no demonstrated decision value.\n\nOpened 2026-09-13 (CHECKPOINT D87). Pushed to Linear 2026-09-13 as GTM-158.\n\nRan 2026-09-14 (CHECKPOINT D88, docs/retrodiction-2026-09.md, commits 1c659a5/b340d91): entry retrodiction NTA-blocked AUC 0.866 vs 0.854 no-score, supply coefficient +1.17 [0.87, 1.47] after NTA FE + other-category conditioning \u2014 the screen ranks retail streets, not unmet demand. LL157 go-dark null (AUC 0.549 vs 0.535, sign flips with the attrition definition). Business-level survival not identified (Foursquare ascertains ~3% of closures). Decision value unclaimed; Loci may claim cost of search only. Done 2026-09-14. Pushed to Linear 2026-09-14 as GTM-158.",
+      "Status": "Done",
       "Priority": 1,
       "Estimate": 5,
       "Labels": "score,validation,rigor",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Survival outcome: model Foursquare closure ascertainment and build the pre-2026 historical closure panel",
+      "Description": "closed_on now on the ledger (13,643 rows, D88/b340d91) but ~3% ascertainment, categorical (bars announced, tailors not); 54,190 mapped closures pre-date the ledger. Next steps: estimate ascertainment per category against the LL157 go-dark base rate (8.4% strict / 28% with attrition) and DOHMH absence, then either an ascertainment-weighted hazard model or the Google Places Insights monthly snapshots (GTM-159) as the closure source; only then can any survival claim be made.\n\nOpened 2026-09-14 (CHECKPOINT D88). Pushed to Linear 2026-09-14 as GTM-161.",
+      "Status": "Backlog",
+      "Priority": 2,
+      "Estimate": 5,
+      "Labels": "score,validation,rigor",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Recommendations ledger: owner decisions on radius, expiry, re-issue and the 'well' rubric; first fill check 2026-10",
+      "Description": "The ledger holds 16 honest rows (D73 laundry withdrawn; D74 card as issued); first check 2026-09 is all 'none' by construction (ledger left-censored before 2026-10, pipeline entries pre-dating issue excluded). Decisions: 400 m straight-line vs network radius, expiry after N months, whether a regraded card auto-expires the old row, rubric weights (chain filling a gap costs 0.10), and whether pre-existing build-outs should show as context. Monthly `recommendations check` runs inside make chains-refresh after poi-snapshot and storefront-pipeline build.\n\nOpened 2026-09-14 (CHECKPOINT D89). Pushed to Linear 2026-09-14 as GTM-162.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 2,
+      "Labels": "docs,infra",
       "Project": "Loci",
       "Milestone": "E2 \u00b7 Access Engine"
     },

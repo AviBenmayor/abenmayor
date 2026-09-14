@@ -123,6 +123,13 @@ claim stands on.
 - **Fails if:** the 800 m / distance-decay rebuild does not clear all three D76 graduation criteria (≥100 non-corridor validation points, Brooklyn-only ρ ≥ 0.6 with CI lower bound > 0.4, non-degenerate variance) — in which case foot traffic stays card-context indefinitely, not just until the next attempt.
 - **Current answer:** Open. Blocks any future grade-section proposal for transit/jobs.
 
+### M13 — What share of NYC storefront closures does each source ascertain (Foursquare ~3%?, DOHMH absence, LL157 vacancy, Google Places Insights), and can an ascertainment-weighted hazard model recover a survival curve?
+- **Status:** open
+- **Answered by:** `Survival outcome: model Foursquare closure ascertainment and build the pre-2026 historical closure panel` — GTM-161
+- **Why it matters:** D88's retrodiction found Foursquare's unfiltered closure re-pull ascertains only ~3% of the true two-year food-service closure rate, and categorically non-random (a bar closing is announced, a tailor closing is not). Without an ascertainment model per category, no hazard curve fitted on any current source can be trusted, and the business-level survival question stays permanently untested rather than answered null.
+- **Fails if:** ascertainment cannot be estimated per category against the LL157 go-dark base rate (8.4% strict / 28% with attrition) and DOHMH absence with usable precision, and Google Places Insights (GTM-159) does not materially improve coverage — in which case business-level survival stays out of reach until a new source lands.
+- **Current answer:** Open, ticketed GTM-161.
+
 ### Tier D · Descriptive — what is where
 
 ### D1 — How complete is the daily-needs bundle within a 10-minute walk across NYC, and how is completeness distributed?
@@ -421,11 +428,11 @@ claim stands on.
 - **Current answer:** Open, ticketed GTM-152.
 
 ### T11 — Does the opening-time score (supply ratio, gap score) predict survival to today, and does it beat a placebo? · *predictive*
-- **Status:** open
+- **Status:** answered
 - **Prediction:** —
-- **Answered by:** `Retrodiction: does supply ratio at opening predict survival? (gating test for any decision-value claim)`
+- **Answered by:** `Retrodiction: does supply ratio at opening predict survival? (gating test for any decision-value claim)` — GTM-158, Done
 - **Fails if:** AUC / rank correlation on 2023–24 openings (first-seen ledger, D79; filings pipeline, D80) scored at opening date is indistinguishable from the contrarian's placebo, or its confidence interval includes the no-skill line — then the screen has no demonstrated ability to predict which sites survive, and every decision-value claim in docs/GTM.md is unsupported.
-- **Current answer:** Open, ticketed GTM-158 (Urgent) — the GTM red-team (D87) found the value-prop math was the D1 reverse-causality error in a costume (a thin-supply address may read thin because the market already said no), so this gates any decision-value claim rather than refining one already made.
+- **Current answer:** Answered 2026-09-14 (D88): "The frozen 2023-01-01 screen predicts where 2023-24 openings landed out of sample (NTA-blocked AUC 0.866 vs 0.854 for the same model without the score, and above a spatially structured placebo at p95 0.8545), with a positive supply coefficient that survives NTA fixed effects and conditioning on other-category density (+1.17 [0.87, 1.47]) — so the screen ranks retail streets, not unserved demand, and Loci may claim cost of search only; decision value remains unclaimed because the one survival-adjacent outcome we can test returns a null and the business-level outcome remains untested rather than absent." (LL157 go-dark, the one survival-adjacent outcome tested: AUC 0.549 vs 0.535, sign flips with the attrition definition — null.) See docs/retrodiction-2026-09.md.
 
 ### Tier C · Causal — deferred; requires identification
 
