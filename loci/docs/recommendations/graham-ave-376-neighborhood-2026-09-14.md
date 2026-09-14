@@ -434,3 +434,5 @@ Storefront Registry) · `analysis.dev_pipeline` (D62/D72) · `chains.brand_lates
 (D77) · `staging.alcohol_licences` · `staging.dot_pedestrian_count` · MTA hourly ridership Jun–Aug
 2026 · web sweep (Yelp, Google, Uber Eats, DoorDash, Greenpointers, Gothamist, Sprudge, Edible
 Brooklyn).
+
+- **2026-09-14:** owner-facing page "Graham Avenue, on paper" (artifact b176da82) sent to the operator via the owner: shed demographics as people counts, hour-of-day table, cuisine-slot verdict, the Sophie's Cuban alert, 318 Graham vacancy, nine ranked menu/price moves and three do-nots. Nothing requested from him on this page.
