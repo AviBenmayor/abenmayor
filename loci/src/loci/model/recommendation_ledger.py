@@ -118,8 +118,10 @@ fit-out or whether the place is any good.
                            real outcome and is NOTED, not penalised to zero —
                            it simply is not the independent operator the cards
                            usually propose.
-    still_open      0.05   The matched location was still in the newest ledger
-                           month. UNAVAILABLE in the fill month itself: "open
+    still_open      0.05   `model.poi_presence.poi_is_open` (GTM-153) reads
+                           'open' for the matched location. UNAVAILABLE when
+                           the predicate reads 'unknown' (never scored as a
+                           zero -- D79) or in the fill month itself: "open
                            the month it opened" is true by construction and
                            carries no information.
 
@@ -528,15 +530,23 @@ def _score_independent(rec, cand, ctx):
 
 
 def _score_still_open(rec, cand, ctx):
-    seen = cand.get("last_seen_month")
+    """'Still open' reads `model.poi_presence.poi_is_open` -- the ONE shared
+    open/closed/unknown predicate (owner rule, GTM-153) -- not a bare
+    `last_seen_month` comparison. 'unknown' (and any future 'stale' state the
+    predicate grows) is UNAVAILABLE, never a zero: the rubric's own rule is
+    that an unconfirmed component does not count against the match, and D79
+    forbids reading silence as a closure in the first place."""
+    status = cand.get("poi_status")
     newest = ctx.get("newest_ledger_month")
-    if not seen or not newest:
+    if status is None:
         return None, "no ledger observation for this match yet"
     if cand.get("fill_month") == newest:
         return None, ("matched in the newest ledger month — 'still open the month "
                       "it opened' is true by construction and proves nothing")
-    return (seen == newest,
-            f"last seen {seen}; newest ledger month {newest}")
+    if status == "unknown":
+        return None, ("poi_is_open returns 'unknown' for this match — no "
+                      "published evidence either way")
+    return status == "open", f"poi_is_open predicate: {status!r}"
 
 
 #: The rubric. Extend by adding an entry: `weight` plus a `score(rec, cand, ctx)`
@@ -593,12 +603,22 @@ LEDGER_OPEN_DATE = ("coalesce(f.first_seen_on, "
 
 
 def ledger_candidates(con, rec: dict, *, radius_m: float, until: dt.date):
+    """Same-category ledger openings within radius. Carries `poi_status` --
+    the shared open/closed/unknown predicate (model.poi_presence.poi_is_open,
+    owner rule, GTM-153), LEFT JOINed on `poi_id_latest` -- so `still_open`
+    (below) never has to invent its own definition of "still open" from
+    `last_seen_month` alone."""
+    from loci.model.poi_presence import poi_is_open
+
     d = _dist_sql("f.lon", "f.lat")
+    status = poi_is_open("p", "f.closed_on")
     return con.execute(f"""
         SELECT f.location_key, f.display_name, f.category, f.lon, f.lat,
                {LEDGER_OPEN_DATE} AS opened_on, f.first_seen_kind,
-               f.last_seen_month, f.cluster_id_latest, {d} AS distance_m
+               f.last_seen_month, f.cluster_id_latest, {d} AS distance_m,
+               {status} AS poi_status
         FROM analysis.poi_first_seen f
+        LEFT JOIN staging.poi p ON p.poi_id = f.poi_id_latest
         WHERE f.category = ?
           AND f.lon IS NOT NULL AND f.lat IS NOT NULL
           AND {LEDGER_OPEN_DATE} IS NOT NULL
@@ -684,6 +704,7 @@ def _cand_from_ledger(con, row, ctx) -> dict:
             "brand_key": brand_key(name) if name else None,
             "n_sources": _poi_sources(con, row.get("cluster_id_latest")),
             "last_seen_month": row.get("last_seen_month"),
+            "poi_status": row.get("poi_status"),
             "fill_month": str(row["opened_on"])[:7],
             "opened_on": row["opened_on"],
             "distance_m": float(row["distance_m"]),
@@ -843,9 +864,14 @@ def check(con, *, month: str | None = None, radius_m: float | None = None,
                                "the filing, not to an opening; roughly a third of DOB "
                                "job filings never reach a permit.")
 
+        # The predicate, not `last_seen_month`: 'closed' via a DCWP/DOHMH/
+        # SLA/DOS basis is real evidence even in a month the ledger has not
+        # re-observed the location. 'unknown' stays NULL/unavailable (D79) --
+        # never coerced to a zero.
         still = None
-        if cand.get("last_seen_month") and ctx.get("newest_ledger_month"):
-            still = cand["last_seen_month"] == ctx["newest_ledger_month"]
+        status = cand.get("poi_status")
+        if status is not None and status != "unknown":
+            still = (status == "open")
 
         out.append({
             "rec_id": rec["rec_id"], "snapshot_month": month,

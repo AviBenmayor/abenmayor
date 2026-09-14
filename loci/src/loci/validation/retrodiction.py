@@ -292,6 +292,56 @@ class ClosureInstrument:
     reason: str
 
 
+def cohort_closure_events(con, start: dt.date = WINDOW_START, end: dt.date = WINDOW_END,
+                          boroughs: tuple[str, ...] = BOROUGHS_FULL) -> dict:
+    """Cohort openings (source_date/gov_filing, in-window) whose CURRENT status
+    under the shared open/closed/unknown predicate
+    (`model.poi_presence.poi_is_open`, owner rule, GTM-153) reads 'closed'.
+
+    Replaces the ad hoc `closed_on IS NOT NULL` check this module used before
+    2026-09-14: the predicate is the ONE source of truth for "is this POI
+    still open" and folds in DCWP/DOHMH/SLA/DOS evidence the old check never
+    read, not just Foursquare's ledger `closed_on`. 'unknown' -- and any
+    future 'stale' state the predicate grows -- is NEVER an event (D79): this
+    reads only the `= 'closed'` branch, exactly as `poi_is_open`'s own
+    docstring warns never to write `NOT poi_is_open(...)`.
+
+    LEFT JOIN, not INNER: a closed location's `poi_id_latest` is routinely
+    NULL (`snapshot()` nulls it the month a location is no longer seen, D79),
+    and the predicate's FIRST branch reads the ledger's own `closed_on`
+    before it ever touches the joined POI row, so a missing join still
+    resolves correctly rather than silently dropping the row.
+
+    Cheap enough to call directly, read-only, without a full `run()` --
+    `loci retrodiction events` does exactly that."""
+    from loci.model.poi_presence import poi_is_open
+
+    status = poi_is_open("p", "pp.closed_on")
+    blist = ", ".join(f"'{b}'" for b in boroughs)
+    n_total, n_cohort, n_events = con.execute(f"""
+        WITH scored AS (
+            SELECT pp.first_seen_kind, pp.first_seen_src_date, pp.borough,
+                   {status} AS status
+            FROM analysis.poi_presence pp
+            LEFT JOIN staging.poi p ON p.poi_id = pp.poi_id_latest
+        )
+        SELECT count(*) FILTER (WHERE status = 'closed'),
+               count(*) FILTER (
+                   WHERE first_seen_kind IN ('source_date', 'gov_filing')
+                     AND first_seen_src_date BETWEEN ? AND ?
+                     AND borough IN ({blist})),
+               count(*) FILTER (
+                   WHERE status = 'closed'
+                     AND first_seen_kind IN ('source_date', 'gov_filing')
+                     AND first_seen_src_date BETWEEN ? AND ?
+                     AND borough IN ({blist}))
+        FROM scored
+    """, [start, end, start, end]).fetchone()
+    return {"n_predicate_closed_total": int(n_total),
+            "n_cohort": int(n_cohort),
+            "n_cohort_events": int(n_events)}
+
+
 def closure_audit(con, start: dt.date = WINDOW_START,
                   end: dt.date = WINDOW_END) -> list[ClosureInstrument]:
     """Enumerate every closure signal in the warehouse and COUNT it.
@@ -361,37 +411,40 @@ def closure_audit(con, start: dt.date = WINDOW_START,
             f"the open-only filter is the cheapest closure panel available to "
             f"this project and needs no new vendor."))
 
-    # (d2) the ledger's own closed_on, once a source publishes one. Added
-    # 2026-09-14 after the Foursquare open-only filter was removed upstream.
-    # It puts EVENTS on the cohort for the first time -- and immediately runs
-    # into the harder problem, which is not identification but ASCERTAINMENT.
+    # (d2) the PREDICATE's verdict (model.poi_presence.poi_is_open, GTM-153),
+    # once a source publishes evidence either way. Added 2026-09-14 after the
+    # Foursquare open-only filter was removed upstream; extended the same day
+    # to read the shared open/closed/unknown predicate rather than a bare
+    # `closed_on IS NOT NULL` -- the predicate also reads DCWP's
+    # 'out_of_business' family, DOHMH's 'closed_at_last_inspection', and a
+    # lapsed SLA/DOS expiry, none of which ever set `closed_on` (that column
+    # is Foursquare-only, sql/027). It puts EVENTS on the cohort for the first
+    # time -- and immediately runs into the harder problem, which is not
+    # identification but ASCERTAINMENT.
     has_closed = con.execute(
         "SELECT count(*) FROM information_schema.columns "
         "WHERE table_schema = 'analysis' AND table_name = 'poi_presence' "
         "AND column_name = 'closed_on'").fetchone()[0]
     if has_closed:
-        n_ledger, n_cohort_events = con.execute(
-            f"""SELECT count(closed_on),
-                      count(*) FILTER (
-                        WHERE closed_on IS NOT NULL
-                          AND first_seen_kind IN ('source_date', 'gov_filing')
-                          AND first_seen_src_date BETWEEN ? AND ?
-                          AND closed_on >= first_seen_src_date
-                          AND borough IN ({", ".join(f"'{b}'" for b in BOROUGHS_FULL)}))
-               FROM analysis.poi_presence""", [start, end]).fetchone()
+        counts = cohort_closure_events(con, start, end, BOROUGHS_FULL)
+        n_ledger = counts["n_predicate_closed_total"]
+        n_cohort_events = counts["n_cohort_events"]
         out.append(ClosureInstrument(
-            "poi_presence.closed_on (Foursquare)", True, int(n_cohort_events),
-            f"{int(n_ledger):,} ledger rows now carry a source-published "
-            f"closing date; {int(n_cohort_events):,} of them are cohort "
-            f"openings that closed after they opened. ABOVE the "
-            f"{MIN_EVENTS_FOR_HAZARD}-event floor -- and still not a survival "
-            f"outcome. {int(n_cohort_events):,} events on a cohort of this "
-            f"size implies roughly 99% two-year survival, against a true NYC "
-            f"food-service rate near 75-80%: Foursquare ascertains on the "
-            f"order of 3% of closures, and not at random (a bar closing is "
-            f"announced, a tailor closing is not). Any hazard ratio fitted "
-            f"here is a statement about Foursquare's editorial pipeline. It "
-            f"is a lead, not an outcome, until an ascertainment model exists."))
+            "poi_presence.poi_is_open (predicate)", True, int(n_cohort_events),
+            f"{int(n_ledger):,} warehouse rows now read 'closed' under the "
+            f"shared open/closed/unknown predicate (Foursquare's ledger "
+            f"closed_on, plus DCWP/DOHMH/SLA/DOS published closures the old "
+            f"closed_on-only check never saw); {int(n_cohort_events):,} of "
+            f"them are cohort openings. ABOVE the {MIN_EVENTS_FOR_HAZARD}-event "
+            f"floor -- and still not a survival outcome: the implied two-year "
+            f"survival at this event count is far above New York's true "
+            f"food-service rate, so ascertainment stays low and categorically "
+            f"non-random (a bar closing is announced or licensed away, a "
+            f"tailor closing is not). Any hazard ratio fitted here is a "
+            f"statement about which sources publish closures, not about New "
+            f"York. It is a lead, not an outcome, until an ascertainment "
+            f"model exists. 'unknown' is never counted as an event (D79) -- "
+            f"only the predicate's 'closed' branch is."))
 
     # (e) DOHMH — active-only by publication policy
     dohmh = con.execute(

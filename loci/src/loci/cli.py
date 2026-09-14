@@ -5843,6 +5843,44 @@ def retrodiction_report(
                   "D87's attack surviving, not the screen being validated.[/]")
 
 
+@retrodiction_app.command("events")
+def retrodiction_events(
+    window: str = typer.Option("2023-01:2024-12", "--window",
+                               help="Opening window, YYYY-MM:YYYY-MM."),
+) -> None:
+    """Recount cohort closure EVENTS live, via the shared open/closed/unknown
+    predicate (`model.poi_presence.poi_is_open`) -- without re-running the
+    full entry model.
+
+    `report` only renders the LAST `run`'s saved summary.json, which freezes
+    whatever `closure_audit` computed at run time. This answers "what would
+    that count be right now" against the live warehouse, read-only.
+    """
+    import datetime as _dt
+
+    from loci.validation import retrodiction as rd
+
+    a, b = window.split(":")
+    start = _dt.date(int(a[:4]), int(a[5:7]), 1)
+    y, m = int(b[:4]), int(b[5:7])
+    end = (_dt.date(y + (m == 12), 1 if m == 12 else m + 1, 1) - _dt.timedelta(days=1))
+
+    con = rd.connect(read_only=True)
+    try:
+        counts = rd.cohort_closure_events(con, start, end)
+    finally:
+        con.close()
+    console.print(Panel.fit(
+        f"window {start}:{end}\n"
+        f"cohort openings in window: {counts['n_cohort']:,}\n"
+        f"[bold]cohort events (poi_is_open = 'closed'): "
+        f"{counts['n_cohort_events']:,}[/]\n"
+        f"floor for a hazard model: {rd.MIN_EVENTS_FOR_HAZARD}\n"
+        f"warehouse-wide rows reading 'closed' under the predicate: "
+        f"{counts['n_predicate_closed_total']:,}",
+        title="retrodiction events (live, via poi_is_open)"))
+
+
 # ---------------------------------------------------------------------------
 # poi-closures -- make CLOSURES observable (docs/retrodiction-2026-09.md §4)
 # ---------------------------------------------------------------------------

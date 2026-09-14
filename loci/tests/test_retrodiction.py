@@ -16,6 +16,7 @@ built row by row here, because the three things worth pinning are boundaries:
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 import numpy as np
 import pandas as pd
@@ -195,6 +196,108 @@ def test_observable_closures_excludes_closures_of_other_industries():
         rd.ClosureInstrument("foursquare.date_closed", False, 0, ""),
     ]
     assert rd.observable_closures(audit) == 0
+
+
+# ===========================================================================
+# cohort_closure_events -- the shared open/closed/unknown predicate
+# (model.poi_presence.poi_is_open, GTM-153) replaces the old ad hoc
+# `closed_on IS NOT NULL` check. 'unknown' must never be an event (D79).
+# ===========================================================================
+@pytest.fixture()
+def poi_con():
+    """A minimal warehouse for `cohort_closure_events`: `analysis.poi_presence`
+    with `closed_on` (sql/027) and `staging.poi` (for the predicate's
+    attrs-based branches), joined on `poi_id_latest`."""
+    c = locidb.connect(":memory:")
+    c.execute("CREATE SCHEMA IF NOT EXISTS staging")
+    c.execute("CREATE SCHEMA IF NOT EXISTS analysis")
+    c.execute("""CREATE TABLE analysis.poi_presence (
+        location_key VARCHAR, category VARCHAR, borough VARCHAR,
+        first_seen_kind VARCHAR, first_seen_src_date DATE,
+        poi_id_latest VARCHAR, closed_on DATE)""")
+    c.execute("""CREATE TABLE staging.poi (
+        poi_id VARCHAR, source_id VARCHAR, category VARCHAR,
+        observed_on DATE, attrs JSON)""")
+    return c
+
+
+def _pp(con, key, cat, kind, date, poi_id=None, closed_on=None, borough="Brooklyn"):
+    con.execute(
+        "INSERT INTO analysis.poi_presence "
+        "(location_key, category, borough, first_seen_kind, first_seen_src_date, "
+        "poi_id_latest, closed_on) VALUES (?,?,?,?,?,?,?)",
+        [key, cat, borough, kind, date, poi_id, closed_on])
+
+
+def _spoi(con, poi_id, source_id, cat, attrs=None, observed_on=None):
+    con.execute(
+        "INSERT INTO staging.poi (poi_id, source_id, category, observed_on, attrs) "
+        "VALUES (?, ?, ?, ?, CAST(? AS JSON))",
+        [poi_id, source_id, cat, observed_on, json.dumps(attrs or {})])
+
+
+def test_cohort_events_closed_via_ledger_closed_on(poi_con):
+    """A Foursquare ledger closure (`closed_on` set) is 'closed' regardless of
+    whether `poi_id_latest` still joins to a live `staging.poi` row -- the
+    predicate's first branch never needs the join for this case (D79: a
+    closed location routinely has its `poi_id_latest` nulled by `snapshot()`
+    the month it stops appearing)."""
+    _pp(poi_con, "k1", "restaurant", "source_date", dt.date(2023, 3, 1),
+        poi_id=None, closed_on=dt.date(2024, 1, 1))
+    counts = rd.cohort_closure_events(poi_con, dt.date(2023, 1, 1), dt.date(2024, 12, 31))
+    assert counts["n_cohort"] == 1
+    assert counts["n_cohort_events"] == 1
+    assert counts["n_predicate_closed_total"] == 1
+
+
+def test_cohort_events_closed_via_dcwp_basis_with_no_closed_on(poi_con):
+    """DCWP's 'out_of_business' is a published closure with NO `closed_on` on
+    the ledger row at all. The OLD `closed_on IS NOT NULL` check would have
+    missed this event entirely; the predicate does not."""
+    _spoi(poi_con, "dcwp:1", "nyc_dcwp_inspections", "laundry",
+          {"active": False, "active_basis": "out_of_business"})
+    _pp(poi_con, "k2", "laundry", "gov_filing", dt.date(2023, 6, 1),
+        poi_id="dcwp:1", closed_on=None)
+    counts = rd.cohort_closure_events(poi_con, dt.date(2023, 1, 1), dt.date(2024, 12, 31))
+    assert counts["n_cohort_events"] == 1
+
+
+def test_cohort_events_unknown_is_never_an_event(poi_con):
+    """No published evidence either way -- 'unknown' -- must NOT be counted:
+    D79 says absence of evidence is not evidence of closure."""
+    _spoi(poi_con, "ovt:1", "overture_places", "cafe_bakery", {})
+    _pp(poi_con, "k3", "cafe_bakery", "source_date", dt.date(2023, 4, 1),
+        poi_id="ovt:1", closed_on=None)
+    counts = rd.cohort_closure_events(poi_con, dt.date(2023, 1, 1), dt.date(2024, 12, 31))
+    assert counts["n_cohort"] == 1
+    assert counts["n_cohort_events"] == 0
+
+
+def test_cohort_events_open_poi_is_never_an_event(poi_con):
+    """A positively-open POI (a fresh DOHMH inspection) is not an event."""
+    _spoi(poi_con, "doh:1", "nyc_dohmh_restaurants", "restaurant",
+          {"active": True, "active_basis": "inspected_10d_ago",
+           "last_inspection_date": dt.date(2026, 8, 1).isoformat()})
+    _pp(poi_con, "k4", "restaurant", "source_date", dt.date(2023, 2, 1),
+        poi_id="doh:1", closed_on=None)
+    counts = rd.cohort_closure_events(poi_con, dt.date(2023, 1, 1), dt.date(2024, 12, 31),
+                                      boroughs=("Brooklyn",))
+    assert counts["n_cohort_events"] == 0
+
+
+def test_cohort_events_scoped_to_window_and_boroughs(poi_con):
+    """A closed POI outside the window, or outside the requested boroughs,
+    does not count toward the COHORT event total, even though it still counts
+    toward the warehouse-wide predicate total."""
+    _pp(poi_con, "out_of_window", "restaurant", "source_date", dt.date(2020, 1, 1),
+        closed_on=dt.date(2020, 6, 1))
+    _pp(poi_con, "wrong_borough", "restaurant", "source_date", dt.date(2023, 3, 1),
+        closed_on=dt.date(2023, 6, 1), borough="Queens")
+    _pp(poi_con, "in_scope", "restaurant", "source_date", dt.date(2023, 3, 1),
+        closed_on=dt.date(2023, 6, 1))
+    counts = rd.cohort_closure_events(poi_con, dt.date(2023, 1, 1), dt.date(2024, 12, 31))
+    assert counts["n_cohort_events"] == 1
+    assert counts["n_predicate_closed_total"] == 3
 
 
 # ===========================================================================

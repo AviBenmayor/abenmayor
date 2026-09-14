@@ -26,6 +26,7 @@ from loci.model import recommendation_ledger as rl
 
 SQL_018 = locidb.SQL_DIR / "018_poi_presence.sql"
 SQL_020 = locidb.SQL_DIR / "020_storefront_pipeline.sql"
+SQL_027 = locidb.SQL_DIR / "027_poi_closure.sql"
 
 ISSUED = dt.date(2026, 9, 1)
 ANCHOR_LON, ANCHOR_LAT = -73.9885, 40.676
@@ -52,11 +53,12 @@ def con():
               "address_id VARCHAR, category VARCHAR)")
     c.execute(SQL_018.read_text())
     c.execute(SQL_020.read_text())
+    c.execute(SQL_027.read_text())
     c.execute(rl.SQL_026.read_text())
     c.execute("CREATE TABLE analysis.poi_dedup (poi_id VARCHAR, cluster_id BIGINT, "
               "is_canonical BOOLEAN, category VARCHAR)")
     c.execute("CREATE TABLE staging.poi (poi_id VARCHAR, source_id VARCHAR, "
-              "category VARCHAR, name VARCHAR, attrs VARCHAR)")
+              "category VARCHAR, name VARCHAR, attrs VARCHAR, observed_on DATE)")
     yield c
     c.close()
 
@@ -73,19 +75,29 @@ def _rec(con, **kw):
 def _ledger_location(con, *, key="loc1", category="laundry", name="Sudsy Wash",
                      first_seen_on=dt.date(2026, 9, 20), lat=NEAR_LAT,
                      last_seen_month="2026-10", cluster_id=1, sources=("overture_places",),
-                     attrs=None):
+                     attrs=None, poi_id_latest="p1", closed_on=None, observed_on=None):
+    """`poi_id_latest` defaults to the dummy 'p1' (never matches a staged POI,
+    same as before sql/027 existed -- the predicate then reads 'unknown').
+    Pass `poi_id_latest=f"{key}-0"` to have the predicate read the source #0
+    row's `attrs` instead, or `closed_on=` to force the ledger's own closed
+    branch."""
     con.execute("""
-        INSERT INTO analysis.poi_presence VALUES
-        (?, ?, ?, ?, ?, ?, 'BK', ?, ?, 'source_date', ?, 'opened_on', 1, ?, 'p1',
-         '2026-09', now())
+        INSERT INTO analysis.poi_presence
+        (location_key, category, name_key, display_name, lon, lat, borough,
+         first_seen_month, last_seen_month, first_seen_kind, first_seen_src_date,
+         first_seen_src_field, n_months_seen, cluster_id_latest, poi_id_latest,
+         ledger_started_month, last_snapshot_at, closed_on)
+        VALUES (?, ?, ?, ?, ?, ?, 'BK', ?, ?, 'source_date', ?, 'opened_on', 1, ?, ?,
+                '2026-09', now(), ?)
     """, [key, category, name.lower(), name, ANCHOR_LON, lat,
-          first_seen_on.strftime("%Y-%m"), last_seen_month, first_seen_on, cluster_id])
+          first_seen_on.strftime("%Y-%m"), last_seen_month, first_seen_on, cluster_id,
+          poi_id_latest, closed_on])
     for i, src in enumerate(sources):
         pid = f"{key}-{i}"
         con.execute("INSERT INTO analysis.poi_dedup VALUES (?, ?, ?, ?)",
                     [pid, cluster_id, i == 0, category])
-        con.execute("INSERT INTO staging.poi VALUES (?, ?, ?, ?, ?)",
-                    [pid, src, category, name, json.dumps(attrs or {})])
+        con.execute("INSERT INTO staging.poi VALUES (?, ?, ?, ?, ?, ?)",
+                    [pid, src, category, name, json.dumps(attrs or {}), observed_on])
 
 
 def _pipeline_row(con, *, pid="pipe1", category="laundry", name="Future Laundry",
@@ -236,7 +248,12 @@ def test_a_left_censored_ledger_row_can_never_match(con):
     unbounded below; reading '2026-09' off it would manufacture an opening."""
     _rec(con, category="laundry")
     con.execute("""
-        INSERT INTO analysis.poi_presence VALUES
+        INSERT INTO analysis.poi_presence
+        (location_key, category, name_key, display_name, lon, lat, borough,
+         first_seen_month, last_seen_month, first_seen_kind, first_seen_src_date,
+         first_seen_src_field, n_months_seen, cluster_id_latest, poi_id_latest,
+         ledger_started_month, last_snapshot_at)
+        VALUES
         ('old', 'laundry', 'old laundry', 'Old Laundry', ?, ?, 'BK',
          '2026-09', '2026-10', 'backfill_censored', NULL, NULL, 2, 1, 'p1',
          '2026-09', now())
@@ -425,12 +442,76 @@ def test_still_open_is_unavailable_in_the_fill_month():
     assert q["components"]["still_open"]["earned"] is None
 
 
+def test_still_open_reads_the_predicate_not_last_seen_month():
+    """The rubric component keys off `poi_status`
+    (model.poi_presence.poi_is_open, GTM-153), not a bare `last_seen_month`
+    comparison -- a candidate can be positively 'closed' under the predicate
+    even in the newest ledger month."""
+    rec = {"category": "laundry", "format_hint": None}
+    for status, expected in (("open", True), ("closed", False)):
+        cand = {"display_name": "Wash Palace", "poi_status": status,
+                "fill_month": "2026-01", "last_seen_month": "2026-11"}
+        _, q = rl.score_match(rec, cand, {"newest_ledger_month": "2026-11"})
+        assert q["components"]["still_open"]["earned"] is expected
+
+
+def test_still_open_is_unavailable_when_the_predicate_says_unknown():
+    """'unknown' -- no published evidence either way -- is UNAVAILABLE, never
+    scored as a zero (the rubric's own "unavailable != zero" rule, and D79's
+    "absence is not a closure" from the other side)."""
+    rec = {"category": "laundry", "format_hint": None}
+    cand = {"display_name": "Wash Palace", "poi_status": "unknown",
+            "fill_month": "2026-01", "last_seen_month": "2026-11"}
+    _, q = rl.score_match(rec, cand, {"newest_ledger_month": "2026-11"})
+    assert q["components"]["still_open"]["earned"] is None
+
+
+def test_check_stores_still_open_from_a_predicate_closed_with_no_closed_on(con):
+    """A candidate whose ONLY closure evidence is a published DCWP basis
+    stores `still_open=False` in the outcome row, even though NOTHING here
+    ever set the ledger's own `closed_on` -- the old `last_seen_month`
+    comparison could never have seen this kind of evidence."""
+    _rec(con, category="laundry", format_hint=None)
+    _ledger_location(con, category="laundry", name="Wash Co",
+                     first_seen_on=dt.date(2026, 9, 5), last_seen_month="2026-11",
+                     sources=("nyc_dcwp_inspections",),
+                     attrs={"active": False, "active_basis": "out_of_business"},
+                     poi_id_latest="loc1-0")
+    rows, _ = rl.check(con, month="2026-11", today=dt.date(2026, 11, 30))
+    assert rows[0]["still_open"] is False
+
+
+def test_check_stores_still_open_from_a_predicate_open(con):
+    _rec(con, category="laundry", format_hint=None)
+    _ledger_location(con, category="laundry", name="Wash Co",
+                     first_seen_on=dt.date(2026, 9, 5), last_seen_month="2026-11",
+                     sources=("nyc_dcwp_inspections",),
+                     attrs={"active": True, "active_basis": "inspected_pass",
+                            "last_inspection_date": "2026-11-01"},
+                     poi_id_latest="loc1-0")
+    rows, _ = rl.check(con, month="2026-11", today=dt.date(2026, 11, 30))
+    assert rows[0]["still_open"] is True
+
+
+def test_check_leaves_still_open_null_when_the_predicate_is_unknown(con):
+    """No published status field at all (Overture) -- 'unknown' -- stores
+    NULL, never a fabricated False."""
+    _rec(con, category="laundry", format_hint=None)
+    _ledger_location(con, category="laundry", name="Wash Co",
+                     first_seen_on=dt.date(2026, 9, 5), last_seen_month="2026-11",
+                     sources=("overture_places",), attrs={},
+                     poi_id_latest="p1")           # never matches -> 'unknown'
+    rows, _ = rl.check(con, month="2026-11", today=dt.date(2026, 11, 30))
+    assert rows[0]["still_open"] is None
+
+
 def test_every_rubric_component_can_be_earned():
     """A component nobody can earn is a component that is not measuring
     anything. Extending RUBRIC without extending this fixture fails here."""
     rec = {"category": "laundry", "format_hint": "laundromat"}
     cand = {"display_name": "Corner Laundromat", "brand_key": "cornerlaundromat",
-            "n_sources": 3, "last_seen_month": "2026-11", "fill_month": "2026-10"}
+            "n_sources": 3, "last_seen_month": "2026-11", "fill_month": "2026-10",
+            "poi_status": "open"}
     ctx = {"chains_available": True, "chain_brands": {}, "newest_ledger_month": "2026-11"}
     score, q = rl.score_match(rec, cand, ctx)
     assert all(c["earned"] is True for c in q["components"].values())

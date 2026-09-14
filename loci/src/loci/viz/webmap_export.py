@@ -3099,10 +3099,23 @@ def _realized_sql(boroughs: list[str], start: str) -> tuple[str, list]:
 
     `analysis.poi_first_seen` stores the borough NAME, not the code every other
     layer here uses, so the filter is built from BOROUGH_NAMES rather than from
-    the codes -- a hard-coded 'MN' would silently export nothing."""
+    the codes -- a hard-coded 'MN' would silently export nothing.
+
+    The closed branch gates on `model.poi_presence.poi_is_open` -- the ONE
+    shared open/closed/unknown predicate (owner rule, GTM-153) -- rather than
+    a bare `closed_on IS NOT NULL`, so this map and the recommendation
+    ledger's `still_open` component (model/recommendation_ledger.py) read the
+    SAME closure verdict. `closed_on` still supplies the DATE: no other
+    closed basis in the predicate carries one, so a location that reads
+    'closed' only via a DCWP/DOHMH/SLA/DOS basis has no month to bucket into
+    and does not appear on this dated timeline -- unchanged from before,
+    since `closed_on` was already the only closure evidence this query used."""
+    from loci.model.poi_presence import poi_is_open
+
     names = [BOROUGH_NAMES[b] for b in boroughs]
     ph = ", ".join("?" for _ in names)
     kinds = ", ".join("?" for _ in DATED_FIRST_SEEN_KINDS)
+    status = poi_is_open("p", "f.closed_on")
     sql = f"""
         SELECT 'open' AS kind, category, lon, lat, display_name,
                strftime(first_seen_on, '%Y-%m') AS month, first_seen_kind AS src
@@ -3113,13 +3126,14 @@ def _realized_sql(boroughs: list[str], start: str) -> tuple[str, list]:
           AND strftime(first_seen_on, '%Y-%m') >= ?
           AND lon IS NOT NULL AND lat IS NOT NULL
         UNION ALL
-        SELECT 'closed', category, lon, lat, display_name,
-               strftime(closed_on, '%Y-%m'), closed_src
-        FROM {'.'.join(PRESENCE_VIEW)}
-        WHERE borough IN ({ph})
-          AND closed_on IS NOT NULL
-          AND strftime(closed_on, '%Y-%m') >= ?
-          AND lon IS NOT NULL AND lat IS NOT NULL
+        SELECT 'closed', f.category, f.lon, f.lat, f.display_name,
+               strftime(f.closed_on, '%Y-%m'), f.closed_src
+        FROM {'.'.join(PRESENCE_VIEW)} f
+        LEFT JOIN staging.poi p ON p.poi_id = f.poi_id_latest
+        WHERE f.borough IN ({ph})
+          AND {status} = 'closed'
+          AND strftime(f.closed_on, '%Y-%m') >= ?
+          AND f.lon IS NOT NULL AND f.lat IS NOT NULL
     """
     params = names + list(DATED_FIRST_SEEN_KINDS) + [start] + names + [start]
     return sql, params

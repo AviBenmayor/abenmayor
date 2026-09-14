@@ -104,7 +104,16 @@ def con():
         CREATE TABLE analysis.poi_first_seen (
             location_key VARCHAR, category VARCHAR, display_name VARCHAR,
             lon DOUBLE, lat DOUBLE, borough VARCHAR, first_seen_kind VARCHAR,
-            first_seen_on DATE, closed_on DATE, closed_src VARCHAR)
+            first_seen_on DATE, closed_on DATE, closed_src VARCHAR,
+            poi_id_latest VARCHAR)
+    """)
+    # The predicate's join target (model.poi_presence.poi_is_open, GTM-153).
+    # Column subset of the real staging.poi (sql/002_schema.sql) -- only what
+    # the predicate reads.
+    c.execute("""
+        CREATE TABLE staging.poi (
+            poi_id VARCHAR, source_id VARCHAR, category VARCHAR,
+            observed_on DATE, attrs VARCHAR)
     """)
     c.execute("""
         CREATE TABLE analysis.storefront_pipeline (
@@ -140,13 +149,24 @@ def _issue(con, address_id, p, category=CAT, month="2026-09",
 
 
 def _seen(con, category=CAT, kind="source_date", on="2026-08-01", name="Sud Club",
-          closed=None, lon=-73.98, lat=40.75, borough=LEDGER_BOROUGH):
+          closed=None, lon=-73.98, lat=40.75, borough=LEDGER_BOROUGH,
+          poi_id_latest=None):
     con.execute("""
         INSERT INTO analysis.poi_first_seen (location_key, category, display_name,
-            lon, lat, borough, first_seen_kind, first_seen_on, closed_on, closed_src)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            lon, lat, borough, first_seen_kind, first_seen_on, closed_on, closed_src,
+            poi_id_latest)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, [name + str(on), category, name, lon, lat, borough, kind, on, closed,
-          "foursquare" if closed else None])
+          "foursquare" if closed else None, poi_id_latest])
+
+
+def _spoi(con, poi_id, source_id, category=CAT, attrs=None, observed_on=None):
+    """A `staging.poi` row for the predicate's attrs-based branches
+    (model.poi_presence.poi_is_open, GTM-153)."""
+    con.execute(
+        "INSERT INTO staging.poi (poi_id, source_id, category, observed_on, attrs) "
+        "VALUES (?, ?, ?, ?, ?)",
+        [poi_id, source_id, category, observed_on, json.dumps(attrs or {})])
 
 
 def _filing(con, category=CAT, entry="2026-08-01", stage="fitout_filing",
@@ -398,6 +418,41 @@ def test_closures_ride_beside_openings_and_keep_their_own_month(con):
     assert marks["open"]["n"] == 1 and marks["closed"]["n"] == 1
     assert r["months"][marks["closed"]["m"][0]] == "2026-06"
     assert r["months"][marks["open"]["m"][0]] == "2026-01"
+
+
+def test_closed_via_predicate_without_closed_on_has_no_month_to_draw(con):
+    """A DCWP/DOHMH/SLA/DOS-only closure -- read via `model.poi_presence.
+    poi_is_open` (GTM-153) -- carries no `closed_on` date on the ledger row,
+    so it has nothing to bucket into on this DATED timeline. Unchanged from
+    before: `closed_on` was already the only closure evidence this query
+    used, so a closure the predicate now also recognises but cannot date
+    silently does not appear, exactly as it silently did not appear before
+    the predicate existed."""
+    _add_gap(con, "a")
+    _spoi(con, "dcwp:1", "nyc_dcwp_inspections", category=CAT,
+          attrs={"active": False, "active_basis": "out_of_business"})
+    _seen(con, kind="observed", on="2026-01-01", name="Ghost", closed=None,
+          poi_id_latest="dcwp:1")
+    r = wx.collect_realized(con, ["MN"])
+    marks = r["byCat"].get(CAT, {"open": {"n": 0}, "closed": {"n": 0}})
+    assert marks["closed"]["n"] == 0
+
+
+def test_closed_on_wins_over_a_contradictory_open_predicate_basis(con):
+    """The ledger's own `closed_on` is the predicate's FIRST branch: it wins
+    even when the joined POI row's attrs would otherwise read 'open', so this
+    map and the recommendation ledger's `still_open` component
+    (model/recommendation_ledger.py) can never disagree about this case."""
+    _add_gap(con, "a")
+    _spoi(con, "doh:1", "nyc_dohmh_restaurants", category=CAT,
+          attrs={"active": True, "active_basis": "inspected_5d_ago",
+                 "last_inspection_date": "2026-06-05"})
+    _seen(con, on="2026-01-01", name="Closed anyway", closed="2026-06-10",
+          poi_id_latest="doh:1")
+    r = wx.collect_realized(con, ["MN"])
+    marks = r["byCat"][CAT]
+    assert marks["closed"]["n"] == 1
+    assert r["months"][marks["closed"]["m"][0]] == "2026-06"
 
 
 def test_only_unopened_filings_are_pipeline_marks(con):
