@@ -3178,6 +3178,10 @@ def recommend(
     out: Path = typer.Option(None, "--out", help="Write to this path instead of stdout."),
     all_addresses: bool = typer.Option(False, "--all-addresses",
                                        help="Include ineligible addresses (default: eligible only)."),
+    record: bool = typer.Option(False, "--record",
+                                help="Also APPEND this card to analysis.recommendation "
+                                     "(one row per category). Default off: reading a card "
+                                     "is not claiming one."),
 ) -> None:
     """READ-ONLY: the recommendation card for an area — seven graded claims per
     category and a verdict that is the WORST load-bearing grade (D72).
@@ -3268,6 +3272,51 @@ def recommend(
     console.print(t)
     console.print("[yellow]The supply baseline is REVEALED SUPPLY (D6); permit 'activity' is "
                   "a renewal, not a shovel; no expected profit is emitted.[/]")
+
+    if record:
+        # THE LEDGER HOOK (2026-09-14). Records the WHOLE card -- the D verdicts
+        # included -- because the "do not act" rows are the control group: if
+        # they fill as fast as the C rows, the screen carries no information and
+        # nothing else in this project would tell us. Idempotent on card_hash,
+        # so re-running an unchanged card writes nothing.
+        import datetime as _dt
+
+        from loci.model import recommendation_ledger as rl
+
+        gap = None
+        if box or nta:
+            where, params = rec._area_predicate(box, nta)
+            holes = ", ".join("?" for _ in boros)
+            gap = con.execute(
+                f"SELECT median(a.gap_score) FROM analysis.address_gaps a "
+                f"WHERE a.borough IN ({holes}) AND {where} "
+                f"AND COALESCE(a.frame, 'lot') = 'lot'",
+                [*boros, *params]).fetchone()[0]
+        # A bbox card has no storefront: its anchor is the box centroid, and
+        # sql/026 caveat 5 says so on every distance it produces.
+        if box:
+            kind, aid = "bbox", ",".join(f"{v:g}" for v in box)
+            alon, alat = (box[1] + box[3]) / 2, (box[0] + box[2]) / 2
+        else:
+            kind, aid = "nta", nta
+            alon, alat = con.execute(
+                "SELECT median(lon), median(lat) FROM analysis.address "
+                "WHERE nta_code = ? AND COALESCE(frame, 'lot') = 'lot'",
+                [nta]).fetchone()
+        rows = rl.rows_from_cards(
+            cards, facts, issued_on=_dt.date.today(),
+            issued_by=f"loci recommend (rules v{rules.get('version')})",
+            area_kind=kind, area_id=aid, area_label=area,
+            anchor_lon=alon, anchor_lat=alat, gap_score=gap)
+        # DuckDB refuses two connections to one file with different
+        # configurations in the same process, so the read-only card connection
+        # has to go before the ledger's write connection opens.
+        con.close()
+        wcon = _recs_connect(read_only=False)
+        res = rl.insert_rows(wcon, rows)
+        console.print(f"[green]recorded[/] {res.n_written} of {res.n_offered} rows to "
+                      f"analysis.recommendation ({res.n_duplicate} already held). "
+                      f"Check them monthly with `loci recommendations check`.")
 
 
 # ===========================================================================
@@ -5332,3 +5381,453 @@ def gen_paid_sources() -> None:
                   f"({by['P1']} P1 / {by['P2']} P2 / {by['P3']} P3), "
                   f"${booked:,}/yr booked (a lower bound: quote-only vendors "
                   f"book their price-tier floor)")
+
+
+# ===========================================================================
+# `loci recommendations` -- THE RECOMMENDATION LEDGER (owner ask, 2026-09-14:
+# "see how long it takes for the free market to fill those gaps and if they do
+# it well"). See model/recommendation_ledger.py and sql/026_recommendation.sql.
+#
+# Appended at the END of this file on purpose: concurrent threads hold hunks
+# above, and a block that only adds lines at the bottom cannot conflict with
+# any of them. `app` is already constructed and Typer registers on import, so
+# placement after the __main__ guard changes nothing about invocation.
+# ===========================================================================
+
+recs_app = typer.Typer(add_completion=False, help=(
+    "What we said, when, and whether the market did it. `check` is the monthly "
+    "job: for every OPEN recommendation it searches the first-seen ledger and "
+    "the filings pipeline for a same-category opening within the radius since "
+    "the issue date. TIME-TO-FILL IS RIGHT-CENSORED until a gap fills, and a "
+    "match is NOT a causal effect -- nobody read our card. The ledger buys "
+    "calibration, not credit."))
+app.add_typer(recs_app, name="recommendations")
+
+
+def _recs_connect(read_only: bool = False):
+    """Open the warehouse, waiting out a concurrent writer's lock (D69: another
+    session rebuilding is the normal state here, not an error)."""
+    from loci.model.recommend import connect_read_only
+    from loci.model.recommendation_ledger import connect_write, ensure_schema
+
+    if read_only:
+        con = connect_read_only()
+        return con
+    con = connect_write()
+    ensure_schema(con)
+    return con
+
+
+def _recs_print(rows: list[dict], title: str) -> None:
+    def _s(v, dash: str = "—") -> str:
+        """A pandas NULL comes back as a float NaN, and `nan or "—"` is NaN
+        because NaN is TRUTHY -- which rich then refuses to render. Every cell
+        goes through here."""
+        return dash if v is None or v != v else str(v)
+
+    t = Table(title=title)
+    # `overflow="fold"` on the identifier columns: a rec_id truncated to
+    # "r-20..." is not something you can paste into `--rec-id`, and the whole
+    # point of printing it is that the reader can act on it.
+    t.add_column("rec_id", justify="left", overflow="fold", no_wrap=False)
+    t.add_column("issued", justify="left", no_wrap=True)
+    for col, j in (("area", "left"), ("category", "left"), ("grade", "center"),
+                   ("ratio", "right"), ("status", "left"), ("days", "right"),
+                   ("latest match", "left"), ("fit", "right")):
+        t.add_column(col, justify=j)
+    for r in rows:
+        colour = {"open": "yellow", "filled": "green", "withdrawn": "red",
+                  "expired": "dim"}.get(r["status"], "white")
+        ratio = r.get("supply_ratio_at_issue")
+        days = r.get("days_open")
+        score = r.get("solution_match_score")
+        match = r.get("match_kind")
+        match = "—" if match is None or match != match else match
+        if match == "in_pipeline" and r.get("entry_stage"):
+            match = f"in_pipeline ({r['entry_stage']})"
+        # A withdrawn row's elapsed days measure nothing -- we retracted the
+        # claim, so there is no clock still running on it.
+        if r["status"] in ("withdrawn", "expired"):
+            days = None
+        t.add_row(_s(r["rec_id"]), _s(r["issued_on"])[:10],
+                  _s(r.get("area_label") or r["area_id"]),
+                  _s(r["category"]), _s(r.get("grade")),
+                  "—" if ratio is None or ratio != ratio else f"{ratio:.2f}×",
+                  f"[{colour}]{r['status']}[/]",
+                  "—" if days is None or days != days else
+                  (f"{int(days)}+" if r.get("is_censored") else f"{int(days)}"),
+                  _s(match),
+                  "—" if score is None or score != score else f"{score:.2f}")
+    console.print(t)
+
+
+@recs_app.command("backfill")
+def recs_backfill(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the rows; write nothing."),
+) -> None:
+    """Write the ledger's first rows: the D73 laundry lead (issued 2026-09-10,
+    WITHDRAWN 2026-09-11 at 0.94x) and the fifteen categories of the D74
+    Gowanus card (issued 2026-09-11, grades exactly as that card printed them).
+
+    Honest history, not fabricated leads. Idempotent on card_hash, so running
+    it twice adds nothing."""
+    from loci.model import recommendation_ledger as rl
+
+    con = _recs_connect(read_only=False)
+    res = rl.backfill(con, dry_run=dry_run)
+    rows = rl.backfill_rows()
+    _recs_print([{**r, "days_open": None, "is_censored": True, "match_kind": None,
+                  "solution_match_score": None} for r in rows],
+                "analysis.recommendation — backfill")
+    console.print(f"[green]{'would write' if dry_run else 'written'}[/] "
+                  f"{res.n_written} rows ({res.n_duplicate} already in the ledger)")
+    console.print("[yellow]The 2026-09-11 card graded restaurant D; the 2026-09-13 "
+                  "regeneration graded it C. The ledger records the grade AS ISSUED — "
+                  "overwriting it would erase the only evidence the model moved.[/]")
+
+
+@recs_app.command("add")
+def recs_add(
+    area: str = typer.Option(..., "--area", help="Human name for the area."),
+    category: str = typer.Option(..., "--category", help="A loci category."),
+    solution: str = typer.Option(..., "--solution", help="What should open, in words."),
+    lon: float = typer.Option(..., "--lon", help="Anchor longitude (EPSG:4326)."),
+    lat: float = typer.Option(..., "--lat", help="Anchor latitude (EPSG:4326)."),
+    area_kind: str = typer.Option("bbox", "--area-kind", help="nta | address | bbox."),
+    area_id: str = typer.Option(None, "--area-id", help="NTA code, address_id or bbox string."),
+    address_id: str = typer.Option(None, "--address-id", help="Anchor address, if any."),
+    format_hint: str = typer.Option(None, "--format-hint",
+                                    help="The operating format, if the proposal names one."),
+    grade: str = typer.Option(None, "--grade", help="A-D, if a card graded it."),
+    ratio: float = typer.Option(None, "--supply-ratio", help="supply_ratio_vs_base at issue."),
+    homes: float = typer.Option(None, "--homes-400m", help="homes_400m at issue."),
+    issued_on: str = typer.Option(None, "--issued-on", help="YYYY-MM-DD; default today."),
+    issued_by: str = typer.Option("hand", "--issued-by", help="Who is making this claim."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the row; write nothing."),
+) -> None:
+    """Add ONE hand-entered recommendation to the ledger.
+
+    `--format-hint` is what makes "did they do it well" answerable at all: with
+    no format named, that rubric component is recorded UNAVAILABLE rather than
+    scored, because "we asked for nothing specific" is not evidence that
+    anybody delivered it."""
+    import datetime as _dt
+
+    from loci.model import recommendation_ledger as rl
+
+    on = (_dt.date.fromisoformat(issued_on) if issued_on else _dt.date.today())
+    row = rl._row(issued_on=on, issued_by=issued_by, area_kind=area_kind,
+                  area_id=area_id or f"{lat},{lon}", area_label=area,
+                  anchor_address_id=address_id, anchor_lon=lon, anchor_lat=lat,
+                  category=category, proposed_solution=solution,
+                  format_hint=format_hint, grade=grade,
+                  supply_ratio_at_issue=ratio, homes_400m_at_issue=homes,
+                  evidence={"entered_by": issued_by, "entered_at": str(_dt.date.today())})
+    con = _recs_connect(read_only=False)
+    res = rl.insert_rows(con, [row], dry_run=dry_run)
+    if res.n_written:
+        console.print(f"[green]{'would add' if dry_run else 'added'}[/] {row['rec_id']}")
+    else:
+        console.print(f"[yellow]already in the ledger[/] (card_hash {row['card_hash']})")
+
+
+@recs_app.command("list")
+def recs_list(
+    status: str = typer.Option(None, "--status", help="open | filled | withdrawn | expired."),
+    category: str = typer.Option(None, "--category", help="Filter by loci category."),
+    limit: int = typer.Option(0, "--limit", help="0 = all."),
+) -> None:
+    """The ledger, newest outcome attached."""
+    from loci.model import recommendation_ledger as rl
+
+    con = _recs_connect(read_only=True)
+    df = rl.list_recommendations(con, status=status, category=category, limit=limit)
+    if df.empty:
+        console.print("[yellow]no recommendations match[/]")
+        raise typer.Exit(0)
+    _recs_print(df.to_dict("records"), f"analysis.recommendation_latest — {len(df)} rows")
+
+
+@recs_app.command("withdraw")
+def recs_withdraw(
+    rec_id: str = typer.Option(..., "--rec-id", help="The recommendation to withdraw."),
+    reason: str = typer.Option(..., "--reason", help="Why. REQUIRED."),
+    on: str = typer.Option(None, "--on", help="YYYY-MM-DD; default today."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print; write nothing."),
+) -> None:
+    """Withdraw a recommendation. The row STAYS — status and reason change, and
+    nothing else can. A ledger of only the leads that survived is the
+    survivorship bias this table exists to defeat."""
+    import datetime as _dt
+
+    from loci.model import recommendation_ledger as rl
+
+    con = _recs_connect(read_only=False)
+    try:
+        res = rl.withdraw(con, rec_id, reason,
+                          on=_dt.date.fromisoformat(on) if on else None,
+                          dry_run=dry_run)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
+    console.print(f"[green]{'would withdraw' if dry_run else 'withdrawn'}[/] "
+                  f"{res['rec_id']}: {res['from']} -> {res['to']}")
+
+
+@recs_app.command("check")
+def recs_check(
+    month: str = typer.Option(None, "--month", help="Snapshot month YYYY-MM; default now."),
+    radius_m: float = typer.Option(None, "--radius-m",
+                                   help="Match radius, STRAIGHT LINE metres (default 400)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """One month of outcome for every live recommendation. The monthly job.
+
+    Live means open OR already filled: a filled gap still has to be observed
+    every month or `still_open` is never measured after the fill. Withdrawn
+    rows are not re-checked -- we retracted the claim, and scoring ourselves on
+    it afterwards would be marking our own homework.
+
+    Searches the first-seen ledger (`analysis.poi_first_seen`) and the filings
+    pipeline (`analysis.storefront_pipeline`) for a SAME-CATEGORY opening
+    within the radius, dated on or after the issue date and on or before the
+    month's last day. DELETE + INSERT for the month, so a re-run replaces that
+    month and touches no other.
+
+    RUN IT AFTER `storefront-pipeline build` AND `poi-snapshot`: the check reads
+    both, and checking against a stale ledger records an absence that the
+    current data would not support.
+
+    THE RADIUS IS A STRAIGHT LINE, not the project's usual 400 m network
+    distance -- there is no persisted anchor-to-POI pair set to read. Network
+    distance >= straight-line, so the disc CONTAINS the network catchment and
+    the check is over-inclusive: it errs toward "the gap filled", against us.
+    """
+    from loci.model import recommendation_ledger as rl
+
+    # Read-write even for --dry-run: `ensure_schema` is a CREATE TABLE IF NOT
+    # EXISTS, which a read-only DuckDB connection refuses outright. Nothing is
+    # written when dry_run is set; the connection is merely writable.
+    con = _recs_connect(read_only=False)
+    rows, res = rl.check(con, month=month, radius_m=radius_m, dry_run=dry_run)
+
+    t = Table(title=f"analysis.recommendation_outcome — {res.month} "
+                    f"(r = {res.radius_m:.0f} m straight line)")
+    for col, j in (("rec_id", "left"), ("category", "left"), ("match", "left"),
+                   ("date", "left"), ("days", "right"), ("dist m", "right"),
+                   ("fit", "right"), ("unavailable", "left")):
+        t.add_column(col, justify=j)
+    import json as _json
+    for r in rows:
+        q = _json.loads(r["quality_json"])
+        colour = {"opened": "green", "in_pipeline": "yellow", "none": "dim"}[r["match_kind"]]
+        t.add_row(r["rec_id"].split("-", 2)[-1], r["rec_id"].rsplit("-", 2)[-2],
+                  f"[{colour}]{r['match_kind']}[/]",
+                  str(r.get("opened_on") or r.get("entry_date") or "—"),
+                  "—" if r["days_to_fill"] is None else str(r["days_to_fill"]),
+                  "—" if r["distance_m"] is None else f"{r['distance_m']:.0f}",
+                  "—" if r["solution_match_score"] is None
+                  else f"{r['solution_match_score']:.2f}",
+                  ", ".join(q.get("unavailable") or []) or "—")
+    console.print(t)
+    console.print(f"[green]{'would write' if dry_run else 'written'}[/] "
+                  f"{res.n_checked} outcome rows for {res.month}: "
+                  f"{res.n_opened} opened · {res.n_in_pipeline} in pipeline · "
+                  f"{res.n_none} none · {res.n_newly_filled} newly filled")
+    console.print("[yellow]Time-to-fill is RIGHT-CENSORED: an open row's elapsed days "
+                  "are a lower bound, and a median over the filled rows alone answers "
+                  "'among gaps that filled, how fast', never 'how fast do gaps fill'. "
+                  "A match is not a causal effect — nobody read our card.[/]")
+    if not dry_run:
+        console.print("[dim]The first-seen ledger is left-censored before 2026-10: a "
+                      "location that already existed carries a NULL first-seen and "
+                      "cannot read as an opening. Expect 'none' until the instrument "
+                      "warms up.[/]")
+
+
+@recs_app.command("report")
+def recs_report(
+    summary: bool = typer.Option(True, "--summary/--no-summary",
+                                 help="Also print the per-category roll-up."),
+) -> None:
+    """The ledger with status, days open and the latest match."""
+    from loci.model import recommendation_ledger as rl
+
+    con = _recs_connect(read_only=True)
+    rows = rl.report_rows(con)
+    if not rows:
+        console.print("[yellow]the ledger is empty — run `loci recommendations "
+                      "backfill` or `loci recommend --record`[/]")
+        raise typer.Exit(0)
+    _recs_print(rows, f"analysis.recommendation_latest — {len(rows)} recommendations")
+
+    if summary:
+        df = rl.category_summary(con)
+        t = Table(title="analysis.recommendation_category_summary")
+        for col, j in (("category", "left"), ("n", "right"), ("open", "right"),
+                       ("filled", "right"), ("withdrawn", "right"),
+                       ("in pipeline", "right"), ("median days to fill", "right"),
+                       ("still open @12m", "right")):
+            t.add_column(col, justify=j)
+        for _, r in df.iterrows():
+            s = r["share_still_open_12m"]
+            m = r["median_days_to_fill"]
+            t.add_row(r["category"], str(int(r["n_recommendations"])),
+                      str(int(r["n_open"])), str(int(r["n_filled"])),
+                      str(int(r["n_withdrawn"])), str(int(r["n_in_pipeline"])),
+                      "—" if m is None or m != m else f"{m:.0f}",
+                      "no exposure" if s is None or s != s else f"{s:.0%}")
+        console.print(t)
+    console.print("[yellow]'days' with a + is CENSORED — the gap has not filled and the "
+                  "number is a lower bound. 'fit' is solution_match_score: how much of "
+                  "what we proposed open data can confirm, never a quality rating.[/]")
+
+
+# ===========================================================================
+# retrodiction (GTM-158, QUESTIONS T11) -- gates every decision-value claim
+# in docs/GTM.md (D87). Appended at the END of this file; nothing above is
+# touched, because two sessions are appending here concurrently.
+# ===========================================================================
+retrodiction_app = typer.Typer(add_completion=False, help=(
+    "Score storefronts that opened at a known date with the screen AS IT WOULD "
+    "HAVE READ ON THAT DATE, then check what happened. Two halves: a SURVIVAL "
+    "test that is gated shut because Loci has one snapshot and every closure "
+    "instrument in the warehouse is a current-state extract, and an ENTRY test "
+    "that is identifiable today -- did the 2023-24 openings land where the "
+    "frozen score said the gaps were, or where supply was already thick?"))
+app.add_typer(retrodiction_app, name="retrodiction")
+
+
+@retrodiction_app.command("run")
+def retrodiction_run(
+    window: str = typer.Option("2023-01:2024-12", "--window",
+                               help="Opening window, YYYY-MM:YYYY-MM."),
+    radius_m: float = typer.Option(400.0, "--radius-m",
+                                   help="Straight-line catchment radius, EPSG:32618."),
+    sample_n: int = typer.Option(12000, "--sample-n",
+                                 help="Addresses in the entry panel (deterministic)."),
+    permutations: int = typer.Option(200, "--permutations",
+                                     help="Draws in the within-category placebo null."),
+    strict_dated: bool = typer.Option(True, "--strict-dated/--no-strict-dated",
+                                      help="Also run with D79's undated rows dropped."),
+    out: str = typer.Option(None, "--out", help="Output directory "
+                            "(default data/retrodiction)."),
+) -> None:
+    """Build the cohort, audit the closure instruments, gate the survival model,
+    fit the entry model.
+
+    Read-only on the warehouse and safe to run beside a session rebuilding
+    `analysis.address_category`; the lock is retried, never forced.
+    """
+    from loci.validation import retrodiction as rd
+
+    rep = rd.run(window=window, radius_m=radius_m, sample_n=sample_n,
+                 permutations=permutations, out=out, strict_dated=strict_dated)
+    console.print(f"[green]ok[/] cohort {rep['cohort_n']:,}; "
+                  f"observable closures "
+                  f"{rep['survival']['n_events_observable']} of "
+                  f"{rep['survival']['min_events_required']} required; "
+                  f"entry AUC {rep['entry']['auc_full']:.3f} vs homes-only "
+                  f"{rep['entry']['auc_homes_only']:.3f}")
+    console.print("[yellow]`loci retrodiction report` renders the full result.[/]")
+
+
+@retrodiction_app.command("report")
+def retrodiction_report(
+    out: str = typer.Option(None, "--out", help="Directory holding summary.json."),
+) -> None:
+    """Render the last run: cohort, closure audit, survival verdict, entry test."""
+    from loci.validation import retrodiction as rd
+
+    rep = rd.load(out)
+    p = rep["params"]
+    console.print(Panel.fit(
+        f"window {p['window']}  radius {p['radius_m']:.0f} m ({p['distance']})\n"
+        f"snapshot {p['snapshot']}  sample {p['sample_n']:,} addresses  "
+        f"seed {p['seed']}\nran {p['ran_at']}",
+        title="retrodiction"))
+
+    sel = rep["selection"]
+    console.print(f"\n[bold]Cohort[/] — {sel['n_cohort']:,} dated openings in MN+BK, "
+                  f"{sel['n_cohort_principled']:,} of them in the principled supply "
+                  f"set; {sel['food_share']:.0%} are restaurant / cafe / bar.")
+    t = Table(show_header=True, header_style="bold")
+    for c in ("category", "in cohort", "dated share of category", "censored"):
+        t.add_column(c)
+    for r in sorted(sel["by_category"], key=lambda r: -r["in_cohort"]):
+        t.add_row(str(r["category"]), f"{int(r['in_cohort']):,}",
+                  f"{r['dated_share']:.0%}", f"{int(r['backfill_censored']):,}")
+    console.print(t)
+
+    console.print("\n[bold]Closure instruments[/] — can a closure be OBSERVED at all?")
+    t = Table(show_header=True, header_style="bold")
+    for c in ("instrument", "usable", "closures", "why"):
+        t.add_column(c, overflow="fold")
+    for i in rep["closure"]:
+        t.add_row(i["name"], "yes" if i["available"] else "[red]no[/]",
+                  f"{i['observable_closures']:,}", i["reason"])
+    console.print(t)
+
+    s = rep["survival"]
+    style = "green" if s["identified"] else "red"
+    console.print(Panel.fit(
+        f"{s['verdict']}\n\n{s['n_events_observable']} observable closures against a "
+        f"floor of {s['min_events_required']}.\n{s['power_basis']}\n\n"
+        f"Censoring: {s['censoring']}\n\nWhat unlocks it: "
+        f"{s['what_a_second_snapshot_adds']}",
+        title="survival", border_style=style))
+
+    for label, e in (("entry (censored rows counted as present at t0)", rep["entry"]),
+                     ("entry (--strict-dated: undated rows dropped)",
+                      rep.get("entry_strict") or {})):
+        if not e:
+            continue
+        console.print(f"\n[bold]{label}[/] — {e['n_rows']:,} address x category rows, "
+                      f"{e['n_ntas']} NTAs, opening rate {e['opening_rate']:.1%}")
+        t = Table(show_header=True, header_style="bold")
+        for c in ("measure", "value"):
+            t.add_column(c, overflow="fold")
+        t.add_row("blocked-CV AUC (full)",
+                  f"{e['auc_full']:.3f}  [{e['auc_full_ci'][0]:.3f}, "
+                  f"{e['auc_full_ci'][1]:.3f}]")
+        t.add_row("blocked-CV AUC (homes only)",
+                  f"{e['auc_homes_only']:.3f}  [{e['auc_homes_only_ci'][0]:.3f}, "
+                  f"{e['auc_homes_only_ci'][1]:.3f}]")
+        t.add_row("lift over baseline", f"{e['auc_lift']:+.3f}  "
+                  f"beats baseline: {e['beats_baseline']}")
+        t.add_row("permutation null (p95 / max)",
+                  f"{e['permutation_null']['p95']:.3f} / "
+                  f"{e['permutation_null']['max']:.3f}  "
+                  f"beats placebo: {e['beats_placebo']}")
+        t.add_row("D1 SIGN on t0 supply ratio",
+                  f"[bold]{e['d1_sign']}[/]  95% CI "
+                  f"[{e['d1_score_ci'][0]:+.2f}, {e['d1_score_ci'][1]:+.2f}]")
+        t.add_row("own-category-gap flag (zero competitors at t0)",
+                  f"95% CI [{e['d1_own_gap_ci'][0]:+.2f}, "
+                  f"{e['d1_own_gap_ci'][1]:+.2f}]")
+        h = e.get("hard_outcome")
+        if h:
+            t.add_row(f"AUC on '{h['outcome']}' ({h['rate']:.0%} positive)",
+                      f"{h['auc_full']:.3f} vs homes-only {h['auc_homes_only']:.3f}")
+        console.print(t)
+
+        t = Table(show_header=True, header_style="bold")
+        for c in ("category", "n", "opening rate", "t0 supply-ratio coef (95% CI)",
+                  "own-gap coef (95% CI)", "AUC", "AUC homes"):
+            t.add_column(c, overflow="fold")
+        for cat, r in sorted(e["by_category"].items()):
+            if "skipped" in r:
+                t.add_row(cat, f"{r['n']:,}", "—", r["skipped"], "—", "—", "—")
+                continue
+            t.add_row(cat, f"{r['n']:,}", f"{r['opening_rate']:.1%}",
+                      f"{r['log_score_coef']:+.2f} "
+                      f"[{r['log_score_ci'][0]:+.2f}, {r['log_score_ci'][1]:+.2f}]",
+                      f"{r['own_gap_coef']:+.2f} "
+                      f"[{r['own_gap_ci'][0]:+.2f}, {r['own_gap_ci'][1]:+.2f}]",
+                      f"{r['auc']:.3f}", f"{r['auc_homes_only']:.3f}")
+        console.print(t)
+
+    console.print("\n[yellow]Entry is not survival. This says where capital WENT, "
+                  "never whether it was right to go there. A positive sign on the t0 "
+                  "supply ratio means openings followed existing supply — which is "
+                  "D87's attack surviving, not the screen being validated.[/]")

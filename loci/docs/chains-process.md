@@ -346,3 +346,138 @@ is the **ledger** key, not `poi_dedup.cluster_id` — cluster_id is renumbered b
 every dedup re-run, which made two months of that table incomparable — and
 `first_seen_src` carries the ledger **kind** (`source_date` / `observed` /
 `backfill_censored`) rather than a source field name.
+
+---
+
+## Recommendation tracking
+
+*Owner ask, 2026-09-14: "start to track recommendations so that we can see how long
+it takes for the free market to fill those gaps and if they do it well (with our
+proposed solution)."*
+
+The same monthly job now also scores **us**. `loci recommendations check` runs last
+in `make chains-refresh`, after `storefront-pipeline build` and the `poi-snapshot`
+inside `chains refresh`, because it reads both of them — checking against a stale
+ledger would record an absence this month's data does not support, and a `none` is a
+**stored observation**, not a skip.
+
+### What is recorded
+
+| Object | Grain |
+|---|---|
+| `analysis.recommendation` | one claim we made: area × category, dated, with an issuer |
+| `analysis.recommendation_outcome` | one claim × one monthly snapshot |
+| `analysis.recommendation_latest` | VIEW: each claim with its newest outcome and days open |
+| `analysis.recommendation_category_summary` | VIEW: open / filled / median time-to-fill per category |
+
+A row is an **assessment we dated**, not an instruction to open a store.
+`loci recommend --record` records the whole card — the `do not act on this data`
+verdicts included — because those are the **control group**: if the areas we graded
+D fill as fast as the ones we graded C, the screen carries no information, and
+nothing else in this project would ever tell us.
+
+The ledger is **append-only except `status`**. DuckDB has no triggers, so the
+invariant lives in `model/recommendation_ledger.MUTABLE_COLUMNS` and
+`tests/test_recommendation.py` asserts that every column is classified and that the
+one UPDATE in the module names nothing else. The 2026-09-11 Gowanus card graded
+restaurant **D**; the 2026-09-13 regeneration graded it **C**. Both are true of their
+own date, and a ledger that let the second overwrite the first would erase the only
+evidence that the model moved.
+
+### The honest first rows
+
+Sixteen rows, all transcribed from what was actually issued — not leads invented to
+give the table something to hold:
+
+| Issued | Category | Grade | Ratio | Status |
+|---|---|:-:|---:|---|
+| 2026-09-10 | laundry | — | — | **withdrawn** 2026-09-11 |
+| 2026-09-11 | pharmacy · convenience · hardware | D · D · C | 0.00× · 0.40× · 0.72× | open (the D73 thin leads, with a named solution and a format hint) |
+| 2026-09-11 | the other twelve of the D74 card | 12 × D except tailor_repair C | 0.00×–5.58× | open |
+
+The 2026-09-10 laundry lead is in the ledger *because* it was wrong: the supply ratio
+came back 0.94× of the MN+BK baseline — normal for this city, not thin — and the lead
+had been built on a raw count with no baseline. It is **withdrawn with its reason**,
+never deleted. A ledger holding only the leads that survived is the survivorship bias
+this exercise exists to defeat.
+
+One transcription note: the CHECKPOINT phase line paraphrases the D74 card as "14 of
+15 do not act". The card itself says 13 of 15 — hardware and tailor_repair reach C.
+The **card** is what was issued, so the card is what the ledger holds.
+
+### The match, and the radius
+
+For each live recommendation (open **or already filled** — a filled gap still has to
+be observed, or `still_open` is never measured after the fill):
+
+1. `analysis.poi_first_seen` — same category, first-seen on or after `issued_on`,
+   within the radius → `opened`. Left-censored rows carry a NULL first-seen and
+   cannot match, which is right: they existed before we said anything.
+2. `analysis.storefront_pipeline` — same category, same radius. Open with
+   `opened_on >= issued_on` → `opened`; not open with `entry_date >= issued_on` →
+   `in_pipeline`, carrying its stage.
+3. Otherwise `none`, which is stored.
+
+**A filing that predates the recommendation does not count.** Somebody who was already
+building when we called the block thin is evidence the screen was stale, not evidence
+we were right.
+
+**The radius is a straight line, not the project's usual 400 m network distance.**
+There is no persisted anchor-to-POI pair set to read, and a network radius from an
+arbitrary anchor costs a graph load and a bounded Dijkstra for a job with a handful of
+anchors. The bias has a known sign: network distance ≥ straight-line, so the disc
+strictly contains the network catchment and the check is **over-inclusive** — it errs
+toward "the gap filled", which is the direction that makes us look worse.
+`distance_m` is stored on every match, and `--radius-m` re-cuts it.
+
+### "Did they do it well" — the rubric
+
+`solution_match_score` is 0–1: the sum of the components we could **confirm**. It is
+not a quality rating.
+
+| Component | Weight | Earned when |
+|---|---:|---|
+| `category` | 0.50 | required — a different category is not a match at all |
+| `format_hint` | 0.20 | the proposal named a format and a keyword of it appears in the business name, DOHMH cuisine, DCWP business category, DOS licence type, SNAP store type or SLA description |
+| `corroboration` | 0.15 | more than one source sees the storefront |
+| `independent` | 0.10 | the name resolves to no chain on the watchlist or in `chains.brand_latest` |
+| `still_open` | 0.05 | seen in the newest ledger month — **unavailable in the fill month**, where it is true by construction |
+
+If only the category matches, the score is **0.50** and `quality_json` names every
+component that was unavailable and why. An unavailable component is never scored as a
+zero and never as a pass; `max_available` is stored beside the score so 0.50 out of
+0.65 is not read as 0.50 out of 1.00. Extending it is one entry in
+`recommendation_ledger.RUBRIC` with a weight and a `score(rec, cand, ctx)` callable.
+
+Open data carries a name, sometimes a cuisine or a licence class, and a source count.
+It cannot see hours, staffing, price, fit-out, or whether the place is any good.
+
+### Time-to-fill is right-censored
+
+An open recommendation has no `days_to_fill`; its elapsed days are a **lower bound**,
+printed with a `+`. A median over the filled rows alone answers "among gaps that
+filled, how fast", never "how fast do gaps fill" — so the summary view publishes
+`n_open` beside the median, and `share_still_open_12m` is **NULL, never 0**, until
+something has had a twelve-month anniversary. A Kaplan-Meier estimate is the honest
+version and is not built: there is no exposure to build it on yet.
+
+**A match is not a causal effect.** Nobody read our card. A filled gap says the market
+moved, not that we moved it. What the ledger buys is calibration — of the places we
+called thin, how many turned out to be openable — and any causal reading of it is the
+D1 reverse-causality error in a new costume (D87).
+
+### Running it
+
+```bash
+uv run loci recommendations backfill              # once; idempotent on card_hash
+uv run loci recommend --area "…" --bbox … --record
+uv run loci recommendations check --month 2026-09 # monthly; DELETE+INSERT per month
+uv run loci recommendations report
+uv run loci recommendations withdraw --rec-id … --reason "…"
+```
+
+First check, 2026-09: **15 outcome rows, all `none`** — 0 opened, 0 in pipeline. That
+is the instrument, not the market. The first-seen ledger is left-censored before
+2026-10 (nothing that already existed can read as an opening) and the newest pipeline
+`entry_date` within 400 m of the Gowanus anchor is 2026-09-03, eight days *before* the
+card was issued. The first month in which `none` means anything is **2026-10**.

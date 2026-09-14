@@ -19,7 +19,7 @@ check:         ## Registry + URL sweep + QUESTIONS drift + decisions + ledger co
 	              tests/test_chains_watchlist.py tests/test_poi_presence.py \
 	              tests/test_webmap_character.py tests/test_sidewalk_count.py \
 	              tests/test_street_frame.py tests/test_paid_sources.py \
-	              tests/test_dot_export.py -q
+	              tests/test_dot_export.py tests/test_recommendation.py -q
 
 tickets:       ## Regenerate docs/TICKETS.md + docs/linear-*.{csv,json}
 	uv run loci gen-tickets
@@ -54,6 +54,13 @@ chains-refresh: ## Monthly: filing pipeline, first-seen ledger, detect chains, e
 	# inside the subcommand rather than as a second line here is what makes the
 	# cron and the human run the identical sequence.
 	uv run loci chains refresh
+	# LAST, and the order is load-bearing: the check reads BOTH the first-seen
+	# ledger (written by `poi-snapshot`, step 1/4 inside `chains refresh`) and
+	# the filing pipeline (written above). Running it first would score every
+	# open recommendation against last month's evidence and record a 'none'
+	# that this month's data does not support -- and 'none' is a stored
+	# observation, not a skip, so the wrong answer would persist.
+	uv run loci recommendations check
 
 clean:         ## Drop intermediates and the database (keeps data/raw)
 	rm -rf data/interim/* data/processed/* data/loci.duckdb
