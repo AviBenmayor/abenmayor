@@ -150,10 +150,21 @@ from loci.categories import CATEGORIES
 
 PKG = pathlib.Path(__file__).resolve().parents[1]
 SQL_028 = PKG / "sql" / "028_forecast.sql"
+#: The supply-hash column on analysis.forecast_run (D96, GTM-163 addendum).
+#: Applied by `ensure_schema` alongside 028 so this module stays
+#: self-sufficient on a warehouse that has not run `loci init-db` since this
+#: landed -- see sql/030 for why a version now has to say what it was FIT ON,
+#: not only what it IS.
+SQL_030 = PKG / "sql" / "030_forecast_supply_hash.sql"
 
 #: Semantic version of the FORM. Bump the minor when the functional form or the
 #: fit-window rule changes; the feature hash below catches everything else.
-MODEL_SEMVER = "0.1.0"
+#: 0.1.1 (2026-09-14, D96): the hash now also covers the SUPPLY-SET identity
+#: (score.supply.supply_hash) and the closure-gate flag -- see model_version()
+#: and sql/030_forecast_supply_hash.sql. Bumped because two runs on the same
+#: FORM but different supply sets must not read as the same model_version to
+#: a reader who has not opened the hash payload.
+MODEL_SEMVER = "0.1.1"
 
 #: The forecast horizon, in months. Twelve, and the reason is measurement, not
 #: taste: `first_seen_src_date` is a licence, an inspection or a Foursquare
@@ -215,7 +226,9 @@ def model_version(semver: str = MODEL_SEMVER, *,
                   features: tuple[str, ...] = FEATURE_LIST,
                   horizon: int = HORIZON_MONTHS,
                   radius_m: float = RADIUS_M,
-                  support_floor: int = SUPPORT_FLOOR) -> str:
+                  support_floor: int = SUPPORT_FLOOR,
+                  supply_hash: str = "",
+                  gate_closed: bool | None = None) -> str:
     """`<semver>+<8 hex>`, the hex over everything that defines the model.
 
     Two runs that share a version share a model. The database cannot check
@@ -224,7 +237,29 @@ def model_version(semver: str = MODEL_SEMVER, *,
     floor. Change any of them and the version changes without anyone
     remembering to bump it — which is the only version discipline that
     survives contact with a hurried session.
+
+    AS OF 0.1.1 (D96, GTM-163 addendum), the hash also covers `supply_hash` --
+    `score.supply.supply_hash(con)`, the identity of the canonical POI set the
+    2026-09 vintage's features were read off -- and `gate_closed`
+    (score.supply.GATE_CLOSED). The FORM inputs above describe what the model
+    IS; supply_hash and gate_closed describe what it was FIT ON, and the two
+    can move independently: a peer re-fitting the baseline (owner ruling
+    2026-09-14, supply_hash 767b28674e30 -> 9a11a2f5...) changes nothing about
+    the feature list or the fit-window rule, and MUST still change the
+    version, or a reader would see one model_version standing for two
+    different supply sets. `gate_closed` is redundant with `supply_hash`
+    itself (score.supply.supply_hash already folds GATE_CLOSED into its own
+    hash) -- it is hashed again here, explicitly, so a reader of THIS
+    payload does not have to trust that supply_hash's internals cover it.
+
+    Callers that never pass `supply_hash` (an old caller, a test against a
+    warehouse with no supply-set machinery) get the empty string, which is
+    hashed like any other value -- NOT skipped -- so "supply unmeasured" is
+    itself a distinct, stable version rather than silently degrading to the
+    pre-0.1.1 hash.
     """
+    if gate_closed is None:
+        from loci.score.supply import GATE_CLOSED as gate_closed        # noqa: PLC0415
     payload = json.dumps({
         "semver": semver,
         "features": list(features),
@@ -232,6 +267,8 @@ def model_version(semver: str = MODEL_SEMVER, *,
         "horizon_months": int(horizon),
         "radius_m": float(radius_m),
         "support_floor": int(support_floor),
+        "supply_hash": str(supply_hash),
+        "gate_closed": bool(gate_closed),
         "form": "two-stage logit: pooled with category FE, per-category above "
                 "the support floor",
         "target": "1{>=1 same-category dated first-seen within radius in the "
@@ -240,14 +277,115 @@ def model_version(semver: str = MODEL_SEMVER, *,
     return f"{semver}+{hashlib.sha256(payload.encode()).hexdigest()[:8]}"
 
 
+class AlreadyIssuedError(RuntimeError):
+    """`loci forecast issue` would silently overwrite an existing
+    (issued_month, model_version) vintage without --force. See `guard_reissue`."""
+
+
+def live_supply_hash(con, supply_set: str | None = None) -> str:
+    """`score.supply.supply_hash(con)`, called from ONE place so `issue` and
+    the CLI's refuse-without-force check can never compute two different
+    answers for the same warehouse.
+
+    Falls back to the literal string `'unmeasured'` -- never a real 12-hex
+    supply hash, so a reader can always tell the two apart -- when the
+    supply-set machinery is not present to query (a synthetic test fixture, a
+    warehouse that has not run `dedup`/`build_category_anchor` yet). Soft
+    failure here matches `score.supply._cats`' own convention (a measurement
+    that cannot be taken must not crash a caller that has nothing to do with
+    supply sets) rather than the FAIL-OPEN-IS-DANGEROUS posture used inside
+    the supply-set principle itself: `p_opening` is not gated by supply
+    measurement the way `in_principled` is, so there is nothing here for a
+    silent 'unmeasured' to wrongly include or exclude.
+    """
+    from loci.score.supply import DEFAULT_SUPPLY_SET, supply_hash as _live_hash  # noqa: PLC0415
+
+    sset = supply_set or DEFAULT_SUPPLY_SET
+    try:
+        return _live_hash(con, sset)
+    except Exception:                   # noqa: BLE001 -- supply-set tables absent
+        return "unmeasured"
+
+
+def resolve_version(con, *, version: str | None = None,
+                    horizon: int = HORIZON_MONTHS, radius_m: float = RADIUS_M,
+                    support_floor: int = SUPPORT_FLOOR,
+                    supply_set: str | None = None) -> tuple[str, str]:
+    """(model_version, supply_hash) for this fit configuration, on THIS
+    warehouse, right now.
+
+    The single place `issue`, `issue_managed` and the CLI's pre-flight
+    refuse-without-force check all call, so they can never disagree about
+    what a run "would" version itself as. `version`, if given, overrides the
+    computed one (reproducing an old vintage under `--model-version`) but the
+    supply hash is still measured and returned -- it is what gets printed and
+    what gets stamped onto `analysis.forecast_run.supply_hash` either way.
+    """
+    shash = live_supply_hash(con, supply_set)
+    ver = version or model_version(horizon=horizon, radius_m=radius_m,
+                                   support_floor=support_floor,
+                                   supply_hash=shash)
+    return ver, shash
+
+
+def already_issued(con, month: str, version: str) -> bool:
+    """Does (issued_month, model_version) already have a row in
+    analysis.forecast_run?
+
+    False, never an exception, on a warehouse that has never written a
+    forecast_run -- "no schema yet" and "no rows yet" are the same answer to
+    this question."""
+    try:
+        n = con.execute(
+            "SELECT count(*) FROM analysis.forecast_run "
+            "WHERE issued_month = ? AND model_version = ?",
+            [month, version]).fetchone()[0]
+    except Exception:                   # noqa: BLE001 -- table not created yet
+        return False
+    return bool(n)
+
+
+def guard_reissue(con, month: str, version: str, *, force: bool = False) -> None:
+    """Refuse to reuse an existing (issued_month, model_version) unless
+    `force`. Raises `AlreadyIssuedError`, never silently returns False, so a
+    caller that forgets to check a boolean does not walk straight into the
+    overwrite this exists to stop.
+
+    THIS IS NOT THE VINTAGE-IDEMPOTENCE CONTRACT. `issue` re-running the SAME
+    (month, version) is still DELETE+INSERT and still reproduces that
+    vintage's answer byte for byte -- that discipline is unchanged and is
+    what makes a scheduled `loci forecast issue` safe to re-run. What this
+    adds is a REFUSAL to do that BLINDLY from the command line: the owner
+    ruling that put this in place (2026-09-14, D96) is precisely the case
+    where a version could look unchanged while the supply set underneath it
+    moved (a peer's baseline re-fit, 767b28674e30 -> 9a11a2f5...) -- except it
+    now CAN'T look unchanged, because supply_hash is hashed into the version
+    (see `model_version`). So this guard mostly protects against a different,
+    cheaper mistake: running `issue` twice for the same month by hand and not
+    noticing the second run silently replaced the first."""
+    if force:
+        return
+    if already_issued(con, month, version):
+        raise AlreadyIssuedError(
+            f"{month} / {version} already exists in analysis.forecast_run. "
+            "Pass --force to re-issue it.")
+
+
 # ---------------------------------------------------------------------------
 # plumbing
 # ---------------------------------------------------------------------------
 def ensure_schema(con) -> None:
-    """Apply sql/028_forecast.sql. Idempotent, and WRITE-ONLY — DuckDB refuses
-    CREATE TABLE IF NOT EXISTS on a read-only handle, so the read paths call
-    `require_schema` instead."""
+    """Apply sql/028_forecast.sql then sql/030_forecast_supply_hash.sql.
+    Idempotent, and WRITE-ONLY — DuckDB refuses CREATE TABLE / ALTER TABLE ADD
+    COLUMN IF NOT EXISTS on a read-only handle, so the read paths call
+    `require_schema` instead.
+
+    030 runs AFTER 028 unconditionally, not only on a fresh database: a
+    warehouse that already has analysis.forecast_run from before 0.1.1 needs
+    the ALTER applied too, and `loci init-db` is not guaranteed to have run
+    again since 030 landed."""
     con.execute(SQL_028.read_text())
+    con.execute(SQL_030.read_text())
 
 
 def require_schema(con) -> None:
@@ -943,6 +1081,7 @@ def issue(con, month: str, *, version: str | None = None,
           sample_n: int = FIT_SAMPLE_N,
           categories: tuple[str, ...] = ALL_CATEGORIES,
           limit_points: int | None = None,
+          supply_set: str | None = None,
           dry_run: bool = False, progress=None, write_con=None) -> dict:
     """Fit on data available at `month`, predict every lot address x category,
     and write the vintage.
@@ -965,9 +1104,11 @@ def issue(con, month: str, *, version: str | None = None,
     function is the single-handle form: it is what the tests use, and what a
     caller who already holds a writable handle wants."""
     validate_month(month)
-    ver = version or model_version(horizon=horizon, radius_m=radius_m)
+    ver, shash = resolve_version(con, version=version, horizon=horizon,
+                                 radius_m=radius_m, supply_set=supply_set)
     m0 = month_first(month)
     say = progress or (lambda *_: None)
+    say(f"supply hash this vintage fits on: {shash}")
 
     say(f"1/5 frames — fit sample {sample_n:,}, anchor = the same sample")
     fit_points = load_points(con, limit=sample_n)
@@ -1003,9 +1144,9 @@ def issue(con, month: str, *, version: str | None = None,
                                    horizon=horizon, t0=m0)
         _write_run(w, month=month, version=ver, horizon=horizon,
                    radius_m=radius_m, res=res, support=support,
-                   n_rows=n_written, anchors=anchors)
+                   n_rows=n_written, anchors=anchors, supply_hash=shash)
 
-    return {"issued_month": month, "model_version": ver,
+    return {"issued_month": month, "model_version": ver, "supply_hash": shash,
             "horizon_months": horizon, "radius_m": radius_m,
             "fit": res, "support": support, "anchors": anchors,
             "n_rows_issued": int(n_written), "n_rows_predicted": int(len(pred)),
@@ -1047,7 +1188,7 @@ def issue_managed(month: str, *, progress=None, **kw) -> dict:
         _write_run(w, month=rep["issued_month"], version=rep["model_version"],
                    horizon=rep["horizon_months"], radius_m=rep["radius_m"],
                    res=rep["fit"], support=rep["support"], n_rows=n,
-                   anchors=rep["anchors"])
+                   anchors=rep["anchors"], supply_hash=rep["supply_hash"])
     finally:
         w.close()
     rep["n_rows_issued"] = int(n)
@@ -1155,7 +1296,8 @@ def _write_vintage(con, pred: pd.DataFrame, *, month: str, version: str,
 
 
 def _write_run(con, *, month: str, version: str, horizon: int, radius_m: float,
-               res: dict, support: dict, n_rows: int, anchors: dict) -> None:
+               res: dict, support: dict, n_rows: int, anchors: dict,
+               supply_hash: str | None = None) -> None:
     con.execute("DELETE FROM analysis.forecast_run "
                 "WHERE issued_month = ? AND model_version = ?", [month, version])
     support_json = json.dumps({
@@ -1164,9 +1306,21 @@ def _write_run(con, *, month: str, version: str, horizon: int, radius_m: float,
         "fitted_categories": res["fitted_categories"],
         "support_floor": SUPPORT_FLOOR,
         "by_category_oos": res["by_category"]}, sort_keys=True, default=str)
+    # EXPLICIT COLUMN LIST, not positional VALUES (?,?,...): `supply_hash`
+    # (sql/030) was ADDed after this table's original CREATE, so it is the
+    # LAST physical column, and a caller on a warehouse from before the
+    # migration landed would otherwise have to remember to grow its
+    # placeholder count by one. Naming the columns makes that impossible to
+    # get wrong silently.
     con.execute("""
-        INSERT INTO analysis.forecast_run VALUES
-        (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        INSERT INTO analysis.forecast_run
+        (issued_month, model_version, horizon_months, radius_m, fit_t0s,
+         fit_window_rule, feature_list, n_fit_rows, n_fit_addresses,
+         n_fit_ntas, fit_positive_rate, auc_blocked, auc_no_score,
+         auc_persistence, auc_homes_only, brier_fit, calibration_json,
+         coefficients_json, support_json, ships, ships_reason, n_rows_issued,
+         issued_at, supply_hash)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, [month, version, horizon, radius_m,
           json.dumps([str(d) for d in fit_t0s(month, horizon)]),
           FIT_WINDOW_RULE, json.dumps(list(FEATURE_LIST)),
@@ -1176,7 +1330,7 @@ def _write_run(con, *, month: str, version: str, horizon: int, radius_m: float,
           json.dumps(res["calibration"]),
           json.dumps(res["coefficients"], default=str),
           support_json, res["ships"], res["ships_reason"], n_rows,
-          dt.datetime.now()])
+          dt.datetime.now(), supply_hash])
 
 
 # ---------------------------------------------------------------------------
@@ -1492,3 +1646,165 @@ def due_for_scoring(con, today: dt.date | None = None) -> list[tuple[str, str, s
         if target <= today.replace(day=1) and not scored:
             due.append((issued, ver, month_str(target)))
     return due
+
+
+# ---------------------------------------------------------------------------
+# 7. retention (GTM-163) — nothing bounded analysis.forecast's growth until
+# this. One issue+score cycle added ~1.4 GB (DB 1.8 -> 4.6 GB, D92) and every
+# `make chains-refresh` writes another vintage of ~4.2M rows.
+# ---------------------------------------------------------------------------
+
+#: Newest vintages PER MODEL VERSION whose prediction rows survive a prune.
+#: Per version, not globally, because two versions coexisting is the whole
+#: point of the vintage discipline (see the module docstring) and a global
+#: cutoff would let a newer version's vintages silently crowd the older
+#: version's out of the retained set.
+DEFAULT_KEEP_VINTAGES = 3
+
+
+def prunable_vintages(con, *, keep_vintages: int = DEFAULT_KEEP_VINTAGES,
+                      today: dt.date | None = None) -> pd.DataFrame:
+    """Every (issued_month, model_version) in analysis.forecast, with the
+    columns `prune` needs to decide what to drop.
+
+    `horizon_open` -- issued_month + horizon_months is still in the future --
+    is the literal GTM-163 protection: a vintage whose horizon has not
+    elapsed CANNOT have been scored yet, so its prediction rows must survive
+    regardless of rank. `has_outcome` is a second, stricter guard beyond what
+    the ticket's date test alone would catch: a vintage whose horizon HAS
+    elapsed but was never actually scored (a failed `forecast score` run, a
+    manual `prune` invoked out of the normal `make chains-refresh` order)
+    is protected too -- the contract is "never touching a vintage until it
+    is scored," and the date is the common-case proxy for that, not a
+    substitute for checking when scoring might have lagged.
+
+    `keep` is true (never pruned) when the vintage ranks among the newest
+    `keep_vintages` for its model_version, OR its horizon is still open, OR
+    it has not been scored at all."""
+    require_schema(con)
+    today = today or dt.date.today()
+    df = con.execute("""
+        SELECT f.issued_month, f.model_version, max(f.horizon_months) AS horizon_months,
+               count(*)                                    AS n_rows,
+               count(DISTINCT o.forecast_id) > 0            AS has_outcome
+        FROM analysis.forecast f
+        LEFT JOIN analysis.forecast_outcome o ON o.forecast_id = f.forecast_id
+        GROUP BY 1, 2
+    """).fetchdf()
+    cols = ["issued_month", "model_version", "horizon_months", "n_rows",
+            "has_outcome", "horizon_open", "within_keep", "keep"]
+    if df.empty:
+        return pd.DataFrame(columns=cols)
+
+    df["horizon_open"] = [
+        add_months(month_first(m), int(h)) > today
+        for m, h in zip(df["issued_month"], df["horizon_months"])]
+    # rank 0 = newest issued_month, WITHIN each model_version. Computed on a
+    # sort_values copy and assigned back by index -- pandas aligns on the
+    # index automatically, so the row order of `df` itself never has to
+    # match the sort.
+    rank = (df.sort_values("issued_month", ascending=False)
+              .groupby("model_version").cumcount())
+    df["within_keep"] = rank < int(keep_vintages)
+    df["keep"] = df["within_keep"] | df["horizon_open"] | df["has_outcome"].eq(False)
+    return df[cols].sort_values(["model_version", "issued_month"]).reset_index(drop=True)
+
+
+def _estimate_forecast_row_bytes(con, sample: int = 5000) -> float:
+    """A rough per-row byte estimate for analysis.forecast, from a sample of
+    the variable-width columns plus a fixed allowance for the rest.
+
+    DuckDB does not expose an exact per-row disk footprint over SQL, and
+    getting one exactly right is not the point: `prune` prints this so a
+    human can judge whether running it is worth the 45-minute write-lock
+    wait, not so a script can budget disk to the byte."""
+    row = con.execute(f"""
+        SELECT avg(length(forecast_id) + length(issued_month) +
+                   length(model_version) + length(address_id) +
+                   length(category) + length(frame) +
+                   coalesce(length(borough), 0) + coalesce(length(nta_code), 0) +
+                   coalesce(length(surprise_cell), 0) + length(support) +
+                   length(features_json)) AS avg_varchar_len
+        FROM (SELECT * FROM analysis.forecast USING SAMPLE {int(sample)} ROWS)
+    """).fetchone()
+    avg_varchar = float(row[0]) if row and row[0] is not None else 200.0
+    # + ~40 bytes: two DOUBLEs, a TIMESTAMP, and DuckDB's per-string length
+    # prefix on the ten VARCHAR columns already summed above.
+    return avg_varchar + 40.0
+
+
+def prune(con, *, keep_vintages: int = DEFAULT_KEEP_VINTAGES,
+         dry_run: bool = True, today: dt.date | None = None,
+         progress=None) -> dict:
+    """Delete analysis.forecast PREDICTION rows for vintages older than the
+    newest `keep_vintages` per model_version (GTM-163).
+
+    NEVER touches analysis.forecast_run (the fit diagnostics) or
+    analysis.forecast_outcome (the scored track record) — only DELETE
+    statements against analysis.forecast appear below. NEVER a vintage whose
+    horizon has not elapsed, or that has not been scored yet, however old its
+    rank — see `prunable_vintages`.
+
+    DRY RUN BY DEFAULT. This deletes rows from the ledger's largest table on
+    a schedule (`make chains-refresh`); `dry_run=True` computes and prints
+    the candidate set and deletes nothing, which is also what makes this
+    function safe to call on a READ-ONLY connection. `dry_run=False` deletes,
+    then runs CHECKPOINT and (best-effort) VACUUM — see the return dict and
+    the CLI command's docstring for what those actually do to the .duckdb
+    FILE, which is less than their names suggest.
+    """
+    say = progress or (lambda *_: None)
+    cands = prunable_vintages(con, keep_vintages=keep_vintages, today=today)
+    drop = cands[~cands["keep"]]
+    kept_open = cands[(~cands["within_keep"])
+                      & (cands["horizon_open"] | ~cands["has_outcome"])]
+
+    n_rows = int(drop["n_rows"].sum()) if len(drop) else 0
+    est_bytes = (_estimate_forecast_row_bytes(con) * n_rows) if n_rows else 0.0
+
+    out = {
+        "keep_vintages": int(keep_vintages),
+        "candidates": drop[["issued_month", "model_version", "n_rows"]].to_dict("records"),
+        "kept_open_horizon": kept_open[["issued_month", "model_version",
+                                        "n_rows"]].to_dict("records"),
+        "n_rows": n_rows,
+        "estimated_bytes_freed": int(est_bytes),
+        "dry_run": bool(dry_run),
+        "checkpointed": False,
+        "vacuumed": False,
+    }
+    if n_rows == 0:
+        say("nothing to prune")
+        return out
+    if dry_run:
+        say(f"[dry run] would delete {n_rows:,} rows across {len(drop)} "
+            f"vintage(s), ~{est_bytes / 1e6:.1f} MB estimated — nothing deleted")
+        return out
+
+    for _, r in drop.iterrows():
+        con.execute("DELETE FROM analysis.forecast "
+                    "WHERE issued_month = ? AND model_version = ?",
+                    [r["issued_month"], r["model_version"]])
+        say(f"  deleted {r['issued_month']} / {r['model_version']} "
+            f"({int(r['n_rows']):,} rows)")
+
+    # CHECKPOINT flushes the WAL into the main file and updates DuckDB's
+    # internal free-block bookkeeping so future INSERTs can reuse the space
+    # this DELETE just freed. VACUUM (best-effort — some DuckDB builds refuse
+    # it inside a larger transaction) recomputes table statistics. NEITHER
+    # SHRINKS THE .duckdb FILE ON DISK: verified empirically against this
+    # DuckDB build (delete 90% of a table, CHECKPOINT, VACUUM, CHECKPOINT
+    # again — file size unchanged throughout). The freed blocks are reused
+    # internally, not returned to the OS; actually shrinking the file needs a
+    # full rebuild (`EXPORT DATABASE` to a fresh file, or `ATTACH` a new file
+    # and `COPY FROM DATABASE current`). This function does not do that
+    # automatically — it is an offline, whole-database operation orders of
+    # magnitude slower than a prune, and is out of scope here.
+    con.execute("CHECKPOINT")
+    out["checkpointed"] = True
+    try:
+        con.execute("VACUUM")
+        out["vacuumed"] = True
+    except Exception:                   # noqa: BLE001 -- best-effort only
+        pass
+    return out

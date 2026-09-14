@@ -413,3 +413,141 @@ def test_due_for_scoring_only_returns_vintages_whose_horizon_has_elapsed(con):
     due = fc.due_for_scoring(con, today=dt.date(2026, 9, 14))
     assert [d[0] for d in due] == ["2023-01"]
     assert due[0][2] == "2024-01"
+
+
+# ===========================================================================
+# the supply-set identity is part of the version (D96, GTM-163 addendum)
+# ===========================================================================
+def test_the_model_version_changes_when_the_supply_hash_changes():
+    """A peer re-fitting the supply baseline (owner ruling 2026-09-14,
+    767b28674e30 -> 9a11a2f5...) changes nothing about the feature list or the
+    fit-window rule and MUST still change model_version, or a reader could
+    see one version standing for two different supply sets."""
+    a = fc.model_version(supply_hash="767b28674e30")
+    b = fc.model_version(supply_hash="9a11a2f5")
+    assert a != b
+    assert a == fc.model_version(supply_hash="767b28674e30"), (
+        "the version is not deterministic in the supply hash")
+    # the closure gate is hashed too, independently of the supply_hash string
+    # itself -- redundant with supply_hash's own internals, and hashed again
+    # here so a reader of model_version's payload does not have to trust that.
+    c = fc.model_version(supply_hash="767b28674e30", gate_closed=True)
+    d = fc.model_version(supply_hash="767b28674e30", gate_closed=False)
+    assert c != d
+    assert a.startswith(fc.MODEL_SEMVER + "+")
+
+
+def test_guard_reissue_refuses_an_existing_vintage_without_force(con):
+    """`loci forecast issue` must not silently overwrite a vintage that
+    already has a forecast_run row. `--force` is the explicit override;
+    a different (month, version) is never blocked."""
+    fc.ensure_schema(con)
+    con.execute("""INSERT INTO analysis.forecast_run
+        (issued_month, model_version, horizon_months, radius_m, fit_t0s,
+         fit_window_rule, feature_list, ships, ships_reason, issued_at,
+         supply_hash)
+        VALUES ('2025-01', 'v1', 12, 400.0, '[]', 'x', '[]', true, 'ok',
+                now(), 'abc123')""")
+
+    assert fc.already_issued(con, "2025-01", "v1") is True
+    assert fc.already_issued(con, "2025-01", "v2") is False
+    assert fc.already_issued(con, "2025-02", "v1") is False
+
+    with pytest.raises(fc.AlreadyIssuedError, match="already exists"):
+        fc.guard_reissue(con, "2025-01", "v1")
+    fc.guard_reissue(con, "2025-01", "v1", force=True)      # no raise
+    fc.guard_reissue(con, "2025-01", "v2")                  # no raise -- new version
+    fc.guard_reissue(con, "2025-02", "v1")                  # no raise -- new month
+
+
+# ===========================================================================
+# retention (GTM-163): keep-latest-N-per-model-version, never forecast_run /
+# forecast_outcome, never an unscored or open-horizon vintage
+# ===========================================================================
+def _prune_fixture(con):
+    """Six 'v1' vintages, two rows each. Under a UNIFORM horizon an older
+    vintage's horizon always elapses no later than a newer one's, so testing
+    the open-horizon protection in ISOLATION from ranking needs a vintage
+    whose horizon is itself unusual -- 2019-01 is given a 120-month horizon on
+    purpose, so it is both the LOWEST-ranked vintage and still open at the
+    fixed `today` the tests pass in.
+
+      2023-01  h=12   scored   rank 0 -- kept by ranking (--keep-vintages 2)
+      2022-01  h=12   scored   rank 1 -- kept by ranking
+      2021-01  h=12   UNSCORED rank 2 -- kept: never scored
+      2020-07  h=12   scored   rank 3 -- PRUNE candidate
+      2020-01  h=12   scored   rank 4 -- PRUNE candidate
+      2019-01  h=120  scored   rank 5 -- kept: horizon still open at `today`
+    """
+    fc.ensure_schema(con)
+    vintages = [("2019-01", 120, True), ("2020-01", 12, True),
+                ("2020-07", 12, True), ("2021-01", 12, False),
+                ("2022-01", 12, True), ("2023-01", 12, True)]
+    for month, horizon, scored in vintages:
+        con.execute("""INSERT INTO analysis.forecast_run
+            (issued_month, model_version, horizon_months, radius_m, fit_t0s,
+             fit_window_rule, feature_list, ships, ships_reason, issued_at,
+             supply_hash)
+            VALUES (?, 'v1', ?, 400.0, '[]', 'x', '[]', true, 'ok', now(),
+                    'abc123')""", [month, horizon])
+        for i in range(2):
+            fid = f"f-{month}-{i}"
+            con.execute("""INSERT INTO analysis.forecast VALUES
+                (?, ?, ?, 'v1', ?, 'restaurant', 'lot', 'BK', 'BK0101', '0:0',
+                 0.3, 0.3, 'pooled', '{}', now())""",
+                        [fid, month, horizon, f"addr-{month}-{i}"])
+            if scored:
+                scored_month = fc.month_str(
+                    fc.add_months(fc.month_first(month), horizon))
+                con.execute("""INSERT INTO analysis.forecast_outcome VALUES
+                    (?, ?, ?, 0, false, now())""",
+                            [fid, scored_month, horizon])
+    return vintages
+
+
+def test_prune_keeps_open_horizon_and_unscored_vintages_and_never_touches_outcomes_or_runs(con):
+    _prune_fixture(con)
+    today = dt.date(2023, 6, 1)
+    n_run_before = con.execute(
+        "SELECT count(*) FROM analysis.forecast_run").fetchone()[0]
+    n_outcome_before = con.execute(
+        "SELECT count(*) FROM analysis.forecast_outcome").fetchone()[0]
+
+    rep = fc.prune(con, keep_vintages=2, dry_run=False, today=today)
+
+    pruned = {r["issued_month"] for r in rep["candidates"]}
+    assert pruned == {"2020-01", "2020-07"}, pruned
+    assert rep["n_rows"] == 4                # 2 rows x 2 pruned vintages
+
+    kept_outside_window = {r["issued_month"] for r in rep["kept_open_horizon"]}
+    assert kept_outside_window == {"2019-01", "2021-01"}, kept_outside_window
+
+    remaining = {r[0] for r in con.execute(
+        "SELECT DISTINCT issued_month FROM analysis.forecast").fetchall()}
+    assert remaining == {"2019-01", "2021-01", "2022-01", "2023-01"}, remaining
+
+    # THE POINT OF THE TICKET: forecast_run and forecast_outcome are
+    # UNTOUCHED. Only analysis.forecast prediction rows are ever deleted.
+    assert con.execute("SELECT count(*) FROM analysis.forecast_run"
+                       ).fetchone()[0] == n_run_before
+    assert con.execute("SELECT count(*) FROM analysis.forecast_outcome"
+                       ).fetchone()[0] == n_outcome_before
+    assert rep["checkpointed"] is True
+
+
+def test_prune_dry_run_deletes_nothing(con):
+    _prune_fixture(con)
+    today = dt.date(2023, 6, 1)
+    n_before = con.execute(
+        "SELECT count(*) FROM analysis.forecast").fetchone()[0]
+
+    rep = fc.prune(con, keep_vintages=2, dry_run=True, today=today)
+
+    assert rep["dry_run"] is True
+    assert rep["n_rows"] == 4
+    assert {r["issued_month"] for r in rep["candidates"]} == {"2020-01", "2020-07"}
+    assert rep["checkpointed"] is False and rep["vacuumed"] is False
+
+    n_after = con.execute(
+        "SELECT count(*) FROM analysis.forecast").fetchone()[0]
+    assert n_after == n_before, "dry_run=True deleted rows"

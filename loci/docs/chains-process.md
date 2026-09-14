@@ -627,6 +627,51 @@ between the two is the design effect. Fewer than five cells and the z is
 NTA statistics actually computed, because a "top 10 by z" list is a maximum over
 hundreds of statistics and will contain |z| > 2 under the pure null.
 
+### The supply-set identity is part of the version (D96, GTM-163 addendum)
+
+*Owner ruling, 2026-09-14: the closure gate (GTM-153) stays ON; a peer is
+re-fitting the supply baseline, `supply_hash` moving 767b28674e30 ->
+9a11a2f5....*
+
+`model_version` covered the FORM (feature list, fit-window rule, horizon,
+radius, support floor) but said nothing about which canonical POIs the frozen
+features were actually read off. As of **0.1.1**, the hash also covers
+`score.supply.supply_hash(con)` and the closure-gate flag
+(`score.supply.GATE_CLOSED`), so two fits on the identical form but two
+different supply sets get different versions by construction — a peer's
+baseline re-fit changes `model_version` even though nothing about the model
+itself changed. The supply hash a run was fit on is also stamped onto
+`analysis.forecast_run.supply_hash` (sql/030, ALTER; NULL on any row written
+before this migration landed).
+
+`loci forecast issue` now **refuses to reuse an existing
+(issued_month, model_version)** unless `--force` is passed, printing the
+supply hash it is about to fit on first. This is not the vintage-idempotence
+contract — DELETE+INSERT on the *same* (month, version) is still safe and
+still reproduces that vintage byte for byte — it is a guard against doing
+that *blindly* from the command line.
+
+### Retention (GTM-163)
+
+`analysis.forecast` has no natural ceiling: one issue+score cycle added
+~1.4 GB (the warehouse went 1.8 → 4.6 GB, D92) and every monthly vintage adds
+another ~4.2M rows. `loci forecast prune [--keep-vintages 3] [--dry-run]`
+deletes **prediction rows only** — vintages older than the newest N per
+`model_version` — and never touches `analysis.forecast_run` or
+`analysis.forecast_outcome`, which are the ledger itself. A vintage is never
+pruned while its 12-month horizon has not elapsed, or while it has not
+actually been scored yet, however old its rank — `forecast score` still needs
+to join its rows.
+
+**Dry run by default.** A real prune deletes, then runs `CHECKPOINT` and a
+best-effort `VACUUM` — verified empirically against DuckDB 1.5: neither
+shrinks the `.duckdb` file on disk. `CHECKPOINT` flushes the WAL and marks the
+freed row-groups reusable by future writes; `VACUUM` only recomputes
+statistics. The file's byte size is unchanged by either. Actually shrinking
+the file requires a full offline rebuild (`EXPORT DATABASE` to a new file, or
+`ATTACH` a new file and `COPY FROM DATABASE current`) — out of scope for a
+routine prune, and not run automatically by anything here.
+
 ### Running it
 
 ```bash
@@ -635,17 +680,21 @@ uv run loci forecast score                          # every vintage whose horizo
 uv run loci forecast score --issued-month 2023-01 --as-of 2025-01
 uv run loci forecast report                         # the track record + the surprise tables
 uv run loci forecast distribution --issued-month 2026-09
+uv run loci forecast prune --keep-vintages 3         # dry run; --no-dry-run to delete
 ```
 
-`make chains-refresh` runs `forecast issue --month $(date +%Y-%m)` and
-`forecast score` **after** `storefront-pipeline build` and the `poi-snapshot`
-inside `chains refresh` — both the frozen supply and the realized outcome are
-read off the first-seen ledger and the filings pipeline, so issuing before them
-would freeze a vintage on last month's evidence and then date it this month —
-and **before** `recommendations check`.
+`make chains-refresh` runs `forecast issue --month $(date +%Y-%m)`,
+`forecast score`, then `forecast prune` — **after** `storefront-pipeline
+build` and the `poi-snapshot` inside `chains refresh` (both the frozen supply
+and the realized outcome are read off the first-seen ledger and the filings
+pipeline, so issuing before them would freeze a vintage on last month's
+evidence and then date it this month), and **before** `recommendations
+check`. `prune` stays a dry run inside `make chains-refresh` unless
+`LOCI_FORECAST_PRUNE_REAL=1` is set in the environment — the owner decides
+when real deletion goes live.
 
-Both commands do all their reading and fitting on a read-only handle and open
-the write handle last, waiting up to 45 minutes for a peer session's lock. They
-never work on a copy of the warehouse: a peer mid-write produces a torn
-snapshot, and a vintage fitted on a torn snapshot is frozen, dated and wrong
-forever.
+`issue` and `score` do all their reading and fitting on a read-only handle and
+open the write handle last, waiting up to 45 minutes for a peer session's
+lock. They never work on a copy of the warehouse: a peer mid-write produces a
+torn snapshot, and a vintage fitted on a torn snapshot is frozen, dated and
+wrong forever.

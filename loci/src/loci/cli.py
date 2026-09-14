@@ -6263,6 +6263,11 @@ def forecast_issue(
                                           "every lot address."),
     dry_run: bool = typer.Option(False, "--dry-run",
                                  help="Fit and predict, write nothing."),
+    force: bool = typer.Option(False, "--force",
+                               help="Re-issue an (issued_month, model_version) "
+                                    "that already has a forecast_run row. "
+                                    "Without it, issue REFUSES rather than "
+                                    "overwrite silently."),
 ) -> None:
     """Fit on data available at --month, then predict every lot address x category.
 
@@ -6279,6 +6284,17 @@ def forecast_issue(
     past vintage is NEVER re-issued with a newer model -- that would be a
     measurement of hindsight, not a track record.
 
+    THE SUPPLY-SET IDENTITY (D96, GTM-163 addendum). `model_version` hashes
+    `score.supply.supply_hash(con)` and the closure-gate flag alongside the
+    feature list -- so two fits on the SAME form but a DIFFERENT canonical POI
+    set (a peer's baseline re-fit, an anchor re-measurement) get DIFFERENT
+    versions by construction, and `analysis.forecast_run.supply_hash` records
+    which one a stored vintage rests on. Because of that, this command REFUSES
+    to reuse an (issued_month, model_version) that already exists unless
+    --force is passed -- printing the supply hash it is about to fit on first,
+    so a hurried re-run is not the way a reader finds out the supply moved
+    under an unchanged month.
+
     Reads first, writes last: the fit and the four-million-row prediction run
     on a read-only handle, so a peer session holding the warehouse lock costs
     only the final write, which waits up to 45 minutes for it.
@@ -6288,6 +6304,24 @@ def forecast_issue(
     say = lambda m: console.print(f"[dim]{m}[/]")       # noqa: E731
     kw = dict(version=model_version, horizon=horizon, radius_m=radius_m,
               sample_n=sample_n, limit_points=limit_points)
+
+    # THE REFUSE-WITHOUT-FORCE CHECK, before the expensive fit: resolve what
+    # version THESE settings and THIS supply set would produce and print the
+    # supply hash regardless, so a reader always sees it -- not only on a
+    # refusal.
+    probe = fc.connect_read()
+    try:
+        probe_ver, probe_hash = fc.resolve_version(
+            probe, version=model_version, horizon=horizon, radius_m=radius_m)
+        console.print(f"[dim]supply hash this vintage will fit on: "
+                      f"{probe_hash}[/]")
+        fc.guard_reissue(probe, month, probe_ver, force=force)
+    except fc.AlreadyIssuedError as exc:
+        console.print(f"[red]refusing:[/] {exc}")
+        raise typer.Exit(code=1) from exc
+    finally:
+        probe.close()
+
     if dry_run:
         con = fc.connect_read()
         try:
@@ -6578,6 +6612,88 @@ def forecast_distribution(
                   f"{r['p10']:.3f}", f"{r['p50']:.3f}", f"{r['p90']:.3f}",
                   f"{r['pmax']:.3f}")
     console.print(t)
+
+
+@forecast_app.command("prune")
+def forecast_prune(
+    keep_vintages: int = typer.Option(3, "--keep-vintages",
+                                      help="Newest vintages per model_version "
+                                           "whose PREDICTION rows survive."),
+    dry_run: bool = typer.Option(
+        None, "--dry-run/--no-dry-run",
+        help="Print what would be pruned without deleting. Default: on, "
+             "unless env var LOCI_FORECAST_PRUNE_REAL=1 is set (the "
+             "`make chains-refresh` switch)."),
+) -> None:
+    """Retention for analysis.forecast (GTM-163) -- nothing bounded it before
+    this, and one issue+score cycle adds ~1.4 GB.
+
+    Deletes PREDICTION rows for vintages older than the newest
+    --keep-vintages PER MODEL_VERSION. NEVER touches analysis.forecast_run
+    (the fit diagnostics) or analysis.forecast_outcome (the scored track
+    record) -- both are the ledger itself and survive every prune. NEVER a
+    vintage whose 12-month horizon has not elapsed, and never one that has
+    not actually been scored yet however old it is -- `forecast score` still
+    needs to JOIN its rows in analysis.forecast to write outcomes.
+
+    DRY RUN BY DEFAULT. This is a DELETE on the ledger's largest table
+    running on a schedule; a retention rule that silently deletes evidence on
+    its first bad day is worse than the disk growth it exists to fix. Pass
+    --no-dry-run (or set LOCI_FORECAST_PRUNE_REAL=1, what
+    `make chains-refresh` checks) to actually delete.
+
+    After a real prune this runs CHECKPOINT and a best-effort VACUUM.
+    NEITHER SHRINKS THE .duckdb FILE ON DISK -- verified empirically against
+    this DuckDB build: CHECKPOINT flushes the WAL and marks the freed blocks
+    reusable by future writes, VACUUM only recomputes statistics, and the
+    file's byte size does not change either way. Actually shrinking the file
+    needs a full rebuild (`EXPORT DATABASE` to a new file, or `ATTACH` a new
+    file and `COPY FROM DATABASE current`) -- an offline, whole-database
+    operation out of scope for a routine prune.
+    """
+    import os
+
+    from loci.model import forecast as fc
+
+    if dry_run is None:
+        dry_run = os.environ.get("LOCI_FORECAST_PRUNE_REAL", "") != "1"
+
+    say = lambda m: console.print(f"[dim]{m}[/]")       # noqa: E731
+    if dry_run:
+        con = fc.connect_read()
+    else:
+        con = fc.connect_write()
+    try:
+        rep = fc.prune(con, keep_vintages=keep_vintages, dry_run=dry_run,
+                       progress=say)
+    finally:
+        con.close()
+
+    t = Table(title="forecast prune"
+                    + ("  [yellow](dry run — nothing deleted)[/]"
+                       if rep["dry_run"] else ""))
+    for col in ("issued_month", "model_version", "rows"):
+        t.add_column(col, justify="right" if col == "rows" else "left")
+    for r in rep["candidates"]:
+        t.add_row(r["issued_month"], r["model_version"], f"{r['n_rows']:,}")
+    if not rep["candidates"]:
+        t.add_row("—", "—", "0")
+    console.print(t)
+    console.print(f"[bold]{rep['n_rows']:,}[/] rows "
+                  + ("would be deleted" if rep["dry_run"] else "deleted")
+                  + f", ~{rep['estimated_bytes_freed'] / 1e6:.1f} MB estimated "
+                    f"(--keep-vintages {rep['keep_vintages']})")
+    if rep["kept_open_horizon"]:
+        console.print(
+            f"[yellow]{len(rep['kept_open_horizon'])} vintage(s) kept despite "
+            "ranking outside --keep-vintages: horizon not yet elapsed, or not "
+            "yet scored.[/]")
+    if not rep["dry_run"]:
+        console.print(
+            f"[dim]CHECKPOINT {'ok' if rep['checkpointed'] else 'skipped'} · "
+            f"VACUUM {'ok' if rep['vacuumed'] else 'skipped'} -- neither "
+            "shrinks the .duckdb FILE by itself; see this command's "
+            "docstring.[/]")
 
 
 # ---------------------------------------------------------------------------

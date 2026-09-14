@@ -80,6 +80,17 @@ chains-refresh: ## Monthly: filing pipeline, first-seen ledger, detect chains, e
 	# has elapsed and has no outcome row yet, so a vintage is scored when its
 	# horizon comes due rather than when somebody remembers.
 	uv run loci forecast score
+	# RETENTION (GTM-163), after `score` and before `recommendations check`:
+	# one issue+score cycle adds ~1.4 GB to analysis.forecast and nothing
+	# bounded that before this. `forecast prune` deletes PREDICTION rows for
+	# vintages older than the newest 3 per model_version, never touching
+	# forecast_run/forecast_outcome and never an unscored or open-horizon
+	# vintage -- see `loci forecast prune --help`.
+	#
+	# DRY RUN BY DEFAULT: a bare `make chains-refresh` never deletes forecast
+	# rows. Set LOCI_FORECAST_PRUNE_REAL=1 in the environment to flip real
+	# deletion on -- the owner decides when.
+	uv run loci forecast prune --keep-vintages 3
 	# LAST, and the order is load-bearing: the check reads BOTH the first-seen
 	# ledger (written by `poi-snapshot`, step 1/4 inside `chains refresh`) and
 	# the filing pipeline (written above). Running it first would score every

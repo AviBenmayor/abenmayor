@@ -1,0 +1,36 @@
+-- ---------------------------------------------------------------------------
+-- 030_forecast_supply_hash.sql -- the SUPPLY-SET IDENTITY on the forecast run.
+--
+-- Owner ruling, 2026-09-14: the closure gate (GTM-153, score/supply.py
+-- GATE_CLOSED) stays ON, and a peer is re-fitting the supply baseline
+-- (supply_hash 767b28674e30 -> 9a11a2f5...). `model_version` already hashes
+-- the FORM (feature list, fit-window rule, horizon, radius, support floor)
+-- but said nothing about WHICH canonical POIs the frozen features were read
+-- off -- so two runs of the identical form, on two different supply sets,
+-- could carry the same version and no column would say so.
+--
+-- Two things change together, in model/forecast.py:
+--   * `model_version()` now hashes `score.supply.supply_hash(con)` (and the
+--     GATE_CLOSED flag, redundantly -- it is already folded into supply_hash
+--     itself, but a reader should not have to re-derive that to see it was
+--     accounted for) alongside the FORM inputs it already hashed, so a
+--     version now describes both what the model IS and what it was FIT ON.
+--   * this column records the supply hash actually used, per run, so a
+--     reader does not have to recompute `model_version()`'s hash payload
+--     just to find out which supply set a stored vintage rests on.
+--
+-- ADD COLUMN, not a new table: `analysis.forecast_run` is already the ONE
+-- row per (issued_month, model_version) home for fit-time facts (window,
+-- coefficients, baselines, ships verdict) -- the supply identity is exactly
+-- such a fact, not a new grain.
+--
+-- 029 belongs to a peer's in-flight colocation work
+-- (sql/029_poi_colocation.sql); this file is numbered past it rather than
+-- colliding with it.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE analysis.forecast_run
+    ADD COLUMN IF NOT EXISTS supply_hash VARCHAR;
+-- NULL on any row written before this migration landed -- those vintages
+-- were fit before the supply identity was tracked at all, and a NULL here is
+-- the honest record of that, not a value to backfill by guessing.
