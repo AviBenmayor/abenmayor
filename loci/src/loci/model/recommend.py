@@ -572,7 +572,10 @@ def area_facts(con, area: str, *, bbox=None, nta=None, boroughs=("MN", "BK"),
                    median(c.revenue_p75)  AS revenue_p75,
                    median(c.rent_ceiling) AS rent_ceiling,
                    count(c.revenue_p50)   AS n_revenue_addresses,
-                   max(c.revenue_model_version) AS revenue_model_version
+                   max(c.revenue_model_version) AS revenue_model_version,
+                   median(c.revenue_cap_p50) AS revenue_cap_p50,
+                   avg(CASE WHEN c.revenue_p50 IS NULL THEN NULL
+                            WHEN c.capacity_bound THEN 1.0 ELSE 0.0 END) AS share_capacity_bound
             FROM analysis.address_category c
             WHERE c.address_id IN (SELECT a.address_id {base})
             GROUP BY 1""", p).fetchdf().set_index("category")
@@ -690,7 +693,9 @@ def _revenue_facts(revenue: pd.DataFrame, cat: str) -> dict | None:
             "revenue_p75": _f(row.get("revenue_p75")),
             "rent_ceiling": _f(row.get("rent_ceiling")),
             "n_revenue_addresses": int(row.get("n_revenue_addresses") or 0),
-            "revenue_model_version": row.get("revenue_model_version")}
+            "revenue_model_version": row.get("revenue_model_version"),
+            "revenue_cap_p50": _f(row.get("revenue_cap_p50")),
+            "share_capacity_bound": _f(row.get("share_capacity_bound"))}
 
 
 def _f(v):
@@ -855,8 +860,16 @@ def render_card(card: dict, rules: dict) -> str:
                           f"({_n((rev.get('rent_ceiling') or 0) / 12, '${:,.0f}/mo')})",
                           "- *The range is a PARAMETER band (lambda spread, income MOE, beta "
                           "refit spread), not the spread of real store outcomes; the level is "
-                          "fitted to the Economic Census county mean and has no out-of-sample "
-                          "test. A typical operator at this site, not a specific one.*"]
+                          "fitted to a county-wide anchor and has no out-of-sample test. A "
+                          "typical operator at this site, not a specific one.*"]
+                if rev.get("share_capacity_bound") is not None:
+                    lines += [
+                        f"- **Capacity ceiling** (PLUTO retail area on the lot x a per-category "
+                        f"$/sq ft/yr band): median "
+                        f"{_n(rev.get('revenue_cap_p50'), '${:,.0f}/yr')}; "
+                        f"**{_n(rev.get('share_capacity_bound'), '{:.0%}')}** of addresses here "
+                        f"are capped by it rather than by demand. A capped number is a statement "
+                        f"about the size of the box, not about the catchment.*"]
             lines += [
                       f"- *No expected profit is emitted, ever — "
                       f"{rules['verdict']['never_emit']} is not a number this model has.*"]

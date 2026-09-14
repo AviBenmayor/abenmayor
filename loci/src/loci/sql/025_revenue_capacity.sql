@@ -1,0 +1,39 @@
+-- ==========================================================================
+-- THE CAPACITY CEILING (site-revenue model v0.2, model/revenue.py docstring 7d)
+--
+-- v0 had no capacity term at all: a 1,000 sq ft one-register cafe and a
+-- 5,000 sq ft cafe got the same number, because nothing in the spend-pool x
+-- capture-share x leakage chain knows how big the box is. v0.2 adds a ceiling:
+--
+--   area(a)     = PLUTO `retailarea` on the address's BBL, divided by the DOF
+--                 Storefront Registry count of storefronts on that BBL where
+--                 that count exceeds 1; or a category-typical footprint from
+--                 src/loci/model/revenue.yaml where retailarea is 0/NULL
+--   cap_q(a, c) = area(a) * revenue.yaml capacity.psf_per_year[c][q]
+--   revenue_q   = min(model_q, cap_q)
+--
+-- revenue_cap_p50 is the p50 ceiling the shipped p50 was compared against. It
+-- is populated on every predicted row, INCLUDING rows where it did not bind,
+-- so the cap is auditable without re-deriving it from PLUTO.
+--
+-- capacity_bound is TRUE exactly where the ceiling was lower than the model
+-- and therefore replaced it. It is the column to filter on when asking "which
+-- of these numbers is a physics statement rather than a demand statement".
+--
+-- psf IS A CEILING BAND, NOT A CENTRAL ESTIMATE -- roughly the 75th-95th
+-- percentile of realised annual sales per square foot for the category. The
+-- sources are cited in revenue.yaml's `capacity:` block. The cap is applied
+-- AFTER lambda and is NOT inside the calibration or the backtest: the
+-- calibration's observations are POIs with a lat/lon and no BBL, so no retail
+-- area exists for them. It therefore has no out-of-sample test of its own, and
+-- the county median of the shipped numbers can sit BELOW the median anchor --
+-- by construction, and only downward.
+--
+-- NULL here means the same thing it means everywhere else in this table: not
+-- modelled. Never a capacity of zero.
+--
+-- Written ONLY by model/revenue.py's CATEGORY_REVENUE_COLUMNS, by UPDATE, on
+-- frame='lot' rows only (D84). Re-apply: `uv run loci revenue --boroughs MN,BK`.
+-- ==========================================================================
+ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS revenue_cap_p50 DOUBLE;
+ALTER TABLE analysis.address_category ADD COLUMN IF NOT EXISTS capacity_bound  BOOLEAN;

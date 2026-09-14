@@ -3341,6 +3341,17 @@ def revenue_apply(
         f"nodes, {report['sweep_seconds']:.0f}s) · shipped categories: "
         f"{', '.join(report['shipped_categories']) or 'NONE'} · "
         f"{report['rows_predicted']:,} address x category rows predicted")
+    for cat, c in (report.get("capacity") or {}).items():
+        console.print(
+            f"[dim]capacity ({cat}): {c['capacity_bound']:,}/{c['rows']:,} rows "
+            f"({(c['capacity_bound_share'] or 0):.1%}) bound by the square-footage ceiling · "
+            f"median model p50 ${c['median_model_p50_before_cap_usd'] or 0:,.0f} -> shipped "
+            f"${c['median_shipped_p50_usd'] or 0:,.0f} (median cap "
+            f"${c['median_cap_p50_usd'] or 0:,.0f}) · "
+            f"{c['area_from_typical_footprint']:,} rows used the category-typical footprint "
+            f"because PLUTO reports no retail area on the lot · "
+            f"{c['area_split_by_storefront_count']:,} rows split a lot's retail area across "
+            f"more than one registered storefront[/]")
     agree = report.get("homes_400m_agrees_with_supply_ratio")
     if agree is not None:
         colour = "green" if agree > 0.999 else "yellow"
@@ -3381,9 +3392,16 @@ def revenue_fit(
 
     t = Table(title="site-revenue calibration — lambda from EC county anchors, "
                     "beta from leave-one-ZIP-out skill")
+    # `lambda_field` is the calibration's own word for which lambda the shipped
+    # model uses (v0 the EC-mean one, v0.2 the median-anchored one). Reading it
+    # back rather than hardcoding a field name is what stops this table showing
+    # a number the model does not use.
+    lam_key = ((doc.get("settings") or {}).get("anchor_statistic") == "median"
+               and "lambda_median" or "lambda_per_store")
     for col, j in (("category", "left"), ("beta", "right"), ("gamma", "right"),
+                   ("eps", "right"), ("delta", "right"),
                    ("competition", "left"), ("lambda BK", "right"),
-                   ("lambda MN", "right"), ("EC $/estab BK", "right"),
+                   ("lambda MN", "right"), ("anchor $/estab BK", "right"),
                    ("rho oos", "right"), ("vs county", "right"), ("vs homes", "right"),
                    ("placebo", "center"), ("gate", "center")):
         t.add_column(col, justify=j)
@@ -3394,11 +3412,17 @@ def revenue_fit(
         colour = "green" if d.get("gate") == "pass" else "red"
 
         def _l(f):
-            v = (lam.get(f) or {}).get("lambda_per_store")
+            v = (lam.get(f) or {}).get(lam_key)
+            if v is None:
+                v = (lam.get(f) or {}).get("lambda_per_store")
             return "—" if v is None else f"{v:.3f}"
-        ec = (lam.get("047") or {}).get("ec_rev_per_estab_usd")
+        _bk = lam.get("047") or {}
+        ec = _bk.get("median_anchor_usd" if lam_key == "lambda_median"
+                     else "ec_rev_per_estab_usd") or _bk.get("ec_rev_per_estab_usd")
         t.add_row(cat, "—" if d.get("beta") is None else f"{d['beta']:.2f}",
                   "—" if d.get("gamma") is None else f"{d['gamma']:+.2f}",
+                  "—" if d.get("epsilon") is None else f"{d['epsilon']:.1f}",
+                  "—" if d.get("delta") is None else f"{d['delta']:.1f}",
                   d.get("competition_sign") or "—",
                   _l("047"), _l("061"),
                   "—" if ec is None else f"${ec:,.0f}",

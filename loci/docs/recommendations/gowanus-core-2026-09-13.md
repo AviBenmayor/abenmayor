@@ -2,7 +2,7 @@
 
 1,831 eligible addresses · Carroll Gardens-Cobble Hill-Gowanus-Red Hook, Park Slope · boroughs BK · bbox `[40.67, -73.995, 40.682, -73.982]`
 
-Generated 2026-09-13 · grading rules v1 (`src/loci/model/recommend_grades.yaml`) · supply hash `767b28674e30`
+Generated 2026-09-14 · grading rules v1 (`src/loci/model/recommend_grades.yaml`) · supply hash `767b28674e30`
 
 ## Summary — area × category
 
@@ -738,14 +738,15 @@ Caveats that travel with every number here: the supply baseline is REVEALED SUPP
 - DOF Storefront Registry snapshot 2024-12-31 — self-reported, never a listing; no rent or sqft published.
 
 ### 6. Economics — grade **C** (load-bearing)
-*no cash-flow comps, but the site-revenue model ships for this category (revenue-v0): median revenue $1,673,663/yr over 1,831 addresses -- modelled, uncalibrated to local P&Ls*
+*no cash-flow comps, but the site-revenue model ships for this category (revenue-v0.2): median revenue $453,650/yr over 1,831 addresses -- modelled, uncalibrated to local P&Ls*
 
 - Comps: **n = 3** at `borough` level (Brooklyn)
 - Expected revenue: $1,012,650 · **supportable rent $72,000/yr** (source `listed`)
 - Cushion: — (`no_data`)
-- **Modelled revenue** (site-revenue revenue-v0, median of 1,831 addresses): **$1,673,663/yr** (p25 $1,077,090 – p75 $2,657,475)
-- **Rent ceiling** at the category occupancy-cost ratio: $133,893/yr ($11,158/mo)
-- *The range is a PARAMETER band (lambda spread, income MOE, beta refit spread), not the spread of real store outcomes; the level is fitted to the Economic Census county mean and has no out-of-sample test. A typical operator at this site, not a specific one.*
+- **Modelled revenue** (site-revenue revenue-v0.2, median of 1,831 addresses): **$453,650/yr** (p25 $364,776 – p75 $537,430)
+- **Rent ceiling** at the category occupancy-cost ratio: $36,292/yr ($3,024/mo)
+- *The range is a PARAMETER band (lambda spread, income MOE, beta refit spread), not the spread of real store outcomes; the level is fitted to a county-wide anchor and has no out-of-sample test. A typical operator at this site, not a specific one.*
+- **Capacity ceiling** (PLUTO retail area on the lot x a per-category $/sq ft/yr band): median $1,400,000/yr; **1%** of addresses here are capped by it rather than by demand. A capped number is a statement about the size of the box, not about the catchment.*
 - *No expected profit is emitted, ever — expected profit is not a number this model has.*
 
 ### 7. Coverage — grade **B** (load-bearing)

@@ -724,3 +724,105 @@ prices cannot see what actually broke.
 ## Owner evidence log (after the predictions; dated)
 
 - **2026-09-13, via the owner's contact:** "during covid he made more money." Qualitative; no figure. Model read: consistent with a labour-fixed-cost-bound café — in 2020–21 the fixed base fell (shortened hours, takeout-only, 1–2 staff instead of three shifts), the patio/outdoor-dining program added seats at zero rent, PPP/RRF grants and rent relief added cash, competitors closed, and Williamsburg's work-from-home residents became all-day customers for a café that lives on its 400 m shed. Post-2022 every one of those reversed: full 62-hour rota at $16.50 → $17.00 minimum wage with the SUI base tripling, weekday daytime thinned by return-to-office, delivery commissions uncapped in 2025, competitors back. Nothing in this datum distinguishes the $900k and $1.5M revenue camps; it does favour the cost model's mechanism (profit driven by the labour base and local daytime demand, not by rent).
+
+---
+
+## Appendix — model v0.2, after the owner's critique, still before any figure from the owner
+
+**Appended 2026-09-14.** Nothing above this line has been altered. The owner has
+still supplied no revenue figure for Lion's Milk; this is a revised *prediction*,
+not a correction toward a known answer. It is scored by the same frozen rule in §4.
+
+The owner's critique of the v0 overshoot named five causes, ranked. `revenue-v0.2`
+(`src/loci/model/revenue.py`, `src/loci/model/revenue.yaml`) implements four of
+them; the fifth (survivorship in the Economic Census anchor) is narrowed by the
+median anchor but not removed, and no public source can remove it.
+
+### Shipped category: `restaurant` (unchanged — `cafe_bakery` still fails the gate)
+
+| | p25 | **p50** | p75 | rent ceiling @ OCR 0.08 | $/sq ft on 1,000 sq ft |
+|---|---:|---:|---:|---:|---:|
+| **v0** (D81, the number in §3a above) | $1,605,592 | **$2,494,887** | $3,876,741 | $199,591/yr | $2,495 |
+| **v0.2** (shipped 2026-09-14) | $400,000 | **$494,500** | $573,722 | $39,560/yr | $495 |
+| ratio | 0.249× | **0.198×** | 0.148× | 0.198× | |
+
+- **Capacity cap:** `revenue_cap_p50` **$700,000** = PLUTO `retailarea` 1,000 sq ft
+  × the restaurant p50 ceiling of $700/sq ft/yr. The DOF Storefront Registry files
+  **no** storefront at BBL 3023290030 (bldgclass S1, "residential with one store"),
+  so the area is **not** split and the full 1,000 sq ft is used.
+- **`capacity_bound` = FALSE.** The cap does *not* bind on the p50: the other three
+  corrections already put the number below the ceiling ($494,500 < $700,000). It
+  **does** bind on the p25, which is pinned exactly at 1,000 × $400 = $400,000.
+- The implied $/sq ft falls from $2,495 to **$495** — inside the $210–$365
+  independent-restaurant band's upper neighbourhood and far below the
+  $700–$1,200 NYC-specialty-café ceiling this file researched in §5 before the
+  model existed.
+
+### Which correction moved the number most
+
+Each correction applied **alone** on top of v0, with λ re-fitted under that
+correction each time (so these are *net* effects after the county anchor
+re-absorbs what the correction removed, not gross site-level effects):
+
+| correction applied alone to v0 | p50 | × v0 |
+|---|---:|---:|
+| **Median anchor** (λ to the CBP band median, not the EC mean) | $1,021,934 | **0.410×** |
+| **Capacity ceiling** (1,000 sq ft × $700/sq ft/yr) | $700,000 | 0.281× |
+| **Pool elasticity** ε 1.0 → 0.6 (δ = 0; the price index earned nothing here) | $2,000,074 | 0.802× |
+| **γ site cap** (neighbours may not raise a site above the corridor-neutral share) | $2,029,930 | 0.814× |
+| all four together (**shipped**) | $494,500 | 0.198× |
+
+**The median anchor is the single correction that moves the shipped number
+most.** The capacity ceiling looks larger in isolation (0.281×) but contributes
+nothing to the shipped p50, because by the time the other three have been applied
+the model is already below the ceiling; its remaining work here is on the p25.
+
+Two numbers worth separating, because they are easy to confuse:
+
+- The **gross** γ effect at this address is much larger than the net 0.814×. v0's
+  competition multiplier at 104 Roebling was **×3.53** — the site was multiplied
+  by 3.53 purely for having 104 restaurants within 400 m — and capping it removes
+  **71.7%** of that gross number. The net effect is only −18.6% because λ is
+  re-fitted on the capped predictor, and the *median* Brooklyn establishment also
+  sits on a corridor and also loses its multiplier. What survives is the part of
+  Roebling's boost that exceeded the median establishment's.
+- λ_mean (v0) vs λ_median (v0.2) for Kings restaurants: **0.3116×**. The EC mean
+  is $925,896 per establishment; the CBP-2023 employment-size-band median is a
+  <5-employee shop, which at EC's own $105,169 of receipts per employee is
+  **$262,924**.
+
+### What is still wrong with this number, stated before scoring
+
+1. **The median anchor is a lower bound, in a known direction.** EC/CBP count
+   *paid* employees. A two-person owner-operated shop reports one or two, and the
+   owners' own labour is uncounted, so receipts per *paid* employee are higher at
+   the bottom of the size distribution than the county average this maps assumes.
+   Pricing the median band at the county-average revenue per employee therefore
+   **understates** the median establishment. The band → revenue map reconciles to
+   the EC mean at 1.20× for Kings restaurants (`mean_reconciliation_ratio`), so
+   this is not a small residual.
+2. **Survivorship is untouched.** Both sources observe businesses that exist.
+3. **The capacity band is a judgement, not a calibration.** $400/$700/$1,000 per
+   sq ft/yr for restaurants is anchored on national benchmarks (RestaurantOwner /
+   Toast $150–325 full-service, ~$505 top fast-casual franchises, Starbucks ~$744)
+   and set at the NYC top end. It has no out-of-sample test of its own and cannot
+   have one at address grain.
+4. **Lion's Milk is a café being priced by the restaurant model.** That was true
+   in v0 and is still true: `cafe_bakery` fails the gate at every eligible ε.
+5. **ε = 0.6 is not the owner's 0.3–0.5.** The backtest refuses below 0.6 — see
+   the gate scan in `revenue_calibration.yaml`; at ε ≤ 0.5 the restaurant model
+   stops beating the café model at predicting restaurant employment, which is
+   exactly what the cross-category placebo exists to detect.
+
+### Directional claims for v0.2 (these replace nothing above; §4's rule scores both)
+
+- **(iv)** I predict v0.2's p50 of **$494,500 is LOW** for this business — the
+  opposite sign to v0. The bottom-up build in this file landed at ~$1.44–1.51M,
+  and three of the five corrections push in one direction with no offsetting term.
+- **(v)** I predict the truth lies **between v0.2's p50 and the bottom-up p50**,
+  i.e. in $494,500–$1,508,175. If it does, neither the model nor the bottom-up
+  build wins outright and the useful output is the interval, not either endpoint.
+- **(vi)** I predict v0.2's p25–p75 band ($400,000–$573,722) **does not contain
+  the truth**. It is a parameter band that has narrowed (σ_β fell from 0.62 to
+  0.09 when ε was pinned by the gate), and a narrower band around a level that
+  has moved 5× is a false precision I am flagging rather than hiding.

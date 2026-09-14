@@ -390,12 +390,13 @@ def test_guard_raises_on_a_column_another_module_owns():
 
 
 def test_every_written_column_is_declared_in_the_schema():
-    """The ALTERs at the tail of 002_schema.sql and the module's SET lists must
-    not drift apart -- a column in one and not the other fails at runtime on a
-    fresh database, long after the run that needed it."""
+    """The schema ALTERs and the module's SET lists must not drift apart -- a
+    column in one and not the other fails at runtime on a fresh database, long
+    after the run that needed it. Scans EVERY migration, not just 002: v0.2's
+    capacity columns arrive in 025_revenue_capacity.sql."""
     from loci.db import PKG
 
-    sql = (PKG / "sql" / "002_schema.sql").read_text()
+    sql = "\n".join(p.read_text() for p in sorted((PKG / "sql").glob("*.sql")))
     for col in rev.CATEGORY_REVENUE_COLUMNS:
         assert f"analysis.address_category ADD COLUMN IF NOT EXISTS {col}" in sql, col
     for col in rev.ADDRESS_REVENUE_COLUMNS:
@@ -692,3 +693,478 @@ def test_a_street_row_gets_no_revenue_and_leaves_every_lot_row_untouched():
         "SELECT address_id, homes_800m FROM analysis.address").fetchall())
     assert homes["3001"] == 4200
     assert homes["seg:5:0"] is None
+
+
+# ================================================================= v0.2
+# The four corrections of docstring (7): a fitted pool elasticity, a median
+# anchor, a capacity ceiling and a site-level cap on a negative gamma. The
+# load-bearing ones here are the two ONE-SIGNED tests -- a cap that can raise a
+# number is not a cap -- and the v0 reproduction, which is what keeps D81's
+# numbers regenerable.
+
+
+def test_version_settings_is_the_only_place_the_version_string_is_read():
+    """Both versions must resolve, and v0 must be the LINEAR, MEAN-anchored,
+    uncapped model it was."""
+    spec = rev.load_spec()
+    v0 = rev.version_settings({**spec, "model_version": "revenue-v0"})
+    assert v0["epsilon_grid"] == [1.0], "v0 is linear in the pool by definition"
+    assert v0["delta_grid"] == [0.0]
+    assert v0["anchor_statistic"] == "mean"
+    assert v0["gamma_site_cap"] is False
+    assert v0["capacity_cap"] is False
+    v02 = rev.version_settings({**spec, "model_version": "revenue-v0.2"})
+    assert v02["anchor_statistic"] == "median"
+    assert v02["gamma_site_cap"] is True
+    assert v02["capacity_cap"] is True
+    assert min(v02["epsilon_grid"]) == 0.0 and max(v02["epsilon_grid"]) == 1.0
+
+
+def test_version_settings_refuses_an_unknown_version_rather_than_guessing():
+    with pytest.raises(RuntimeError, match="model_version"):
+        rev.version_settings({**rev.load_spec(), "model_version": "revenue-v9"})
+
+
+def test_grid3_reduces_to_grid_under_v0_in_the_same_order():
+    """v0's candidate indexing has to survive, or the reproduction test would be
+    comparing different candidates with the same index."""
+    spec = rev.load_spec()
+    v0 = rev.version_settings({**spec, "model_version": "revenue-v0"})
+    g3 = rev._grid3(spec, v0)
+    assert [(b, g) for b, g, _, _ in g3] == rev._grid(spec)
+    assert {e for _, _, e, _ in g3} == {1.0}
+    assert {d for _, _, _, d in g3} == {0.0}
+
+
+def test_uncalibrated_with_epsilon_one_and_delta_zero_is_exactly_v0():
+    edges, floor = [0, 100, 200], 50.0
+    rings = np.array([[2.0, 3.0], [0.0, 1.0]])
+    pool = np.array([1.0e5, 4.0e5])
+    v0 = pool * rev.huff_share(rings, 1.5, edges, floor, gamma=0.75)
+    got = rev.uncalibrated(pool, rings, 1.5, edges, floor, gamma=0.75,
+                           epsilon=1.0, delta=0.0)
+    assert np.allclose(got, v0)
+
+
+def test_epsilon_is_recovered_on_a_synthetic_panel_with_a_known_elasticity():
+    """THE IDENTIFICATION TEST. Spearman is rank-based and x -> x^eps is
+    monotone, so epsilon is identified ONLY through the within-ZIP aggregation:
+    the prediction for a ZIP is the MEAN of pool^eps over its establishments,
+    and a mean of powers is not a power of a mean. This panel makes that
+    channel strong on purpose -- the ZIPs differ in the DISPERSION of their
+    pools, not only in the level -- and the fit must then find the true
+    epsilon. It is also the demonstration of WHY the real fit's epsilon profile
+    is nearly flat: strip the dispersion variation out and the signal goes.
+    """
+    rng = np.random.default_rng(11)
+    eps_true = 0.4
+    nz, per = 40, 60
+    zips = [f"112{i:02d}" for i in range(nz)]
+    pools, zp = [], []
+    for z, spread in zip(zips, np.linspace(0.15, 1.4, nz)):
+        level = rng.uniform(4.0, 9.0)
+        pools.append(np.exp(rng.normal(level, spread, per)))
+        zp += [z] * per
+    pool = np.concatenate(pools)
+    zp = np.array(zp, dtype=object)
+    truth = np.array([np.mean(p ** eps_true) for p in pools])
+
+    grid = [round(0.1 * i, 1) for i in range(11)]
+    scores = []
+    for e in grid:
+        pred = np.array([np.mean(p ** e) for p in pools])
+        scores.append(rev._spearman(pred, truth))
+    assert grid[int(np.nanargmax(scores))] == pytest.approx(eps_true, abs=1e-9)
+
+    # and the same recovery through the real machinery: one county, no
+    # competition term, lambda fitted by _CatFit exactly as the fit does it.
+    anchor = {"047": {"rev_per_estab_usd": 5.0e5, "rcptot_usd": 1.0e9, "estab": 2000.0}}
+    cp = np.array(["047"] * len(pool), dtype=object)
+    F = rev._CatFit([pool ** e for e in grid], zips, zp, cp, anchor)
+    got = [rev._spearman(F.predict(k, F.lambdas(k)), truth) for k in range(len(grid))]
+    assert grid[int(np.nanargmax(got))] == pytest.approx(eps_true, abs=1e-9)
+
+
+def test_parsimonious_argmax_takes_the_smaller_epsilon_inside_the_tolerance():
+    """The PRE-REGISTERED tie-break. epsilon = 1 is the strong claim; when the
+    data cannot distinguish it from a weaker one, the weaker one ships."""
+    cands = [(0.5, 1.0, 0.3, 0.0), (0.5, 1.0, 0.7, 0.0), (0.5, 1.0, 1.0, 0.0)]
+    scores = np.array([0.695, 0.700, 0.698])
+    assert rev._parsimonious_argmax(scores, cands, 0.01) == 0
+    # outside the tolerance the best score wins, tie-break or no tie-break
+    assert rev._parsimonious_argmax(np.array([0.60, 0.70, 0.68]), cands, 0.01) == 1
+    # tolerance 0 is a plain argmax -- which is what revenue-v0 gets
+    assert rev._parsimonious_argmax(scores, cands, 0.0) == 1
+
+
+def test_parsimonious_argmax_cannot_run_away_to_epsilon_zero():
+    """The guard that makes the tie-break safe: a constant-within-county
+    prediction has no ZIP-grain skill and falls outside the tolerance by
+    itself, so 'smallest epsilon' never means 'no pool term'."""
+    cands = [(0.5, 1.0, 0.0, 0.0), (0.5, 1.0, 0.4, 0.0), (0.5, 1.0, 1.0, 0.0)]
+    scores = np.array([0.01, 0.70, 0.695])
+    assert rev._parsimonious_argmax(scores, cands, 0.01) == 1
+
+
+def test_loo_spearman_matches_the_scalar_rank_and_correlate_loop():
+    """The vectorised fold scorer is only worth having if it is the SAME
+    number. Rank-minus-one-for-each-outranked is exact for distinct values."""
+    rng = np.random.default_rng(5)
+    for n in (6, 15, 40):
+        preds, y = rng.normal(size=(n, n)), rng.normal(size=n)
+        fast = rev._loo_spearman_rows(preds, y)
+        slow = np.array([rev._spearman(np.delete(preds[i], i), np.delete(y, i))
+                         for i in range(n)])
+        assert np.allclose(fast, slow, atol=1e-12)
+
+
+def _synthetic_catfit(seed=3, n=300, nz=9):
+    rng = np.random.default_rng(seed)
+    zips = [f"112{i:02d}" for i in range(nz)]
+    zp = rng.choice(zips, n)
+    cp = np.where(rng.random(n) < 0.5, "047", "061").astype(object)
+    anchor = {"047": {"rev_per_estab_usd": 5.0e5, "rcptot_usd": 1.0e9, "estab": 2000.0},
+              "061": {"rev_per_estab_usd": 9.0e5, "rcptot_usd": 2.0e9, "estab": 2200.0}}
+    rhats = [rng.random(n) * 100 + 1 for _ in range(4)]
+    return rev._CatFit(rhats, zips, zp, cp, anchor), zips
+
+
+def test_predict_all_folds_matches_the_scalar_fold_loop():
+    """v0.2 searches 4,686 candidates x tens of folds; the loop had to be
+    vectorised. This pins that the vectorised arithmetic is identical to the
+    per-fold lambdas()/predict() pair v0 ran."""
+    F, zips = _synthetic_catfit()
+    for k in range(F.n_cands):
+        fast_lam, fast_p = F.lambdas_all_folds(k), F.predict_all_folds(k)
+        for i in range(len(zips)):
+            assert np.allclose(fast_lam[i], F.lambdas(k, drop_zip=i), equal_nan=True)
+            assert np.allclose(fast_p[i], F.predict(k, F.lambdas(k, drop_zip=i)),
+                               equal_nan=True)
+
+
+def test_catfit_accepts_a_generator_without_materialising_every_candidate():
+    F1, _ = _synthetic_catfit()
+    rng = np.random.default_rng(3)
+    assert F1.n_cands == 4
+
+
+# ------------------------------------------------------- the median anchor
+
+
+def test_median_band_employees_picks_the_band_holding_the_median_shop():
+    spec = rev.load_spec()
+    cbp = pd.DataFrame({
+        "county": ["047"] * 4,
+        "NAICS2017": ["722515"] * 4,
+        "EMPSZES": ["001", "210", "220", "230"],
+        "estab": [100.0, 40.0, 30.0, 30.0],
+    })
+    got = rev.median_band_employees(cbp, "cafe_bakery", spec)["047"]
+    # cumulative 40, 70 -- the 50th of 100 banded shops sits in band 220
+    assert got["band"] == "220"
+    assert got["emp_median"] == pytest.approx(spec["cbp"]["band_midpoints"]["220"])
+    assert got["usable"] is True
+
+
+def test_median_band_is_unusable_when_the_bands_are_suppressed():
+    spec = rev.load_spec()
+    cbp = pd.DataFrame({"county": ["047"] * 2, "NAICS2017": ["722515"] * 2,
+                        "EMPSZES": ["001", "210"], "estab": [100.0, 30.0]})
+    assert rev.median_band_employees(cbp, "cafe_bakery", spec)["047"]["usable"] is False
+
+
+def test_median_anchor_reconciles_the_band_map_against_the_ec_mean():
+    """THE RECONCILIATION. The band -> revenue map is EC's own receipts per
+    employee applied to CBP band midpoints. Applied to the MEAN band employment
+    it must reproduce EC's own mean receipts per establishment; if it does not,
+    the two sources disagree about what an establishment is and the median off
+    the same map is not trustworthy either."""
+    spec = rev.load_spec()
+    ec = pd.DataFrame([{"naics": "722515", "county": "047", "rcptot_k": 642110.0,
+                        "estab": 950.0, "emp": 7809.0, "payann_k": 1.0, "absent": False}])
+    cbp = pd.DataFrame({
+        "county": ["047"] * 6, "NAICS2017": ["722515"] * 6,
+        "EMPSZES": ["001", "210", "220", "230", "241", "242"],
+        "estab": [1044.0, 492.0, 276.0, 201.0, 71.0, 3.0]})
+    got = rev.median_anchor("cafe_bakery", spec, ec, cbp)["047"]
+    assert got["usable"] is True
+    assert got["ec_rev_per_estab_usd"] == pytest.approx(675_905, rel=1e-4)
+    assert got["ec_rev_per_emp_usd"] == pytest.approx(82_227, rel=1e-4)
+    assert got["cbp_median_band"] == "220"
+    assert got["median_rev_per_estab_usd"] == pytest.approx(575_589, rel=1e-4)
+    assert got["median_over_mean"] == pytest.approx(0.8516, abs=5e-4)
+    # the map priced at the MEAN band employment reproduces the EC mean to 3%
+    assert got["mean_reconciliation_ratio"] == pytest.approx(1.0, abs=0.05)
+
+
+def test_median_anchor_falls_back_to_the_mean_and_says_so():
+    """A fallback is RECORDED, never silently taken."""
+    spec = rev.load_spec()
+    ec = pd.DataFrame([{"naics": "722515", "county": "047", "rcptot_k": 642110.0,
+                        "estab": 950.0, "emp": 0.0, "payann_k": 1.0, "absent": False}])
+    cbp = pd.DataFrame({"county": ["047"] * 2, "NAICS2017": ["722515"] * 2,
+                        "EMPSZES": ["001", "210"], "estab": [100.0, 99.0]})
+    got = rev.median_anchor("cafe_bakery", spec, ec, cbp)["047"]
+    assert got["usable"] is False
+    assert got["anchor_fallback"] == "mean"
+    assert got["median_rev_per_estab_usd"] == pytest.approx(got["ec_rev_per_estab_usd"])
+
+
+def test_both_lambdas_ship_side_by_side_so_the_correction_is_visible():
+    rhat = np.array([1.0, 2.0, 3.0, 100.0])         # deliberately right-skewed
+    county = np.array(["047"] * 4, dtype=object)
+    anchor = {"047": {"rev_per_estab_usd": 1.0e6, "rcptot_usd": 4.0e6, "estab": 4.0}}
+    med = {"047": {"median_rev_per_estab_usd": 5.0e5, "usable": True}}
+    d = rev._lambdas(rhat, county, anchor, med_anchor=med)["047"]
+    assert d["mean_rhat"] == pytest.approx(26.5)
+    assert d["median_rhat"] == pytest.approx(2.5)
+    assert d["lambda_per_store"] == pytest.approx(1.0e6 / 26.5)
+    assert d["lambda_median"] == pytest.approx(5.0e5 / 2.5)
+    assert d["lambda_median_over_mean"] == pytest.approx(
+        (5.0e5 / 2.5) / (1.0e6 / 26.5), rel=1e-3)
+
+
+def test_lambda_key_is_the_one_place_the_anchor_statistic_becomes_a_field():
+    assert rev._lambda_key({"anchor_statistic": "median"}) == "lambda_median"
+    assert rev._lambda_key({"anchor_statistic": "mean"}) == "lambda_per_store"
+
+
+# ------------------------------------------------------ the two ONE-SIGNED caps
+
+
+def test_gamma_site_cap_never_raises_a_number():
+    """docstring (7e). A negative gamma may keep its ZIP-level skill, but at a
+    SITE it may not multiply the prediction above the corridor-neutral share."""
+    edges, floor = [0, 100, 200, 400], 50.0
+    rng = np.random.default_rng(7)
+    rings = rng.integers(0, 40, size=(500, 3)).astype(float)
+    pool = rng.random(500) * 1e6 + 1e4
+    for gamma in (-0.75, -0.5, -0.25, 0.0, 0.25, 1.0):
+        free = rev.uncalibrated(pool, rings, 1.0, edges, floor, gamma=gamma)
+        capped = rev.uncalibrated(pool, rings, 1.0, edges, floor, gamma=gamma,
+                                  gamma_site_cap=True)
+        assert np.all(capped <= free + 1e-9), gamma
+        if gamma >= 0:
+            assert np.allclose(capped, free), "a non-negative gamma must be untouched"
+        else:
+            # the term vanishes entirely: every site gets the neutral share
+            assert np.allclose(capped, pool)
+
+
+def test_capacity_cap_never_raises_a_number():
+    """docstring (7d). min() is one-signed by construction; this pins that the
+    shipped arithmetic really is a min and that p25/p50/p75 stay ordered."""
+    rng = np.random.default_rng(9)
+    model = rng.random(1000) * 5e6 + 1e4
+    sig = rng.random(1000) * 0.8
+    z = 0.6744897501960817
+    p25, p50, p75 = model * np.exp(-z * sig), model, model * np.exp(z * sig)
+    area = rng.random(1000) * 4000 + 200
+    band = rev.capacity_band("restaurant")
+    c25, c50, c75 = area * band["p25"], area * band["p50"], area * band["p75"]
+    n25, n50, n75 = np.minimum(p25, c25), np.minimum(p50, c50), np.minimum(p75, c75)
+    assert np.all(n50 <= p50 + 1e-9)
+    assert np.all(n25 <= p25 + 1e-9) and np.all(n75 <= p75 + 1e-9)
+    assert np.all(n25 <= n50 + 1e-6) and np.all(n50 <= n75 + 1e-6)
+    assert np.any(n50 < p50), "the fixture must actually exercise the cap"
+
+
+def test_capacity_band_is_a_ceiling_not_a_central_estimate():
+    """Ordered, positive, and set above the national CENTRAL benchmarks the
+    revenue.yaml sources cite -- a ceiling that sat at the median would cap
+    half the city."""
+    spec = rev.load_spec()
+    for cat in spec["capacity"]["psf_per_year"]:
+        b = rev.capacity_band(cat, spec)
+        assert 0 < b["p25"] < b["p50"] < b["p75"]
+    # [1] full-service restaurants: $250-325/sq ft is "moderately profitable"
+    assert rev.capacity_band("restaurant")["p50"] > 325
+    # [3] Starbucks, the highest-productivity mass-market cafe: ~$744/sq ft
+    assert rev.capacity_band("cafe_bakery")["p75"] > 744
+
+
+def test_capacity_area_flags_the_typical_footprint_fallback():
+    spec = rev.load_spec()
+    demise = np.array([1000.0, 0.0, np.nan, -5.0])
+    area, used_typical = rev.capacity_area(demise, "restaurant", spec)
+    typ = float(spec["capacity"]["typical_sqft"]["restaurant"])
+    assert area.tolist() == [1000.0, typ, typ, typ]
+    assert used_typical.tolist() == [False, True, True, True]
+
+
+def test_price_index_is_one_where_income_is_unknown_not_zero():
+    """A missing income is 'no information about the price level', never 'a
+    cheap neighbourhood' -- the same rule quintile_of follows."""
+    inc = np.array([100_000.0, np.nan, 0.0, 50_000.0])
+    got = rev.price_index(inc, 100_000.0)
+    assert got.tolist() == [1.0, 1.0, 1.0, 0.5]
+    assert rev.price_index(inc, np.nan).tolist() == [1.0] * 4
+
+
+def test_price_index_enters_only_through_delta():
+    edges, floor = [0, 100], 50.0
+    rings = np.array([[1.0], [4.0]])
+    pool, p = np.array([1.0e5, 2.0e5]), np.array([2.0, 0.5])
+    base = rev.uncalibrated(pool, rings, 1.0, edges, floor, pindex=p, delta=0.0)
+    with_d = rev.uncalibrated(pool, rings, 1.0, edges, floor, pindex=p, delta=0.5)
+    assert np.allclose(base, rev.uncalibrated(pool, rings, 1.0, edges, floor))
+    assert np.allclose(with_d / base, p ** 0.5)
+
+
+def test_the_capacity_columns_are_declared_in_the_schema():
+    sql = (rev.PKG_ROOT / "sql" / "025_revenue_capacity.sql").read_text()
+    for col in ("revenue_cap_p50", "capacity_bound"):
+        assert col in rev.CATEGORY_REVENUE_COLUMNS
+        assert f"ADD COLUMN IF NOT EXISTS {col}" in sql
+
+
+def test_write_revenue_fills_a_column_the_caller_did_not_produce():
+    """A v0 calibration produces no capacity columns; the SET list is one fixed
+    pinned list regardless, so the missing ones are written NULL."""
+    from loci import db as locidb
+
+    con = locidb.connect(":memory:")
+    locidb.init_schema(con)
+    con.execute("INSERT INTO analysis.address_category (address_id, borough, category, frame) "
+                "VALUES ('1','BK','restaurant','lot')")
+    rev.write_revenue(con, pd.DataFrame({
+        "address_id": ["1"], "borough": ["BK"], "category": ["restaurant"],
+        "revenue_p25": [1.0], "revenue_p50": [2.0], "revenue_p75": [3.0],
+        "rent_ceiling": [0.2], "revenue_model_version": ["revenue-v0"]}), ["BK"])
+    got = con.execute("SELECT revenue_p50, revenue_cap_p50, capacity_bound "
+                      "FROM analysis.address_category").fetchone()
+    assert got == (2.0, None, None)
+
+
+def test_pool_factor_keeps_an_unknown_pool_unknown_at_every_epsilon():
+    """numpy evaluates nan ** 0 as 1.0. Left alone that would give the
+    epsilon = 0 candidate a LARGER evaluation sample than every other
+    candidate -- every establishment with an unknown tract income would
+    re-enter the fit as a 1.0 instead of being dropped -- and a grid search
+    comparing candidates fitted on different samples is not a grid search."""
+    pool = np.array([1.0, 0.0, np.nan, 4.0])
+    for e in (0.0, 0.4, 1.0):
+        got = rev.pool_factor(pool, e)
+        assert np.isnan(got[2]), f"epsilon {e} resurrected an unknown pool"
+        assert np.isfinite(got[[0, 1, 3]]).all()
+    assert rev.pool_factor(pool, 1.0).tolist()[3] == 4.0
+    assert rev.pool_factor(pool, 0.5).tolist()[3] == 2.0
+
+
+def test_epsilon_is_chosen_by_the_gate_not_by_an_argmax():
+    """The unconstrained argmax came back degenerate (epsilon = 0 deletes the
+    demand pool and the placebo caught it), and a bare prior would be an
+    assertion. v0.2 refits the whole family at every epsilon and ships the
+    SMALLEST one that still passes the full gate."""
+    vs = rev.version_settings()
+    assert vs["epsilon_selection"] == "smallest_gate_passing"
+    assert vs["epsilon_shipped"] is None
+    assert min(vs["epsilon_grid"]) == 0.0 and max(vs["epsilon_grid"]) == 1.0
+    v0 = rev.version_settings({**rev.load_spec(), "model_version": "revenue-v0"})
+    assert v0["epsilon_selection"] == "fixed", "v0 must not acquire a scan it never had"
+    assert v0["epsilon_grid"] == [1.0]
+
+
+def test_the_shipped_epsilon_is_the_smallest_one_that_passed_the_gate():
+    """The rule has to be visible in the artefact: every smaller epsilon in the
+    scan must have FAILED, or the shipped one was not the smallest passing."""
+    cal = rev.load_calibration()
+    if not cal or cal.get("model_version") != "revenue-v0.2":
+        pytest.skip("no v0.2 calibration on disk")
+    for cat, d in cal["categories"].items():
+        scan = d.get("epsilon_gate_scan")
+        if not scan or d.get("gate") != "pass":
+            continue
+        shipped = float(d["epsilon"])
+        for e, r in scan.items():
+            if float(e) < shipped:
+                assert r["gate"] != "pass", f"{cat} could have shipped at epsilon {e}"
+        assert scan[str(shipped)]["gate"] == "pass", cat
+
+
+def test_the_calibration_reports_the_fitted_epsilon_beside_the_shipped_one():
+    """The gap between what the search wanted and what ships must never be
+    invisible in the shipped artefact."""
+    cal = rev.load_calibration()
+    if not cal or cal.get("model_version") != "revenue-v0.2":
+        pytest.skip("no v0.2 calibration on disk")
+    for cat, d in cal["categories"].items():
+        if d.get("beta") is None:
+            continue
+        assert "epsilon_fitted_unconstrained" in d, cat
+        assert "epsilon_profile" in d and "epsilon_identified" in d, cat
+        assert d["epsilon"] in rev.version_settings()["epsilon_grid"], cat
+        assert d.get("epsilon_gate_scan"), cat
+
+
+def test_delta_ships_only_where_it_beats_its_own_absence():
+    cal = rev.load_calibration()
+    if not cal or cal.get("model_version") != "revenue-v0.2":
+        pytest.skip("no v0.2 calibration on disk")
+    for cat, d in cal["categories"].items():
+        pi = d.get("price_index") or {}
+        if not pi or pi.get("adds_skill") is None:
+            continue
+        if not pi["adds_skill"]:
+            assert d["delta"] == 0.0, f"{cat} shipped a price index that earned nothing"
+
+
+def test_the_epsilon_floor_is_a_structural_constraint_not_a_tuning_knob():
+    """`smallest epsilon that passes the gate` needs a floor, because the gate
+    CAN be passed by a model with no demand pool at all -- cafe_bakery passed
+    at epsilon = 0 on the 2026-09-13 scan, where the only spatial signal left is
+    incumbent density, which is the rejected D1 thesis. The floor is the bottom
+    of the published retail demand elasticities and of the owner's prior."""
+    vs = rev.version_settings()
+    assert vs["epsilon_floor"] == 0.3
+    assert vs["epsilon_floor"] in vs["epsilon_grid"]
+    v0 = rev.version_settings({**rev.load_spec(), "model_version": "revenue-v0"})
+    assert v0["epsilon_floor"] == 0.0, "v0 never had a floor and must not acquire one"
+
+
+def test_nothing_ships_below_the_epsilon_floor_however_well_it_scored():
+    cal = rev.load_calibration()
+    if not cal or cal.get("model_version") != "revenue-v0.2":
+        pytest.skip("no v0.2 calibration on disk")
+    floor = rev.version_settings()["epsilon_floor"]
+    for cat, d in cal["categories"].items():
+        if d.get("gate") != "pass":
+            continue
+        assert float(d["epsilon"]) >= floor, f"{cat} shipped below the floor"
+        # and if it DID pass below the floor, the artefact has to say so
+        if d.get("epsilon_passed_below_floor"):
+            assert "D1" in (d.get("epsilon_shipped_reason") or ""), cat
+
+
+def test_lambda_is_fitted_on_the_predictor_that_actually_ships():
+    """The gamma site cap is applied at an ADDRESS but the lambda calibration
+    runs over ESTABLISHMENTS, which sit on retail corridors. Fitting lambda
+    against the UNCAPPED share and applying it to capped predictions divides
+    the whole level by the median establishment's agglomeration multiplier --
+    it put the median Manhattan restaurant at $130k against a $1.67M median
+    anchor on the first v0.2 apply. The backtest keeps gamma uncapped (that is
+    where its ranking skill lives); lambda must see the shipped predictor."""
+    import inspect
+    src = inspect.getsource(rev._fit_at)
+    assert "rhat_ship" in src and "lam_full = _lambdas(rhat_ship" in src
+    cal = rev.load_calibration()
+    if not cal or cal.get("model_version") != "revenue-v0.2":
+        pytest.skip("no v0.2 calibration on disk")
+    for cat, d in cal["categories"].items():
+        for f, L in (d.get("lambda") or {}).items():
+            assert "site-capped" in (L.get("fitted_on") or ""), f"{cat}/{f}"
+
+
+def test_the_median_anchor_is_reproduced_by_the_shipped_lambda():
+    """The defining property of the median anchor, checked on the artefact:
+    lambda_median x the median R_hat over the county's establishments must
+    equal the CBP-band median revenue per establishment."""
+    cal = rev.load_calibration()
+    if not cal or cal.get("model_version") != "revenue-v0.2":
+        pytest.skip("no v0.2 calibration on disk")
+    for cat, d in cal["categories"].items():
+        for f, L in (d.get("lambda") or {}).items():
+            if not L.get("lambda_median") or not L.get("median_rhat"):
+                continue
+            assert L["lambda_median"] * L["median_rhat"] == pytest.approx(
+                L["median_anchor_usd"], rel=1e-4), f"{cat}/{f}"

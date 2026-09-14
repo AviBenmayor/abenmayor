@@ -26,8 +26,194 @@
 # across quintiles and (2) the SPATIAL distribution of households and
 # incumbents. Those two are what the ZIP backtest tests, and they are the only
 # claims a passing gate licenses.
-version: 1
-model_version: "revenue-v0"
+version: 2
+# SWITCH. Set this back to "revenue-v0" and re-run `loci revenue fit` to
+# reproduce the D81 numbers exactly: epsilon pinned to 1, lambda on the EC
+# MEAN, no capacity ceiling, no site-level gamma cap, no price index.
+model_version: "revenue-v0.2"
+
+# ---------------------------------------------------------------- versions
+# Everything that differs between the two shipped models. The code reads
+# version_settings(spec) = versions[model_version] and never branches on the
+# version string anywhere else, so adding a v0.3 is a block here, not a fork.
+versions:
+  revenue-v0:
+    epsilon_grid: [1.0]          # revenue LINEAR in the spend pool
+    delta_grid: [0.0]            # no price-index term
+    anchor_statistic: mean       # lambda matches the EC MEAN receipts/estab
+    gamma_site_cap: false        # a negative gamma may raise a site
+    capacity_cap: false          # no square-footage ceiling
+  revenue-v0.2:
+    # Pool elasticity: R_hat = Pool^epsilon * P^delta * s(beta, gamma).
+    # epsilon is fitted INSIDE every leave-one-ZIP-out fold jointly with beta
+    # and gamma. See the module docstring (7a) for why this grid is only weakly
+    # identified by a ZIP-grain rank target and why the profile is reported in
+    # full rather than summarised by an argmax.
+    epsilon_grid: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    # THE PARSIMONY TIE-BREAK, pre-registered. Among candidates within this
+    # much held-out Spearman of a fold's best, take the SMALLEST epsilon.
+    epsilon_parsimony_tolerance: 0.01
+    # ------------------------------------------------------------------
+    # HOW epsilon IS CHOSEN: THE SMALLEST ONE THE GATE WILL STILL PASS.
+    # ------------------------------------------------------------------
+    # The unconstrained argmax was run FIRST (2026-09-13) and came back
+    # degenerate: it chose epsilon = 0 for seven of nine categories -- it
+    # DELETED the household spend pool. Three facts, not one:
+    #
+    #   1. The skill-vs-epsilon profile is nearly flat. Restaurant ran 0.8375
+    #      (eps 0) to 0.8024 (eps 1) across the whole grid -- 0.035 of Spearman,
+    #      inside the fold-to-fold noise. A flat profile is not an estimate.
+    #   2. At ZIP grain the pool, the tract income and the incumbent count are
+    #      collinear: all three read "is this a dense retail district". With the
+    #      price index and a negative gamma free to absorb that, the pool adds
+    #      nothing to the RANKING and the search drops it.
+    #   3. What is left once it is dropped is lambda x (income ratio)^delta x
+    #      (incumbent density)^-gamma, whose only spatial signal is HOW MANY
+    #      SHOPS ARE ALREADY THERE -- the rejected D1 thesis wearing a fitted
+    #      exponent. THE PLACEBO CAUGHT IT: at epsilon = 0 every category's
+    #      model predicted every other category's employment about equally well
+    #      (restaurant's target: own 0.837, cafe's 0.871, bar's 0.854), because
+    #      the only category-specific content in the model -- the CEX spend
+    #      gradient -- lives in the pool that had just been deleted.
+    #
+    # So epsilon is not taken from an argmax and it is not a bare prior either.
+    # THE GATE PICKS IT. The whole model family is refitted at every epsilon on
+    # the grid -- beta, gamma, delta and lambda all re-selected inside every
+    # leave-one-ZIP-out fold at each one -- the FULL gate (both baselines plus
+    # the cross-category placebo) is evaluated at each one, and a category
+    # ships at the SMALLEST epsilon it still survives. That is the most
+    # compression of the spend pool the out-of-sample evidence will support,
+    # and it is the direct answer to "how modest can the difference between two
+    # sites be before the model stops working".
+    #
+    # WHAT IT FOUND, 2026-09-13: restaurant passes at epsilon 0.6, 0.7, 0.8,
+    # 0.9 and 1.0 and FAILS the placebo at 0.5, 0.4 and 0.2. So 0.6 ships. The
+    # owner's prior was 0.3-0.5; the backtest refuses it -- below 0.6 the
+    # restaurant model stops being distinguishable from the cafe model, which
+    # is the one thing the placebo exists to detect. 0.6 is nevertheless a real
+    # move off v0's 1.0, and it comes with a HIGHER held-out Spearman (0.822 vs
+    # 0.763), so it is not bought with skill.
+    epsilon_selection: smallest_gate_passing
+    # THE FLOOR, AND IT IS A STRUCTURAL CONSTRAINT, NOT A TUNING KNOB.
+    # "Smallest epsilon that passes the gate" needs a floor, because the gate
+    # can be passed by a model that has no demand pool at all: on the
+    # 2026-09-13 scan cafe_bakery passed at epsilon = 0.0, where the equation
+    # is lambda x (income ratio)^delta x (incumbent density)^-gamma and the
+    # only spatial signal is how many shops are already there. That is the
+    # rejected D1 thesis, and a gate that cannot see it is not a licence to
+    # ship it.
+    #
+    # 0.3 is the bottom of the range the owner gave (0.3-0.5) and of the
+    # published retail demand-elasticity estimates. A model claiming LESS
+    # responsiveness to the local spend pool than any published estimate is not
+    # a demand model, whatever its Spearman. The FULL grid is still scanned and
+    # every epsilon's gate verdict is recorded in `epsilon_gate_scan`, so a
+    # category that would have passed below the floor is visible, labelled, and
+    # not shipped.
+    epsilon_floor: 0.3
+    # Set this (and epsilon_selection: fixed) to pin epsilon by hand.
+    epsilon_shipped: null
+    # delta ships only where the held-out skill WITH it beats the held-out
+    # skill at delta = 0 by more than this. Otherwise the price-index term is
+    # dropped and delta = 0 ships -- a term that does not earn its place does
+    # not travel in the equation.
+    delta_min_skill_gain: 0.01
+    # The price index P = tract median income / county median tract income,
+    # exponent delta. The TICKET channel, distinct from the household-count
+    # channel. Fitted inside every fold; the calibration reports held-out skill
+    # with and without it, and delta ships only where it earns its place.
+    delta_grid: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+    anchor_statistic: median     # see `anchor:` below
+    gamma_site_cap: true         # neighbours may not raise a site above 1.0
+    capacity_cap: true           # see `capacity:` below
+
+# -------------------------------------------------------------- the anchor
+# v0 fitted lambda so the MEAN prediction over a county's establishments equals
+# the EC mean receipts per establishment. That mean is pulled up by large
+# operators; the CBP employment-size-band distribution says the MEDIAN Kings
+# cafe is a 5-9 employee shop, and at EC's own $82,227 of receipts per employee
+# that is $575,589, not $675,905.
+#
+# THE BAND -> REVENUE MAP is derived, not assumed:
+#   rev_per_emp(county, c) = EC RCPTOT_c / EC EMP_c        (that county, that NAICS)
+#   emp_median(county, c)  = cbp.band_midpoints[b*], where b* is the band that
+#                            contains the median establishment when the bands
+#                            are ordered ascending and ESTAB is cumulated
+#   M_target               = emp_median * rev_per_emp
+# It reuses cbp.band_midpoints so the anchor and the backtest target cannot
+# disagree about how many employees a band holds.
+anchor:
+  # CBP at COUNTY grain -- the same dataset as the ZIP backtest target, a
+  # different geography. Cached beside it.
+  cbp_county_cache: "cbp{year}_county_empszes_mnbk.json"
+  # Bands must cover at least this share of the county's own "001" total, or
+  # the median band is not trustworthy and the category falls back to the mean
+  # anchor with `anchor_fallback: mean` recorded.
+  min_band_coverage: 0.80
+  # If EC EMP is 0 or missing for a county x category there is no revenue per
+  # employee and the same fallback applies.
+
+# ------------------------------------------------------------ the capacity
+# A CEILING, not a central estimate. psf is roughly the 75th-95th percentile of
+# realised annual sales per square foot for the category, because the question
+# is "what is the most this box could plausibly turn over", not "what does a
+# typical box turn over". Final revenue_q = min(model_q, area * psf_q).
+#
+# SOURCES (all public, all national or chain-level -- there is no published
+# NYC-independent sales-per-square-foot series, which is why this is a ceiling
+# band and not a calibration):
+#   [1] RestaurantOwner.com / Toast "Restaurant benchmarks": full-service
+#       restaurants target >= $150/sq ft, $250-325 is moderately profitable;
+#       limited-service $200-300 approaches break-even, $300-400 moderate.
+#       https://pos.toasttab.com/blog/on-the-line/7-critical-restaurant-benchmarks
+#   [2] Top fast-casual franchises average ~$505/sq ft.
+#       https://waybackburgers.com/franchising/blog/restaurant-revenue-per-square-foot/
+#   [3] Starbucks: ~$1.795M average unit volume on ~2,411 rentable sq ft
+#       = ~$744/sq ft, the highest-productivity mass-market cafe operator.
+#       https://fourweekmba.com/starbucks-revenue-per-store/
+#   [4] Supermarkets: FMI weekly sales ~$18.55-19.59 per sq ft of selling area
+#       = ~$965-1,020/yr on SELLING area; whole-store benchmarks $400-700.
+#       https://www.fmi.org/our-research/food-industry-facts
+#   [5] The project's own two site files (docs/recommendations/) researched
+#       "independent NYC restaurants run $210-365/sq ft; high-volume
+#       small-footprint NYC specialty cafes reach perhaps $700-1,200/sq ft"
+#       BEFORE this model existed and before any owner figure was seen.
+# NYC sites sit at the top of every national band (rent, density and ticket all
+# push the same way), so the p50 ceiling is set near the top of the national
+# range and the p75 near [5]'s NYC specialty figure.
+capacity:
+  # area source, in order: PLUTO retailarea on the BBL / storefront count;
+  # else typical_sqft below, with capacity_area_source = 'typical'.
+  pluto_csv: data/raw/pluto.csv
+  psf_per_year:
+    restaurant:   {p25: 400, p50: 700,  p75: 1000}   # [1][2][5]
+    cafe_bakery:  {p25: 500, p50: 850,  p75: 1200}   # [3][5]
+    bar:          {p25: 400, p50: 700,  p75: 1000}   # [1][5], drinks-led ticket
+    grocery:      {p25: 400, p50: 600,  p75: 900}    # [4]
+    convenience:  {p25: 350, p50: 550,  p75: 800}    # [4], small-format premium
+    pharmacy:     {p25: 500, p50: 800,  p75: 1200}   # Rx dominates; high $/sq ft
+    laundry:      {p25: 200, p50: 350,  p75: 500}    # machine-limited throughput
+    hair_barber:  {p25: 250, p50: 400,  p75: 600}    # chair-limited throughput
+    nails_beauty: {p25: 250, p50: 400,  p75: 600}
+    fitness:      {p25: 100, p50: 175,  p75: 300}    # large floor, low $/sq ft
+  # Used ONLY where PLUTO retailarea is 0/NULL on the BBL. A documented prior,
+  # flagged on every row that uses it (capacity_area_source = 'typical'), never
+  # silently substituted.
+  typical_sqft:
+    restaurant: 2000
+    cafe_bakery: 1200
+    bar: 1800
+    grocery: 4000
+    convenience: 1800
+    pharmacy: 6000
+    laundry: 1800
+    hair_barber: 1000
+    nails_beauty: 1000
+    fitness: 4000
+  # Where the DOF Storefront Registry files more than one storefront on the
+  # BBL, retailarea is the LOT's whole retail area and one tenant does not get
+  # all of it: divide by the count and flag.
+  split_by_storefront_count: true
 
 # --------------------------------------------------------------- categories
 # v0 models a category only where BOTH a CEX line (or documented blend) and an

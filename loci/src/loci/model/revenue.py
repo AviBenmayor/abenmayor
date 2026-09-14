@@ -1,6 +1,19 @@
-"""Site-revenue model v0 -- what a TYPICAL new store of category c could take
-at a given address, with a range, a rent ceiling, and a gate that refuses to
-ship a category the backtest cannot support.
+"""Site-revenue model -- what a TYPICAL new store of category c could take at a
+given address, with a range, a rent ceiling, and a gate that refuses to ship a
+category the backtest cannot support.
+
+TWO VERSIONS LIVE IN THIS FILE. `revenue.yaml`'s `model_version` selects one
+and `revenue.yaml`'s `versions:` block holds everything that differs, so the
+D81 numbers stay regenerable:
+
+  revenue-v0    the shipped D81 model. epsilon pinned to 1 (revenue LINEAR in
+                the local spend pool), lambda anchored on the Economic Census
+                MEAN receipts per establishment, no capacity ceiling, no
+                site-level cap on a negative gamma.
+  revenue-v0.2  this file's default, built 2026-09-13 after the owner's
+                critique of the Lion's Milk overshoot. Four changes, in the
+                order they were diagnosed; section (7) below is the whole of
+                it.
 
 WHAT THIS ANSWERS, AND WHAT IT DOES NOT
 ---------------------------------------------------------------------------
@@ -191,6 +204,242 @@ For an address `a` and category `c`:
       NOTHING about how far a real store's takings sit from the model -- that
       dispersion needs P&Ls and is exactly what keeps the card at grade C.
 
+  (7) WHAT v0.2 CHANGES, AND WHY
+---------------------------------------------------------------------------
+
+      v0 overshot a real business by a factor of roughly two (Lion's Milk, 104
+      Roebling: v0 shipped $2.49M against a bottom-up build of ~$1.4-1.5M and
+      an Economic Census Kings cafe mean of $676k). Four corrections, each
+      independently switchable, each one-signed DOWNWARD at a high-pool site:
+
+      (7a) POOL ELASTICITY epsilon, FITTED.
+
+             R_hat_c(a) = Pool_c(a)^epsilon_c * P_c(a)^delta_c * s_c(a)
+
+           v0's Pool^1 is elasticity 1 BY CONSTRUCTION: double the households
+           in the walk-shed and the model doubles the revenue. Neither the
+           owner's prior nor the retail literature supports that; a cafe in a
+           dense, rich walk-shed is a somewhat better cafe, not a four-times
+           bigger one, once price level is accounted for. epsilon is therefore
+           a fitted parameter on [0.0 .. 1.0] step 0.1, selected INSIDE every
+           leave-one-ZIP-out fold jointly with beta and gamma, against the same
+           CBP employees-per-establishment target.
+
+           IDENTIFICATION, STATED PLAINLY AND IT IS WEAK. Spearman is
+           rank-based and x -> x^epsilon is monotone for epsilon > 0, so if the
+           prediction for a ZIP were simply that ZIP's pool, epsilon would be
+           EXACTLY unidentified. It is identified only through two channels:
+           (i) the prediction for a ZIP is the MEAN over that ZIP's
+           establishments of Pool^epsilon * s, and a mean of powers is not a
+           power of the mean, so the within-ZIP dispersion of pools enters; and
+           (ii) lambda is fitted per county, so epsilon moves the two counties'
+           predictions relative to each other. Both channels are thin. The
+           skill-versus-epsilon profile is therefore REPORTED IN FULL per
+           category (`epsilon_profile`) so a flat profile is visible as a flat
+           profile rather than hidden behind an argmax.
+
+           WHAT THE FIT CAME BACK WITH, AND WHY epsilon IS NOT TAKEN FROM IT.
+           The unconstrained search was run first (2026-09-13) and chose
+           epsilon = 0 in seven of nine categories: it DELETED the household
+           spend pool. Three facts, not one:
+
+             - the profile is nearly flat. Restaurant ran 0.8375 at epsilon = 0
+               to 0.8024 at epsilon = 1 -- 0.035 of Spearman across the entire
+               grid, inside the fold-to-fold spread of the held-out score. A
+               flat profile is not an estimate of anything.
+             - at ZIP grain the pool, tract income and incumbent count are
+               collinear; all three read "is this a dense retail district". With
+               P^delta and a negative gamma free to absorb that, the pool adds
+               nothing to the RANKING and the search drops it.
+             - what remains once it is dropped is lambda * P^delta *
+               (incumbent density)^-gamma, whose only spatial signal is HOW MANY
+               SHOPS ARE ALREADY THERE. That is the rejected D1 thesis wearing a
+               fitted exponent, and THE PLACEBO CAUGHT IT: at epsilon = 0 every
+               category's model predicted every other category's employment
+               about equally well (restaurant's own target: own model 0.837,
+               cafe's 0.871, bar's 0.854), because the only category-specific
+               content in the whole model -- the CEX spend gradient -- lives in
+               the pool that had just been deleted.
+
+           SO THE GATE PICKS EPSILON, NOT AN ARGMAX AND NOT A PRIOR. The whole
+           model family is refitted at every epsilon on the grid -- beta,
+           gamma, delta and lambda all re-selected inside every
+           leave-one-ZIP-out fold at each one -- the FULL gate (both baselines
+           plus the cross-category placebo) is evaluated at each one, and a
+           category ships at THE SMALLEST EPSILON IT STILL SURVIVES, subject to
+           a structural floor. That is the most compression of the spend pool
+           the out-of-sample evidence will support, and it answers the owner's
+           question directly: how modest can the difference between two sites
+           be before the model stops being a model of THIS category?
+
+           THE FLOOR IS LOAD-BEARING (revenue.yaml `epsilon_floor` = 0.3).
+           "Smallest passing epsilon" needs one, because the gate can be passed
+           by a model with no demand pool at all: on the 2026-09-13 scan
+           cafe_bakery passed at epsilon = 0.0, where the only spatial signal
+           left is incumbent density. 0.3 is the bottom of the owner's stated
+           range and of the published retail demand elasticities; a model
+           claiming less responsiveness to the local spend pool than any
+           published estimate is not a demand model whatever its Spearman. A
+           category that passed only below the floor is RECORDED as such
+           (`epsilon_passed_below_floor`) and refused on the D1 guardrail, not
+           on skill.
+
+           WHAT IT FOUND (2026-09-13). Restaurant passes at epsilon 0.6, 0.7,
+           0.8, 0.9 and 1.0 and fails the placebo at 0.5 and below, so 0.6
+           ships. The owner's prior was 0.3-0.5 and the backtest REFUSES it:
+           under about 0.6 the restaurant model stops being distinguishable
+           from the cafe model, which is exactly what the placebo exists to
+           detect. 0.6 is still a real move off v0's 1.0 and it is not bought
+           with skill -- the held-out Spearman RISES, 0.763 to 0.822.
+
+           `epsilon_gate_scan` records the gate verdict, the held-out Spearman
+           and the placebo margin at EVERY epsilon, so the shape of that cliff
+           is in the shipped artefact rather than in someone's notes. The
+           parsimony tie-break (`epsilon_parsimony_tolerance`) still runs
+           inside every fold and breaks ties among the remaining axes.
+
+           THE SELECTION BIAS THIS INTRODUCES, NAMED. beta, gamma, delta and
+           lambda are re-selected inside every fold, so their contribution to
+           the reported skill is honestly out of sample. EPSILON IS NOT: it is
+           chosen once per category by reading the gate verdict off the same 73
+           held-out folds that then report the skill. The reported Spearman at
+           the shipped epsilon is therefore optimistic by the usual
+           one-parameter selection amount. What the scan legitimately
+           establishes is the SHAPE -- that the placebo margin crosses zero
+           between 0.5 and 0.6 for restaurant, sharply and monotonically -- not
+           a re-validated level. Removing this would need a held-out CITY, not
+           a held-out ZIP, and there is not one.
+
+      (7b) PRICE INDEX delta -- the owner's "difference in avg price" channel,
+           REPORTED SEPARATELY, kept distinct from the household-count channel.
+
+             P_c(a) = tract median_hh_income / county median tract income
+
+           Revenue = customers x ticket. (7a) damps the CUSTOMERS channel;
+           P^delta is the TICKET channel, and it is a different claim: a
+           Williamsburg cafe charges more per flat white than a Sunset Park
+           cafe. delta is fitted on [0 .. 0.5] step 0.1 inside every fold, and
+           the calibration records the held-out Spearman WITH and WITHOUT it
+           (`price_index`), so "does an income price level add skill beyond an
+           income-graded spend pool?" is answered as a number and not asserted.
+           It is shipped only where it adds skill; where it does not,
+           delta = 0 and the term is absent from the equation.
+
+           It is NOT double-counting the CEX income gradient. E_c(a) already
+           moves with the tract's income QUINTILE because the household budget
+           shifts; P^delta is the price level of the same basket. They are
+           collinear enough that the fit will struggle to separate them, and
+           that is precisely why the delta = 0 comparison is reported.
+
+      (7c) MEDIAN ANCHOR, not the mean.
+
+           v0 set lambda so the MEAN prediction over a county's establishments
+           equalled RCPTOT/ESTAB -- Kings cafes $676k. That is a mean over a
+           right-skewed distribution: a handful of large operators pull it up
+           and a model calibrated to it over-predicts the TYPICAL shop, which
+           is the one an owner is deciding about. v0.2 anchors the MEDIAN:
+
+             rev_per_emp(county, c) = RCPTOT_c / EMP_c            [EC]
+             emp_median(county, c)  = the band midpoint of the CBP
+                                      employment-size band containing the
+                                      median establishment, bands ordered
+                                      ascending and cumulated over ESTAB
+             M_target               = emp_median * rev_per_emp
+             lambda_median          = M_target / median_p R_hat_c(p)
+
+           The band -> revenue map is EC's own revenue per employee for that
+           county x NAICS applied to the existing `band_midpoints` constant, so
+           there is one definition of "how many employees is band 220" in the
+           codebase and the backtest target and the anchor cannot disagree
+           about it. Worked, Kings 722515: EC RCPTOT $642.1M / EMP 7,809 =
+           $82,227 per employee; CBP 2023 bands 492/276/201/71/3 cumulate past
+           half of 1,043 inside band 220 (5-9 employees, midpoint 7.0); 7.0 x
+           $82,227 = $575,589 against the EC mean of $675,905, a ratio of
+           0.852. Both lambdas are computed and BOTH ship in the calibration
+           (`lambda_per_store`, `lambda_median`, `lambda_median_over_mean`) so
+           the size of this correction is visible per category and county.
+
+           WHAT IT DOES NOT FIX: survivorship. The Economic Census and CBP both
+           observe businesses that EXIST. Neither the mean nor the median of a
+           surviving population is the expectation for a new entrant, which
+           includes the ones that fail. The median anchor narrows the bias; it
+           does not remove it, and no public source can.
+
+      (7d) CAPACITY CEILING -- the term v0 did not have at all.
+
+             area(a)      = PLUTO `retailarea` on the address's BBL, divided by
+                            the DOF Storefront Registry count of storefronts on
+                            that BBL when that count exceeds 1 (flagged), or a
+                            category-typical footprint from revenue.yaml when
+                            retailarea is 0/NULL (flagged)
+             cap_q(a, c)  = area(a) * psf_q[c]          q in {25, 50, 75}
+             revenue_q    = min(model_q, cap_q)
+
+           A 1,000 sq ft one-register cafe and a 5,000 sq ft cafe got the same
+           number in v0, because nothing in (1)-(4) knows how big the box is.
+           `psf` is a CEILING band, not a central estimate of productivity: it
+           is roughly the 75th-to-95th percentile of realised sales per square
+           foot for the category, because the question it answers is "what is
+           the most this box could plausibly turn over", not "what does a
+           typical box turn over". Sources and the per-category band are in
+           revenue.yaml's `capacity:` block.
+
+           The cap is applied AFTER lambda and is NOT inside the fit. It cannot
+           be: the calibration's observations are POIs with a lat/lon and no
+           BBL, so no retail area exists for them. Consequences, stated: the
+           county median of the SHIPPED (capped) numbers can fall below the
+           median anchor, by construction and only downward; and the cap has no
+           out-of-sample test of its own. `capacity_bound` is stored per
+           address x category so every capped row is identifiable, and
+           `revenue_cap_p50` is stored beside it so the cap is auditable
+           without re-deriving it.
+
+      (7e) GAMMA AT SITE LEVEL -- capped at the corridor-neutral value.
+
+             s_site = min(s(beta, gamma), 1.0)   equivalently  gamma_site =
+                                                 max(gamma, 0)
+
+           gamma < 0 came out of the ZIP-grain backtest and it is REAL AT THAT
+           GRAIN: a ZIP with many restaurants per household is a ZIP with
+           restaurant corridors, and corridors draw demand from outside any
+           400 m walk-shed. But the sign does not transfer to an address, for a
+           reason that is about what the regression saw. At ZIP grain the
+           incumbent count varies BETWEEN neighbourhoods and proxies "is this a
+           retail district" -- an omitted-variable channel the closed walk-shed
+           model has no other way to see. At site grain, within one corridor,
+           the incumbent count varies because of ENTRY, and entry is the thing
+           competition theory says divides a fixed pool. Reading the
+           between-neighbourhood coefficient as a within-corridor causal effect
+           is the ecological fallacy in its textbook form, and at the extreme
+           it is absurd: v0 multiplied 104 Roebling's restaurant number by
+           (1 + D/K_self)^0.25 purely for having 104 restaurants within 400 m,
+           and 104 Roebling's CAFE number by (1 + D/K_self)^0.75 for having 28
+           cafes within 400 m -- a 6.7x multiplier on a cafe for being
+           surrounded by cafes. The cap keeps gamma in the FIT (it carries the
+           ZIP-level skill that the gate measures and it is what makes the
+           reported Spearman honest) and refuses to let it RAISE any single
+           site above the corridor-neutral share. For a category whose fitted
+           gamma is negative this makes the site-level competition term vanish
+           entirely -- every site gets s = 1 -- which is the correct statement
+           of what we actually know: at one address, we do not know that
+           neighbours help, and we are not willing to say they do.
+
+           Categories with gamma > 0 are untouched: there the fit and the site
+           agree that competition divides the pool, and it still bites.
+
+           LAMBDA IS FITTED ON THE CAPPED FUNCTION, and that is not a detail.
+           An establishment sits on a retail corridor, so for gamma < 0 its
+           UNCAPPED share is a multiplier of several while every shipped site
+           gets exactly 1.0. Calibrating lambda against the uncapped mean and
+           applying it to capped predictions divides the entire level by the
+           median establishment's agglomeration multiplier -- measured at ~13x
+           for Manhattan restaurants on the first v0.2 apply, which put the
+           median Manhattan restaurant at $130k against a median anchor of
+           $1.67M. So the division of labour is explicit: THE BACKTEST
+           validates the RANKING and keeps gamma free and uncapped, because
+           that is where its ZIP-grain skill lives; LAMBDA sets the LEVEL and
+           sees exactly the predictor that reaches an address.
+
 RETAIL IS THE DEPENDENT READ (the standing honesty guardrail)
 ---------------------------------------------------------------------------
 Nothing here predicts neighbourhood growth from retail. The causal arrow runs
@@ -251,6 +500,11 @@ CATEGORY_REVENUE_COLUMNS = [
     "revenue_p75",
     "rent_ceiling",
     "revenue_model_version",
+    # v0.2 (7d). revenue_cap_p50 is the capacity ceiling the p50 was compared
+    # against -- stored so the cap is auditable without re-deriving it, and
+    # populated even where it did not bind. capacity_bound says it DID bind.
+    "revenue_cap_p50",
+    "capacity_bound",
 ]
 
 #: The ONLY columns write_address_revenue may name. Category-INDEPENDENT (D61):
@@ -310,6 +564,39 @@ def regime_of(category: str) -> str | None:
     except OSError:                                          # pragma: no cover
         return None
     return ((doc.get("categories") or {}).get(category) or {}).get("regime")
+
+
+# ------------------------------------------------------- the version switch
+
+def version_settings(spec: dict | None = None) -> dict:
+    """Everything that differs between revenue-v0 and revenue-v0.2, read from
+    revenue.yaml's `versions:` block.
+
+    The ONE place the version string is interpreted. Every other function takes
+    the resulting settings dict, so `model_version: revenue-v0` reproduces D81
+    through the same code paths that produce v0.2 rather than through a
+    preserved fork that would rot.
+    """
+    spec = spec or load_spec()
+    mv = spec.get("model_version")
+    versions = spec.get("versions") or {}
+    if mv not in versions:
+        raise RuntimeError(
+            f"revenue.yaml model_version {mv!r} has no entry under `versions:` "
+            f"(have {sorted(versions)}). Refusing to guess which model to run.")
+    d = dict(versions[mv])
+    d.setdefault("epsilon_grid", [1.0])
+    d.setdefault("delta_grid", [0.0])
+    d.setdefault("epsilon_parsimony_tolerance", 0.0)
+    d.setdefault("epsilon_shipped", None)
+    d.setdefault("epsilon_selection", "fixed")
+    d.setdefault("epsilon_floor", 0.0)
+    d.setdefault("delta_min_skill_gain", 0.0)
+    d.setdefault("anchor_statistic", "mean")
+    d.setdefault("gamma_site_cap", False)
+    d.setdefault("capacity_cap", False)
+    d["model_version"] = mv
+    return d
 
 
 # --------------------------------------------------------------- the spend
@@ -638,6 +925,157 @@ def ec_anchor(category: str, spec: dict, ec_rows: pd.DataFrame) -> dict:
     return out
 
 
+def fetch_cbp_county_bands(naics: list[str], spec: dict | None = None,
+                           refresh: bool = False) -> pd.DataFrame:
+    """CBP county x NAICS x EMPSZES establishment counts, cached on disk.
+
+    The SAME dataset and the SAME vintage as the ZIP-grain backtest target, at
+    a coarser geography, used for one thing only: to locate the MEDIAN
+    establishment's employment-size band inside each calibration county so
+    lambda can be anchored on a median instead of a mean (docstring 7c).
+    """
+    import requests
+
+    spec = spec or load_spec()
+    year = spec["cbp"]["year"]
+    name = (spec.get("anchor") or {}).get(
+        "cbp_county_cache", "cbp{year}_county_empszes_mnbk.json").format(year=year)
+    path = _REPO_ROOT / spec["cbp"]["cache_dir"] / name
+    cached = json.loads(path.read_text())["rows"] if path.exists() and not refresh else None
+    if cached is not None and set(naics) <= {r["NAICS2017"] for r in cached}:
+        rows = cached
+    else:
+        key = _census_key()
+        fips = ",".join(spec["ec"]["counties"].values())
+        rows = []
+        for code in naics:
+            r = requests.get(spec["cbp"]["dataset"].format(year=year),
+                             params={"get": "ESTAB,EMPSZES,EMPSZES_LABEL,NAICS2017",
+                                     "for": f"county:{fips}",
+                                     "in": f"state:{spec['ec']['state']}",
+                                     "NAICS2017": code, "key": key},
+                             headers={"User-Agent": USER_AGENT}, timeout=120)
+            if r.status_code == 204:
+                continue
+            r.raise_for_status()
+            j = r.json()
+            hdr = j[0]
+            rows += [dict(zip(hdr, row)) for row in j[1:]]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(
+            {"dataset": f"cbp {year} county", "naics_vintage": "NAICS2017",
+             "fetched_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+             "n": len(rows), "rows": rows}))
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(columns=["county", "NAICS2017", "EMPSZES", "estab"])
+    df["estab"] = df["ESTAB"].astype(float)
+    return df[["county", "NAICS2017", "EMPSZES", "estab"]]
+
+
+def _cbp_codes(category: str, spec: dict) -> list[str]:
+    """The category's NAICS codes in the CBP (NAICS2017) vintage. ONE
+    definition of the renumbering, shared by the county anchor and the ZIP
+    target, so the two cannot silently select different codes."""
+    remap = {"445131": "445120", "444140": "444130"}
+    return [remap.get(str(c), str(c)) for c in spec["categories"][category]["naics"]]
+
+
+def median_band_employees(cbp_county: pd.DataFrame, category: str, spec: dict) -> dict:
+    """{county_fips: {emp_median, band, band_coverage, n_estab}} -- the band
+    midpoint of the MEDIAN establishment, bands ordered ascending by midpoint
+    and ESTAB cumulated.
+
+    A step function on purpose: the bands are what CBP publishes and
+    interpolating inside one would invent a within-band distribution. The
+    midpoints come from `cbp.band_midpoints`, the same constant the backtest
+    target uses.
+    """
+    mids = {str(k): float(v) for k, v in spec["cbp"]["band_midpoints"].items()}
+    order = sorted(mids, key=lambda b: mids[b])
+    out: dict[str, dict] = {}
+    if cbp_county.empty:
+        return out
+    sub = cbp_county[cbp_county["NAICS2017"].isin(_cbp_codes(category, spec))]
+    min_cov = float((spec.get("anchor") or {}).get("min_band_coverage", 0.8))
+    for fips, g in sub.groupby("county"):
+        total = float(g.loc[g["EMPSZES"] == "001", "estab"].sum())
+        banded = g[g["EMPSZES"].isin(mids)].groupby("EMPSZES")["estab"].sum()
+        n_band = float(banded.sum())
+        if total <= 0 or n_band <= 0:
+            continue
+        cum, pick = 0.0, None
+        for b in order:
+            cum += float(banded.get(b, 0.0))
+            if cum >= n_band / 2.0:
+                pick = b
+                break
+        if pick is None:                                     # pragma: no cover
+            continue
+        emp_mean = float(sum(mids[b] * float(banded.get(b, 0.0)) for b in order)) / n_band
+        out[str(fips)] = {
+            "emp_median": mids[pick], "band": pick,
+            "emp_mean": emp_mean,
+            "band_coverage": round(n_band / total, 4),
+            "n_estab_banded": n_band, "n_estab_total": total,
+            "usable": bool(n_band / total >= min_cov),
+        }
+    return out
+
+
+def median_anchor(category: str, spec: dict, ec_rows: pd.DataFrame,
+                  cbp_county: pd.DataFrame) -> dict:
+    """{county_fips: {...}} -- the MEDIAN revenue per establishment implied by
+    the CBP size-band distribution priced at the Economic Census's own revenue
+    per employee for that county x NAICS. See docstring (7c).
+
+    Falls back to the EC mean, with `usable: False` and a stated reason, where
+    EC EMP is missing/zero or the CBP bands do not cover enough of the county's
+    own establishment total. A fallback is recorded, never silently taken.
+    """
+    codes = spec["categories"][category]["naics"]
+    sub = ec_rows[ec_rows["naics"].isin(codes) & (~ec_rows["absent"].astype(bool))]
+    bands = median_band_employees(cbp_county, category, spec)
+    out = {}
+    for fips, g in sub.groupby("county"):
+        fips = str(fips)
+        rcptot = float(g["rcptot_k"].sum()) * 1000.0
+        emp = float(g["emp"].sum())
+        estab = float(g["estab"].sum())
+        b = bands.get(fips)
+        rpe_mean = (rcptot / estab) if estab else None
+        d = {"ec_rev_per_estab_usd": rpe_mean,
+             "ec_rev_per_emp_usd": (rcptot / emp) if emp > 0 else None,
+             "ec_emp_per_estab": (emp / estab) if estab else None}
+        if b:
+            d.update({"cbp_median_band": b["band"], "cbp_median_employees": b["emp_median"],
+                      "cbp_mean_employees": round(b["emp_mean"], 3),
+                      "cbp_band_coverage": b["band_coverage"]})
+            # RECONCILIATION. The band -> revenue map priced at EC's own revenue
+            # per employee must reproduce EC's own MEAN receipts per
+            # establishment when applied to the CBP MEAN band employment. If it
+            # does not, the two sources disagree about what an establishment is
+            # and the median derived from the same map is not trustworthy
+            # either. Reported, never corrected for -- a correction would hide
+            # the disagreement it exists to expose.
+            if emp > 0 and rpe_mean:
+                d["mean_reconciliation_ratio"] = round(
+                    b["emp_mean"] * (rcptot / emp) / rpe_mean, 4)
+        if emp > 0 and b and b["usable"]:
+            med = b["emp_median"] * (rcptot / emp)
+            d.update({"median_rev_per_estab_usd": med, "usable": True,
+                      "median_over_mean": round(med / rpe_mean, 4) if rpe_mean else None})
+        else:
+            d.update({"median_rev_per_estab_usd": rpe_mean, "usable": False,
+                      "anchor_fallback": "mean",
+                      "fallback_reason": ("EC EMP is zero or missing" if emp <= 0 else
+                                          "CBP county bands do not cover enough of the "
+                                          "county establishment total" if b else
+                                          "no CBP county band rows for this NAICS")})
+        out[fips] = d
+    return out
+
+
 # --------------------------------------------------- the backtest target
 
 def fetch_cbp_zip_bands(zips: list[str], naics: list[str], spec: dict | None = None,
@@ -690,12 +1128,10 @@ def employees_per_estab(cbp: pd.DataFrame, category: str, spec: dict) -> pd.Data
     assumptions into its own test set.
     """
     mids = {str(k): float(v) for k, v in spec["cbp"]["band_midpoints"].items()}
-    codes = [str(c) for c in spec["categories"][category]["naics"]]
     # CBP is NAICS2017; the spec's codes are NAICS2022 where they were
-    # renumbered. Map back for the two that moved.
-    remap = {"445131": "445120", "444140": "444130"}
-    codes = [remap.get(c, c) for c in codes]
-    sub = cbp[cbp["NAICS2017"].isin(codes)]
+    # renumbered. _cbp_codes holds the single definition of that remap, shared
+    # with the county median anchor.
+    sub = cbp[cbp["NAICS2017"].isin(_cbp_codes(category, spec))]
     if sub.empty:
         return pd.DataFrame(columns=["zipcode", "emp_per_estab", "n_estab", "band_coverage"])
     tot = (sub[sub["EMPSZES"] == "001"].groupby("zipcode")["estab"].sum()
@@ -743,6 +1179,82 @@ def _r2(y_true, y_pred) -> float:
     ss_res = float(((ly - lp) ** 2).sum())
     ss_tot = float(((ly - ly.mean()) ** 2).sum())
     return 1.0 - ss_res / ss_tot if ss_tot > 0 else float("nan")
+
+
+# ---------------------------------------------------------- the capacity
+
+def lot_retail_area(con, spec: dict | None = None) -> pd.DataFrame:
+    """(bbl, retail_area_sqft, storefronts_on_bbl, demise_sqft) for every lot.
+
+    `retailarea` is PLUTO's RETAIL floor area on the whole TAX LOT, not one
+    tenant's demise. Where the DOF Storefront Registry files more than one
+    storefront at that BBL, the lot's retail area is divided by the count --
+    one storefront of several does not get the building's whole retail floor.
+    That is an equal split and it is wrong in detail (a corner unit is bigger
+    than the one beside it); it is right in expectation and it is the only
+    split any public source supports.
+
+    READ-ONLY. PLUTO is read from the raw CSV the rest of the codebase reads
+    (model/address_character.py, model/invest.py, model/premium.py all read the
+    same file), not from a derived table, so the capacity term and the
+    character layer cannot disagree about a lot's retail area.
+    """
+    spec = spec or load_spec()
+    csv = _REPO_ROOT / (spec.get("capacity") or {}).get("pluto_csv", "data/raw/pluto.csv")
+    lots = con.execute(f"""
+        SELECT lpad(CAST(TRY_CAST(BBL AS BIGINT) AS VARCHAR), 10, '0') AS bbl,
+               COALESCE(TRY_CAST(retailarea AS DOUBLE), 0.0)           AS retail_area_sqft
+        FROM read_csv_auto('{csv.as_posix()}', header=true, all_varchar=true)
+        WHERE TRY_CAST(BBL AS BIGINT) IS NOT NULL
+    """).fetchdf()
+    try:
+        # The MAXIMUM number of distinct storefront_ids filed at the BBL in any
+        # single reporting year, not the count in the latest year. Two reasons,
+        # both found in the data: `premises_id` is the LOT's id (both units at
+        # BBL 3027550006 share `3027550006|6`), so it counts one storefront for
+        # a two-storefront lot; and the registry is a self-reported annual
+        # snapshot with gaps -- 376 Graham filed two units in 2019-2022 and
+        # 2024 and nothing in 2023 or 2025. Counting only the latest year would
+        # reset that lot to zero storefronts and SILENTLY DOUBLE its tenant's
+        # capacity ceiling. A lot that ever filed two units in one year has two
+        # units; a lapsed filing is missing evidence, not a demolished wall.
+        sf = con.execute("""
+            SELECT bbl, max(n) AS storefronts_on_bbl FROM (
+                SELECT bbl, reporting_year, COUNT(DISTINCT storefront_id) AS n
+                FROM analysis.storefront
+                WHERE bbl IS NOT NULL
+                GROUP BY bbl, reporting_year)
+            GROUP BY bbl
+        """).fetchdf()
+    except Exception:                     # noqa: BLE001 -- registry may not be loaded
+        sf = pd.DataFrame(columns=["bbl", "storefronts_on_bbl"])
+    out = lots.merge(sf, on="bbl", how="left")
+    out["storefronts_on_bbl"] = out["storefronts_on_bbl"].fillna(0).astype(int)
+    n = np.maximum(out["storefronts_on_bbl"].to_numpy(dtype=float), 1.0)
+    out["demise_sqft"] = out["retail_area_sqft"].to_numpy(dtype=float) / n
+    return out
+
+
+def capacity_band(category: str, spec: dict | None = None) -> dict:
+    """{p25, p50, p75} dollars of annual sales per square foot -- the CEILING
+    band from revenue.yaml's `capacity:` block, whose sources are cited there.
+    It is NOT a central estimate of productivity (docstring 7d)."""
+    spec = spec or load_spec()
+    psf = ((spec.get("capacity") or {}).get("psf_per_year") or {}).get(category)
+    return {k: float(v) for k, v in psf.items()} if psf else {}
+
+
+def capacity_area(demise_sqft: np.ndarray, category: str,
+                  spec: dict | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """(area_sqft, used_typical). Where PLUTO gives no retail area on the lot,
+    the category-typical footprint from revenue.yaml stands in and the row is
+    FLAGGED -- never silently substituted, because "we do not know how big the
+    box is" and "the box is 2,000 sq ft" are different statements."""
+    spec = spec or load_spec()
+    typ = float(((spec.get("capacity") or {}).get("typical_sqft") or {}).get(category, 0.0))
+    a = np.asarray(demise_sqft, dtype=float)
+    bad = ~np.isfinite(a) | (a <= 0)
+    return np.where(bad, typ, a), bad
 
 
 # ------------------------------------------------------------- the sweep
@@ -852,7 +1364,7 @@ def compute_rings(con, boroughs: list[str], spec: dict | None = None,
     # their revenue_* columns stay NULL, which is this module's own convention
     # for "not modelled" and never a revenue of zero.
     homes = con.execute("""
-        SELECT address_id, borough, lon, lat, COALESCE(units, 0) AS units
+        SELECT address_id, borough, bbl, lon, lat, COALESCE(units, 0) AS units
         FROM analysis.address
         WHERE lon IS NOT NULL AND lat IS NOT NULL
           AND COALESCE(frame, 'lot') = 'lot'
@@ -963,18 +1475,50 @@ def spend_per_household(income: np.ndarray, evec: np.ndarray,
     return out
 
 
+def pool_factor(pool: np.ndarray, epsilon: float) -> np.ndarray:
+    """Pool^epsilon, WITH THE MISSING-VALUE SEMANTICS PRESERVED.
+
+    numpy evaluates nan ** 0 as 1.0. Left alone, that would make the epsilon = 0
+    candidate silently score on a LARGER sample than every other candidate --
+    every establishment whose tract income is unknown, and therefore has no
+    spend pool, would re-enter the fit as a 1.0 instead of being dropped. A
+    grid search comparing candidates fitted on different samples is not a grid
+    search. An unknown pool stays unknown at every epsilon.
+    """
+    p = np.asarray(pool, dtype=float)
+    if epsilon == 1.0:
+        return p
+    with np.errstate(invalid="ignore", divide="ignore"):
+        out = np.power(np.maximum(p, 0.0), epsilon)
+    return np.where(np.isfinite(p), out, np.nan)
+
+
 def uncalibrated(pool: np.ndarray, rings: np.ndarray, beta: float,
                  edges: list[float], d_floor: float,
-                 exclude_self: bool = False, gamma: float = 1.0) -> np.ndarray:
-    """R_hat = Pool * capture share. The whole model bar lambda."""
-    return pool * huff_share(rings, beta, edges, d_floor,
-                             exclude_self=exclude_self, gamma=gamma)
+                 exclude_self: bool = False, gamma: float = 1.0,
+                 epsilon: float = 1.0, pindex: np.ndarray | None = None,
+                 delta: float = 0.0, gamma_site_cap: bool = False) -> np.ndarray:
+    """R_hat = Pool^epsilon * P^delta * capture share. The whole model bar lambda.
+
+    epsilon = 1, delta = 0 and gamma_site_cap = False is revenue-v0 exactly.
+
+    `gamma_site_cap` clips the competition multiplier at 1.0 (docstring 7e):
+    neighbours may not RAISE a site above the corridor-neutral share. It is a
+    SITE-level transform and is off inside the ZIP-grain fit by default.
+    """
+    base = pool_factor(pool, epsilon)
+    if pindex is not None and delta != 0.0:
+        base = base * np.power(np.maximum(np.asarray(pindex, dtype=float), 1e-9), delta)
+    s = huff_share(rings, beta, edges, d_floor, exclude_self=exclude_self, gamma=gamma)
+    if gamma_site_cap:
+        s = np.minimum(s, 1.0)
+    return base * s
 
 
 # ----------------------------------------------------------- calibration
 
 def _lambdas(rhat: np.ndarray, county: np.ndarray, anchor: dict,
-             mask: np.ndarray | None = None) -> dict:
+             mask: np.ndarray | None = None, med_anchor: dict | None = None) -> dict:
     """{county_fips: {lambda_per_store, lambda_total, n_ours, n_ec, ...}}.
 
     `lambda_per_store` makes the MEAN prediction over that county's
@@ -991,21 +1535,42 @@ def _lambdas(rhat: np.ndarray, county: np.ndarray, anchor: dict,
             continue
         mean_rhat = float(rhat[sel].mean())
         sum_rhat = float(rhat[sel].sum())
-        out[fips] = {
+        med_rhat = float(np.median(rhat[sel]))
+        d = {
             "lambda_per_store": (a["rev_per_estab_usd"] / mean_rhat) if mean_rhat > 0 else None,
             "lambda_total": (a["rcptot_usd"] / sum_rhat) if sum_rhat > 0 else None,
             "n_ours": n, "n_ec": a["estab"],
             "estab_ratio_ours_over_ec": n / a["estab"] if a["estab"] else None,
             "ec_rev_per_estab_usd": a["rev_per_estab_usd"],
             "mean_rhat": mean_rhat,
+            "median_rhat": med_rhat,
         }
+        # v0.2 (7c): the MEDIAN-anchored lambda, computed whenever the median
+        # anchor is available. Both ship; `anchor_statistic` decides which one
+        # `lambda_shipped` points at, so the size of the correction is always
+        # visible rather than only its result.
+        ma = (med_anchor or {}).get(fips) or {}
+        tgt = ma.get("median_rev_per_estab_usd")
+        d["lambda_median"] = (tgt / med_rhat) if (tgt and med_rhat > 0) else None
+        d["median_anchor_usd"] = tgt
+        d["median_anchor_usable"] = ma.get("usable")
+        if d["lambda_median"] and d["lambda_per_store"]:
+            d["lambda_median_over_mean"] = round(d["lambda_median"] / d["lambda_per_store"], 4)
+        out[fips] = d
     return out
 
 
-def _apply_lambda(rhat: np.ndarray, county: np.ndarray, lam: dict) -> np.ndarray:
+def _lambda_key(settings: dict) -> str:
+    """Which lambda the shipped model uses -- the ONE place the anchor
+    statistic is turned into a field name."""
+    return "lambda_median" if settings.get("anchor_statistic") == "median" else "lambda_per_store"
+
+
+def _apply_lambda(rhat: np.ndarray, county: np.ndarray, lam: dict,
+                  key: str = "lambda_per_store") -> np.ndarray:
     out = np.full(len(rhat), np.nan)
     for fips, d in lam.items():
-        v = d.get("lambda_per_store")
+        v = d.get(key)
         if v is None:
             continue
         sel = county == fips
@@ -1068,6 +1633,96 @@ def _grid(spec: dict) -> list[tuple[float, float]]:
     return out
 
 
+def _grid3(spec: dict, settings: dict) -> list[tuple[float, float, float, float]]:
+    """(beta, gamma, epsilon, delta) candidates -- the v0.2 search space.
+
+    The shape axis (beta, gamma) is _grid's, unchanged, so a v0 run whose
+    epsilon grid is [1.0] and delta grid is [0.0] enumerates EXACTLY _grid in
+    the same order and reproduces D81's candidate indexing.
+
+    epsilon = 0 makes the pool term constant, and then beta/gamma still vary
+    the share, so no deduplication is possible on that axis. delta = 0 likewise
+    leaves the shape free. The grid is therefore the full product, and it is
+    the reason the fold loop is vectorised rather than looped (see
+    `_loo_spearman_rows`).
+    """
+    eps = [float(e) for e in settings["epsilon_grid"]]
+    dls = [float(d) for d in settings["delta_grid"]]
+    return [(b, g, e, d) for e in eps for d in dls for b, g in _grid(spec)]
+
+
+def _ranks(a: np.ndarray, axis: int = -1) -> np.ndarray:
+    """Average ranks along an axis -- scipy.stats.rankdata, vectorised."""
+    from scipy.stats import rankdata
+    return rankdata(a, axis=axis)
+
+
+def _loo_spearman_rows(preds: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Spearman of row i of `preds` against `y`, EXCLUDING column i, for every
+    row at once. `preds` is (n, n): row i is the prediction vector produced by
+    the fold that held ZIP i out.
+
+    Removing one element from a ranking does not need a re-rank: an element's
+    rank among the survivors is its full-sample rank minus one for every
+    survivor it outranked, i.e. minus 1 exactly when it ranked above the
+    removed element. That is exact whenever the values in a row are distinct,
+    which continuous predictions and an employees-per-establishment target are;
+    `test_loo_spearman_matches_the_scalar_loop` pins it against the naive
+    per-fold rank-and-correlate on random data.
+
+    Written vectorised because the v0.2 grid is (beta x gamma x epsilon x
+    delta) -- thousands of candidates x tens of folds -- and the naive loop is
+    a rank call per pair.
+    """
+    n = len(y)
+    R = _ranks(np.where(np.isfinite(preds), preds, -np.inf), axis=1)
+    ry = _ranks(y)
+    diag = R[np.arange(n), np.arange(n)][:, None]
+    Rk = R - (R > diag)                      # ranks among the survivors
+    ryk = ry[None, :] - (ry[None, :] > ry[:, None])
+    keep = ~np.eye(n, dtype=bool)
+    out = np.full(n, np.nan)
+    for i in range(n):                        # n is the ZIP count, tens not thousands
+        a, b = Rk[i][keep[i]], ryk[i][keep[i]]
+        ok = np.isfinite(preds[i][keep[i]])
+        if ok.sum() < 3:
+            continue
+        a, b = a[ok], b[ok]
+        if a.std() == 0 or b.std() == 0:
+            out[i] = 0.0
+            continue
+        out[i] = float(np.corrcoef(a, b)[0, 1])
+    return out
+
+
+def _parsimonious_argmax(scores: np.ndarray, cands: list, tol: float) -> int:
+    """THE PRE-REGISTERED TIE-BREAK (docstring 7a). Among candidates within
+    `tol` of the best score, take the SMALLEST epsilon; break what remains on
+    score, then on the candidate's position in the grid so the choice is
+    deterministic. tol = 0 reduces to a plain argmax, which is what
+    revenue-v0 gets."""
+    s = np.asarray(scores, dtype=float)
+    if not np.any(np.isfinite(s)):
+        return 0
+    best = float(np.nanmax(s))
+    feasible = [k for k in range(len(s)) if np.isfinite(s[k]) and s[k] >= best - tol]
+    return min(feasible, key=lambda k: (cands[k][2], -s[k], k))
+
+
+def price_index(income: np.ndarray, reference: float) -> np.ndarray:
+    """P = tract median household income / the county's median tract income.
+
+    The TICKET channel of docstring (7b), deliberately separate from the
+    household-COUNT channel. 1.0 where income is unknown -- a missing income is
+    "no information about price level", never "a cheap neighbourhood".
+    """
+    inc = np.asarray(income, dtype=float)
+    if not reference or not np.isfinite(reference) or reference <= 0:
+        return np.ones(inc.shape, dtype=float)
+    out = np.where(np.isfinite(inc) & (inc > 0), inc / float(reference), 1.0)
+    return out.astype(float)
+
+
 class _CatFit:
     """Precomputed aggregates for one category, so the leave-one-ZIP-out loop
     is arithmetic on sums instead of a groupby per fold.
@@ -1090,26 +1745,64 @@ class _CatFit:
         ci = {f: i for i, f in enumerate(self.counties)}
         self.cidx = np.array([ci.get(f, -1) for f in cp], dtype=np.int64)
         nz, nc = len(self.zips), len(self.counties)
+        self.nz, self.nc = nz, nc
         self.zsum, self.zcnt = [], []
         self.csum, self.ccnt = [], []
         self.zcsum, self.zccnt = [], []          # per (zip, county) for the fold subtraction
+        # `rhat_by_cand` is consumed as an ITERABLE, never indexed: v0.2's grid
+        # is thousands of candidates x tens of thousands of establishments, and
+        # materialising all of them at once is hundreds of megabytes for no
+        # reason -- only these aggregates are ever read again. Passing a list
+        # still works and is what the tests do.
         for r in rhat_by_cand:
+            r = np.asarray(r, dtype=float)
             ok = np.isfinite(r)
-            zs = np.zeros(nz); zn = np.zeros(nz)
             m = ok & (self.zidx >= 0)
-            np.add.at(zs, self.zidx[m], r[m]); np.add.at(zn, self.zidx[m], 1.0)
-            cs = np.zeros(nc); cn = np.zeros(nc)
+            # bincount, not np.add.at: same arithmetic, roughly 20x faster, and
+            # the candidate count in v0.2 makes that the difference between a
+            # fit that runs and one that does not.
+            zs = np.bincount(self.zidx[m], weights=r[m], minlength=nz).astype(float)
+            zn = np.bincount(self.zidx[m], minlength=nz).astype(float)
             m2 = ok & (self.cidx >= 0)
-            np.add.at(cs, self.cidx[m2], r[m2]); np.add.at(cn, self.cidx[m2], 1.0)
-            zcs = np.zeros((nz, nc)); zcn = np.zeros((nz, nc))
+            cs = np.bincount(self.cidx[m2], weights=r[m2], minlength=nc).astype(float)
+            cn = np.bincount(self.cidx[m2], minlength=nc).astype(float)
             m3 = m & (self.cidx >= 0)
-            np.add.at(zcs, (self.zidx[m3], self.cidx[m3]), r[m3])
-            np.add.at(zcn, (self.zidx[m3], self.cidx[m3]), 1.0)
+            flat = self.zidx[m3] * nc + self.cidx[m3]
+            zcs = np.bincount(flat, weights=r[m3], minlength=nz * nc).astype(float).reshape(nz, nc)
+            zcn = np.bincount(flat, minlength=nz * nc).astype(float).reshape(nz, nc)
             self.zsum.append(zs); self.zcnt.append(zn)
             self.csum.append(cs); self.ccnt.append(cn)
             self.zcsum.append(zcs); self.zccnt.append(zcn)
+        self.n_cands = len(self.zsum)
+        self.rpe = np.array([(self.anchor[f].get("rev_per_estab_usd") or np.nan)
+                             for f in self.counties], dtype=float)
         self.zcounty = np.array([self.counties.index(f) if f in ci else -1
                                  for f in self.zc], dtype=np.int64)
+
+    def lambdas_all_folds(self, k: int) -> np.ndarray:
+        """(n_zips, n_counties) -- row i is candidate k's per-county lambda
+        fitted with ZIP i held out. Identical arithmetic to `lambdas(k,
+        drop_zip=i)` for every i, computed in one array op; a test pins the
+        two against each other."""
+        cs = self.csum[k][None, :] - self.zcsum[k]
+        cn = self.ccnt[k][None, :] - self.zccnt[k]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            lam = np.where((cn > 0) & (cs > 0), self.rpe[None, :] * cn / cs, np.nan)
+        return lam
+
+    def predict_all_folds(self, k: int) -> np.ndarray:
+        """(n_zips, n_zips) -- row i is the vector of predictions every ZIP
+        receives from the fold that held ZIP i out. The diagonal is the
+        held-out prediction; the off-diagonal is what that fold is SCORED on."""
+        lam = self.lambdas_all_folds(k)
+        # NaN lambdas are DROPPED from the sum (nansum's semantics in
+        # `predict`), not propagated: a county with no establishments left in a
+        # fold must not annihilate a ZIP that lies wholly in the other county.
+        lam0 = np.where(np.isfinite(lam), lam, 0.0)
+        num = lam0 @ self.zcsum[k].T                     # (folds, zips)
+        den = np.where(np.isfinite(lam), 1.0, 0.0) @ self.zccnt[k].T
+        with np.errstate(invalid="ignore", divide="ignore"):
+            return np.where(den > 0, num / np.maximum(den, 1e-9), np.nan)
 
     def lambdas(self, k: int, drop_zip: int | None = None) -> np.ndarray:
         """Per-county lambda_per_store for candidate k, optionally excluding
@@ -1141,18 +1834,108 @@ class _CatFit:
 
 def fit(con, boroughs=("MN", "BK"), spec: dict | None = None, pack: RingPack | None = None,
         log=print) -> dict:
-    """Calibrate lambda, beta and gamma, run the leave-one-ZIP-out backtest
-    against both baselines and the placebo, and return the calibration
-    document. Writing it is `save_calibration`'s job and is GATED."""
+    """Calibrate lambda, beta, gamma, epsilon and delta, run the
+    leave-one-ZIP-out backtest against both baselines and the placebo, and
+    return the calibration document. Writing it is `save_calibration`'s job and
+    is GATED.
+
+    Under `epsilon_selection: smallest_gate_passing` (v0.2) this refits the
+    WHOLE model family at every epsilon on the grid and lets the GATE choose:
+    a category ships at the smallest epsilon it still survives. See
+    revenue.yaml for why an argmax and a bare prior were both rejected.
+    """
+    spec = spec or load_spec()
+    vs = version_settings(spec)
+    if vs.get("epsilon_selection") != "smallest_gate_passing":
+        return _fit_at(con, boroughs, spec, vs, [float(e) for e in vs["epsilon_grid"]],
+                       pack=pack, log=log)
+
+    pack = pack or compute_rings(con, list(boroughs), spec, log=log)
+    grid = sorted(float(e) for e in vs["epsilon_grid"])
+    docs = {}
+    for e in grid:
+        log(f"  epsilon scan: refitting the whole family at epsilon = {e}")
+        docs[e] = _fit_at(con, boroughs, spec, vs, [e], pack=pack, log=lambda *_: None)
+        passing = sorted(c for c, d in docs[e]["categories"].items()
+                         if (d or {}).get("gate") == "pass")
+        log(f"    epsilon {e}: gate passes {passing or '(none)'}")
+
+    # THE GATE CHOOSES, SUBJECT TO THE STRUCTURAL FLOOR. Smallest epsilon at or
+    # above `epsilon_floor` that passes; if none does, the record kept is the
+    # LARGEST epsilon's (the v0-like end of the family), so the failure reason
+    # a reader sees is the one for the least-compressed model.
+    #
+    # The floor is load-bearing, not cosmetic: on the 2026-09-13 scan
+    # cafe_bakery passed the gate at epsilon = 0.0, where the model has no
+    # demand pool at all and its only spatial signal is incumbent density --
+    # the rejected D1 thesis. A gate that cannot see that is not a licence to
+    # ship it. The full grid is still scanned and recorded.
+    floor = float(vs.get("epsilon_floor") or 0.0)
+    eligible = [e for e in grid if e >= floor - 1e-9]
+    out = dict(docs[grid[-1]])
+    cats = list(out["categories"])
+    chosen = {}
+    for cat in cats:
+        hit = next((e for e in eligible
+                    if (docs[e]["categories"].get(cat) or {}).get("gate") == "pass"), None)
+        chosen[cat] = hit
+        d = dict(docs[hit if hit is not None else grid[-1]]["categories"][cat])
+        d["epsilon_selection"] = "smallest_gate_passing"
+        d["epsilon_gate_scan"] = {
+            str(e): {
+                "gate": (docs[e]["categories"].get(cat) or {}).get("gate"),
+                "spearman_oos": ((docs[e]["categories"].get(cat) or {}).get("backtest")
+                                 or {}).get("spearman_oos"),
+                "placebo": (((docs[e]["categories"].get(cat) or {}).get("placebo") or {})
+                            .get("passes")),
+                "placebo_margin": _placebo_margin(docs[e]["categories"].get(cat) or {}),
+            } for e in grid}
+        below = sorted(e for e in grid if e < floor - 1e-9
+                       and (docs[e]["categories"].get(cat) or {}).get("gate") == "pass")
+        d["epsilon_floor"] = floor
+        d["epsilon_passed_below_floor"] = below
+        d["epsilon_shipped_reason"] = (
+            f"smallest epsilon >= the structural floor {floor} at which this category passes "
+            f"the full gate (both baselines + the cross-category placebo); it fails at every "
+            f"smaller eligible one"
+            + (f". It ALSO passed at {below}, below the floor, where the demand pool is "
+               f"effectively absent and the only spatial signal is incumbent density -- "
+               f"refused on the D1 guardrail, not on skill." if below else "")
+            if hit is not None else
+            "no eligible epsilon passes the gate; the record shown is the largest on the grid"
+            + (f" (it DID pass at {below}, below the structural floor, where the model has no "
+               f"demand pool -- refused on the D1 guardrail)" if below else ""))
+        out["categories"][cat] = d
+    out["epsilon_selection"] = "smallest_gate_passing"
+    out["epsilon_floor"] = floor
+    out["epsilon_chosen"] = {c: chosen[c] for c in cats}
+    return out
+
+
+def _placebo_margin(d: dict) -> float | None:
+    p = d.get("placebo") or {}
+    own, riv = p.get("own_spearman"), p.get("best_rival_spearman")
+    return None if (own is None or riv is None) else round(own - riv, 4)
+
+
+def _fit_at(con, boroughs, spec: dict, vs: dict, eps_list: list[float],
+            pack: RingPack | None = None, log=print) -> dict:
+    """One full calibration at a FIXED epsilon grid (usually one value)."""
     from scipy.spatial import cKDTree
 
-    spec = spec or load_spec()
+    vs = {**vs, "epsilon_grid": list(eps_list),
+          "epsilon_shipped": eps_list[0] if len(eps_list) == 1 else vs.get("epsilon_shipped")}
     cats = list(spec["modelled"]) + list(spec["flagged"])
     edges = [float(x) for x in spec["huff"]["ring_edges_m"]]
     d_floor = float(spec["huff"]["d_floor_m"])
-    cands = _grid(spec)
+    cands = _grid3(spec, vs)
+    shapes = _grid(spec)
+    eps_tol = float(vs.get("epsilon_parsimony_tolerance", 0.0))
+    lam_key = _lambda_key(vs)
     breaks = spec["cex"]["quintile_income_breaks_usd"]
     pool_r = float(spec["huff"]["pool_radius_m"])
+    log(f"  model_version {vs['model_version']}: {len(cands)} candidates "
+        f"(beta x gamma x epsilon x delta), anchor = {vs['anchor_statistic']}")
 
     pack = pack or compute_rings(con, list(boroughs), spec, log=log)
     quint, national, ny_msa = load_cex_quintiles(spec), load_cex_national(spec), load_cex_ny_msa(spec)
@@ -1166,6 +1949,9 @@ def fit(con, boroughs=("MN", "BK"), spec: dict | None = None, pack: RingPack | N
     ec = {2022: fetch_ec_county(2022, n22, spec)}
     if n17:
         ec[2017] = fetch_ec_county(2017, n17, spec)
+
+    all_cbp_codes = sorted({c for k in cats for c in _cbp_codes(k, spec)})
+    cbp_county = fetch_cbp_county_bands(all_cbp_codes, spec)
 
     # An establishment's customers are the households around IT, so it gets the
     # income of the nearest residential address -- the same tract figure an
@@ -1184,10 +1970,24 @@ def fit(con, boroughs=("MN", "BK"), spec: dict | None = None, pack: RingPack | N
     poi_zip = pack.poi["zipcode"].to_numpy()
     poi_county = pack.poi["county"].to_numpy()
 
+    # The price-index reference (docstring 7b): the MEDIAN TRACT INCOME of the
+    # county, taken over the scope's addresses, not over establishments -- the
+    # reference is "how rich is this county's typical household", and weighting
+    # it by where shops happen to be would make the index partly a shop-density
+    # measure. Computed once, from the same frame every other term is read off.
+    county_ref = {}
+    _ai, _ac = pack.addr["median_hh_income"].to_numpy(dtype=float), pack.addr["county"].to_numpy()
+    for f in sorted({str(c) for c in _ac if isinstance(c, str)}):
+        v = _ai[(_ac == f) & np.isfinite(_ai)]
+        county_ref[f] = float(np.median(v)) if v.size else np.nan
+    log(f"  price-index reference (county median tract income): "
+        f"{ {k: round(v) for k, v in county_ref.items() if np.isfinite(v)} }")
+
     per_cat, zip_preds = {}, {}
     for cat in cats:
         vintage = int(spec["categories"][cat].get("ec_vintage", 2022))
         anchor = ec_anchor(cat, spec, ec[vintage])
+        med_anchor = median_anchor(cat, spec, ec[vintage], cbp_county)
         evec, spend_src = spend_vector(cat, spec, quint, national, ny_msa, spend_yaml)
         m = poi_cat == cat
         if m.sum() == 0 or not anchor:
@@ -1196,6 +1996,9 @@ def fit(con, boroughs=("MN", "BK"), spec: dict | None = None, pack: RingPack | N
         pool = homes400_poi_all[m] * spend_per_household(poi_income[m], evec, breaks)
         rings = pack.supply("poi", cat)[m]
         zp, cp = poi_zip[m], poi_county[m]
+        ref = np.array([county_ref.get(f, np.nan) for f in cp], dtype=float)
+        pidx = np.where(np.isfinite(poi_income[m]) & (poi_income[m] > 0)
+                        & np.isfinite(ref) & (ref > 0), poi_income[m] / ref, 1.0)
 
         truth = employees_per_estab(cbp, cat, spec).set_index("zipcode")
         zips_eval = sorted(set(pd.Series(zp).dropna()) & set(truth.index))
@@ -1206,36 +2009,76 @@ def fit(con, boroughs=("MN", "BK"), spec: dict | None = None, pack: RingPack | N
             continue
         y = truth.loc[zips_eval, "emp_per_estab"].to_numpy()
 
-        rhat_by_cand = [uncalibrated(pool, rings, b, edges, d_floor,
-                                     exclude_self=True, gamma=g) for b, g in cands]
-        F = _CatFit(rhat_by_cand, zips_eval, zp, cp, anchor)
+        # R_hat = Pool^epsilon * P^delta * s(beta, gamma). The pool factor
+        # depends only on (epsilon, delta) and the share only on (beta, gamma),
+        # so both are computed ONCE per axis value and multiplied -- otherwise
+        # v0.2's grid would recompute the same Dijkstra-ring kernel thousands of
+        # times. `_grid3` enumerates epsilon-major / delta / shape, in exactly
+        # this order.
+        def _pool_factor(e, d):
+            b = pool if e == 1.0 else np.where(pool > 0, np.power(np.maximum(pool, 0.0), e),
+                                               0.0 if e > 0 else 1.0)
+            return b if d == 0.0 else b * np.power(np.maximum(pidx, 1e-9), d)
+
+        shares = {(b, g): huff_share(rings, b, edges, d_floor, exclude_self=True, gamma=g)
+                  for b, g in shapes}
+
+        def _rhats():
+            for e in [float(x) for x in vs["epsilon_grid"]]:
+                for d in [float(x) for x in vs["delta_grid"]]:
+                    pf = _pool_factor(e, d)
+                    for b, g in shapes:
+                        yield pf * shares[(b, g)]
+
+        F = _CatFit(_rhats(), zips_eval, zp, cp, anchor)
         nz = len(zips_eval)
 
         # ---- in-sample candidate choice (reported, NEVER the shipped skill)
-        in_scores = [_spearman(F.predict(k, F.lambdas(k)), y) for k in range(len(cands))]
+        in_scores = np.array([_spearman(F.predict(k, F.lambdas(k)), y)
+                              for k in range(len(cands))], dtype=float)
         if not np.any(np.isfinite(in_scores)):
             per_cat[cat] = {"gate": "fail", "spend_source": spend_src,
                             "reason": "no candidate produced a finite score -- the "
                                       "prediction is constant or all-NULL across ZIPs"}
             continue
-        k_star = int(np.nanargmax(in_scores))
+        # THE SHIPPED CANDIDATE POOL. The full grid is searched for the
+        # REPORTED epsilon profile; selection, the folds and the gate run on
+        # the SHIPPED specification only (revenue.yaml's `epsilon_shipped`), so
+        # the backtest measures the model that actually ships rather than one
+        # the argmax of a flat profile preferred. See revenue.yaml for why the
+        # unconstrained argmax is not used.
+        eps_ship = vs.get("epsilon_shipped")
+        cand_eps_all = np.array([c[2] for c in cands])
+        pool_idx = (np.flatnonzero(np.isclose(cand_eps_all, float(eps_ship)))
+                    if eps_ship is not None else np.arange(len(cands)))
+        if pool_idx.size == 0:                                # pragma: no cover
+            raise RuntimeError(f"epsilon_shipped {eps_ship} is not on epsilon_grid")
 
-        # ---- leave-one-ZIP-out: beta, gamma AND lambda refitted without the
-        # held-out ZIP. The model selection is INSIDE the fold, which is what
-        # makes the reported number out of sample despite a grid search.
-        oos = np.full(nz, np.nan)
-        fold_cands = []
-        for i in range(nz):
-            keep = np.ones(nz, dtype=bool)
-            keep[i] = False
-            best, best_k = -np.inf, k_star
-            for k in range(len(cands)):
-                pk = F.predict(k, F.lambdas(k, drop_zip=i))
-                s = _spearman(pk[keep], y[keep])
-                if np.isfinite(s) and s > best:
-                    best, best_k = s, k
-            oos[i] = F.predict(best_k, F.lambdas(best_k, drop_zip=i))[i]
-            fold_cands.append(best_k)
+        def _pick(scores_1d, idx):
+            """argmax under the parsimony rule, restricted to `idx`."""
+            sub = np.asarray(scores_1d)[idx]
+            return int(idx[_parsimonious_argmax(sub, [cands[k] for k in idx], eps_tol)])
+
+        k_star = _pick(in_scores, pool_idx)
+
+        # ---- leave-one-ZIP-out: beta, gamma, epsilon, delta AND lambda all
+        # refitted without the held-out ZIP. The model selection is INSIDE the
+        # fold, which is what makes the reported number out of sample despite a
+        # grid search over thousands of candidates.
+        #
+        # Vectorised over folds: `predict_all_folds` produces, for one
+        # candidate, the (fold x ZIP) matrix of predictions, and
+        # `_loo_spearman_rows` scores every fold's held-out-excluded ranking in
+        # one pass. The arithmetic is identical to the scalar loop v0 ran and
+        # `test_predict_all_folds_matches_the_scalar_fold_loop` pins it.
+        fold_scores = np.full((len(cands), nz), np.nan)
+        fold_diag = np.full((len(cands), nz), np.nan)
+        for k in range(len(cands)):
+            P = F.predict_all_folds(k)
+            fold_scores[k] = _loo_spearman_rows(P, y)
+            fold_diag[k] = np.diag(P)
+        fold_cands = [_pick(fold_scores[:, i], pool_idx) for i in range(nz)]
+        oos = np.array([fold_diag[fold_cands[i], i] for i in range(nz)], dtype=float)
 
         # ---- the two baselines (parameter-free, so no LOZO penalty applies to
         # them -- the comparison is conservative in the MODEL's disfavour)
@@ -1248,29 +2091,118 @@ def fit(con, boroughs=("MN", "BK"), spec: dict | None = None, pack: RingPack | N
         beats_county = _beats(s_model, s_county, margin)
         beats_homes = _beats(s_model, s_homes, margin)
 
-        lam_full = _lambdas(rhat_by_cand[k_star], cp, anchor)
+        # ---- PRICE INDEX: does it add skill? The same leave-one-ZIP-out
+        # machinery restricted to delta = 0, scored the same way. A term that
+        # does not beat its own absence by `delta_min_skill_gain` does not
+        # travel in the shipped equation.
+        cand_del = np.array([c[3] for c in cands])
+        d0_idx = pool_idx[cand_del[pool_idx] == 0.0]
+        fold_cands_d0 = [_pick(fold_scores[:, i], d0_idx) for i in range(nz)]
+        oos_d0 = np.array([fold_diag[fold_cands_d0[i], i] for i in range(nz)], dtype=float)
+        s_d0, s_all = _spearman(oos_d0, y), _spearman(oos, y)
+        gain = float(vs.get("delta_min_skill_gain", 0.0))
+        delta_earns = bool(np.isfinite(s_d0) and np.isfinite(s_all) and s_all > s_d0 + gain)
+        if not delta_earns:
+            k_star, fold_cands, oos = _pick(in_scores, d0_idx), fold_cands_d0, oos_d0
+
+        beta_star, gamma_star, eps_star, delta_star = cands[k_star]
+        # LAMBDA IS FITTED ON THE FUNCTION THAT SHIPS, not on the one the
+        # backtest scored. The two differ by the site-level gamma cap (7e), and
+        # the difference is enormous: an establishment sits on a retail
+        # corridor, so for gamma < 0 its uncapped share is a multiplier of
+        # several, while every shipped site gets exactly 1.0. Calibrating
+        # lambda against the uncapped mean and then applying it to capped
+        # predictions divides the whole level by the median establishment's
+        # agglomeration multiplier -- measured at ~13x for Manhattan
+        # restaurants, which put the median Manhattan restaurant at $130k
+        # against a median anchor of $1.67M. The division of labour is:
+        # the BACKTEST validates the RANKING and keeps gamma free and uncapped
+        # (that is where its ZIP-grain skill lives); LAMBDA sets the LEVEL and
+        # must therefore see exactly the predictor that reaches an address.
+        rhat_star = _pool_factor(eps_star, delta_star) * shares[(beta_star, gamma_star)]
+        s_ship = shares[(beta_star, gamma_star)]
+        if vs.get("gamma_site_cap"):
+            s_ship = np.minimum(s_ship, 1.0)
+        rhat_ship = _pool_factor(eps_star, delta_star) * s_ship
+        lam_full = _lambdas(rhat_ship, cp, anchor, med_anchor=med_anchor)
+        for d_ in lam_full.values():
+            d_["fitted_on"] = ("site-capped share (the shipped predictor)"
+                               if vs.get("gamma_site_cap") else "uncapped share")
         zip_preds[cat] = pd.Series(F.predict(k_star, F.lambdas(k_star)), index=zips_eval)
 
-        beta_star, gamma_star = cands[k_star]
         fold_gammas = [cands[k][1] for k in fold_cands]
         fold_betas = [cands[k][0] for k in fold_cands]
+        fold_eps = [cands[k][2] for k in fold_cands]
+        fold_deltas = [cands[k][3] for k in fold_cands]
+
+        # ---- epsilon PROFILE, not just the argmax (docstring 7a). For each
+        # epsilon on the grid, the best held-out Spearman any candidate at that
+        # epsilon reached, averaged over folds. A flat profile is the finding
+        # that the ZIP-grain target cannot identify epsilon, and it has to be
+        # visible as a flat profile.
+        mean_fold = np.nanmean(fold_scores, axis=1)
+        eps_profile = {}
+        for e in sorted(set(cand_eps_all.tolist())):
+            v = mean_fold[cand_eps_all == e]
+            eps_profile[str(e)] = (None if not np.any(np.isfinite(v))
+                                   else round(float(np.nanmax(v)), 4))
+        finite = [v for v in eps_profile.values() if v is not None]
+        eps_range = round(max(finite) - min(finite), 4) if len(finite) > 1 else None
+        eps_fitted = (max((k for k in eps_profile if eps_profile[k] is not None),
+                          key=lambda k: eps_profile[k]) if finite else None)
+        # The fold-to-fold spread of the held-out score at the SHIPPED
+        # specification. The epsilon profile's whole range has to be read
+        # against this: if the range is smaller, the profile is noise.
+        fold_sd = float(np.nanstd(fold_scores[k_star])) if np.any(
+            np.isfinite(fold_scores[k_star])) else None
 
         # ---- sigmas for the p25/p75 band
         lv = [d["lambda_per_store"] for d in lam_full.values() if d.get("lambda_per_store")]
         sig_lambda = (abs(math.log(max(lv) / min(lv))) / 2.0) if len(lv) > 1 else 0.0
         sig_lambda = max(sig_lambda, float(spec["uncertainty"]["lambda_min_sigma"]))
         med_rings = np.median(rings, axis=0)[None, :]
-        sig_beta = sigma_shape(med_rings, [cands[k] for k in fold_cands],
+        sig_beta = sigma_shape(med_rings, [(cands[k][0], cands[k][1]) for k in fold_cands],
                                (beta_star, gamma_star), edges, d_floor)
 
         per_cat[cat] = {
             "gate": None,                      # filled by gate_verdict
             "beta": beta_star,
             "gamma": gamma_star,
+            "epsilon": eps_star,
+            "delta": delta_star,
             "competition_sign": ("competitive" if gamma_star > 0 else
                                  "none" if gamma_star == 0 else "agglomerative"),
+            "gamma_site_capped": bool(vs["gamma_site_cap"] and gamma_star < 0),
             "gamma_lozo_folds": {str(g): fold_gammas.count(g) for g in sorted(set(fold_gammas))},
             "beta_lozo_folds": {str(b): fold_betas.count(b) for b in sorted(set(fold_betas))},
+            "epsilon_lozo_folds": {str(e): fold_eps.count(e) for e in sorted(set(fold_eps))},
+            # WHAT SHIPS vs WHAT THE UNCONSTRAINED SEARCH WANTED. Reported side
+            # by side, always, so the gap is never invisible. See revenue.yaml.
+            "epsilon_source": ("pinned by the caller (one point of the epsilon scan)"
+                               if vs.get("epsilon_shipped") is not None
+                               else "unconstrained argmax over the grid"),
+            "epsilon_fitted_unconstrained": None if eps_fitted is None else float(eps_fitted),
+            "epsilon_profile": eps_profile,
+            "epsilon_profile_range": eps_range,
+            "fold_score_sd_at_shipped": None if fold_sd is None else round(fold_sd, 4),
+            "epsilon_identified": (None if (eps_range is None or fold_sd is None)
+                                   else bool(eps_range > fold_sd)),
+            "delta_lozo_folds": {str(d): fold_deltas.count(d) for d in sorted(set(fold_deltas))},
+            "price_index": {
+                "spearman_oos_with_delta": None if not np.isfinite(s_all) else round(s_all, 4),
+                "spearman_oos_delta_zero": None if not np.isfinite(s_d0) else round(s_d0, 4),
+                "min_gain_required": gain,
+                "adds_skill": delta_earns,
+                "shipped_delta": delta_star,
+                "county_median_tract_income": {k: (None if not np.isfinite(v) else round(v))
+                                               for k, v in county_ref.items()},
+            },
+            "anchor": {
+                "statistic": vs["anchor_statistic"],
+                "lambda_field": lam_key,
+                "per_county": {k: {kk: (round(vv, 4) if isinstance(vv, float) else vv)
+                                   for kk, vv in v.items()} for k, v in med_anchor.items()},
+            },
             "spend_source": spend_src,
             "annual_spend_by_quintile_usd": [round(float(v), 2) for v in evec],
             "ec_vintage": vintage,
@@ -1300,8 +2232,11 @@ def fit(con, boroughs=("MN", "BK"), spec: dict | None = None, pack: RingPack | N
         gate_verdict(per_cat[cat], spec)
 
     return {
-        "version": 1,
+        "version": 2,
         "model_version": spec["model_version"],
+        "settings": {k: v for k, v in version_settings(spec).items() if k != "model_version"},
+        "capacity_psf_per_year": ((spec.get("capacity") or {}).get("psf_per_year")
+                                  if vs.get("capacity_cap") else None),
         "spec_hash": spec_hash(),
         "asof": dt.datetime.now().isoformat(timespec="seconds"),
         "sweep": pack.report,
@@ -1430,9 +2365,16 @@ def save_calibration(doc: dict, path: pathlib.Path | None = None) -> pathlib.Pat
 
 # ------------------------------------------------------- address prediction
 
-def predict_addresses(pack: RingPack, cal: dict, spec: dict | None = None) -> tuple:
+def predict_addresses(pack: RingPack, cal: dict, spec: dict | None = None,
+                      areas: pd.DataFrame | None = None) -> tuple:
     """(category long frame, address frame). Only categories whose calibration
-    PASSED the gate get rows; everything else stays NULL by omission."""
+    PASSED the gate get rows; everything else stays NULL by omission.
+
+    `areas` is `lot_retail_area`'s frame, required when the calibration's
+    version switches the capacity ceiling on; without it the ceiling cannot be
+    evaluated and the run REFUSES rather than shipping uncapped numbers under a
+    version string that claims a cap.
+    """
     spec = spec or load_spec()
     edges = [float(x) for x in spec["huff"]["ring_edges_m"]]
     d_floor = float(spec["huff"]["d_floor_m"])
@@ -1443,6 +2385,9 @@ def predict_addresses(pack: RingPack, cal: dict, spec: dict | None = None) -> tu
     quint, national, ny_msa = load_cex_quintiles(spec), load_cex_national(spec), load_cex_ny_msa(spec)
     spend_yaml = load_spend()
 
+    vs = version_settings(spec)
+    lam_key = _lambda_key(vs)
+
     homes400 = pack.homes("addr", pool_r)
     homes800 = pack.homes("addr", edges[-1])
     inc = pack.addr["median_hh_income"].to_numpy(dtype=float)
@@ -1450,7 +2395,35 @@ def predict_addresses(pack: RingPack, cal: dict, spec: dict | None = None) -> tu
     se = np.where(np.isfinite(moe), moe / z90, np.nan)
     county = pack.addr["county"].to_numpy()
 
-    frames = []
+    # The price-index reference, recomputed the same way the fit computed it
+    # (county median tract income over the address frame). It is a property of
+    # the county, not of the fit, so recomputing it here rather than reading it
+    # back is what keeps the apply path independent of the calibration file's
+    # rounding.
+    cref = np.full(len(inc), np.nan)
+    for f in sorted({str(c) for c in county if isinstance(c, str)}):
+        sel = county == f
+        v = inc[sel & np.isfinite(inc)]
+        if v.size:
+            cref[sel] = float(np.median(v))
+    pidx_addr = np.where(np.isfinite(inc) & (inc > 0) & np.isfinite(cref) & (cref > 0),
+                         inc / cref, 1.0)
+
+    # Capacity: PLUTO retail area on the lot, split by the storefront count.
+    cap_area_by_row = None
+    if vs.get("capacity_cap"):
+        if areas is None:
+            raise RuntimeError(
+                "revenue: model_version declares a capacity ceiling but no PLUTO retail-area "
+                "frame was supplied. Shipping uncapped numbers under a version string that "
+                "claims a cap would be the worst of both. Pass `areas=lot_retail_area(con)`.")
+        bbl = pack.addr["bbl"].astype("string").to_numpy()
+        a = (pd.DataFrame({"bbl": bbl})
+             .merge(areas[["bbl", "demise_sqft", "storefronts_on_bbl"]], on="bbl", how="left"))
+        cap_area_by_row = (a["demise_sqft"].to_numpy(dtype=float),
+                           a["storefronts_on_bbl"].fillna(0).to_numpy(dtype=float))
+
+    frames, cap_report = [], {}
     for cat, d in (cal.get("categories") or {}).items():
         if (d or {}).get("gate") != "pass":
             continue
@@ -1466,11 +2439,16 @@ def predict_addresses(pack: RingPack, cal: dict, spec: dict | None = None) -> tu
         sig_inc = np.nan_to_num(sig_inc, nan=0.0)
 
         beta, gamma = float(d["beta"]), float(d.get("gamma", 1.0))
+        eps, dlt = float(d.get("epsilon", 1.0)), float(d.get("delta", 0.0))
         rhat = uncalibrated(homes400 * E, pack.supply("addr", cat), beta, edges,
-                            d_floor, gamma=gamma)
+                            d_floor, gamma=gamma, epsilon=eps,
+                            pindex=pidx_addr, delta=dlt,
+                            gamma_site_cap=bool(vs.get("gamma_site_cap")))
         lam = np.full(len(rhat), np.nan)
         for fips, ld in (d.get("lambda") or {}).items():
-            v = ld.get("lambda_per_store")
+            v = ld.get(lam_key)
+            if v is None:                # the anchor fell back; the mean lambda ships
+                v = ld.get("lambda_per_store")
             if v is not None:
                 lam[county == fips] = float(v)
         p50 = rhat * lam
@@ -1479,21 +2457,62 @@ def predict_addresses(pack: RingPack, cal: dict, spec: dict | None = None) -> tu
         sig = np.sqrt(float(sg.get("lambda", 0.0)) ** 2 + float(sg.get("beta", 0.0)) ** 2
                       + sig_inc ** 2)
         z = 0.6744897501960817                       # the 75th-percentile normal deviate
+        p25 = p50 * np.exp(-z * sig)
+        p75 = p50 * np.exp(z * sig)
+
+        # ---- the capacity ceiling (docstring 7d). ONE-SIGNED: it can only
+        # lower a number, never raise one, and `test_capacity_cap_never_raises`
+        # pins that.
+        band = capacity_band(cat, spec)
+        cap50 = np.full(len(p50), np.nan)
+        bound = np.zeros(len(p50), dtype=bool)
+        typical = np.zeros(len(p50), dtype=bool)
+        split = np.zeros(len(p50), dtype=bool)
+        if vs.get("capacity_cap") and band:
+            demise, sf_count = cap_area_by_row
+            area, typical = capacity_area(demise, cat, spec)
+            split = sf_count > 1
+            cap25, cap50, cap75 = (area * band["p25"], area * band["p50"], area * band["p75"])
+            ok_cap = np.isfinite(cap50) & (cap50 > 0)
+            bound = ok_cap & np.isfinite(p50) & (cap50 < p50)
+            p25 = np.where(ok_cap, np.minimum(p25, cap25), p25)
+            p50 = np.where(ok_cap, np.minimum(p50, cap50), p50)
+            p75 = np.where(ok_cap, np.minimum(p75, cap75), p75)
+
         ok = np.isfinite(p50) & (p50 > 0)
         frames.append(pd.DataFrame({
             "address_id": pack.addr["address_id"].to_numpy()[ok],
             "borough": pack.addr["borough"].to_numpy()[ok],
             "category": cat,
-            "revenue_p25": p50[ok] * np.exp(-z * sig[ok]),
+            "revenue_p25": p25[ok],
             "revenue_p50": p50[ok],
-            "revenue_p75": p50[ok] * np.exp(z * sig[ok]),
+            "revenue_p75": p75[ok],
             "rent_ceiling": p50[ok] * float(ocr[cat]),
             "revenue_model_version": cal["model_version"],
+            "revenue_cap_p50": cap50[ok],
+            "capacity_bound": bound[ok],
         }))
+        n = int(ok.sum())
+        cap_report[cat] = {
+            "rows": n,
+            "capacity_bound": int(bound[ok].sum()),
+            "capacity_bound_share": round(float(bound[ok].mean()), 4) if n else None,
+            # FLAGS, per docstring 7d: a typical-footprint row does not know how
+            # big its box is, and a split row is one storefront of several on a
+            # lot whose retail area PLUTO reports whole.
+            "area_from_typical_footprint": int(typical[ok].sum()) if vs.get("capacity_cap") else 0,
+            "area_split_by_storefront_count": int(split[ok].sum()) if vs.get("capacity_cap") else 0,
+            "median_cap_p50_usd": (None if not np.isfinite(np.nanmedian(cap50[ok]))
+                                   else round(float(np.nanmedian(cap50[ok])))) if n else None,
+            "median_model_p50_before_cap_usd": (round(float(np.nanmedian((rhat * lam)[ok])))
+                                                if n else None),
+            "median_shipped_p50_usd": round(float(np.nanmedian(p50[ok]))) if n else None,
+        }
 
     long_df = (pd.concat(frames, ignore_index=True) if frames
                else pd.DataFrame(columns=["address_id", "borough", "category",
                                           *CATEGORY_REVENUE_COLUMNS]))
+    long_df.attrs["capacity"] = cap_report
     addr_df = pd.DataFrame({
         "address_id": pack.addr["address_id"],
         "borough": pack.addr["borough"],
@@ -1538,6 +2557,14 @@ def write_revenue(con, long_df: pd.DataFrame, boroughs: list[str]) -> int:
                 list(boroughs))
     if long_df.empty:
         return 0
+    # A column the caller did not produce is written NULL, not omitted: the
+    # RESET above already cleared the scope, and a v0 calibration legitimately
+    # produces no capacity columns. Adding it here keeps the SET list one fixed
+    # pinned list rather than something that varies with the model version.
+    long_df = long_df.copy()
+    for c in CATEGORY_REVENUE_COLUMNS:
+        if c not in long_df.columns:
+            long_df[c] = None
     payload = long_df[["address_id", "borough", "category", *CATEGORY_REVENUE_COLUMNS]]
     con.register("_rev_cat", payload)
     try:
@@ -1601,7 +2628,13 @@ def build_revenue(con, boroughs: list[str], spec: dict | None = None,
     if stamped and stamped != live:
         log(f"  WARNING: supply hash drift {stamped} -> {live}: lambda was calibrated "
             f"against a different incumbent set.")
-    long_df, addr_df = predict_addresses(pack, cal, spec)
+    vs = version_settings(spec)
+    areas = lot_retail_area(con, spec) if vs.get("capacity_cap") else None
+    if areas is not None:
+        log(f"  capacity: {len(areas):,} PLUTO lots, "
+            f"{int((areas['retail_area_sqft'] > 0).sum()):,} with retailarea > 0, "
+            f"{int((areas['storefronts_on_bbl'] > 1).sum()):,} with >1 registered storefront")
+    long_df, addr_df = predict_addresses(pack, cal, spec, areas=areas)
 
     # VERIFICATION, not a dependency: this module recomputes homes_400m from
     # its own sweep rather than reading D73's column, so a revenue run does not
@@ -1632,6 +2665,8 @@ def build_revenue(con, boroughs: list[str], spec: dict | None = None,
         "not_modelled": sorted((set(spec["modelled"]) | set(spec["flagged"])
                                 | set(spec["benchmark_only"])) - shipped_categories(cal)),
         "rows_predicted": int(len(long_df)),
+        "model_version": cal.get("model_version"),
+        "capacity": long_df.attrs.get("capacity") or {},
         "calibration_spec_hash": cal.get("spec_hash"),
         "calibration_supply_hash": stamped,
         "supply_hash_drift": bool(stamped and stamped != live),
