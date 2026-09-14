@@ -1,4 +1,4 @@
-.PHONY: help setup db-init check tickets paid-sources nyc chains-refresh clean
+.PHONY: help setup db-init check tickets paid-sources portability nyc chains-refresh clean
 
 help:          ## Show targets
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | column -t -s "$$(printf '\t')"
@@ -19,7 +19,9 @@ check:         ## Registry + URL sweep + QUESTIONS drift + decisions + ledger co
 	              tests/test_chains_watchlist.py tests/test_poi_presence.py \
 	              tests/test_webmap_character.py tests/test_sidewalk_count.py \
 	              tests/test_street_frame.py tests/test_paid_sources.py \
-	              tests/test_dot_export.py tests/test_recommendation.py -q
+	              tests/test_dot_export.py tests/test_recommendation.py \
+	              tests/test_portability.py tests/test_forecast.py \
+	              tests/test_webmap_forecast.py -q
 
 tickets:       ## Regenerate docs/TICKETS.md + docs/linear-*.{csv,json}
 	uv run loci gen-tickets
@@ -29,6 +31,15 @@ paid-sources:  ## Regenerate docs/PAID-SOURCES.md from the registry wishlist
 	# fails if docs/PAID-SOURCES.md is not a byte-identical render, so edit
 	# the `status: wishlist` entries in src/loci/registry.yaml, never the doc.
 	uv run loci gen-paid-sources
+
+portability:   ## Regenerate docs/PORTABILITY.md from the registry `portability` blocks
+	# GENERATED, like PAID-SOURCES.md: `loci check-sources` (and so `make
+	# check`) fails if docs/PORTABILITY.md is not a byte-identical render.
+	# Edit the `portability:` blocks in src/loci/registry.yaml and the
+	# SECTION_INPUTS / CITY_PROBE tables in src/loci/portability.py, never
+	# the doc -- a readiness matrix that can be hand-edited will be
+	# hand-edited into optimism.
+	uv run loci gen-portability
 
 nyc: db-init   ## Full NYC pipeline
 	uv run loci ingest --source overture_places --city nyc
@@ -54,6 +65,21 @@ chains-refresh: ## Monthly: filing pipeline, first-seen ledger, detect chains, e
 	# inside the subcommand rather than as a second line here is what makes the
 	# cron and the human run the identical sequence.
 	uv run loci chains refresh
+	# THE FORECAST LEDGER, after poi-snapshot (inside `chains refresh`) and
+	# after storefront-pipeline build, because both the frozen supply and the
+	# realized outcome are read off the first-seen ledger and the filings
+	# pipeline -- issuing before them would freeze a vintage on last month's
+	# evidence and then date it this month.
+	#
+	# `issue` takes the CURRENT month and is idempotent per
+	# (issued_month, model_version): a second run in the same month replaces
+	# that month's rows and changes nothing. A NEW model gets a NEW version and
+	# its own vintages -- a past vintage is NEVER re-issued with a newer model.
+	uv run loci forecast issue --month $$(date +%Y-%m)
+	# `score` with no --issued-month scores every vintage whose 12-month horizon
+	# has elapsed and has no outcome row yet, so a vintage is scored when its
+	# horizon comes due rather than when somebody remembers.
+	uv run loci forecast score
 	# LAST, and the order is load-bearing: the check reads BOTH the first-seen
 	# ledger (written by `poi-snapshot`, step 1/4 inside `chains refresh`) and
 	# the filing pipeline (written above). Running it first would score every

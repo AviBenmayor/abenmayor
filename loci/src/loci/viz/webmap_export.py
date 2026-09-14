@@ -2721,6 +2721,817 @@ def collect_nta(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
                     character_ntas)
 
 
+# ------------------------------------- MODELED / REALIZED / SURPRISE (D92)
+#
+# THE OWNER'S FRAMING (2026-09-14): this product has a MODELED layer (what
+# could be -- the screen, the forecast), a REALIZED layer (what happened --
+# the first-seen ledger, the closure ledger, the filings pipeline), and the
+# difference between them is where the new information is. A map that only
+# drew the model would be a map of our own assumptions; a map that only drew
+# the ledger would be a history. SURPRISE is the only one of the three that is
+# not already somewhere else on this page.
+#
+# ONE FILE, THREE BLOCKS, ONE LAZY FETCH. `forecast.json` is fetched the first
+# time the mode is switched off "Off", exactly like character.json and
+# dot.json. It is deliberately NOT part of any gap file: a viewer who never
+# opens the mode pays nothing, and the 90-second full export is not the price
+# of a fresh forecast vintage (`loci forecast-export` rewrites this one file).
+#
+# THE THREE BLOCKS ARE INDEPENDENTLY AVAILABLE. `modeled` needs the forecast
+# tables, `realized` needs only the ledgers this repo has had since D79/D88,
+# and `surprise` needs BOTH plus a scored outcome. Each carries its own
+# `available` + `reason`, because "the model has not been fitted for grocery"
+# and "nothing has been scored yet" are different sentences and neither of
+# them is zero.
+#
+# WHAT THE MODEL FORECASTS, AND THE LINE THAT MUST TRAVEL WITH IT (D88): the
+# retrodiction found the screen ranks retail streets out of sample and the
+# go-dark test was null. So `p_opening` is a probability of ENTRY -- somebody
+# opens here -- and NOT a probability that the business survives, is viable,
+# or is a good investment. Every legend and popup that shows a p prints that.
+FORECAST_FILE = "forecast.json"
+
+#: The data-scientist thread's contract (2026-09-14). Read through the two
+#: VIEWS where they exist, because the views are where "newest vintage" and
+#: "newest scored outcome" are already resolved; the base tables are the
+#: fallback so an export can still run between their migration and their view.
+FORECAST_TABLE = ("analysis", "forecast")
+FORECAST_OUTCOME_TABLE = ("analysis", "forecast_outcome")
+FORECAST_LATEST_VIEW = ("analysis", "forecast_latest")
+FORECAST_SURPRISE_VIEW = ("analysis", "forecast_surprise_nta")
+
+#: The columns each relation must carry for its block to be exported. Named
+#: here once so `forecast_missing` can say WHICH column is absent rather than
+#: reporting a bare "not available".
+FORECAST_LATEST_COLUMNS = ("address_id", "category", "p_opening")
+FORECAST_VINTAGE_COLUMNS = ("issued_month", "model_version", "horizon_months")
+#: sql/028's own column names. `z_clustered` is the HEADLINE z and `z_naive`
+#: ships beside it so the popup can show the design effect between them.
+FORECAST_SURPRISE_COLUMNS = ("nta_code", "category", "expected", "realized",
+                             "surprise", "z_clustered")
+#: sql/028's surprise view emits a synthetic '(all)' category row alongside the
+#: real ones. It is not a business category on this map and is dropped here --
+#: the map's own all-opportunities mode is a different union (lead category per
+#: address), and painting one under the other's name would be a quiet lie.
+SURPRISE_POOLED_CATEGORY = "(all)"
+#: The packed row, by name. `z` is the CLUSTER-ROBUST z and is the only one
+#: the fill reads; `zNaive` is carried so the popup can show the design
+#: effect between the two rather than leaving the reader to trust one number.
+SURPRISE_COLS = ("nta", "expected", "realized", "surprise", "z", "zNaive",
+                 "nAddresses", "nCells")
+
+#: The realized ledgers. Both already exist (sql/018 + sql/027 for presence and
+#: closure, sql/020 for the filings pipeline), so the REALIZED block works on a
+#: database that has never seen a forecast.
+PRESENCE_VIEW = ("analysis", "poi_first_seen")
+FILING_PIPELINE_TABLE = ("analysis", "storefront_pipeline")
+
+#: Only these two `first_seen_kind`s carry a real date. 'observed' means "we
+#: first saw it in this month's snapshot" and 'backfill_censored' means "it was
+#: already there when the ledger opened" -- drawing either as an OPENING would
+#: turn our own snapshot cadence into a market event.
+DATED_FIRST_SEEN_KINDS = ("source_date", "gov_filing")
+REALIZED_MONTHS = 12
+
+#: p is shipped as an INTEGER PERMILLE. 0.0 - 1.0 at 3 decimal places is the
+#: most precision a forecast of this kind can carry honestly, and an integer
+#: costs three characters where "0.137" costs five across ~645k slots.
+P_SCALE = 1000
+Z_DP = 2
+#: Ramp stops are permille too, so the browser never mixes the two scales.
+FORECAST_RAMP_STOPS = 5
+
+#: MODELED -- a SEQUENTIAL single hue, light -> dark, because p is a magnitude.
+#: Violet, and violet specifically: red is spent on the character ramp, blue on
+#: the DOT count points, and those two are the overlays that can be on screen
+#: at the same time as this one. Five stops (not the character ramp's six) so
+#: that every step can clear the ORDINAL 2:1 floor against the page surface --
+#: these are DOTS, not polygons, and a dot that recedes into the background is
+#: not "near zero", it is invisible.
+#: dataviz validator, `--ordinal --mode light --surface #f3f0ea`: monotone L,
+#: every adjacent gap >= 0.06, light end 2.19:1, hue spread 6 deg. ALL PASS.
+FORECAST_RAMP = ("#aa9bdc", "#8d7bcb", "#7060b2", "#534493", "#382674")
+#: The same hue re-stepped for a dark surface (#17181a), not a second palette:
+#: `--ordinal --mode dark`, light end 2.02:1, hue spread 2 deg. ALL PASS. The
+#: page is light-only today; this ships so a future dark mode does not invent
+#: its own colours, and the UI selects between the two by reading the page's
+#: OWN background token (charDark), never `prefers-color-scheme`.
+FORECAST_RAMP_DARK = ("#4f4083", "#66549f", "#7e6cba", "#9787d2", "#b3a6e8")
+#: An address the model did not forecast. Grey, a legend key of its own, and
+#: NEVER the pale end of the ramp -- on a light-to-dark scale the palest dot is
+#: the most confident "almost certainly nothing opens here", which is the exact
+#: opposite of "the model has nothing to say about this address".
+FORECAST_NODATA_COLOR = CHARACTER_NODATA_COLOR
+FORECAST_NODATA_COLOR_DARK = CHARACTER_NODATA_COLOR_DARK
+
+#: SURPRISE -- DIVERGING: two poles and a NEUTRAL GREY midpoint, which is the
+#: only legal encoding for a signed quantity. Warm = the market did MORE than
+#: the model expected, cool = LESS, grey = about what was expected. The sign
+#: convention is printed in the legend because a diverging ramp whose direction
+#: is left to the reader is a coin flip.
+#: dataviz validator on the four arms, `--pairs all --mode light --surface
+#: #f3f0ea`: lightness band PASS, chroma floor PASS, worst all-pairs CVD dE
+#: 15.6 (protan), worst normal-vision dE 21.1. The two mild steps sit at
+#: 2.0-2.2:1 and take the documented RELIEF: every key is labelled with its
+#: sign and its z range, and the popup prints expected, realized and z as
+#: numbers, so identity is never colour-alone.
+SURPRISE_COLORS = ("#1c5cab", "#6da7ec", "#eae7e0", "#ef8f80", "#c0392b")
+#: Re-stepped for the dark surface: poles dE 20.1 CVD / 26.6 normal, mild steps
+#: dE 17.4 / 22.5, every step >= 3:1. ALL PASS.
+SURPRISE_COLORS_DARK = ("#2d6fbd", "#5793df", "#383835", "#d07a69", "#b8483a")
+#: The z breaks between those five classes. +-0.5 is "indistinguishable from
+#: the model" and +-2 is the two-sigma edge; a finer scale would be a precision
+#: claim an entry model measured on one 12-month window cannot support.
+SURPRISE_STOPS = (-2.0, -0.5, 0.5, 2.0)
+SURPRISE_LABELS = (
+    "far below the model", "below the model", "about as modeled",
+    "above the model", "far above the model",
+)
+#: An NTA with NO EXPECTED VALUE IS NOT DRAWN. Not grey, not zero, not the
+#: neutral midpoint -- no fill at all, and a dashed outline plus its own legend
+#: key. "The model was never asked about this neighborhood" and "the model was
+#: asked and the market matched it" are the two readings a neutral-grey polygon
+#: would fuse, and fusing them is the single way this layer can lie.
+SURPRISE_NODATA_COLOR = CHARACTER_NODATA_COLOR
+SURPRISE_NODATA_COLOR_DARK = CHARACTER_NODATA_COLOR_DARK
+
+#: Rendered UNTRUNCATED wherever the mode is on, same contract the character
+#: and age-fit caveats live under.
+FORECAST_CAVEATS = {
+    "modeled": (
+        "This is a forecast of ENTRY, not of viability. The D88 retrodiction found the "
+        "screen ranks retail streets out of sample and the go-dark test was null, so a "
+        "high probability here means 'somebody is likely to open a business of this kind "
+        "at this address in the next 12 months' and says nothing about whether that "
+        "business survives, earns, or is worth financing. It is not a recommendation and "
+        "it does not enter gap_score, the supply ratio or any recommendation grade."
+    ),
+    "realized": (
+        "Openings are FIRST-SEEN dates on the presence ledger, not licence dates: only "
+        "the two dated kinds (a source-published open date and a government filing) are "
+        "drawn, because 'observed' means we first saw it in that month's snapshot and "
+        "'backfill_censored' means it was already there when the ledger opened. Closures "
+        "are roughly 3% ascertained -- they come from source-published closure records "
+        "(Foursquare), so ABSENCE IS NOT A CLOSURE and the closed marks are a floor, "
+        "never a rate. Pipeline entries are filings that have not yet produced an "
+        "inspection, a licence or an active liquor record; many never will."
+    ),
+    "surprise": (
+        "Surprise is RELATIVE TO AN ENTRY MODEL, not to the market. It is realized "
+        "openings minus what this model expected, standardised -- so a neighborhood can "
+        "read 'far above the model' because the market moved OR because the model is "
+        "poorly specified there, and this map cannot tell you which. Realized counts "
+        "inherit the ledger's own coverage: a neighborhood our sources cover thinly will "
+        "look like it under-performed. Read it as a pointer at where to look, never as a "
+        "measurement of performance."
+    ),
+}
+
+
+def permille(value) -> int | None:
+    """A probability as an integer permille, or None. None survives as JSON
+    null all the way to the browser: an address the model did not score is not
+    an address it scored at zero, and packing the two the same way is how a
+    map starts inventing forecasts."""
+    if value is None:
+        return None
+    v = float(value)
+    if v != v:                                  # NaN
+        return None
+    return int(round(max(0.0, min(1.0, v)) * P_SCALE))
+
+
+def _relation_columns(con, rel: tuple[str, str]) -> set[str]:
+    schema, name = rel
+    return {r[0] for r in con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = ? AND table_name = ?", [schema, name]).fetchall()}
+
+
+def _first_present(cols: set[str], *names: str) -> str | None:
+    """The first of `names` this relation actually has. The data-scientist
+    thread owns those tables, so a column it renames must degrade to a stated
+    reason here, never to a KeyError halfway through an export."""
+    for n in names:
+        if n in cols:
+            return n
+    return None
+
+
+def forecast_missing(con) -> list[str]:
+    """Every named relation/column the MODELED block needs and this database
+    does not have. Empty means the block can be exported."""
+    latest = _relation_columns(con, FORECAST_LATEST_VIEW)
+    base = _relation_columns(con, FORECAST_TABLE)
+    src, cols = (FORECAST_LATEST_VIEW, latest) if latest else (FORECAST_TABLE, base)
+    name = ".".join(src)
+    if not cols:
+        return [f"{'.'.join(FORECAST_LATEST_VIEW)} / {'.'.join(FORECAST_TABLE)} (absent)"]
+    return [f"{name}.{c}" for c in FORECAST_LATEST_COLUMNS if c not in cols]
+
+
+def has_forecast(con) -> bool:
+    return not forecast_missing(con)
+
+
+def surprise_missing(con) -> list[str]:
+    """Every named column the SURPRISE block needs and `analysis.
+    forecast_surprise_nta` does not have. `_first_present` is used for the two
+    columns the data-scientist thread may spell differently; everything else is
+    named exactly."""
+    cols = _relation_columns(con, FORECAST_SURPRISE_VIEW)
+    name = ".".join(FORECAST_SURPRISE_VIEW)
+    if not cols:
+        return [f"{name} (absent)"]
+    miss = []
+    for c in FORECAST_SURPRISE_COLUMNS:
+        if c == "z_clustered":
+            if not _first_present(cols, "z_clustered", "z", "z_score"):
+                miss.append(f"{name}.z_clustered")
+        elif c == "expected":
+            if not _first_present(cols, "expected", "expected_openings"):
+                miss.append(f"{name}.expected")
+        elif c == "realized":
+            if not _first_present(cols, "realized", "realized_openings"):
+                miss.append(f"{name}.realized")
+        elif c not in cols:
+            miss.append(f"{name}.{c}")
+    return miss
+
+
+def forecast_vintage(con) -> dict:
+    """The issued month, the model version and the horizon of the NEWEST
+    vintage, plus the newest month anything has been scored in. The header is
+    required to print the first two: a probability with no vintage ages into a
+    lie exactly the way the pipeline overlay's `cutoff` does."""
+    out = {"issuedMonth": None, "modelVersion": None, "horizonMonths": None,
+           "scoredMonth": None, "nVintages": 0}
+    cols = _relation_columns(con, FORECAST_TABLE)
+    if cols and "issued_month" in cols:
+        sel = ["max(issued_month)"]
+        sel.append("count(DISTINCT issued_month)")
+        row = con.execute(
+            f"SELECT {', '.join(sel)} FROM {'.'.join(FORECAST_TABLE)}").fetchone()
+        out["issuedMonth"] = None if row[0] is None else str(row[0])
+        out["nVintages"] = int(row[1] or 0)
+        if out["issuedMonth"]:
+            extra = [c for c in ("model_version", "horizon_months") if c in cols]
+            if extra:
+                r = con.execute(
+                    f"SELECT {', '.join('max(' + c + ')' for c in extra)} "
+                    f"FROM {'.'.join(FORECAST_TABLE)} WHERE issued_month = ?",
+                    [out["issuedMonth"]]).fetchone()
+                for key, val in zip(extra, r):
+                    if key == "model_version":
+                        out["modelVersion"] = None if val is None else str(val)
+                    else:
+                        out["horizonMonths"] = None if val is None else int(val)
+    ocols = _relation_columns(con, FORECAST_OUTCOME_TABLE)
+    if ocols and "scored_month" in ocols:
+        r = con.execute(
+            f"SELECT max(scored_month) FROM {'.'.join(FORECAST_OUTCOME_TABLE)}").fetchone()
+        out["scoredMonth"] = None if r[0] is None else str(r[0])
+    return out
+
+
+def gap_id_order(con, boroughs: list[str]) -> dict[str, list[str]]:
+    """The address order of every `gaps/<cat>.json` this export writes, WITHOUT
+    building the layers.
+
+    This is what lets `loci forecast-export` rewrite one small file in seconds
+    instead of paying the 90-second full export for a new forecast vintage.
+    The predicate is `_gap_sql`'s, plus `pack_gaps`'s own lon/lat drop, stated
+    here rather than inferred -- if the two ever diverge the p values would be
+    silently attached to the wrong doorways, which is the single worst thing
+    this layer could do."""
+    ph = ", ".join("?" for _ in boroughs)
+    order: dict[str, list[str]] = {}
+    for cat in ALLCATS:
+        order[cat] = [r[0] for r in con.execute(f"""
+            SELECT g.address_id
+            FROM analysis.address_gaps g
+            WHERE g.borough IN ({ph})
+              AND g.{cat}_ratio > 1
+              AND g.lon IS NOT NULL AND g.lat IS NOT NULL
+            ORDER BY g.address_id
+        """, list(boroughs)).fetchall()]
+    return order
+
+
+def pack_modeled(p_by_cat: dict[str, dict[str, float]],
+                 order: dict[str, list[str]]) -> dict[str, dict]:
+    """{category: {address_id: p}} + the gap files' address order -> the
+    per-category payload the browser paints with.
+
+    SPARSE OR DENSE, WHICHEVER IS SMALLER, and the block says which. `idx` +
+    `p` costs two numbers per scored address; a dense `p` with nulls costs one
+    slot per address in the file whether it was scored or not. At full coverage
+    dense is half the size; at 5% coverage sparse is a twentieth. The browser
+    reads `encoding` rather than guessing from the array lengths."""
+    out: dict[str, dict] = {}
+    for cat, ids in order.items():
+        scores = p_by_cat.get(cat) or {}
+        if not scores:
+            continue
+        idx, vals = [], []
+        for j, aid in enumerate(ids):
+            pm = permille(scores.get(aid))
+            if pm is None:
+                continue
+            idx.append(j)
+            vals.append(pm)
+        if not vals:
+            continue
+        dense = len(idx) * 2 > len(ids)
+        block = {"n": len(ids), "nForecast": len(vals),
+                 "encoding": "dense" if dense else "sparse",
+                 "pMin": min(vals), "pMax": max(vals),
+                 "stops": quantile_stops([float(v) for v in vals], FORECAST_RAMP_STOPS)}
+        block["stops"] = [int(round(s)) for s in block["stops"]]
+        # Strictly increasing after the integer round, because MapLibre's
+        # `interpolate` rejects a repeated stop and a saturated forecast
+        # produces plenty of them.
+        for i in range(1, len(block["stops"])):
+            if block["stops"][i] <= block["stops"][i - 1]:
+                block["stops"][i] = block["stops"][i - 1] + 1
+        if dense:
+            slots: list[int | None] = [None] * len(ids)
+            for j, v in zip(idx, vals):
+                slots[j] = v
+            block["p"] = slots
+        else:
+            block["idx"] = idx
+            block["p"] = vals
+        out[cat] = block
+    return out
+
+
+def _months_back(month: str, n: int) -> list[str]:
+    """`n` consecutive 'YYYY-MM' strings ENDING at `month`, oldest first."""
+    y, m = int(month[:4]), int(month[5:7])
+    out = []
+    for k in range(n - 1, -1, -1):
+        yy, mm = divmod((y * 12 + (m - 1)) - k, 12)
+        out.append(f"{yy:04d}-{mm + 1:02d}")
+    return out
+
+
+def realized_asof(con) -> str | None:
+    """The newest month either ledger has anything dated in. The window is
+    counted back from the DATA, not from today's clock: a map built on a
+    six-month-old snapshot must say so rather than drawing six empty months."""
+    try:
+        row = con.execute(f"""
+            SELECT max(greatest(coalesce(first_seen_on, DATE '1900-01-01'),
+                                coalesce(closed_on,     DATE '1900-01-01')))
+            FROM {'.'.join(PRESENCE_VIEW)}
+        """).fetchone()
+    except Exception:
+        return None
+    if not row or row[0] is None or str(row[0])[:4] == "1900":
+        return None
+    return str(row[0])[:7]
+
+
+def _realized_sql(boroughs: list[str], start: str) -> tuple[str, list]:
+    """Openings and closures for the window, one row per ledger location.
+    `kind` is 'open' or 'closed' so a single pass produces both marks.
+
+    `analysis.poi_first_seen` stores the borough NAME, not the code every other
+    layer here uses, so the filter is built from BOROUGH_NAMES rather than from
+    the codes -- a hard-coded 'MN' would silently export nothing."""
+    names = [BOROUGH_NAMES[b] for b in boroughs]
+    ph = ", ".join("?" for _ in names)
+    kinds = ", ".join("?" for _ in DATED_FIRST_SEEN_KINDS)
+    sql = f"""
+        SELECT 'open' AS kind, category, lon, lat, display_name,
+               strftime(first_seen_on, '%Y-%m') AS month, first_seen_kind AS src
+        FROM {'.'.join(PRESENCE_VIEW)}
+        WHERE borough IN ({ph})
+          AND first_seen_kind IN ({kinds})
+          AND first_seen_on IS NOT NULL
+          AND strftime(first_seen_on, '%Y-%m') >= ?
+          AND lon IS NOT NULL AND lat IS NOT NULL
+        UNION ALL
+        SELECT 'closed', category, lon, lat, display_name,
+               strftime(closed_on, '%Y-%m'), closed_src
+        FROM {'.'.join(PRESENCE_VIEW)}
+        WHERE borough IN ({ph})
+          AND closed_on IS NOT NULL
+          AND strftime(closed_on, '%Y-%m') >= ?
+          AND lon IS NOT NULL AND lat IS NOT NULL
+    """
+    params = names + list(DATED_FIRST_SEEN_KINDS) + [start] + names + [start]
+    return sql, params
+
+
+def _pipeline_entry_sql(boroughs: list[str], start: str) -> tuple[str, list]:
+    """Filings that have ENTERED the pipeline in the window and have not opened.
+    `is_open` false is the whole point of the mark: this is a business someone
+    has committed money to and that no regulator has yet seen operating."""
+    ph = ", ".join("?" for _ in boroughs)
+    sql = f"""
+        SELECT loci_category, lon, lat, business_name,
+               strftime(entry_date, '%Y-%m') AS month, entry_stage
+        FROM {'.'.join(FILING_PIPELINE_TABLE)}
+        WHERE borough IN ({ph})
+          AND is_open = FALSE
+          AND loci_category IS NOT NULL
+          AND entry_date IS NOT NULL
+          AND strftime(entry_date, '%Y-%m') >= ?
+          AND lon IS NOT NULL AND lat IS NOT NULL
+        ORDER BY entry_date
+    """
+    return sql, list(boroughs) + [start]
+
+
+class _Marks:
+    """One category's three realized mark sets, dictionary-encoded.
+
+    Parallel arrays and not a numeric stride, for the reason every other block
+    here uses them: a name is a string and a month is a small vocabulary, and a
+    stride slot can hold neither without either bloating the file or inventing
+    a sentinel."""
+
+    def __init__(self, months: list[str]):
+        self.month_at = {m: i for i, m in enumerate(months)}
+        self.names: list[str] = []
+        self._name_at: dict[str, int] = {}
+        self.stages: list[str] = []
+        self._stage_at: dict[str, int] = {}
+        self.open = {"lon": [], "lat": [], "m": [], "nm": []}
+        self.closed = {"lon": [], "lat": [], "m": [], "nm": []}
+        self.pipe = {"lon": [], "lat": [], "m": [], "nm": [], "st": []}
+
+    def _name(self, value) -> int:
+        key = (value or "").strip()
+        if key not in self._name_at:
+            self._name_at[key] = len(self.names)
+            self.names.append(key)
+        return self._name_at[key]
+
+    def _stage(self, value) -> int:
+        key = (value or "").strip() or "unknown"
+        if key not in self._stage_at:
+            self._stage_at[key] = len(self.stages)
+            self.stages.append(key)
+        return self._stage_at[key]
+
+    def add(self, bucket: str, lon, lat, name, month, stage=None) -> None:
+        mi = self.month_at.get(month)
+        if mi is None or lon is None or lat is None:
+            return
+        b = getattr(self, bucket)
+        b["lon"].append(round(float(lon), COORD_DP))
+        b["lat"].append(round(float(lat), COORD_DP))
+        b["m"].append(mi)
+        b["nm"].append(self._name(name))
+        if stage is not None:
+            b["st"].append(self._stage(stage))
+
+    def n(self) -> int:
+        return len(self.open["m"]) + len(self.closed["m"]) + len(self.pipe["m"])
+
+    def pack(self) -> dict:
+        out = {"names": self.names, "stages": self.stages}
+        for key in ("open", "closed", "pipe"):
+            b = dict(getattr(self, key))
+            b["n"] = len(b["m"])
+            out[key] = b
+        return out
+
+
+def collect_realized(con, boroughs: list[str]) -> dict:
+    """The REALIZED block: openings, closures and un-opened pipeline entries
+    for the last `REALIZED_MONTHS` months, per category.
+
+    Degrades to an unavailable block with a reason rather than raising -- the
+    presence ledger is `loci poi-snapshot`'s output and a fresh clone has not
+    run it."""
+    asof = realized_asof(con)
+    if asof is None:
+        return {"available": False,
+                "reason": f"{'.'.join(PRESENCE_VIEW)} has no dated row — "
+                          "run `loci poi-snapshot`",
+                "months": [], "cats": [], "byCat": {}}
+    months = _months_back(asof, REALIZED_MONTHS)
+    marks: dict[str, _Marks] = {c: _Marks(months) for c in ALLCATS}
+    sql, params = _realized_sql(boroughs, months[0])
+    for kind, cat, lon, lat, name, month, _src in con.execute(sql, params).fetchall():
+        if cat in marks:
+            marks[cat].add("open" if kind == "open" else "closed", lon, lat, name, month)
+    try:
+        psql, pparams = _pipeline_entry_sql(boroughs, months[0])
+        pipe_rows = con.execute(psql, pparams).fetchall()
+    except Exception:
+        # No sql/020 in this database. The two ledgers still draw; the legend
+        # says the third mark is not in this export rather than showing none.
+        pipe_rows = []
+    for cat, lon, lat, name, month, stage in pipe_rows:
+        if cat in marks:
+            marks[cat].add("pipe", lon, lat, name, month, stage)
+    by_cat = {c: m.pack() for c, m in marks.items() if m.n()}
+    return {"available": True, "reason": None,
+            "asof": asof, "from": months[0], "to": months[-1],
+            "months": months, "monthsBack": REALIZED_MONTHS,
+            "cats": sorted(by_cat), "byCat": by_cat,
+            "n": sum(m.n() for m in marks.values()),
+            "pipelineAvailable": bool(pipe_rows)}
+
+
+def surprise_vintage(con) -> dict | None:
+    """WHICH scored vintage the surprise layer draws. The newest `scored_month`
+    first, then the newest `issued_month` scored in it -- so a 2023-01 vintage
+    scored last month beats a 2026-09 vintage that nothing has scored yet, which
+    is the right answer: an unscored forecast has no surprise.
+
+    One triple, filtered on explicitly. Pooling two vintages would average a
+    model against its own successor and call the difference a market."""
+    cols = _relation_columns(con, FORECAST_SURPRISE_VIEW)
+    if not cols or "scored_month" not in cols:
+        return None
+    row = con.execute(f"""
+        SELECT scored_month, issued_month, model_version, max(horizon_elapsed)
+        FROM {'.'.join(FORECAST_SURPRISE_VIEW)}
+        WHERE scored_month IS NOT NULL
+        GROUP BY 1, 2, 3
+        ORDER BY scored_month DESC, issued_month DESC, model_version DESC
+        LIMIT 1
+    """).fetchone()
+    if not row:
+        return None
+    return {"scoredMonth": str(row[0]), "issuedMonth": str(row[1]),
+            "modelVersion": str(row[2]),
+            "horizonElapsed": None if row[3] is None else int(row[3])}
+
+
+def collect_surprise(con, boroughs: list[str]) -> dict:
+    """The SURPRISE block: one row per NTA x category for ONE scored vintage,
+    cols/rows packed the way clusters.json and dot.json already are.
+
+    TWO THINGS THIS BLOCK REFUSES TO DO, and they are the whole reason it is
+    written out rather than selected straight into the browser:
+
+      (a) AN NTA WITH NO EXPECTED VALUE IS NOT EMITTED AT ALL. Not with a null
+          expected, not with a zero -- the row does not exist, so nothing
+          downstream can paint it even by accident.
+
+      (b) A NULL `z_clustered` IS NOT REPLACED BY `z_naive`. sql/028 returns
+          NULL below five clusters because "a sandwich variance from three
+          clusters is not an estimate", and substituting the naive z -- which
+          that same header says is 3-5x too confident -- would be this map
+          drawing exactly the significance the SQL declined to claim. The row
+          still ships (its counts are real); it is drawn as NOT MEASURED, and
+          `zNaive` rides along so the popup can show the design effect.
+    """
+    missing = surprise_missing(con)
+    if missing:
+        return {"available": False, "reason": "missing: " + ", ".join(missing),
+                "cols": list(SURPRISE_COLS), "byCat": {}, "cats": [], "n": 0,
+                "vintage": None, "nNoZ": 0}
+    cols = _relation_columns(con, FORECAST_SURPRISE_VIEW)
+    exp = _first_present(cols, "expected", "expected_openings")
+    real = _first_present(cols, "realized", "realized_openings")
+    zc = _first_present(cols, "z_clustered", "z", "z_score")
+    zn = _first_present(cols, "z_naive")
+    naddr = _first_present(cols, "n_addresses")
+    ncell = _first_present(cols, "n_cells")
+    surp = _first_present(cols, "surprise")
+    vintage = surprise_vintage(con)
+    where, params = "", []
+    if vintage:
+        where = "WHERE scored_month = ? AND issued_month = ? AND model_version = ?"
+        params = [vintage["scoredMonth"], vintage["issuedMonth"], vintage["modelVersion"]]
+    # The view carries no borough of its own; the NTA code's two-letter prefix
+    # is the borough, and that is what the filter is built on -- the same codes
+    # every other layer here uses.
+    prefixes = tuple(boroughs)
+    rows = con.execute(f"""
+        SELECT nta_code, category, {exp}, {real},
+               {surp or 'NULL'}, {zc}, {zn or 'NULL'},
+               {naddr or 'NULL'}, {ncell or 'NULL'}
+        FROM {'.'.join(FORECAST_SURPRISE_VIEW)}
+        {where}
+        ORDER BY category, nta_code
+    """, params).fetchall()
+    by_cat: dict[str, list] = {}
+    no_z = 0
+    for nta, cat, expected, realized, surprise, z_cl, z_nv, n_addr, n_cell in rows:
+        if not nta or cat == SURPRISE_POOLED_CATEGORY or cat not in CATEGORIES:
+            continue
+        if not str(nta)[:2] in prefixes:
+            continue
+        # (a): no expectation, no row.
+        if expected is None:
+            continue
+        if z_cl is None:
+            no_z += 1
+        by_cat.setdefault(cat, []).append([
+            nta,
+            _num(expected, 2),
+            None if realized is None else int(realized),
+            _num(surprise, 2),
+            None if z_cl is None else round(float(z_cl), Z_DP),
+            None if z_nv is None else round(float(z_nv), Z_DP),
+            None if n_addr is None else int(n_addr),
+            None if n_cell is None else int(n_cell),
+        ])
+    return {"available": bool(by_cat),
+            "reason": None if by_cat else
+                      "no scored outcome yet — run `loci forecast score`",
+            "cols": list(SURPRISE_COLS),
+            "vintage": vintage,
+            "byCat": by_cat, "cats": sorted(by_cat),
+            "n": sum(len(v) for v in by_cat.values()),
+            "nNoZ": no_z,
+            "zKind": "clustered" if zc in ("z_clustered",) else zc}
+
+
+def empty_forecast(reason: str | None = None) -> dict:
+    """The shape the browser gets when nothing has been forecast. Every key the
+    UI reads is present and empty, so the mode renders a stated not-measured
+    state instead of throwing on a missing block."""
+    return {
+        "available": False, "reason": reason or "no forecast in this database",
+        "issuedMonth": None, "modelVersion": None, "horizonMonths": None,
+        "scoredMonth": None, "pScale": P_SCALE, "cats": [],
+        "modeled": {"available": False, "reason": reason or "not built",
+                    "byCat": {}, "cats": []},
+        "realized": {"available": False, "reason": "not read",
+                     "months": [], "cats": [], "byCat": {}},
+        "surprise": {"available": False, "reason": "not read",
+                     "cols": list(SURPRISE_COLS), "vintage": None,
+                     "byCat": {}, "cats": [], "n": 0, "nNoZ": 0},
+        "caveats": dict(FORECAST_CAVEATS),
+    }
+
+
+def collect_forecast(con, boroughs: list[str],
+                     gap_ids: dict[str, list[str]] | None = None) -> dict:
+    """Read all three blocks. Pure read -- `--dry-run` and a real write share
+    this one code path and cannot disagree about the counts.
+
+    `gap_ids` is the address order of the gap files. `collect()` passes the
+    layers it just built; `loci forecast-export` re-derives it with
+    `gap_id_order`, which is the whole reason this file can be rewritten
+    without the 90-second export."""
+    for b in boroughs:
+        if b not in BOROUGH_NAMES:
+            raise ValueError(f"unknown borough {b!r}; expected one of {sorted(BOROUGH_NAMES)}")
+    vintage = forecast_vintage(con)
+    missing = forecast_missing(con)
+    if missing:
+        modeled = {"available": False, "reason": "missing: " + ", ".join(missing),
+                   "byCat": {}, "cats": []}
+    else:
+        latest = _relation_columns(con, FORECAST_LATEST_VIEW)
+        src = FORECAST_LATEST_VIEW if latest else FORECAST_TABLE
+        cols = latest or _relation_columns(con, FORECAST_TABLE)
+        where, params = "", []
+        # The base table holds every vintage; the view holds only the newest.
+        # Reading the base table without this filter would average a September
+        # forecast against a January one and call it "the model".
+        if not latest and "issued_month" in cols and vintage["issuedMonth"]:
+            where = "WHERE issued_month = ?"
+            params = [vintage["issuedMonth"]]
+        rows = con.execute(f"""
+            SELECT address_id, category, p_opening
+            FROM {'.'.join(src)} {where}
+        """, params).fetchall()
+        # The table exists but is empty -- `loci forecast issue` has not run.
+        # Short-circuit BEFORE `gap_id_order`, which is fifteen scans of
+        # analysis.address_gaps that would buy nothing.
+        if not rows:
+            return _forecast_bundle(
+                con, boroughs, vintage,
+                {"available": False,
+                 "reason": f"{'.'.join(src)} is empty — run `loci forecast issue`",
+                 "source": ".".join(src), "cats": [], "byCat": {}, "n": 0})
+        if gap_ids is None:
+            gap_ids = gap_id_order(con, boroughs)
+        p_by_cat: dict[str, dict[str, float]] = {}
+        for aid, cat, p in rows:
+            if cat in CATEGORIES and aid is not None and p is not None:
+                p_by_cat.setdefault(cat, {})[str(aid)] = p
+        by_cat = pack_modeled(p_by_cat, gap_ids)
+        modeled = {
+            "available": bool(by_cat),
+            "reason": None if by_cat else
+                      "the forecast table holds no row for any address in this export",
+            "source": ".".join(src), "cats": sorted(by_cat), "byCat": by_cat,
+            "n": sum(b["nForecast"] for b in by_cat.values()),
+        }
+    return _forecast_bundle(con, boroughs, vintage, modeled)
+
+
+def _forecast_bundle(con, boroughs: list[str], vintage: dict, modeled: dict) -> dict:
+    """The three blocks assembled into the file. Split out so the "no forecast
+    issued yet" path and the full path assemble the SAME shape -- a not-measured
+    state that is missing keys is a not-measured state the UI will crash on."""
+    realized = collect_realized(con, boroughs)
+    surprise = collect_surprise(con, boroughs)
+    cats = sorted(set(modeled.get("cats") or [])
+                  | set(realized.get("cats") or [])
+                  | set(surprise.get("cats") or []))
+    return {
+        "available": bool(cats),
+        "reason": None if cats else "no forecast, no ledger and no scored outcome",
+        "boroughs": list(boroughs),
+        "issuedMonth": vintage["issuedMonth"], "modelVersion": vintage["modelVersion"],
+        "horizonMonths": vintage["horizonMonths"], "scoredMonth": vintage["scoredMonth"],
+        "nVintages": vintage["nVintages"],
+        "pScale": P_SCALE, "cats": cats,
+        "modeled": modeled, "realized": realized, "surprise": surprise,
+        "caveats": dict(FORECAST_CAVEATS),
+    }
+
+
+def forecast_meta(fc: dict | None) -> dict:
+    """The DATA-FREE half of the block: what the sidebar needs to draw the
+    segmented control, the two ramps and the legends. The 645k probabilities,
+    the marks and the NTA table stay in forecast.json and are fetched only when
+    the mode is switched on."""
+    fc = fc or empty_forecast()
+    return {
+        "available": bool(fc.get("available")),
+        "reason": fc.get("reason"),
+        "file": FORECAST_FILE,
+        "issuedMonth": fc.get("issuedMonth"),
+        "modelVersion": fc.get("modelVersion"),
+        "horizonMonths": fc.get("horizonMonths"),
+        "scoredMonth": fc.get("scoredMonth"),
+        "pScale": P_SCALE,
+        "cats": fc.get("cats") or [],
+        "modeledCats": (fc.get("modeled") or {}).get("cats") or [],
+        "realizedCats": (fc.get("realized") or {}).get("cats") or [],
+        "surpriseCats": (fc.get("surprise") or {}).get("cats") or [],
+        "monthsBack": REALIZED_MONTHS,
+        "rampColors": list(FORECAST_RAMP),
+        "rampColorsDark": list(FORECAST_RAMP_DARK),
+        "noDataColor": FORECAST_NODATA_COLOR,
+        "noDataColorDark": FORECAST_NODATA_COLOR_DARK,
+        "surpriseColors": list(SURPRISE_COLORS),
+        "surpriseColorsDark": list(SURPRISE_COLORS_DARK),
+        "surpriseStops": list(SURPRISE_STOPS),
+        "surpriseLabels": list(SURPRISE_LABELS),
+        "surpriseNoDataColor": SURPRISE_NODATA_COLOR,
+        "surpriseNoDataColorDark": SURPRISE_NODATA_COLOR_DARK,
+        "caveats": dict(FORECAST_CAVEATS),
+    }
+
+
+def write_forecast(fc: dict, out_dir: pathlib.Path) -> dict[str, int]:
+    """Write forecast.json ALONE. `loci forecast-export` calls this; the full
+    export calls it through `write`. One writer, so the two can never produce a
+    different file."""
+    out_dir = pathlib.Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(fc, separators=(",", ":"))
+    (out_dir / FORECAST_FILE).write_text(text)
+    return {FORECAST_FILE: len(text.encode())}
+
+
+def patch_meta_forecast(fc: dict, out_dir: pathlib.Path) -> bool:
+    """Refresh meta.json's `forecast` block in place, and ONLY that block.
+
+    The sidebar section is gated on `META.forecast` (the same contract the
+    character, pipeline and storefront sections have), so a new vintage written
+    by `loci forecast-export` alone would otherwise be invisible until someone
+    paid the 90-second full export. `forecast_meta` is the single writer of
+    that block in both commands, so the two cannot drift; everything else in
+    meta.json is read and written back byte-identical.
+
+    Returns False when there is no meta.json to patch -- `loci export-webmap`
+    has not run, and the map has bigger problems than a stale legend."""
+    out_dir = pathlib.Path(out_dir)
+    path = out_dir / "meta.json"
+    if not path.exists():
+        return False
+    meta = json.loads(path.read_text())
+    meta["forecast"] = forecast_meta(fc)
+    path.write_text(json.dumps(meta, separators=(",", ":")))
+    return True
+
+
+def forecast_summary(fc: dict | None) -> dict:
+    """What `--dry-run` prints. Read off the PACKED block, never re-queried, so
+    a dry run cannot report a count the real file does not carry."""
+    fc = fc or empty_forecast()
+    m, r, s = fc.get("modeled") or {}, fc.get("realized") or {}, fc.get("surprise") or {}
+    return {
+        "issuedMonth": fc.get("issuedMonth"), "modelVersion": fc.get("modelVersion"),
+        "scoredMonth": fc.get("scoredMonth"),
+        "modeled": {c: b["nForecast"] for c, b in (m.get("byCat") or {}).items()},
+        "modeledAvailable": bool(m.get("available")), "modeledReason": m.get("reason"),
+        "realized": {c: {k: b[k]["n"] for k in ("open", "closed", "pipe")}
+                     for c, b in (r.get("byCat") or {}).items()},
+        "realizedWindow": [r.get("from"), r.get("to")],
+        "realizedAvailable": bool(r.get("available")), "realizedReason": r.get("reason"),
+        "surprise": {c: len(v) for c, v in (s.get("byCat") or {}).items()},
+        "surpriseAvailable": bool(s.get("available")), "surpriseReason": s.get("reason"),
+    }
+
+
 # ------------------------------------------------------------------- export
 
 def _gaps_columns(con) -> set[str]:
@@ -3038,12 +3849,18 @@ def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
     # measured against would be the one place on this map D52 did not reach.
     nta = collect_nta(con, boroughs, supply_set, prov.get("supply_hash"), vacants,
                       characters, character.get("ntas") or {})
+    # D92 modeled/realized/surprise. The gap layers were just built, so their
+    # address order is free here -- `collect_forecast` re-derives it with
+    # `gap_id_order` only when `loci forecast-export` rewrites the one file.
+    forecast = collect_forecast(
+        con, boroughs, {c: gap_layers[c]["ids"] for c in ALLCATS})
     return {"boroughs": boroughs, "sources": sources, "detailCats": dcats,
             "pois": poi_layers, "gaps": gap_layers, "neighborhoods": nbhd,
             "boroBounds": boro_bounds, "alcohol": collect_alcohol(con, boroughs),
             "pipeline": collect_pipeline(con, boroughs),
             "storefronts": collect_storefronts(con, boroughs),
             "character": character,
+            "forecast": forecast,
             "nta": nta,
             # The owner's 2026-09-13 ranking ruling, as data the map reads
             # rather than an order baked into a sort call: the ranked cluster
@@ -3107,7 +3924,8 @@ def summarize(bundle: dict) -> dict:
             "pipeline": pipeline_summary(bundle.get("pipeline"), boroughs),
             "storefront": storefront_summary(bundle.get("storefronts"), boroughs),
             "character": character_summary(bundle.get("character"),
-                                           bundle.get("gaps"))}
+                                           bundle.get("gaps")),
+            "forecast": forecast_summary(bundle.get("forecast"))}
 
 
 def character_summary(layer: dict | None, gaps: dict | None = None) -> dict:
@@ -3234,6 +4052,14 @@ def write(bundle: dict, out_dir: pathlib.Path) -> dict[str, int]:
     # before this existed.
     character = bundle.get("character") or empty_character("no character layer")
     _dump("character.json", character)
+
+    # ...and for the D92 modeled/realized/surprise mode. Same lazy contract:
+    # one file, fetched only when the mode leaves "Off", so the single-business
+    # view costs exactly what it did before this existed. Written through
+    # `write_forecast` rather than `_dump` so that `loci forecast-export` and
+    # `loci export-webmap` cannot produce two different files.
+    forecast = bundle.get("forecast") or empty_forecast("no forecast layer")
+    written.update(write_forecast(forecast, out_dir))
 
     # One file per neighborhood plus a small index. Both are fetched only when
     # the all-opportunities mode is entered, so the single-business view costs
@@ -3384,6 +4210,13 @@ def write(bundle: dict, out_dir: pathlib.Path) -> dict[str, int]:
                       "n": character["n"], "nShapes": character["nShapes"],
                       "labelled": counts["character"]["gapAddressesLabelled"],
                       "unlabelled": counts["character"]["gapAddressesUnlabelled"]},
+        # The D92 modeled/realized/surprise legend. DATA-FREE on purpose (see
+        # `forecast_meta`): the probabilities, the marks and the NTA surprise
+        # table live in forecast.json, and this is only what the sidebar needs
+        # to draw the segmented control and its two ramps. The three
+        # `*Cats` lists are what the mode may be offered FOR -- a category with
+        # no forecast gets an explicit "not modeled", never a map of zeros.
+        "forecast": forecast_meta(forecast),
         "neighborhoods": bundle["neighborhoods"],
         "boroBounds": bundle["boroBounds"],
         # The all-opportunities mode. `available` false means this export

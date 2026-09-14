@@ -481,3 +481,171 @@ is the instrument, not the market. The first-seen ledger is left-censored before
 2026-10 (nothing that already existed can read as an opening) and the newest pipeline
 `entry_date` within 400 m of the Gowanus anchor is 2026-09-03, eight days *before* the
 card was issued. The first month in which `none` means anything is **2026-10**.
+
+---
+
+## The forecast ledger
+
+*Owner ask, 2026-09-14: "almost feels like we are building multiple layers here:
+predicted/modeled (not what the world reflects but what it could) vs
+realized/actual. worth building this out further."*
+
+The screen is the **realized** layer: what the data reads at a doorway today. The
+forecast ledger is the **modelled** one, and the only thing separating a model
+from an opinion is that a model is frozen on a date and scored afterwards. So the
+monthly job now issues a dated vintage and scores the vintages whose horizon has
+come due.
+
+Schema and the long-form reasoning: `src/loci/sql/028_forecast.sql`.
+Code: `src/loci/model/forecast.py`. Tests: `tests/test_forecast.py`.
+
+### What it predicts, and what it does not
+
+`p_opening` is the probability that the **market** puts a same-category
+storefront within 400 m of this doorway in the next twelve months. It is
+**entry, not viability** (D88). The retrodiction established both halves:
+entry is predictable out of sample (NTA-blocked AUC 0.866 against a no-score
+baseline of 0.854), and survival is **not identified** in Loci's data — every
+business-level closure instrument in the warehouse is a current-state extract,
+and the one premises-level outcome that is identified (LL157 go-dark) returns a
+null whose sign flips with the definition of attrition.
+
+A high `p_opening` therefore says *the market is likely to act here*, never *a
+shop here will work*. `loci forecast report` prints that sentence every time.
+
+D1 is unchanged: retail is the **dependent** read. Openings are the left-hand
+side; nothing is regressed on future retail.
+
+### The objects
+
+| Object | Grain |
+|---|---|
+| `analysis.forecast` | `(issued_month, model_version, address_id, category)` — one prediction, with its frozen inputs |
+| `analysis.forecast_run` | `(issued_month, model_version)` — the FIT: window, coefficients, baselines, ships verdict |
+| `analysis.forecast_outcome` | `(forecast_id, scored_month)` — what actually happened, at each scoring date |
+| `analysis.forecast_latest` | VIEW: newest `p_opening` beside newest scored outcome, per address × category |
+| `analysis.forecast_surprise_nta` | VIEW: `realized − expected` per NTA, with a cluster-robust z |
+
+MN+BK, `frame = 'lot'`, all fifteen categories, every doorway (owner
+2026-09-13: no eligibility gate — a `p_opening` of 0.004 is a forecast, and the
+rows at the bottom are what make the calibration curve mean anything). Street
+rows are excluded and the exclusion is not trivial: a street midpoint has no
+residents, so the homes denominator of `supply_ratio` would be structurally zero
+and `p_opening` would be a division artefact.
+
+### The model, in one paragraph
+
+Logistic, four features, category fixed effects, two stages. Features frozen at
+the **first day** of the issue month: `log1p(supply_ratio)`, an own-category-gap
+flag, `log(homes)` and `retail_index` — the retrodiction's specification, with
+`log_jobs` and `log_transit` **withheld** because their intervals barely clear
+zero against out-of-sample residual Moran's I of 0.64–0.77. A category with at
+least 150 dated openings in the fit window gets **its own logit** (`support =
+'fitted'`); the rest are predicted by the pooled model (`support = 'pooled'`)
+and their p50 is an extrapolation of a slope estimated mostly on restaurants,
+not a measurement. `expected_openings = p_opening × 1`: the unit is a
+*disc-with-an-opening*, not a storefront, because 400 m discs overlap and a
+Poisson rate summed over addresses would report hundreds of expected openings
+for one actual shop.
+
+Everything is **straight-line 400 m in EPSG:32618** — supply, homes, the anchor
+median and the outcome radius alike, exactly as the retrodiction fixed it. D85's
+rule is kept by never mixing: nothing here is comparable to
+`analysis.address_category.supply_ratio_vs_base`, which is a network measure.
+
+### The fit window, and the leakage contract
+
+> Two stacked folds with `t0 ∈ {issue − 24 months, issue − 12 months}`, each
+> carrying features frozen at **its own** `t0` and an outcome observed over
+> **its own** following twelve months.
+
+So every observation entering a fit has a source date strictly before the issue
+month. Two folds rather than one because a single 12-month outcome window is
+thin in the thin categories; non-overlapping rather than rolling because
+overlapping outcome windows would count the same opening twice on the same
+address. The **anchor** — the per-category median that turns a supply count into
+a ratio — is computed on one deterministic 12,000-address hash sample at every
+`t0`, for fit rows and prediction rows alike; computing it on the fit sample and
+applying it to the full frame would shift the feature between fitting and
+predicting, which is the quiet kind of leakage, the kind that looks like skill.
+
+`tests/test_forecast.py` pins the contract against a synthetic ledger row dated
+after the issue month, and pins the scoring window at all four boundaries.
+
+### The baselines, and the failure criterion
+
+Three baselines on the same NTA-blocked folds:
+
+* **no-score** — the same design with the score dropped (`log_homes` +
+  `retail_index` + category). **This is the bar.** The retrodiction's first
+  draft headlined +0.048 against a homes-only comparator; the statistician's
+  correction showed density + character + category FE alone reach 0.854, so the
+  honest marginal contribution was +0.013. The flattering comparator is
+  reported for continuity and never used as the bar.
+* **persistence** — rank by whether the disc got a same-category opening in the
+  twelve months *before* `t0`. Free, available at issue time, and the thing a
+  sceptic would actually do.
+* **homes-only** — context, not the bar.
+
+Fixed before any vintage was issued, a run is stamped `ships = false` if the
+blocked-CV AUC fails to beat no-score, or fails to beat persistence, or the
+calibration max decile gap exceeds 15 points. **A failing vintage is still
+written**, still dated and still scored. Deleting a vintage that failed is how a
+track record becomes a highlight reel.
+
+### The vintage and version discipline
+
+**A past vintage is never re-issued with a newer model.** `issue` is idempotent
+per `(issued_month, model_version)` by DELETE-then-INSERT: re-running the *same*
+model on the *same* month reproduces that month's answer, and running a
+*different* model writes a *different* version alongside, never over. Both then
+get scored, and the comparison between them is the only honest way to say a
+model improved.
+
+`model_version` is `<semver>+<8 hex>`, the hex over the exact feature list in
+order, the fit-window rule, the horizon, the radius and the support floor.
+Change any of them and the version changes **by construction** — which is the
+only version discipline that survives contact with a hurried session. A test
+pins that changing the feature list changes the hash.
+
+The temptation this forbids is precise, and it is the one every forecasting shop
+loses to: re-issuing 2023-01 with the 2026 model, scoring it well, and calling
+that a track record. It would be a measurement of hindsight.
+
+### The NTA surprise, and why the obvious z is wrong
+
+`surprise = Σ(realized_flag − p_opening)` over the addresses in an NTA. The
+naive variance `Σ p(1−p)` assumes independent Bernoulli draws, and two addresses
+150 m apart share nearly their whole 400 m disc — they are close to the *same*
+observation. So the headline z is **cluster-robust** on 800 m grid cells
+(`surprise_cell`, twice the catchment radius, assigned at issue time), with
+`Var(Σr) = Σ_cells (Σ_within r)²`. `z_naive` is published beside it and the gap
+between the two is the design effect. Fewer than five cells and the z is
+**NULL**, not small.
+
+`loci forecast report` prints the Bonferroni |z| threshold over the number of
+NTA statistics actually computed, because a "top 10 by z" list is a maximum over
+hundreds of statistics and will contain |z| > 2 under the pure null.
+
+### Running it
+
+```bash
+uv run loci forecast issue --month 2026-09          # monthly; idempotent per vintage
+uv run loci forecast score                          # every vintage whose horizon is due
+uv run loci forecast score --issued-month 2023-01 --as-of 2025-01
+uv run loci forecast report                         # the track record + the surprise tables
+uv run loci forecast distribution --issued-month 2026-09
+```
+
+`make chains-refresh` runs `forecast issue --month $(date +%Y-%m)` and
+`forecast score` **after** `storefront-pipeline build` and the `poi-snapshot`
+inside `chains refresh` — both the frozen supply and the realized outcome are
+read off the first-seen ledger and the filings pipeline, so issuing before them
+would freeze a vintage on last month's evidence and then date it this month —
+and **before** `recommendations check`.
+
+Both commands do all their reading and fitting on a read-only handle and open
+the write handle last, waiting up to 45 minutes for a peer session's lock. They
+never work on a copy of the warehouse: a peer mid-write produces a torn
+snapshot, and a vintage fitted on a torn snapshot is frozen, dated and wrong
+forever.

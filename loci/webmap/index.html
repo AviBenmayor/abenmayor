@@ -177,6 +177,46 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
    full text, no clamp — same contract the character caveat has. */
 .pedwarn{font-size:11px;color:var(--ink2);line-height:1.45;margin-top:7px;
          padding:6px 8px;border-left:2px solid var(--accent);background:var(--bg);border-radius:0 6px 6px 0}
+/* Modeled · Realized · Surprise (D92). Three views of one category, so one
+   segmented control and one legend slot that swaps its contents — never three
+   stacked sections, which would invite a reader to think the three can be on
+   at once. The control WRAPS at narrow widths: four segments do not fit a
+   272px rail on a phone and a horizontal scrollbar in a sidebar is a bug.
+   Colours come from meta.json, so a swatch here and a polygon on the map can
+   never disagree; only the chrome is themed, off the page's own tokens. */
+.fcseg{flex-wrap:wrap}
+.fcseg button{min-width:58px}
+.fc{display:flex;flex-direction:column;gap:1px;margin-top:6px}
+.fc .row{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--ink2);padding:3px 0}
+.fc .k{width:18px;height:12px;border-radius:3px;flex:none;margin-top:2px;
+       border:1px solid rgba(28,26,22,.18)}
+/* A POINT mark's key is the mark itself, drawn at the map's own geometry — a
+   flat chip cannot show that a closure is a struck ring and an opening is a
+   filled dot, and shape is what carries the difference here. */
+.fc .k.pk{width:26px;height:auto;margin-top:0;border:0;border-radius:0;
+          display:flex;align-items:center;justify-content:center;background:none}
+.fc .k.fcdash{background:none;border:1px dashed var(--muted)}
+.fc .tx{min-width:0}
+.fc .nm{font-weight:600;color:var(--ink);display:block}
+.fc .rule{display:block;font-size:10.5px;color:var(--muted);line-height:1.4;margin-top:1px}
+.fc .n{margin-left:auto;padding-left:6px;font-family:"IBM Plex Mono";font-size:11px;color:var(--muted);flex:none}
+.fc.off{opacity:.5}
+.fcramp{margin-top:6px}
+.fcramp .bar{height:11px;border-radius:3px;border:1px solid rgba(28,26,22,.18)}
+.fcramp .ends{display:flex;justify-content:space-between;margin-top:3px;
+              font-family:"IBM Plex Mono";font-size:10px;color:var(--muted)}
+.fcramp .cap{font-size:11.5px;color:var(--ink2);margin-top:4px;line-height:1.4}
+.fcrow{font-size:11.5px;color:var(--ink2);margin-top:5px;line-height:1.4}
+/* The caveat that rides inside a popup. Full text, no clamp — same contract
+   the character and age-fit caveats live under. */
+.fccav{font-size:10.5px;color:var(--muted);line-height:1.45;margin-top:4px}
+.fcnm{color:var(--muted)}
+/* expected / realized / surprise / z, side by side. The four numbers have to
+   be readable together or "surprise" is just a word. */
+.fctab{margin-top:6px;font-size:11.5px;color:var(--ink2)}
+.fctab div{display:flex;justify-content:space-between;gap:10px;padding:1px 0}
+.fctab span{color:var(--muted)}
+.fctab b{font-family:"IBM Plex Mono";font-size:11px;color:var(--ink)}
 /* The per-camera sample table inside a popup. Right-aligned numbers, one
    border between rows, and it has to survive a 280px popup on a phone. */
 .dtab{border-collapse:collapse;margin-top:6px;font-size:11px;color:#57524a}
@@ -236,6 +276,16 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
       <details class="cav" id="rankCav" hidden><summary>supply-revealed; see caveat</summary>
         <div class="cavtx" id="rankCavTx"></div></details>
       <div class="fine" id="rankFine"></div>
+    </div>
+    <div class="sec" id="fcSec" hidden>
+      <h2>Modeled · Realized · Surprise <span class="hint" id="fcVintage"></span></h2>
+      <div class="seg fcseg" id="fcMode"></div>
+      <div class="fcramp" id="fcRamp" hidden></div>
+      <div class="fc" id="fcLegend"></div>
+      <details class="cav" id="fcCav"><summary>a forecast of entry, not viability; see caveat</summary>
+        <div class="cavtx" id="fcCavTx"></div></details>
+      <div class="asof" id="fcAsof"></div>
+      <div class="fine" id="fcFine"></div>
     </div>
     <div class="sec" id="pipeSec" hidden>
       <h2>Development pipeline <span class="hint">overlay</span></h2>
@@ -489,7 +539,12 @@ function gapFC(){
         // The character label and the retail index, baked in for the same
         // reason `sc` is: a MapLibre expression cannot index a parallel
         // array. '' / -1 are the no-data cases and reach the grey fallback.
-        ch:charProp(L,i/st), ri:charRiProp(L,i/st)}}); }
+        ch:charProp(L,i/st), ri:charRiProp(L,i/st),
+        // D92: the model's 12-month opening probability, in permille, for the
+        // same reason and with the same contract -- -1 is "the model did not
+        // score this address", which the paint draws grey and never draws as
+        // the pale end of the ramp.
+        fp:fcProp(L,i/st)}}); }
   return {type:'FeatureCollection',features:f};
 }
 // The four pipeline numbers for point j of a layer, plus the nearest large
@@ -625,12 +680,20 @@ const RANK_OP=[0.30,0.52,0.74,0.95], UNRANKED_OP=0.13;
 // Sequential: one hue (the category's own), light → dark. The unranked step is
 // not part of the ramp — it is the absence of a reading, and is keyed as such.
 function rankPaint(){
+  // D92: one magnitude per mark. While a forecast mode is on, the dots carry
+  // the model's probability (or the ledger), and shading them by the rank
+  // score at the same time would be two sequential encodings on one circle --
+  // the one thing a sequential scale cannot survive. Flat, and the legend
+  // says which measure is on screen.
+  if(fcOn()) return 0.9;
   const b=rankCuts;
   if(!b) return 0.9;
   return ['case',['==',['get','rk'],0],UNRANKED_OP,
     ['step',['get','sc'],RANK_OP[0],b[0],RANK_OP[1],b[1],RANK_OP[2],b[2],RANK_OP[3]]];
 }
 function clusterPaint(){
+  // Same rule as rankPaint, and the same reason.
+  if(fcOn()) return 0.78;
   const b=rankCuts;
   if(!b) return 0.78;
   // A cluster is shaded by its BEST member: the question the map answers is
@@ -1275,9 +1338,14 @@ function refreshChar(){
   src.setData(charFC());
   if(!showChar) return;
   charHatchImages();
+  // D92: two area fills stacked is not a reading, it is a colour mixture. When
+  // SURPRISE owns the neighborhood shade this ramp stands down -- fill and
+  // hatch to zero, the hairline kept so the boundaries still read -- and both
+  // legends say so. The per-address tint is untouched: it is a different mark.
+  const yield_=fcOwnsAreas();
   map.setPaintProperty('charfill','fill-color',charFillColor());
   map.setPaintProperty('charfill','fill-opacity',
-    charRampOn()?charFillOpacity:charClassOpacity);
+    yield_?0:(charRampOn()?charFillOpacity:charClassOpacity));
   // Pattern and filter FIRST, visibility last: a fill layer with neither
   // fill-color nor fill-pattern set paints solid black, and one frame of a
   // black neighborhood is a frame too many.
@@ -1286,7 +1354,7 @@ function refreshChar(){
     map.setPaintProperty('charhatch','fill-pattern',charHatchPattern());
   }
   map.setLayoutProperty('charhatch','visibility',
-    charOverlays().length?'visible':'none');
+    (charOverlays().length&&!yield_)?'visible':'none');
   map.setPaintProperty('charline','line-color',charLineColor());
   map.setPaintProperty('charline','line-width',charLineWidth());
 }
@@ -1504,7 +1572,13 @@ function renderCharLegend(){
         ? 'shade is retail character, the two hatched classes sit on top of it'
         : 'four-class view — retail_index is not in this export ('+
           (CH().rampReason||'not built')+')')+
-      ' · context only, it enters no score';
+      ' · context only, it enters no score'+
+      // D92: say it on the face of the section rather than leaving the reader
+      // to wonder why the shade stopped answering the question it names.
+      (fcOwnsAreas()&&showChar
+        ? ' — the neighborhood shade is currently showing SURPRISE; this ramp is '+
+          'hidden while that mode is on. The address tint is unaffected.'
+        : '');
 }
 function syncCharUI(){
   const sec=document.getElementById('charSec'); if(!sec) return;
@@ -1835,6 +1909,514 @@ function buildPedUI(){
     refreshPed(); renderPedLegend();
   };
 }
+// ------------------------------------ Modeled · Realized · Surprise (D92)
+// Owner framing 2026-09-14: this product has a MODELED layer (what could be —
+// the screen, the forecast) and a REALIZED layer (what happened — the
+// first-seen ledger, the closures, the filings pipeline). The DIFFERENCE is
+// where the new information lives, and it is the only one of the three that is
+// not already somewhere else on this page. So the control is three-way, not a
+// checkbox: these are three answers to one question about the selected
+// category, and a reader has to be able to put them side by side.
+//
+// ONE MODE AT A TIME, AND IT REPLACES THE SHADING IT LANDS ON. The gap dots
+// already carry a sequential shade (the rank score). Painting a forecast on
+// top of that would be two magnitudes on one mark, which is the one thing a
+// sequential encoding cannot survive — so while any mode is on, the rank
+// shading goes flat and the legend says which measure is on screen.
+//
+// ITS OWN FILE, FETCHED ONCE. data/forecast.json is written by
+// `loci forecast-export` (and by the full export), and is fetched the first
+// time the control leaves Off. A viewer who never opens it downloads nothing.
+//
+// THE LINE THAT TRAVELS WITH EVERY PROBABILITY (D88): p_opening forecasts
+// ENTRY — whether the market puts a business of this kind here — and NOT
+// viability. The retrodiction ranked retail streets out of sample; the go-dark
+// test was null. No legend, popup or tooltip here may phrase it the other way.
+const FC_OFF='off', FC_MODELED='modeled', FC_REALIZED='realized', FC_SURPRISE='surprise';
+const FC_MODES=[[FC_OFF,'Off'],[FC_MODELED,'Modeled'],[FC_REALIZED,'Realized'],[FC_SURPRISE,'Surprise']];
+let fcMode=FC_OFF, FC=null, fcLoading=false;
+const FCM=()=>(META&&META.forecast)||{};
+const fcOn=()=>fcMode!==FC_OFF;
+const fcIs=m=>fcMode===m;
+//: Palettes come from meta.json, so a swatch in this legend and a polygon on
+//: the map can never disagree. Which SET is chosen is read off the page's own
+//: --bg token (charDark), never `prefers-color-scheme` — the same rule the
+//: character and DOT layers already follow.
+const fcRamp=()=>(charDark()?FCM().rampColorsDark:FCM().rampColors)||[];
+const fcNoData=()=>(charDark()?FCM().noDataColorDark:FCM().noDataColor)||'#9b968a';
+const fcSurpPal=()=>(charDark()?FCM().surpriseColorsDark:FCM().surpriseColors)||[];
+const fcSurpNoData=()=>(charDark()?FCM().surpriseNoDataColorDark:FCM().surpriseNoDataColor)||'#9b968a';
+const fcScale=()=>FCM().pScale||1000;
+const fcCav=k=>((FC&&FC.caveats)||FCM().caveats||{})[k]||'';
+const fcTip=new maplibregl.Popup({closeButton:false,closeOnClick:false,offset:8});
+const FC_EMPTY={type:'FeatureCollection',features:[]};
+
+//: 'YYYY-MM' -> 'Mar 2026'. Never a bare month number: a legend that reads
+//: "2026-03" makes the reader do arithmetic the page can do for them.
+const FC_MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function fcMonth(s){
+  if(!s||!/^\d{4}-\d{2}/.test(s)) return s||'—';
+  return FC_MON[+s.slice(5,7)-1]+' '+s.slice(0,4);
+}
+const fcNum=v=>v==null?'—':Number(v).toLocaleString();
+const fcP=pm=>pm==null?'—':(100*pm/fcScale()).toFixed(1)+'%';
+
+async function loadFc(){
+  if(FC||fcLoading) return;
+  fcLoading=true;
+  try{
+    const r=await fetch('data/'+(FCM().file||'forecast.json'));
+    if(!r.ok) throw new Error(r.status);
+    FC=await r.json();
+  }catch(e){ FC={available:false,error:'could not load data/'+(FCM().file||'forecast.json')+
+    ' — run `loci forecast-export`',modeled:{byCat:{}},realized:{byCat:{},months:[]},
+    surprise:{byCat:{},cols:[]}}; }
+  fcLoading=false;
+}
+const fcOk=()=>!!(FC&&!FC.error);
+
+// ---- MODELED ---------------------------------------------------------------
+// Per-address p for the selected category, keyed to the gap file's OWN address
+// order. Two encodings, and the block says which rather than leaving the
+// browser to infer it from array lengths: `dense` is one slot per address in
+// the file (nulls included) and `sparse` is idx+p for the scored ones only.
+// The export picks whichever is smaller; this reads both.
+const fcModeledBlock=cat=>(fcOk()&&FC.modeled&&FC.modeled.byCat&&FC.modeled.byCat[cat])||null;
+const fcSparseCache={};
+function fcSparseMap(cat,b){
+  if(fcSparseCache[cat]) return fcSparseCache[cat];
+  const m=new Map();
+  for(let k=0;k<b.idx.length;k++) m.set(b.idx[k],b.p[k]);
+  fcSparseCache[cat]=m; return m;
+}
+//: The probability at gap-file slot `j`, in permille, or null for "the model
+//: did not score this address". null and 0 are DIFFERENT and are kept
+//: different all the way to the paint expression — a light dot on a
+//: light-to-dark ramp is "almost certainly nothing opens here", which is the
+//: opposite of "the model has nothing to say".
+function fcPermilleAt(cat,j){
+  const b=fcModeledBlock(cat); if(!b) return null;
+  if(b.encoding==='dense'){ const v=b.p[j]; return v==null?null:v; }
+  const v=fcSparseMap(cat,b).get(j);
+  return v==null?null:v;
+}
+//: Baked into each gap feature, like `sc` and `ri`: a MapLibre expression
+//: cannot index a parallel array. -1 is the no-forecast case and reaches the
+//: grey arm of the `case` below; a real 0 permille never can, because permille
+//: is clamped to 0..1000 in the export.
+const fcProp=(L,j)=>{const v=fcIs(FC_MODELED)?fcPermilleAt(biz,j):null; return v==null?-1:v;};
+function fcStops(){
+  const b=fcModeledBlock(biz), R=fcRamp();
+  if(b&&b.stops&&b.stops.length===R.length) return b.stops;
+  const hi=fcScale();                                  // even fallback
+  return R.map((_,i)=>Math.round(hi*i/Math.max(1,R.length-1)));
+}
+//: Quantile stops, exactly like the character ramp, and for the same reason:
+//: p_opening is heavily right-skewed (most doorways are unlikely), so an
+//: evenly-spaced ramp would paint the whole city the palest step. The cost is
+//: that the shade encodes RANK among forecast addresses, and the legend bar
+//: places each colour at its own VALUE so the compression is visible.
+function fcDotColor(){
+  const R=fcRamp(), st=fcStops();
+  if(!R.length) return fcNoData();
+  const e=['case',['<',['get','fp'],0],fcNoData(),
+    ['interpolate',['linear'],['get','fp']]];
+  R.forEach((c,i)=>{e[3].push(st[i],c);});
+  return e;
+}
+function fcRampCSS(){
+  const R=fcRamp(); if(!R.length) return fcNoData();
+  const st=fcStops(), lo=st[0], hi=st[st.length-1], span=(hi-lo)||1;
+  return `linear-gradient(90deg,${R.map((c,i)=>
+    `${c} ${(100*Math.max(0,Math.min(1,(st[i]-lo)/span))).toFixed(1)}%`).join(',')})`;
+}
+//: The popup line for a gap address. Prints the vintage and the model version
+//: beside the number, because a probability with no issue date is not a
+//: forecast — and prints the D88 sentence, because a probability with no
+//: subject is read as a probability of success.
+function fcDotHTML(cat,j){
+  if(!fcIs(FC_MODELED)) return '';
+  const b=fcModeledBlock(cat);
+  if(!b) return `<div class="ppop fcnm">Not modeled — no forecast for `+
+    `${esc(catLabel(cat).toLowerCase())} in this export.</div>`;
+  const pm=fcPermilleAt(cat,j);
+  if(pm==null) return '<div class="ppop fcnm">Not modeled — this address is '+
+    'not in the forecast (not measured, not zero).</div>';
+  return `<div class="fcrow"><b>${fcP(pm)}</b> chance a `+
+    `${esc(catLabel(cat).toLowerCase())} opens within reach in `+
+    `${fcNum(FCM().horizonMonths||12)} months</div>`+
+    `<div class="fccav">Forecast of <b>ENTRY, not viability</b> (D88): it says the market is `+
+    `likely to act here, not that a shop here would work.</div>`+
+    `<div class="pmi">issued ${esc(fcMonth(FC.issuedMonth))} · model `+
+    `${esc(FC.modelVersion||'—')}</div>`;
+}
+
+// ---- REALIZED --------------------------------------------------------------
+// Three marks, and they are three SHAPES rather than three colours: the hue is
+// the category's, which is the only thing on this map that carries identity.
+//   opening  — a filled dot: a regulator or a source published an open date
+//   closure  — a hollow dot with a strike through it: a source published a
+//              closing date. ~3% ascertained, so these are a FLOOR
+//   pipeline — a small open ring: somebody filed and nobody has yet seen the
+//              business operating. Many never open
+const fcRealBlock=cat=>(fcOk()&&FC.realized&&FC.realized.byCat&&FC.realized.byCat[cat])||null;
+const fcRealMonths=()=>(fcOk()&&FC.realized&&FC.realized.months)||[];
+const FC_CLOSED_IMG=()=>'fc-closed-'+lc().replace('#','');
+//: A canvas ImageData, built SYNCHRONOUSLY, exactly like every other generated
+//: mark on this map (alcIcon, sfIcon, excIcon). Deliberately not an SVG
+//: data-URI Image: an async icon leaves the symbol layer pointing at an image
+//: that does not exist yet, and MapLibre reports that on the console.
+function fcClosedIcon(color){
+  const s=22,c=document.createElement('canvas');c.width=c.height=s;
+  const g=c.getContext('2d'),m=s/2,r=5.6,o=r*Math.SQRT1_2;
+  g.beginPath();g.arc(m,m,r,0,2*Math.PI);
+  g.fillStyle='#fffdf9';g.globalAlpha=0.88;g.fill();g.globalAlpha=1;
+  g.strokeStyle=color;g.lineWidth=1.9;g.stroke();
+  // The strike is what makes this mark a CLOSURE. A hollow circle alone would
+  // read as "single-source", which is what a hollow known location already
+  // means two layers down.
+  g.beginPath();g.moveTo(m-o,m+o);g.lineTo(m+o,m-o);g.stroke();
+  return g.getImageData(0,0,s,s);
+}
+function fcClosedImage(){
+  const key=FC_CLOSED_IMG();
+  if(!map.hasImage(key)) map.addImage(key,fcClosedIcon(lc()),{pixelRatio:2});
+  return key;
+}
+function fcMarkFC(kind){
+  const b=fcIs(FC_REALIZED)?fcRealBlock(biz):null;
+  if(!b||!b[kind]) return FC_EMPTY;
+  const s=b[kind], f=[];
+  for(let j=0;j<s.lon.length;j++)
+    f.push({type:'Feature',geometry:{type:'Point',coordinates:[s.lon[j],s.lat[j]]},
+      properties:{j,k:kind}});
+  return {type:'FeatureCollection',features:f};
+}
+function fcMarkHTML(kind,j,full){
+  const b=fcRealBlock(biz); if(!b||!b[kind]) return '';
+  const s=b[kind], nm=b.names[s.nm[j]]||'name not recorded';
+  const mon=fcMonth(fcRealMonths()[s.m[j]]);
+  const head={open:'Opened',closed:'Closed',pipe:'In the pipeline'}[kind];
+  let h=`<div class="pnb">${esc(nm)}</div>`+
+        `<div class="ppop">${head} <b>${esc(mon)}</b> · ${esc(label().toLowerCase())}</div>`;
+  if(kind==='pipe'){
+    const st=(b.stages&&b.stages[s.st[j]])||'unknown';
+    h+=`<div class="fcrow">earliest filing: <b>${esc(st.replace(/_/g,' '))}</b></div>`+
+       '<div class="fccav">Filed, not open: no inspection, licence or active liquor '+
+       'record yet. Many filings never open.</div>';
+  }
+  if(kind==='closed')
+    h+='<div class="fccav">Closures are <b>~3% ascertained</b> (source-published records). '+
+       'This is a floor — absence is not a closure.</div>';
+  if(kind==='open')
+    h+='<div class="fccav">First-seen date from the presence ledger, not a licence date.</div>';
+  if(full&&fcCav('realized'))
+    h+=`<div class="fccav">${esc(fcCav('realized'))}</div>`;
+  return h;
+}
+
+// ---- SURPRISE --------------------------------------------------------------
+// The only DIVERGING encoding on this map, because it is the only signed
+// quantity: realized openings minus what the model expected. Two poles and a
+// neutral grey midpoint; the sign convention is printed in the legend, because
+// a diverging ramp whose direction the reader has to guess is a coin flip.
+//
+// THE GEOMETRY IS BORROWED, NOT COPIED. The dissolved NTA outlines already
+// ship in character.json — the only area geometry this map has — so the
+// surprise fill reads them rather than shipping a second 150 KB of the same
+// polygons. That is a real dependency and it is stated on screen: with no
+// character export there is no surprise fill, and the section says so.
+const fcSurpBlock=()=>(fcOk()&&FC.surprise)||null;
+const fcSurpCols=()=>{const b=fcSurpBlock(); const o={};
+  ((b&&b.cols)||[]).forEach((c,i)=>{o[c]=i;}); return o;};
+const fcSurpRows=cat=>{const b=fcSurpBlock(); return (b&&b.byCat&&b.byCat[cat])||[];};
+const fcSurpIdxCache={};
+function fcSurpIndex(cat){
+  if(fcSurpIdxCache[cat]) return fcSurpIdxCache[cat];
+  const i=fcSurpCols(), m=new Map();
+  fcSurpRows(cat).forEach(r=>m.set(r[i.nta],r));
+  fcSurpIdxCache[cat]=m; return m;
+}
+const fcSurpAt=(cat,nta)=>fcSurpIndex(cat).get(nta)||null;
+//: Five classes on four breaks. A finer scale would be a precision claim an
+//: entry model measured over one 12-month window cannot support.
+const fcSurpStops=()=>FCM().surpriseStops||[-2,-0.5,0.5,2];
+const fcSurpLabels=()=>FCM().surpriseLabels||[];
+function fcSurpColorFor(z){
+  const P=fcSurpPal(), st=fcSurpStops();
+  if(z==null||!P.length) return null;
+  let k=0; while(k<st.length&&z>=st[k]) k++;
+  return P[k];
+}
+//: An NTA with an expectation but a NULL z is drawn as NOT MEASURED — no fill,
+//: a dashed outline, its own legend key. sql/028 returns a null z below five
+//: variance clusters because "a sandwich variance from three clusters is not
+//: an estimate"; substituting the naive z (3–5x too confident by that same
+//: header) would be this map claiming exactly the significance the model
+//: declined to. An NTA with NO expectation is not in the file at all.
+function fcSurpFC(){
+  if(!fcIs(FC_SURPRISE)||!CHAR||!CHAR.shapes) return FC_EMPTY;
+  const i=fcSurpCols(), idx=fcSurpIndex(biz), f=[];
+  (CHAR.shapes.features||[]).forEach(ft=>{
+    const r=idx.get(ft.properties&&ft.properties.nta);
+    if(!r) return;                              // no expectation -> never drawn
+    const z=r[i.z];
+    f.push({type:'Feature',geometry:ft.geometry,
+      properties:{nta:r[i.nta],z:z==null?null:z,measured:z==null?0:1,
+                  col:fcSurpColorFor(z)||fcSurpNoData()}});
+  });
+  return {type:'FeatureCollection',features:f};
+}
+function fcSurpHTML(nta,full){
+  const r=fcSurpAt(biz,nta); if(!r) return '';
+  const i=fcSurpCols(), nm=(ntaRow(nta)||{}).name||nta;
+  const z=r[i.z], exp=r[i.expected], real=r[i.realized], sur=r[i.surprise];
+  const v=fcSurpBlock().vintage||{};
+  let h=`<div class="pnb">${esc(nm)}</div>`+
+    `<div class="fctab"><div><span>expected</span><b>${fmt2(exp)}</b></div>`+
+    `<div><span>realized</span><b>${fcNum(real)}</b></div>`+
+    `<div><span>surprise</span><b>${sur==null?'—':(sur>0?'+':'')+fmt2(sur)}</b></div>`+
+    `<div><span>z (cluster-robust)</span><b>${z==null?'not estimated':(z>0?'+':'')+fmt2(z)}</b></div></div>`;
+  h+=z==null
+    ? '<div class="fccav">Fewer than five variance clusters here, so <b>no z is '+
+      'estimated</b> — the counts are real, the significance is not measured.</div>'
+    : `<div class="fccav">The market did <b>${z>0?'more':'less'}</b> than this model `+
+      `expected, by ${fmt2(Math.abs(z))} standard errors.</div>`;
+  h+='<div class="fccav">Surprise is measured against an <b>entry model</b>, not against '+
+     'the market: a neighborhood can read high because the market moved or because the '+
+     'model is poorly specified here, and this map cannot tell you which.</div>';
+  if(r[i.nAddresses]!=null)
+    h+=`<div class="pmi">${fcNum(r[i.nAddresses])} addresses · `+
+       `${fcNum(r[i.nCells])} variance cells</div>`;
+  h+=`<div class="pmi">${esc(nta)} · vintage ${esc(fcMonth(v.issuedMonth))} → scored `+
+     `${esc(fcMonth(v.scoredMonth))}</div>`;
+  if(full&&fcCav('surprise')) h+=`<div class="fccav">${esc(fcCav('surprise'))}</div>`;
+  return h;
+}
+
+// ---- draw ------------------------------------------------------------------
+//: True when the SURPRISE choropleth owns the neighborhood shade. Two area
+//: fills stacked is not a reading, it is a colour mixture — so the character
+//: ramp stands down while this is on, and both legends say so.
+const fcOwnsAreas=()=>fcIs(FC_SURPRISE)&&!!CHAR&&!!CHAR.shapes;
+function refreshFc(){
+  const so=map.getSource('fcnta'); if(!so) return;
+  so.setData(fcSurpFC());
+  map.setPaintProperty('fcfill','fill-color',['get','col']);
+  map.setPaintProperty('fcfill','fill-opacity',
+    ['case',['==',['get','measured'],1],0.62,0]);
+  map.setFilter('fcline',['==',['get','measured'],1]);
+  map.setFilter('fcnomeas',['==',['get','measured'],0]);
+  map.setPaintProperty('fcnomeas','line-color',fcSurpNoData());
+  // The icon BEFORE the data: a symbol layer holding features while its
+  // icon-image names an image the style does not have is one console error per
+  // feature, and there can be 2,674 of them.
+  if(fcIs(FC_REALIZED)) map.setLayoutProperty('fcclosed','icon-image',fcClosedImage());
+  ['open','closed','pipe'].forEach(k=>{
+    const s=map.getSource('fc'+k); if(s) s.setData(fcMarkFC(k));});
+  map.setPaintProperty('fcopen','circle-color',lc());
+  map.setPaintProperty('fcopen','circle-stroke-color','#fffdf9');
+  map.setPaintProperty('fcpipe','circle-stroke-color',lc());
+}
+
+// ---- legend ----------------------------------------------------------------
+function renderFcRamp(){
+  const el=document.getElementById('fcRamp'); if(!el) return;
+  const b=fcModeledBlock(biz);
+  el.hidden=!(fcIs(FC_MODELED)&&b);
+  if(el.hidden){ el.innerHTML=''; return; }
+  const st=fcStops(), lo=st[0], hi=st[st.length-1], span=(hi-lo)||1;
+  const ticks=st.slice(1,-1).map(v=>
+    `<span style="position:absolute;left:${(100*(v-lo)/span).toFixed(1)}%;top:0;`+
+    `width:1px;height:100%;background:rgba(255,255,255,.65)"></span>`).join('');
+  el.innerHTML=`<div class="bar" style="position:relative;background:${fcRampCSS()}">${ticks}</div>`+
+    `<div class="ends"><span>${fcP(lo)} less likely</span>`+
+    `<span>more likely ${fcP(hi)}</span></div>`+
+    `<div class="cap">Shade is the model's <b>${fcNum(FCM().horizonMonths||12)}-month opening `+
+    `probability</b> — it forecasts <b>ENTRY, not viability</b> (D88). The scale is `+
+    `<b>stretched by rank</b> (each tick is a quantile of forecast addresses) because most `+
+    `doorways are unlikely; ends are this category's own range, not 0–100%.</div>`;
+}
+function fcDot(r,fill,op,stroke,sw,strike){
+  const d=2*r+7, c=d/2, o=r*Math.SQRT1_2;
+  return `<svg width="26" height="${d}" viewBox="0 0 26 ${d}" aria-hidden="true">`+
+    `<circle cx="13" cy="${c}" r="${r}" fill="${fill}" fill-opacity="${op}" `+
+    `stroke="${stroke}" stroke-width="${sw}"/>`+
+    (strike?`<line x1="${13-o}" y1="${c+o}" x2="${13+o}" y2="${c-o}" stroke="${stroke}" stroke-width="${sw}"/>`:'')+
+    '</svg>';
+}
+function renderFcLegend(){
+  renderFcRamp();
+  const el=document.getElementById('fcLegend'); if(!el) return;
+  el.className='fc'+(fcOn()?'':' off');
+  // The mode is per BUSINESS, and the all-opportunities view has no single
+  // business: a forecast for "whatever this address is shortest of" is not a
+  // forecast the model ever issued. The section parks itself and says so
+  // rather than drawing the last category's marks under a new heading.
+  if(allMode()){
+    el.innerHTML='';
+    const f=document.getElementById('fcFine');
+    if(f) f.innerHTML='This mode is <b>per business</b>. Pick one in the Business list '+
+      'above — the model issues a probability per address <i>and category</i>, and an '+
+      'all-categories forecast is not something it was asked for.';
+    const a=document.getElementById('fcAsof'); if(a) a.innerHTML='';
+    syncFcUI(); return;
+  }
+  const hue=lc();
+  if(fcIs(FC_MODELED)){
+    const b=fcModeledBlock(biz);
+    el.innerHTML=b
+      ? `<div class="row"><span class="k" style="background:${fcNoData()}"></span>`+
+        '<span class="tx"><span class="nm">Not modeled</span>'+
+        '<span class="rule">the model did not score this address — not measured, not zero</span></span>'+
+        `<span class="n">${fcNum(b.n-b.nForecast)}</span></div>`
+      : '';
+  }else if(fcIs(FC_REALIZED)){
+    const b=fcRealBlock(biz);
+    const n=k=>b&&b[k]?b[k].n:0;
+    el.innerHTML=
+      `<div class="row"><span class="k pk">${fcDot(5.4,hue,0.9,'#fffdf9',1.1,false)}</span>`+
+      '<span class="tx"><span class="nm">Opened</span><span class="rule">a source or a '+
+      'government filing published an opening date in the window</span></span>'+
+      `<span class="n">${fcNum(n('open'))}</span></div>`+
+      `<div class="row"><span class="k pk">${fcDot(5.4,'#fffdf9',0.85,hue,1.8,true)}</span>`+
+      '<span class="tx"><span class="nm">Closed</span><span class="rule">struck through: a '+
+      'published closing date. <b>~3% ascertained</b> — a floor, never a rate</span></span>'+
+      `<span class="n">${fcNum(n('closed'))}</span></div>`+
+      `<div class="row"><span class="k pk">${fcDot(3.6,hue,0,hue,1.4,false)}</span>`+
+      '<span class="tx"><span class="nm">In the pipeline</span><span class="rule">filed, not '+
+      'open: no inspection, licence or liquor record yet. Many never open</span></span>'+
+      `<span class="n">${fcNum(n('pipe'))}</span></div>`+
+      '<div class="fccav">Absence of a closed mark is <b>not</b> evidence a business is still '+
+      'open. The closure ledger is source-published only.</div>';
+  }else if(fcIs(FC_SURPRISE)){
+    const P=fcSurpPal(), L=fcSurpLabels(), st=fcSurpStops();
+    const band=i=>i===0?`z < ${st[0]}`:i===P.length-1?`z ≥ ${st[st.length-1]}`
+                 :`${st[i-1]} to ${st[i]}`;
+    const sign=i=>i<2?'−':i>2?'+':'±';
+    const rows=P.map((c,i)=>
+      `<div class="row"><span class="k" style="background:${c}"></span>`+
+      `<span class="tx"><span class="nm">${sign(i)} ${esc(L[i]||band(i))}</span>`+
+      `<span class="rule">${esc(band(i))}</span></span></div>`).join('');
+    el.innerHTML=
+      '<div class="fccav"><b>Positive</b> = the market did <b>more</b> than the model '+
+      'expected; <b>negative</b> = <b>less</b>. Grey in the middle is "about as modeled".</div>'+
+      rows+
+      `<div class="row"><span class="k fcdash"></span><span class="tx">`+
+      '<span class="nm">Not measured</span><span class="rule">fewer than five variance '+
+      'clusters, so no z is estimated — outline only, never a colour</span></span>'+
+      `<span class="n">${fcNum((fcSurpBlock()||{}).nNoZ||0)}</span></div>`;
+  }else{ el.innerHTML=''; }
+  const cav=document.getElementById('fcCavTx');
+  if(cav) cav.textContent=[fcCav('modeled'),fcCav('realized'),fcCav('surprise')]
+    .filter(Boolean).join('\n\n');
+  const asof=document.getElementById('fcAsof');
+  if(asof){
+    if(!fcOn()||!fcOk()) asof.innerHTML='';
+    else if(fcIs(FC_REALIZED)) asof.innerHTML=
+      `window <b>${esc(fcMonth((FC.realized||{}).from))} → ${esc(fcMonth((FC.realized||{}).to))}</b>`+
+      ` · ledger as of <b>${esc(fcMonth((FC.realized||{}).asof))}</b>`;
+    else if(fcIs(FC_SURPRISE)){
+      const v=(fcSurpBlock()||{}).vintage||{};
+      asof.innerHTML=v.issuedMonth
+        ? `vintage <b>${esc(fcMonth(v.issuedMonth))}</b> · scored <b>${esc(fcMonth(v.scoredMonth))}</b>`+
+          ` · model <b>${esc(v.modelVersion||'—')}</b>`
+        : '';
+    }else asof.innerHTML=FC.issuedMonth
+      ? `issued <b>${esc(fcMonth(FC.issuedMonth))}</b> · model <b>${esc(FC.modelVersion||'—')}</b>`+
+        ` · horizon <b>${fcNum(FC.horizonMonths||FCM().horizonMonths)}</b> months`
+      : '';
+  }
+  renderFcFine();
+  syncFcUI();
+}
+//: The not-measured sentences. Each mode has its OWN reason for having nothing
+//: to draw, and they are different facts: no forecast for this category, no
+//: outcome scored yet, no ledger. None of them is zero.
+function renderFcFine(){
+  const el=document.getElementById('fcFine'); if(!el) return;
+  if(!fcOn()){ el.innerHTML='Three views of the selected business: what the model '+
+    '<b>expects</b>, what the market <b>did</b>, and the <b>difference</b>. Off by default — '+
+    'switching it on replaces the rank shading on the gap dots.'; return; }
+  if(!fcOk()){ el.textContent=(FC&&FC.error)||'Not loaded.'; return; }
+  const cat=esc(label().toLowerCase());
+  if(fcIs(FC_MODELED)){
+    const b=fcModeledBlock(biz);
+    el.innerHTML=b
+      ? `<b>${fcNum(b.nForecast)}</b> of ${fcNum(b.n)} ${cat} gap addresses carry a forecast. `+
+        'The rest are <b>not measured</b>, drawn grey, and are not zero. Clusters keep the '+
+        'category hue — a bubble of 400 addresses has no single probability; zoom in.'
+      : `<b>Not modeled.</b> ${esc((FC.modeled||{}).reason||'No forecast for '+cat+
+          ' in this export.')} Run \`loci forecast issue\`, then \`loci forecast-export\`.`;
+  }else if(fcIs(FC_REALIZED)){
+    const b=fcRealBlock(biz);
+    el.innerHTML=b
+      ? `Openings, closures and un-opened filings for ${cat} over the last `+
+        `${fcNum((FC.realized||{}).monthsBack||12)} months. The window is counted back from the `+
+        'ledger, not from today.'
+      : `<b>Nothing realized.</b> ${esc((FC.realized||{}).reason||
+          'No opening, closure or filing for '+cat+' in the window.')} That is an absence of `+
+        '<b>records</b>, not a claim that nothing happened.';
+  }else{
+    const rows=fcSurpRows(biz);
+    el.innerHTML=!(CHAR&&CHAR.shapes)
+      ? '<b>No neighborhood outlines.</b> The surprise fill borrows the dissolved NTA '+
+        'outlines from the character export — run `loci address-character build`, then '+
+        '`loci export-webmap`.'
+      : rows.length
+        ? `<b>${fcNum(rows.length)}</b> neighborhoods have an expected count for ${cat}. `+
+          'A neighborhood with no expectation is <b>not drawn at all</b> — not grey, not zero.'
+        : `<b>Not scored yet.</b> ${esc((FC.surprise||{}).reason||
+            'No scored outcome for '+cat+'.')} A forecast that nothing has scored has no `+
+          'surprise; that is not a surprise of zero.';
+  }
+}
+function syncFcUI(){
+  const sec=document.getElementById('fcSec'); if(!sec) return;
+  sec.hidden=!META.forecast;
+  const seg=document.getElementById('fcMode');
+  if(seg) [...seg.children].forEach(b=>{
+    b.setAttribute('aria-pressed',String(b.dataset.fc===fcMode));
+    b.disabled=allMode();});
+  const v=document.getElementById('fcVintage');
+  if(v) v.textContent=FCM().issuedMonth
+    ? fcMonth(FCM().issuedMonth)+' · '+(FCM().modelVersion||'')
+    : 'no vintage issued';
+}
+function buildFcUI(){
+  const f=META.forecast, sec=document.getElementById('fcSec'),
+        seg=document.getElementById('fcMode');
+  if(!f||!sec||!seg) return;
+  sec.hidden=false;
+  fcMode=FC_OFF;                               // off by default, every load
+  seg.innerHTML='';
+  FC_MODES.forEach(([key,text])=>{
+    const b=document.createElement('button');
+    b.dataset.fc=key; b.textContent=text;
+    b.setAttribute('aria-pressed',String(key===fcMode));
+    b.onclick=()=>setFcMode(key);
+    seg.appendChild(b);
+  });
+  renderFcLegend();
+}
+async function setFcMode(next){
+  if(fcMode===next){ if(next!==FC_OFF) next=FC_OFF; else return; }
+  const ld=document.getElementById('loading');
+  if(next!==FC_OFF&&!FC){
+    ld.hidden=false; ld.textContent='Loading forecast & ledger…';
+    await loadFc(); ld.hidden=true;
+  }
+  // The surprise fill needs the character export's outlines. Fetch them here
+  // rather than making the reader find a second toggle; the section says so
+  // when they are not there.
+  if(next===FC_SURPRISE&&!CHAR){
+    ld.hidden=false; ld.textContent='Loading neighborhood outlines…';
+    await loadChar(); ld.hidden=true;
+  }
+  fcMode=next;
+  refresh();
+}
+
 const ALL_MODE='__all__';
 const EMPTY={type:'FeatureCollection',features:[]};
 let NTAIDX=null, NTA=null, ntaSel=null, hiCat=null;
@@ -2095,6 +2677,26 @@ map.on('load',async()=>{
   map.addLayer({id:'charline',type:'line',source:'char',
     paint:{'line-color':'#9b968a','line-width':1,'line-opacity':0.5}},'cl');
 
+  // D92 SURPRISE: the second area layer, registered directly ABOVE the
+  // character fill and below everything else, with the same lazy contract --
+  // empty until the mode is entered. Its geometry is the character export's
+  // dissolved NTA outlines, read at draw time, so there is only ever one copy
+  // of those polygons in this browser.
+  map.addSource('fcnta',{type:'geojson',data:EMPTY});
+  map.addLayer({id:'fcfill',type:'fill',source:'fcnta',
+    paint:{'fill-color':'#9b968a','fill-opacity':0}},'cl');
+  // A solid hairline for a MEASURED neighborhood...
+  map.addLayer({id:'fcline',type:'line',source:'fcnta',
+    filter:['==',['get','measured'],1],
+    paint:{'line-color':'rgba(28,26,22,.28)','line-width':0.9}},'cl');
+  // ...and a DASHED one for a neighborhood with an expected count but no
+  // estimable z. Dashed, not grey-filled: a grey polygon on a diverging ramp
+  // reads as the neutral midpoint, and "we did not estimate this" must never
+  // read as "the market matched the model".
+  map.addLayer({id:'fcnomeas',type:'line',source:'fcnta',
+    filter:['==',['get','measured'],0],
+    paint:{'line-color':'#9b968a','line-width':1.2,'line-dasharray':[2,2]}},'cl');
+
   // DOT counts & cameras. Registered EMPTY up front, with the same beforeId
   // 'cl' the character fill used — added AFTER it, so these sit ABOVE the
   // neighbourhood tint and BELOW the gap clusters and their dots. That is the
@@ -2113,6 +2715,37 @@ map.on('load',async()=>{
     paint:{'circle-radius':4,'circle-color':PED_COLORS.count,'circle-opacity':0.42,
       'circle-stroke-width':1.6,'circle-stroke-color':PED_COLORS.count,
       'circle-stroke-opacity':0.95}},'cl');
+
+  // D92 REALIZED: three mark sets, and the difference between them is SHAPE,
+  // not colour -- the hue is the category's, which is the only thing on this
+  // map that carries identity. They sit ABOVE the gap dots because in this
+  // mode the ledger is the subject and the gap layer is the context; the
+  // pipeline rings go UNDER the other two because a filing that has not opened
+  // is the weakest of the three claims.
+  map.addSource('fcpipe',{type:'geojson',data:EMPTY});
+  map.addLayer({id:'fcpipe',type:'circle',source:'fcpipe',
+    paint:{'circle-radius':['interpolate',['linear'],['zoom'],11,2,14,3.2,17,5],
+      'circle-color':'#000','circle-opacity':0,
+      'circle-stroke-width':1.4,'circle-stroke-color':'#b5541f',
+      'circle-stroke-opacity':0.85}});
+  map.addSource('fcopen',{type:'geojson',data:EMPTY});
+  map.addLayer({id:'fcopen',type:'circle',source:'fcopen',
+    paint:{'circle-radius':['interpolate',['linear'],['zoom'],11,2.6,14,4.4,17,7],
+      'circle-color':'#b5541f','circle-opacity':0.9,
+      'circle-stroke-width':1.1,'circle-stroke-color':'#fffdf9',
+      'circle-stroke-opacity':0.95}});
+  // The closure is an ICON and not a circle because a strike-through cannot be
+  // expressed in circle paint, and the strike is the whole point: a hollow
+  // circle alone would read as "single-source", which is what a hollow known
+  // location already means three layers down.
+  map.addSource('fcclosed',{type:'geojson',data:EMPTY});
+  // No `icon-image` here on purpose: it is set in refreshFc, from the CATEGORY
+  // hue, at the moment the mode turns on. The source is empty until then, so
+  // there is never a feature waiting on an image that does not exist.
+  map.addLayer({id:'fcclosed',type:'symbol',source:'fcclosed',
+    layout:{'icon-allow-overlap':true,'icon-ignore-placement':true,
+      'icon-size':['interpolate',['linear'],['zoom'],11,0.5,14,0.72,17,1.05]},
+    paint:{'icon-opacity':0.95}});
 
   // Known locations sit ON TOP and read as a different mark entirely: small
   // ink dots, filled when 2+ sources corroborate the record and hollow when
@@ -2250,6 +2883,7 @@ map.on('load',async()=>{
         pipeHTML(pipeAt(CACHE.gaps[biz],+p.j,GAP_PIPE))+
         sfHTML(sfAt(CACHE.gaps[biz],+p.j,GAP_SF))+
         charDotHTML(CACHE.gaps[biz],+p.j)+
+        fcDotHTML(biz,+p.j)+
         `<div class="pmi">${+p.fr===1?'street segment':'bbl'} ${p.id}</div>`).addTo(map);});
   map.on('mouseenter','pt',()=>map.getCanvas().style.cursor='pointer');
   map.on('mouseleave','pt',()=>map.getCanvas().style.cursor='');
@@ -2356,6 +2990,37 @@ map.on('load',async()=>{
 
   // DOT: hover names the point and gives the round; click adds the caveat the
   // number cannot be read without. Same two-tier contract as every overlay.
+  // D92. Hover names the mark, click explains it -- the same contract every
+  // other layer here has.
+  [['fcopen','open'],['fcclosed','closed'],['fcpipe','pipe']].forEach(([lyr,kind])=>{
+    map.on('mouseenter',lyr,e=>{map.getCanvas().style.cursor='pointer';
+      fcTip.setLngLat(e.features[0].geometry.coordinates)
+        .setHTML(fcMarkHTML(kind,+e.features[0].properties.j,false)).addTo(map);});
+    map.on('mouseleave',lyr,()=>{map.getCanvas().style.cursor='';fcTip.remove();});
+    map.on('click',lyr,e=>{
+      new maplibregl.Popup({closeButton:false,maxWidth:'300px'})
+        .setLngLat(e.features[0].geometry.coordinates)
+        .setHTML(fcMarkHTML(kind,+e.features[0].properties.j,true)).addTo(map);});
+  });
+  map.on('mousemove','fcfill',e=>{
+    if(!fcIs(FC_SURPRISE)) return;
+    const f=e.features[0]; if(!f) return;
+    const r=fcSurpAt(biz,f.properties.nta), i=fcSurpCols();
+    const nm=(ntaRow(f.properties.nta)||{}).name||f.properties.nta;
+    const z=r?r[i.z]:null;
+    fcTip.setLngLat(e.lngLat).setHTML(
+      `<div class="pnb">${esc(nm)}</div><div class="ppop">`+
+      (z==null?'z not estimated'
+             :`${z>0?'above':'below'} the model · z ${(z>0?'+':'')+fmt2(z)}`)+
+      '</div>').addTo(map);});
+  map.on('mouseleave','fcfill',()=>fcTip.remove());
+  map.on('click','fcfill',e=>{
+    if(!fcIs(FC_SURPRISE)) return;
+    const f=e.features[0]; if(!f) return;
+    fcTip.remove();
+    new maplibregl.Popup({closeButton:false,maxWidth:'320px'}).setLngLat(e.lngLat)
+      .setHTML(fcSurpHTML(f.properties.nta,true)).addTo(map);});
+
   map.on('mouseenter','pedpt',e=>{map.getCanvas().style.cursor='pointer';
     pedTip.setLngLat(e.features[0].geometry.coordinates)
       .setHTML(pedCountHTML(+e.features[0].properties.j,false)).addTo(map);});
@@ -2418,6 +3083,10 @@ function refresh(){
     map.setPaintProperty('allpt','circle-color',charDotsOn()?charDotColor():leadColor());
     updateBanner(); allLegend(); syncRankUI(); refreshAlc(); refreshPipe(); refreshSf();
     refreshChar(); renderCharLegend(); syncCharUI();
+    // The mode is per-category and the all-opportunities view has no single
+    // category, so it draws nothing here -- but its sources are still cleared,
+    // or a mark from the last category would survive the switch.
+    refreshFc(); renderFcLegend();
     refreshPed(); renderPedLegend();
     return;
   }
@@ -2438,9 +3107,12 @@ function refresh(){
   // Clusters keep the CATEGORY hue even when the tint is on: a bubble holding
   // 400 addresses of three different characters has no character of its own,
   // and painting it one would be a claim the data does not make.
+  // D92: while MODELED is on the dot hue IS the forecast, so it outranks both
+  // the character tint and the category hue -- the legend on screen is the
+  // violet ramp, and a dot in any other scale would be an unlabelled colour.
   map.setPaintProperty('pt','circle-color',
     ['case',['==',['get','fr'],1],'#ffffff',
-     charDotsOn()?charDotColor():lc()]);
+     fcIs(FC_MODELED)?fcDotColor():charDotsOn()?charDotColor():lc()]);
   map.setPaintProperty('pt','circle-stroke-color',
     ['case',['==',['get','fr'],1],lc(),'#fff']);
   // Shading is MAGNITUDE (the rank score); the hue stays the category's, which
@@ -2453,6 +3125,7 @@ function refresh(){
   updateBanner(pf.features.reduce((n,f)=>n+(f.properties.s?1:0),0),gf.features.length);
   updateLegend(); syncStreetUI(); refreshAlc(); refreshPipe(); refreshSf();
   refreshChar(); renderCharLegend(); syncCharUI();
+  refreshFc(); renderFcLegend();
   // The DOT layer honours the borough selector like every other layer, so it
   // is redrawn here rather than only on its own toggle.
   refreshPed(); renderPedLegend();
@@ -2595,6 +3268,7 @@ function syncCuisineUI(){
 }
 function buildUI(){
   buildModeUI();
+  buildFcUI();
   const opts=document.getElementById('opts');
   const order=META.cats.slice().sort((a,b)=>
     sumOver(META.gapCounts[b],v=>v)-sumOver(META.gapCounts[a],v=>v));

@@ -25,6 +25,13 @@ sources:
     tier: universal
     role: poi
     status: planned
+    portability:
+      class: universal
+      feeds: [poi_supply, ledger, chains]
+      confidence: high
+      degrades_to: >
+        No global POI base layer: supply counts rest on city registries alone, and the
+        six bundle categories with no qualifying registry anchor go dark entirely.
     url: https://docs.overturemaps.org/guides/places/
     access: s3://overturemaps-us-west-2/release/  # via overturemaps-py
     format: geoparquet
@@ -42,6 +49,13 @@ sources:
     tier: universal
     role: poi
     status: verified
+    portability:
+      class: universal
+      feeds: [poi_supply, ledger, chains]
+      confidence: high
+      degrades_to: >
+        Loses the second independent aggregator, so D11's corroborated-only supply set
+        collapses to single-source and single-source inflation stops being detectable.
     url: https://opensource.foursquare.com/os-places/
     access: hf://datasets/foursquare/fsq-os-places  # GATED (accept terms + HF_TOKEN); public S3 bucket retired 2025-10
     format: parquet
@@ -66,6 +80,13 @@ sources:
     tier: universal
     role: poi
     status: planned
+    portability:
+      class: universal
+      feeds: [poi_supply, ledger]
+      confidence: high
+      degrades_to: >
+        Loses the third POI opinion and the tag vocabulary of record; category mapping
+        has to be rebuilt against whatever taxonomy the surviving vendor uses.
     url: https://overpass-api.de/
     geography: point/polygon
     temporal: {start: 2004, end: current, grain: continuous}
@@ -87,6 +108,17 @@ sources:
     # `planned` label was stale by a year. Now also the terminal stage of the
     # filing lifecycle (`first_inspection`, sql/019_storefront_filing.sql).
     status: verified
+    portability:
+      class: city_open_data
+      feeds: [poi_supply, ledger, lifecycle, validation]
+      confidence: high
+      degrades_to: >
+        Restaurant, cafe and bar lose their near-census anchor: those three categories
+        revert to aggregator coverage and the CONTEXT 7.1 undercount becomes
+        unmeasurable.
+      note: >
+        Every large US city inspects food service and most publish the roster with
+        establishment names; the schema differs, the census property does not.
     url: https://data.cityofnewyork.us/Health/DOHMH-New-York-City-Restaurant-Inspection-Results/43nn-pn8j
     dataset_id: 43nn-pn8j
     api: https://data.cityofnewyork.us/resource/43nn-pn8j.json
@@ -105,6 +137,13 @@ sources:
     city: nyc
     role: poi
     status: verified
+    portability:
+      class: city_open_data
+      feeds: [poi_supply, lifecycle]
+      confidence: high
+      degrades_to: >
+        Loses the E5 licence-history panel. No effect on the bundle count -- D55 found
+        it contributes essentially nothing to the fifteen categories.
     url: https://data.cityofnewyork.us/Business/Legally-Operating-Businesses/w7w3-xahh
     dataset_id: w7w3-xahh
     api: https://data.cityofnewyork.us/resource/w7w3-xahh.json
@@ -127,6 +166,17 @@ sources:
     city: nyc
     role: poi
     status: verified
+    portability:
+      class: city_open_data
+      feeds: [poi_supply, ledger]
+      confidence: med
+      degrades_to: >
+        Laundry loses its only anchor and reverts to aggregator coverage -- the
+        weakest category in POI data, because a laundromat has no check-in history.
+      note: >
+        Most cities license laundromats inside a general business-licence file rather
+        than inspecting them; the equivalent exists but is a licence roster, not an
+        inspection feed, so opening dates come through weaker.
     url: https://data.cityofnewyork.us/Business/DCWP-Inspections/jzhd-m6uv
     dataset_id: jzhd-m6uv
     api: https://data.cityofnewyork.us/resource/jzhd-m6uv.json
@@ -146,6 +196,17 @@ sources:
     city: nyc
     role: poi
     status: planned
+    portability:
+      class: state
+      feeds: [poi_supply]
+      confidence: high
+      degrades_to: >
+        Hair/barber and nail/beauty lose their state roster and fall back to
+        aggregators, which is where the 7.1 immigrant-neighbourhood undercount bites
+        hardest.
+      note: >
+        Cosmetology licensing is a state function in all 50 states; publication
+        quality and whether closed shops are retained vary widely.
     url: https://data.ny.gov/Economic-Development/Active-Appearance-Enhancement-and-Barber-Business-/y3u4-jbgh
     dataset_id: y3u4-jbgh
     geography: point
@@ -161,6 +222,14 @@ sources:
     tier: universal
     role: poi
     status: verified
+    portability:
+      class: national
+      feeds: [poi_supply, ledger]
+      confidence: high
+      degrades_to: >
+        Grocery and bodega/convenience lose their near-census anchor -- the tier-1
+        weight 0.40 categories -- and the screen's most load-bearing counts become
+        aggregator counts.
     url: https://www.fns.usda.gov/snap/retailer-locator
     access: https://services1.arcgis.com/RLQu0rK7h4kbsBq5/arcgis/rest/services/snap_retailer_location_data/FeatureServer/0
     format: arcgis-feature-service
@@ -185,6 +254,18 @@ sources:
     city: nyc
     role: poi
     status: verified
+    portability:
+      class: state
+      feeds: [poi_supply, ledger, lifecycle]
+      confidence: high
+      degrades_to: >
+        Bar loses its anchor and the alcohol map overlay disappears; bar supply
+        reverts to aggregators, which over-count bars relative to every other
+        category.
+      note: >
+        Every state has an ABC authority; roughly 30 publish a georeferenced active
+        file and far fewer publish the inactive companion that makes closures
+        recoverable.
     url: https://data.ny.gov/Economic-Development/Current-Liquor-Authority-Active-Licenses/9s3h-dpkz
     dataset_id: 9s3h-dpkz
     geography: point
@@ -208,6 +289,18 @@ sources:
     city: nyc
     role: poi
     status: verified
+    portability:
+      class: state
+      feeds: [poi_supply, ledger]
+      confidence: med
+      degrades_to: >
+        Childcare returns to the pre-D65 state: coverage 0.85 -> ~0.00, and Borough
+        Park-type aggregator blind spots read as deserts rather than as under-
+        coverage.
+      note: >
+        NYC is unusual in that the CITY licenses group child care (Art. 47); in most
+        states the roster is a state agency file. Portable, but from a different
+        publisher.
     url: https://data.cityofnewyork.us/Health/Active-NYC-Health-Code-Regulated-Child-Care-Program/gy3q-4tzp
     dataset_id: gy3q-4tzp
     api: https://data.cityofnewyork.us/resource/gy3q-4tzp.json
@@ -252,6 +345,13 @@ sources:
     tier: universal
     role: poi
     status: planned
+    portability:
+      class: national
+      feeds: [poi_supply]
+      confidence: high
+      degrades_to: >
+        Bank branch counts revert to aggregators, and dated closures -- the only
+        closure series Loci has for any category -- are lost.
     url: https://banks.data.fdic.gov/docs/
     access: https://api.fdic.gov/banks/locations
     geography: point
@@ -270,6 +370,13 @@ sources:
     city: nyc
     role: excluded
     status: excluded
+    portability:
+      class: state
+      feeds: [poi_supply]
+      confidence: high
+      degrades_to: >
+        Nothing. Bulk access was verified absent 2026-09-11; the entry exists so the
+        exclusion is not relitigated.
     url: https://eservices.nysed.gov/professions/verification-search
     geography: address
     temporal: {start: null, end: current, grain: snapshot}
@@ -291,6 +398,19 @@ sources:
     city: nyc
     role: poi
     status: verified
+    portability:
+      class: state
+      feeds: [poi_supply, ledger]
+      confidence: low
+      degrades_to: >
+        Pharmacy coverage falls 0.90 -> 0.00 and pharmacy gaps become unmeasurable --
+        the single largest coverage cliff in the registry.
+      note: >
+        NOT reliably portable. This roster works as a pharmacy census only because New
+        York's NYRx carve-out (2023-04-01) routes every Medicaid member's pharmacy
+        benefit through fee-for-service. In a managed-care state the same file is a
+        fraction of the pharmacies. Treat the CLASS as state and the METHOD as NY-
+        specific.
     url: https://health.data.ny.gov/d/keti-qx5t
     dataset_id: keti-qx5t
     geography: point
@@ -328,6 +448,14 @@ sources:
     tier: universal
     role: validation
     status: planned
+    portability:
+      class: universal
+      feeds: [validation, poi_supply]
+      confidence: high
+      degrades_to: >
+        No independent ground truth: the CONTEXT 7.1 coverage-bias audit cannot be run
+        and the card's coverage section can never reach A (recommend_grades
+        validated_grade).
     url: https://developers.google.com/maps/documentation/places/web-service/usage-and-billing
     geography: point
     temporal: {start: null, end: current, grain: live}
@@ -348,6 +476,14 @@ sources:
     tier: universal
     role: validation
     status: verified
+    portability:
+      class: national
+      feeds: [validation]
+      confidence: high
+      degrades_to: >
+        No external establishment-count benchmark, so anchor coverage ratios (the 0.85
+        / 0.90 numbers that justified the childcare and pharmacy anchors) cannot be
+        computed.
     url: https://www.census.gov/data/developers/data-sets/cbp-zbp/zbp-api.html
     api: https://api.census.gov/data/2023/cbp
     geography: zip
@@ -386,12 +522,73 @@ sources:
       revealed floor for QUESTIONS O6) and employment-size bands the
       count-based DNCI cannot see (QUESTIONS D9, small-format vs supermarket).
 
+  - id: census_cbp
+    name: Census County Business Patterns (CBP), national -- counties, metros and ZIPs
+    tier: universal
+    role: validation
+    status: verified
+    portability:
+      class: national
+      feeds: [validation]
+      confidence: high
+      degrades_to: >
+        The carrying-capacity comparison loses its only external frame: NYC's
+        establishments-per-resident can still be measured but not placed against any
+        other metro, so "is this rate high" has no answer and no second city can be
+        chosen on evidence.
+    url: https://www.census.gov/programs-surveys/cbp.html
+    api: https://api.census.gov/data/2023/cbp
+    geography: county, metropolitan statistical area, zip
+    temporal: {start: 1986, end: 2023, grain: annual, note: "2023 is the latest published vintage; 2024 404s as of 2026-09-14"}
+    cost: {amount: 0, unit: total}
+    requires_key: CENSUS_API_KEY
+    bias: >
+      PAYROLL establishments only. CBP's universe excludes sole proprietorships
+      without employees, so every rate computed from it under-counts exactly the
+      owner-operated formats Loci cares about (a one-chair barber, a family bodega),
+      and it under-counts them UNEVENLY across metros -- the NYC POI-to-CBP ratio is
+      2-8x in the licence-anchored categories and near 1 elsewhere (D40/D47), which is
+      why that ratio ships as a published parameter rather than being divided away.
+      NAICS is SELF-classified at registration and bleeds between adjacent formats
+      (D42), so a category boundary is soft. Census applies noise infusion to published
+      counts and omits a (geography, NAICS) row that is zero; establishment counts
+      themselves are not suppression-flagged, but a missing row is still read as a zero
+      by choice and the alternative universe is reported as a sensitivity. County and
+      ZCTA land area come from the Gazetteer, so density is a LAND density and a metro
+      with a lot of desert inside its county lines looks sparser than it lives --
+      hence the population-weighted density used for every metro comparison.
+    notes: >
+      Verified 2026-09-14. Same endpoint as `census_zbp` but the opposite pull shape:
+      that entry fetches the ~217 NYC ZIPs at every employment-size band for the D40
+      coverage check; this one fetches the whole country at the all-establishments
+      band for the cross-metro curve (`src/loci/sources/universal/census_cbp_national.py`,
+      `loci capacity --fit`). `for=county:*` returns ~3,140 counties per NAICS code in
+      ~1.4 s; `for=zipcode:*` returns every US ZIP in ~5.7 s; both key on NAICS2017,
+      which is the vintage `src/loci/zbp_naics.yaml` already holds, so the crosswalk is
+      reused verbatim and no second NAICS mapping exists (D42, pinned by
+      tests/test_carrying_capacity.py). The `CBSA` variable IS returnable on county rows
+      but comes back NULL, so the county-to-metro crosswalk is the OMB delineation file
+      (list1_2023.xlsx, parsed with the standard library -- openpyxl is not a project
+      dependency). Denominators: ACS 2023 5-year population/housing at county, metro and
+      ZCTA; 2023 Gazetteer ALAND_SQMI for land area. Raw pulls cache as parquet under
+      data/raw/cbp/ and data/raw/zbp/; nothing here is written to the warehouse.
+
   # ---------------------------------------------------------------- panel backbone
   - id: lodes_wac
     name: LEHD LODES Workplace Area Characteristics (LODES8)
     tier: universal
     role: panel
     status: planned
+    portability:
+      class: national
+      feeds: [demand, character]
+      confidence: high
+      degrades_to: >
+        jobs_400m disappears: the daytime half of demand is gone and the character
+        model loses one of its three witnesses for corporate vs retail.
+      note: >
+        LODES is national but 2020-block-based for all years; pre-2020 is area-retro-
+        allocated, a bias that travels with the source to every city.
     url: https://lehd.ces.census.gov/data/
     access: https://lehd.ces.census.gov/data/lodes/LODES8/ny/wac/
     geography: census block
@@ -444,6 +641,14 @@ sources:
     tier: universal
     role: outcome
     status: planned
+    portability:
+      class: national
+      feeds: [demand]
+      confidence: high
+      degrades_to: >
+        No income, tenure, age or household size: the supply baseline loses its
+        controls, so a thin count can no longer be separated from a poor one, and
+        demand_now is ungraded.
     url: https://www.census.gov/data/developers/data-sets/acs-5year.html
     api: https://api.census.gov/data/2023/acs/acs5
     geography: tract
@@ -478,6 +683,13 @@ sources:
     tier: universal
     role: outcome
     status: planned
+    portability:
+      class: national
+      feeds: [demand]
+      confidence: high
+      degrades_to: >
+        No rent index, so affordability context on the card is asserted rather than
+        measured. ZIP grain means it was never load-bearing.
     url: https://www.zillow.com/research/data/
     geography: zip
     temporal: {start: 2000, end: current, grain: monthly}
@@ -503,6 +715,18 @@ sources:
     city: nyc
     role: outcome
     status: verified
+    portability:
+      class: city_open_data
+      feeds: [demand]
+      confidence: med
+      degrades_to: >
+        The arriving-homes spine is gone, so recommend_grades' null_grade fires:
+        arriving_homes grades D and, being load-bearing, the whole card reads 'do not
+        act'.
+      note: >
+        Every city publishes permits; almost none publish a QA'd, geocoded, NET-UNIT-
+        RECODED project file. Elsewhere the net-unit recode has to be rebuilt from raw
+        permits, which is where unit double-counting enters.
     url: https://data.cityofnewyork.us/Housing-Development/Housing-Database-Project-Level-Files/br6q-ssj3
     dataset_id: br6q-ssj3
     api: https://data.cityofnewyork.us/resource/br6q-ssj3.json
@@ -530,6 +754,16 @@ sources:
     city: nyc
     role: outcome
     status: verified
+    portability:
+      class: city_open_data
+      feeds: [demand]
+      confidence: med
+      degrades_to: >
+        The pipeline loses its freshness supplement: 11,407 MN+BK net units that
+        already hold a CO keep reading 'permitted', overstating the forward pipeline.
+      note: >
+        Certificates of occupancy are a universal building-code artefact; whether they
+        are published as an open dataset is not universal.
     url: https://data.cityofnewyork.us/Housing-Development/DOB-Certificate-Of-Occupancy/bs8b-p36w
     # NOT `dataset_id`: two datasets, one logical source. Renamed to the
     # singular key if the pair is ever split into two registry rows.
@@ -570,6 +804,18 @@ sources:
     city: nyc
     role: outcome
     status: verified
+    portability:
+      class: city_open_data
+      feeds: [demand, lifecycle]
+      confidence: med
+      degrades_to: >
+        The construction-activity axis collapses: active / lapsed / stalled cannot be
+        computed, arriving_homes falls to its null_grade D, and every card reads 'do
+        not act'.
+      note: >
+        The generic requirement is a permit file carrying a RENEWAL or status date,
+        not just an issue date. Many permit datasets publish issuance only, which is
+        exactly the column that makes this stage work.
     url: https://data.cityofnewyork.us/Housing-Development/DOB-Permit-Issuance/ipu4-2q9a
     # NOT `dataset_id`: two datasets, one logical source, split by the same
     # BIS/DOB NOW namespace boundary as nyc_dob_certificates_of_occupancy.
@@ -621,6 +867,18 @@ sources:
     # the same job comm_far_capacity does.
     role: control
     status: verified
+    portability:
+      class: city_unique
+      feeds: [lifecycle, validation, character]
+      confidence: high
+      degrades_to: >
+        No storefront-vacancy layer: the card's space section grades D everywhere, the
+        'and this ground floor 120 m away is empty' sentence disappears, and the D88
+        go-dark retrodiction has no outcome variable at all.
+      note: >
+        Local Law 157 of 2019 has no counterpart anywhere in the United States. The
+        nearest substitutes are commercial (LiveXYZ, CoStar) or a BID storefront
+        survey.
     url: https://data.cityofnewyork.us/City-Government/Storefronts-Reported-Vacant-or-Not/92iy-9c3n
     dataset_id: 92iy-9c3n
     api: https://data.cityofnewyork.us/resource/92iy-9c3n.json
@@ -672,6 +930,17 @@ sources:
     city: nyc
     role: outcome
     status: verified
+    portability:
+      class: state
+      feeds: [lifecycle]
+      confidence: med
+      degrades_to: >
+        The earliest go-live signal is lost: the pipeline starts at fit-out filing
+        instead of at the signed lease, costing roughly a quarter of forward
+        visibility for bars.
+      note: >
+        A pending/applications queue is far rarer than the active-licence file; most
+        ABC authorities publish only what has issued.
     url: https://data.ny.gov/Economic-Development/Current-SLA-Pending-Licenses/f8i8-k2gm
     dataset_id: f8i8-k2gm
     api: https://data.ny.gov/resource/f8i8-k2gm.json
@@ -703,6 +972,16 @@ sources:
     city: nyc
     role: outcome
     status: verified
+    portability:
+      class: city_open_data
+      feeds: [lifecycle]
+      confidence: med
+      degrades_to: >
+        The fit-out stage disappears from the storefront pipeline, which is the only
+        stage that sees the ten filing-blind categories at all before they open.
+      note: >
+        Permit-application feeds are common; a work-type breakdown fine enough to
+        isolate a sign permit or a place of assembly is not.
     url: https://data.cityofnewyork.us/Housing-Development/DOB-NOW-Build-Job-Application-Filings/w9ak-ipjd
     dataset_id: w9ak-ipjd
     api: https://data.cityofnewyork.us/resource/w9ak-ipjd.json
@@ -740,6 +1019,17 @@ sources:
     city: nyc
     role: outcome
     status: verified
+    portability:
+      class: city_open_data
+      feeds: [lifecycle]
+      confidence: med
+      degrades_to: >
+        Loses the best name-bearing early signal for the non-alcohol trades -- the
+        fit-out feed names the landlord, not the operator, so nothing replaces it.
+      note: >
+        An APPLICATIONS feed (as distinct from the issued-licence roster) is the
+        rarer half of the pair. Where a city publishes only issued licences the
+        stage still works, but the lead time collapses from months to zero.
     url: https://data.cityofnewyork.us/Business/License-Applications/ptev-4hud
     dataset_id: ptev-4hud
     api: https://data.cityofnewyork.us/resource/ptev-4hud.json
@@ -777,6 +1067,13 @@ sources:
     tier: universal
     role: excluded
     status: excluded
+    portability:
+      class: national
+      feeds: [demand]
+      confidence: high
+      degrades_to: >
+        Nothing. Five units citywide is too coarse for any stage; recorded so the
+        exclusion stays deliberate.
     url: https://www.irs.gov/statistics/soi-tax-stats-migration-data
     geography: county
     temporal: {start: 1990, end: current, grain: annual}
@@ -793,6 +1090,21 @@ sources:
     city: nyc
     role: control
     status: planned
+    portability:
+      class: city_unique
+      feeds: [universe, demand, character]
+      confidence: med
+      degrades_to: >
+        The screen has no sampling frame. analysis.address IS 'PLUTO lots WHERE
+        UnitsRes > 0', so without it there is no universe, no dasymetric ancillary, no
+        commercial zoning capacity control (required by CONTEXT 1.3), and no retail
+        floor area for D82 character or the D91 capacity ceiling.
+      note: >
+        A parcel file with residential units exists in nearly every US county
+        assessor. What is NYC-specific is the bundle: UnitsRes +
+        BldgArea/RetailArea/OfficeArea + ResidFAR/BuiltFAR + BldgClass + LandUse on
+        one row, citywide, free, twice a year. Expect to rebuild floor area and zoning
+        capacity from two or three separate files.
     url: https://www.nyc.gov/site/planning/data-maps/open-data/dwn-pluto-mappluto.page
     version: 26v2
     geography: tax lot
@@ -810,6 +1122,16 @@ sources:
     city: nyc
     role: control
     status: verified
+    portability:
+      class: city_open_data
+      feeds: [universe, walk_graph]
+      confidence: high
+      degrades_to: >
+        The D84 street frame is lost and the universe reverts to residential lots
+        only, so commercial corridors with no housing above them stop being sampled.
+      note: >
+        Street centrelines are published by most cities, and OSM ways are a universal
+        fallback -- weaker on the status/paper-street flags that drive the keep rule.
     url: https://data.cityofnewyork.us/City-Government/NYC-Street-Centerline-CSCL-/exts8-4k5w
     dataset_id: inkn-q76z
     geography: line
@@ -846,6 +1168,17 @@ sources:
     city: nyc
     role: control
     status: verified
+    portability:
+      class: city_open_data
+      feeds: [demand]
+      confidence: med
+      degrades_to: >
+        In-building laundry evidence is lost, so the laundry haircut falls back to
+        priors: addressable_demand drops from A to its prior_grade B for the one
+        category that has a haircut at all.
+      note: >
+        Roughly 40 US cities have a benchmarking ordinance, but the laundry-hookup
+        columns are a New York reporting artefact, not part of the standard template.
     url: https://data.cityofnewyork.us/Environment/NYC-Building-Energy-and-Water-Data-Disclosure-for-L/5zyy-y8am
     # NOT `dataset_id`: registry.validate() requires every dataset_id to appear
     # in docs/CONTEXT.md 3, and docs/ is owned by another thread this session.
@@ -885,6 +1218,13 @@ sources:
     city: nyc
     role: control
     status: planned
+    portability:
+      class: city_open_data
+      feeds: [transit]
+      confidence: high
+      degrades_to: >
+        Station points come from GTFS stops instead -- a clean substitution, since
+        GTFS is the universal fallback and carries the same geometry.
     url: https://data.ny.gov/Transportation/MTA-Subway-Stations/39hk-dx4f
     dataset_id: 39hk-dx4f
     geography: point
@@ -897,6 +1237,17 @@ sources:
     city: nyc
     role: control
     status: verified
+    portability:
+      class: city_open_data
+      feeds: [transit]
+      confidence: low
+      degrades_to: >
+        Walk distance is measured to the station CENTROID instead of the entrance,
+        which overstates access at large complexes by up to a 400 m walk -- the exact
+        error the entrance file exists to remove.
+      note: >
+        GTFS pathways.txt can carry entrances and a growing minority of agencies
+        publish them, but coverage is patchy and unverified outside NYC.
     url: https://data.ny.gov/Transportation/MTA-Subway-Entrances-and-Exits-2024/i9wp-a4ja
     dataset_id: i9wp-a4ja
     api: https://data.ny.gov/resource/i9wp-a4ja.json
@@ -928,6 +1279,17 @@ sources:
     city: nyc
     role: control
     status: verified
+    portability:
+      class: city_unique
+      feeds: [transit]
+      confidence: high
+      degrades_to: >
+        Transit becomes PRESENCE rather than QUALITY: a twelve-route complex and a
+        one-route stop score identically.
+      note: >
+        Hourly per-station ridership is published by almost no other transit agency.
+        NTD gives annual system- and route-level totals, which cannot be assigned to a
+        station.
     url: https://data.ny.gov/Transportation/MTA-Subway-Hourly-Ridership-2020-2024/wujg-7c2s
     dataset_id: wujg-7c2s
     geography: station complex
@@ -954,6 +1316,13 @@ sources:
     city: nyc
     role: control
     status: verified
+    portability:
+      class: city_unique
+      feeds: [transit]
+      confidence: high
+      degrades_to: >
+        transit_entries_400m cannot be built, which removes the only foot-traffic
+        proxy in the whole registry (D76) and leaves the card with no daypart signal.
     url: https://data.ny.gov/Transportation/MTA-Subway-Hourly-Ridership-Beginning-2025/5wq4-mkjj
     dataset_id: 5wq4-mkjj
     api: https://data.ny.gov/resource/5wq4-mkjj.json
@@ -1032,6 +1401,18 @@ sources:
     # validation use is unchanged.
     role: control
     status: verified
+    portability:
+      class: city_open_data
+      feeds: [validation]
+      confidence: med
+      degrades_to: >
+        The access proxies (transit_entries_400m, jobs_400m, homes_400m) lose their
+        only external check, so the D76 rank correlation cannot be computed and the
+        proxy stays an assumption.
+      note: >
+        Many cities publish some pedestrian counts; a 37-round, 19-year biannual panel
+        at fixed points is rare, and the restricted-range problem (counts sited on
+        busy commercial corridors) travels to every city that has one.
     url: https://data.cityofnewyork.us/Transportation/Bi-Annual-Pedestrian-Counts/cqsj-cfgu
     dataset_id: cqsj-cfgu
     api: https://data.cityofnewyork.us/resource/cqsj-cfgu.json
@@ -1099,6 +1480,16 @@ sources:
     city: nyc
     role: control
     status: verified
+    portability:
+      class: city_open_data
+      feeds: [validation]
+      confidence: med
+      degrades_to: >
+        The frame-sampler route to a measured footfall number closes; nothing else in
+        the free registry can produce a person count.
+      note: >
+        Public traffic-camera APIs exist in many cities; unpublished bearing and field
+        of view make any count a count on an unknown catchment, wherever it is done.
     url: https://webcams.nyctmc.org/api/cameras
     # NOT a Socrata dataset: a plain JSON array on DOT's own traffic-management
     # host, so there is no `dataset_id` and the registry's CONTEXT.md drift
@@ -1156,6 +1547,15 @@ sources:
     city: nyc
     role: control
     status: planned
+    portability:
+      class: universal
+      feeds: [transit]
+      confidence: high
+      degrades_to: >
+        Transit access is subway-only. In NYC that is survivable; in a city where the
+        bus IS the network it would make the transit stage meaningless.
+      note: >
+        GTFS is a global standard -- the single most portable input in the registry.
     url: https://new.mta.info/developers
     geography: point
     temporal: {start: null, end: current, grain: snapshot}
@@ -1170,6 +1570,13 @@ sources:
     tier: universal
     role: outcome
     status: planned
+    portability:
+      class: national
+      feeds: [demand, validation]
+      confidence: high
+      degrades_to: >
+        No independent residential vacancy series, so the residential half of vacancy
+        rests on ACS 5-year smoothing alone.
     url: https://www.huduser.gov/portal/datasets/usps.html
     geography: tract
     temporal: {start: 2005, end: current, grain: quarterly}
@@ -1185,6 +1592,15 @@ sources:
     tier: universal
     role: control
     status: planned
+    portability:
+      class: universal
+      feeds: [walk_graph]
+      confidence: high
+      degrades_to: >
+        Everything reverts to straight-line radii: the 800 m network threshold, the
+        measured 1.233 circuity used to set the D53 validation radius, and every 400 m
+        catchment stop being walk distances. This is the most load-bearing portable
+        input in the registry.
     url: https://osmnx.readthedocs.io/
     geography: graph
     cost: {amount: 0, unit: total}
@@ -1201,6 +1617,15 @@ sources:
     city: nyc
     role: control
     status: planned
+    portability:
+      class: city_open_data
+      feeds: [universe]
+      confidence: high
+      degrades_to: >
+        No human-legible reporting geography and no shoreline clip; Census places and
+        tracts substitute, at the cost of NTA-grain reporting.
+      note: >
+        Census TIGER place and tract boundaries are the universal fallback.
     url: https://www.nyc.gov/site/planning/data-maps/open-data/districts-download-metadata.page
     geography: polygon
     cost: {amount: 0, unit: total}
@@ -1213,6 +1638,17 @@ sources:
     city: nyc
     role: control
     status: verified
+    portability:
+      class: city_unique
+      feeds: [demand]
+      confidence: med
+      degrades_to: >
+        Laundry evidence coverage drops below recommend_grades' evidence_coverage_a of
+        0.50, so addressable_demand for laundry falls from A to the prior_grade B.
+      note: >
+        StreetEasy is NYC-only, but the FUNCTION -- a dominant listings portal whose
+        pages advertise in-building amenities -- exists in most metros under another
+        brand.
     url: https://streeteasy.com/
     access: https://api.tavily.com/extract  # search + extract; direct fetch is 403
     format: html -> markdown
@@ -1271,6 +1707,16 @@ sources:
     city: nyc
     role: validation
     status: planned
+    portability:
+      class: city_unique
+      feeds: [validation]
+      confidence: med
+      degrades_to: >
+        No continuous sidewalk sensor, so counts stay biannual seven-hour snapshots
+        and no daypart validation is possible.
+      note: >
+        The vendor sells everywhere; the DEPLOYMENT is a specific NYC DOT procurement,
+        and the data are not published as open data anywhere Loci has found.
     url: https://vivacitylabs.com/
     access: agency relationship — cloud dashboard and API, via NYC DOT
     geography: point (sensor at an intersection)
@@ -1308,6 +1754,13 @@ sources:
     tier: universal
     role: validation
     status: planned
+    portability:
+      class: universal
+      feeds: [validation]
+      confidence: high
+      degrades_to: >
+        Loses a crowd-sourced movement second opinion. Never load-bearing -- it is
+        cycling- and fitness-selected, and access is gated on an application.
     url: https://metro.strava.com/
     access: free web platform — ELIGIBILITY-GATED, see notes
     geography: line (street segment)

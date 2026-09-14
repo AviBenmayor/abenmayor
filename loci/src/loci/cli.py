@@ -6085,3 +6085,910 @@ def retrodiction_go_dark_report(
                   "shop (any reported unit going dark counts), and the filing "
                   "universe is selected. This is the identifiable survival-adjacent "
                   "outcome Loci has today — not a business-level survival rate.[/]")
+
+
+@app.command(name="forecast-export")
+def forecast_export_cmd(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes (MN|BX|BK|QN|SI)."),
+    out_dir: Path = typer.Option(REPO_ROOT / "webmap" / "data", help="Output directory."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Print the three blocks' counts; write nothing."),
+) -> None:
+    """Write webmap/data/forecast.json — the MODELED / REALIZED / SURPRISE mode.
+
+    ONE FILE, ON ITS OWN COMMAND. `loci export-webmap` writes this file too, but
+    a new forecast vintage must not cost the 90-second full export: this command
+    re-derives the gap files' address order with `gap_id_order` and rewrites the
+    single file the mode fetches. The order rule is stated in one place, so the
+    two commands cannot attach a probability to a different doorway.
+
+    The three blocks are independently available and each says so: `modeled`
+    needs analysis.forecast (sql/028), `realized` needs only the presence and
+    closure ledgers, and `surprise` needs a scored outcome. "Not scored yet" is
+    printed as not-measured, never as zero.
+    """
+    from loci.viz import webmap_export as wx
+
+    boros = [b.strip().upper() for b in boroughs.split(",") if b.strip()]
+    con = _dot_connect(read_only=True)
+    fc = wx.collect_forecast(con, boros)
+    rep = wx.forecast_summary(fc)
+
+    console.print(f"vintage [bold]{rep['issuedMonth'] or 'none issued'}[/]"
+                  f" · model [bold]{rep['modelVersion'] or '—'}[/]"
+                  f" · newest scored month [bold]{rep['scoredMonth'] or 'none scored'}[/]")
+    for block, label in (("modeled", "MODELED"), ("realized", "REALIZED"),
+                         ("surprise", "SURPRISE")):
+        if not rep[f"{block}Available"]:
+            console.print(f"[yellow]{label}: not measured[/] — {rep[f'{block}Reason']}")
+    win = rep["realizedWindow"]
+    table = Table(title="forecast.json" + ("  [DRY RUN — nothing written]" if dry_run else ""))
+    table.add_column("category")
+    table.add_column("modeled addresses", justify="right")
+    table.add_column(f"openings {win[0] or '?'}→{win[1] or '?'}", justify="right")
+    table.add_column("closures", justify="right")
+    table.add_column("pipeline", justify="right")
+    table.add_column("surprise NTAs", justify="right")
+    for cat in wx.ALLCATS:
+        r = rep["realized"].get(cat) or {}
+        table.add_row(cat, f"{rep['modeled'].get(cat, 0):,}",
+                      f"{r.get('open', 0):,}", f"{r.get('closed', 0):,}",
+                      f"{r.get('pipe', 0):,}", f"{rep['surprise'].get(cat, 0):,}")
+    console.print(table)
+
+    if dry_run:
+        console.print("[yellow]dry run[/] — nothing written")
+        return
+    written = wx.write_forecast(fc, Path(out_dir))
+    for rel, size in written.items():
+        console.print(f"[green]ok[/] {Path(out_dir) / rel} — {size:,} bytes")
+    # The sidebar section is gated on meta.json's `forecast` block, so a new
+    # vintage that did not reach it would be invisible. Written by the same
+    # `forecast_meta` the full export uses, so the two cannot disagree.
+    if wx.patch_meta_forecast(fc, Path(out_dir)):
+        console.print(f"[green]ok[/] {Path(out_dir) / 'meta.json'} — forecast legend refreshed")
+    else:
+        console.print("[yellow]no meta.json[/] — run `loci export-webmap` before the map "
+                      "can show this layer")
+    console.print("[yellow]p_opening forecasts ENTRY, not viability (D88). Closures are "
+                  "~3% ascertained; absence is not a closure.[/]")
+
+
+# ===========================================================================
+# `loci gen-portability` -- THE PORTABILITY AUDIT (owner ask, 2026-09-14:
+# "what are the critical inputs necessary to be able to expand the model to
+# new cities"). See portability.py and the `portability:` blocks in
+# registry.yaml.
+#
+# Appended at the END of this file, for the same reason the recommendations
+# block above is: concurrent threads hold hunks higher up, and a block that
+# only adds lines at the bottom cannot conflict with any of them.
+# ===========================================================================
+
+
+@app.command(name="gen-portability")
+def gen_portability() -> None:
+    """Regenerate docs/PORTABILITY.md from the registry's `portability` blocks.
+
+    GENERATED, exactly like PAID-SOURCES.md and TICKETS.md: `loci
+    check-sources` fails if the file is not a byte-identical render. The
+    reason it matters more here than anywhere else is that a readiness matrix
+    which CAN be hand-edited is one that will be hand-edited into optimism.
+
+    Three things come out of it: the registry grouped by portability class and
+    by pipeline stage; the MINIMUM INPUT SET per evidence grade, computed the
+    way `recommend.py` computes a verdict (the minimum over the load-bearing
+    sections of `recommend_grades.yaml`); and the dated second-city portal
+    survey. Nothing is ingested for any city but New York.
+    """
+    from loci import portability as pt
+
+    n, n_unique = pt.generate()
+    cls = pt.by_class()
+    console.print(f"[green]ok[/] docs/PORTABILITY.md — {n} sources classed "
+                  + ", ".join(f"{len(cls[c])} {c}" for c in pt.CLASS_ORDER)
+                  + f" ({n_unique} with no equivalent anywhere else)")
+
+    t = Table(title="minimum input set by evidence grade", show_header=True,
+              header_style="bold")
+    for c in ("grade", "verdict", "registry sources", "of those, per-city/state",
+              "not a registry source"):
+        t.add_column(c, overflow="fold")
+    byid = pt.sources_by_id()
+    for grade in ("B", "C", "D"):
+        req = pt.minimum_input_set(grade)
+        per_city = sum(1 for sid in req["sources"]
+                       if byid[sid]["portability"]["class"]
+                       in {"state", "city_open_data", "city_unique"})
+        note = f"{len(req['also'])}"
+        if req["paid_sections"]:
+            note += " [red](PAID: " + ", ".join(req["paid_sections"]) + ")[/]"
+        if req["blocked_by"]:
+            note += " [red](UNREACHABLE: " + ", ".join(req["blocked_by"]) + ")[/]"
+        t.add_row(grade, req["verdict"], str(len(req["sources"])), str(per_city), note)
+    console.print(t)
+
+    if pt.CITY_PROBE:
+        t = Table(title=f"second-city readiness ({pt.PROBE_DATE}, research only)",
+                  show_header=True, header_style="bold")
+        t.add_column("input", overflow="fold")
+        for c in pt.CITY_PROBE:
+            t.add_column(c["city"])
+        for inp in pt.PROBE_INPUTS:
+            t.add_row(inp, *[pt.STATUS_MARK[c["inputs"][inp]["status"]]
+                             for c in pt.CITY_PROBE])
+        t.add_row("[bold]grade on day one[/]",
+                  *[f"[bold]{c['grade_today']}[/]" for c in pt.CITY_PROBE])
+        t.add_row("[bold]ceiling after a local refit[/]",
+                  *[f"[bold]{c['grade_ceiling']}[/]" for c in pt.CITY_PROBE])
+        console.print(t)
+
+    console.print("[yellow]The portal survey is RESEARCH ONLY — no adapter exists for "
+                  "any city but New York, and every distance in Loci is a WALK distance "
+                  "calibrated on Manhattan and Brooklyn (D48). A city that reads green "
+                  "on every row still needs the DNCI constants, the density "
+                  "elasticities and the revenue calibration refitted.[/]")
+
+
+# ===========================================================================
+# forecast ledger -- the MODELLED layer, issued as dated, scoreable predictions.
+# Appended at the END of this file; nothing above is touched.
+# ===========================================================================
+forecast_app = typer.Typer(add_completion=False, help=(
+    "THE MODELLED LAYER. `analysis.address_category` is what the data reads at "
+    "a doorway today; this is what a model FROZEN ON A DATE says will happen "
+    "next, together with the record of whether it was right. A prediction that "
+    "is not dated and scored is not a prediction. Forecasts ENTRY -- whether "
+    "the market puts a same-category storefront within 400 m in twelve months "
+    "-- and never VIABILITY (D88). Schema and reasoning: sql/028_forecast.sql."))
+app.add_typer(forecast_app, name="forecast")
+
+
+@forecast_app.command("issue")
+def forecast_issue(
+    month: str = typer.Option(..., "--month", help="Issue month, YYYY-MM. "
+                              "Features freeze at its FIRST day."),
+    model_version: str = typer.Option(None, "--model-version",
+                                      help="Override the computed version. Use "
+                                           "only to reproduce an old vintage."),
+    horizon: int = typer.Option(12, "--horizon-months"),
+    radius_m: float = typer.Option(400.0, "--radius-m",
+                                   help="Straight-line catchment, EPSG:32618."),
+    sample_n: int = typer.Option(12000, "--sample-n",
+                                 help="Addresses in the fit and anchor sample "
+                                      "(deterministic, hash-ordered)."),
+    limit_points: int = typer.Option(None, "--limit-points",
+                                     help="Cap the PREDICTION frame. For smoke "
+                                          "tests only -- a real vintage covers "
+                                          "every lot address."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Fit and predict, write nothing."),
+) -> None:
+    """Fit on data available at --month, then predict every lot address x category.
+
+    THE LEAKAGE CONTRACT. The model is fitted on two stacked folds with t0 at
+    --month minus 24 and minus 12 months, each carrying features frozen at its
+    own t0 and an outcome observed over its own following 12 months. Nothing
+    dated on or after --month enters the fit, the features or the anchor
+    median. `tests/test_forecast.py` pins that against a ledger row dated after
+    the issue month.
+
+    THE VINTAGE DISCIPLINE. Idempotent per (issued_month, model_version) by
+    DELETE+INSERT: re-running the same model on the same month reproduces that
+    month's answer. A NEW model gets a NEW version and its own vintages, and a
+    past vintage is NEVER re-issued with a newer model -- that would be a
+    measurement of hindsight, not a track record.
+
+    Reads first, writes last: the fit and the four-million-row prediction run
+    on a read-only handle, so a peer session holding the warehouse lock costs
+    only the final write, which waits up to 45 minutes for it.
+    """
+    from loci.model import forecast as fc
+
+    say = lambda m: console.print(f"[dim]{m}[/]")       # noqa: E731
+    kw = dict(version=model_version, horizon=horizon, radius_m=radius_m,
+              sample_n=sample_n, limit_points=limit_points)
+    if dry_run:
+        con = fc.connect_read()
+        try:
+            rep = fc.issue(con, month, dry_run=True, progress=say, **kw)
+        finally:
+            con.close()
+        rep.pop("_pred", None)
+        rep.pop("_t0", None)
+    else:
+        # ONE HANDLE AT A TIME. DuckDB refuses a second connection to the same
+        # file with a different configuration inside one process, and read_only
+        # is exactly such a difference -- so the fit and the prediction run on a
+        # read handle, which is CLOSED before the write handle is asked for.
+        rep = fc.issue_managed(month, progress=say, **kw)
+    f = rep["fit"]
+
+    console.print(Panel.fit(
+        f"vintage [bold]{rep['issued_month']}[/]  model [bold]{rep['model_version']}[/]\n"
+        f"horizon {rep['horizon_months']} months · {rep['radius_m']:.0f} m straight-line\n"
+        f"fit folds {', '.join(str(d) for d in fc.fit_t0s(month, horizon))}\n"
+        f"rows issued {rep['n_rows_issued']:,}"
+        + ("  [yellow](dry run — nothing written)[/]" if dry_run else ""),
+        title="forecast issued"))
+
+    t = Table(title="the fit, out of sample with WHOLE NTAs held out")
+    t.add_column("measure"); t.add_column("value", justify="right")
+    t.add_row("fit rows / addresses / NTAs",
+              f"{f['n_rows']:,} / {f['n_addresses']:,} / {f['n_ntas']}")
+    t.add_row("positive rate", f"{f['positive_rate']:.1%}")
+    t.add_row("blocked-CV AUC", f"{f['auc_blocked']:.4f}")
+    t.add_row("  vs NO-SCORE baseline  [THE BAR]", f"{f['auc_no_score']:.4f}")
+    t.add_row("  vs PERSISTENCE baseline", f"{f['auc_persistence']:.4f}")
+    t.add_row("  vs homes-only (context, not the bar)", f"{f['auc_homes_only']:.4f}")
+    t.add_row("lift over no-score", f"{f['auc_lift_vs_no_score']:+.4f}")
+    t.add_row("Brier / log loss", f"{f['brier']:.4f} / {f['log_loss']:.4f}")
+    t.add_row("calibration max decile gap", f"{f['calibration_max_gap']:.3f}")
+    t.add_row("SHIPS", "[green]yes[/]" if f["ships"] else "[red]no[/]")
+    console.print(t)
+    console.print(f"[dim]{f['ships_reason']}[/]")
+
+    c = Table(title="per category — support, model, out-of-sample AUC at fit time")
+    for col in ("category", "dated openings in fit window", "model", "n", "rate", "AUC"):
+        c.add_column(col, justify="right" if col != "category" else "left")
+    for cat, r in sorted(f["by_category"].items(),
+                         key=lambda kv: -kv[1].get("support_openings", 0)):
+        if "skipped" in r:
+            c.add_row(cat, f"{rep['support'].get(cat, 0):,}", "—",
+                      f"{r['n']:,}", "—", r["skipped"])
+            continue
+        c.add_row(cat, f"{r['support_openings']:,}", r["model"], f"{r['n']:,}",
+                  f"{r['positive_rate']:.1%}",
+                  "—" if r["auc"] != r["auc"] else f"{r['auc']:.3f}")
+    console.print(c)
+
+    console.print("[yellow]This forecasts ENTRY, not viability (D88). A high "
+                  "p_opening says the MARKET is likely to act near this doorway "
+                  "-- and the retrodiction found entry going where supply was "
+                  "already THICK, which is as consistent with herding into "
+                  "saturated corridors as with agglomeration being real. "
+                  "Nothing here separates them.[/]")
+
+
+@forecast_app.command("score")
+def forecast_score(
+    issued_month: str = typer.Option(None, "--issued-month",
+                                     help="The vintage to score, YYYY-MM. "
+                                          "Omit to score every vintage whose "
+                                          "horizon has elapsed."),
+    as_of: str = typer.Option(None, "--as-of",
+                              help="Right edge of the scoring window, YYYY-MM. "
+                                   "Defaults to issue month + horizon."),
+    model_version: str = typer.Option(None, "--model-version"),
+    radius_m: float = typer.Option(400.0, "--radius-m"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    """Score a vintage against what actually happened.
+
+    OUTCOME: a same-category dated first-seen (source_date | gov_filing) in the
+    principled supply set, within 400 m STRAIGHT-LINE -- the same radius, the
+    same projection and the same ledger rule the features were frozen from, so
+    the model and the thing it is judged against cannot drift apart. The window
+    is half-open: [first day of the issue month, first day of --as-of).
+
+    Scoring the same vintage at 12 and at 24 months writes TWO rows, not a
+    correction of the first. A 24-month score looks better for a trivial reason
+    -- a longer window -- and is labelled with its elapsed horizon.
+    """
+    from loci.model import forecast as fc
+
+    say = lambda m: console.print(f"[dim]{m}[/]")       # noqa: E731
+    if dry_run:
+        con = fc.connect_read()
+        try:
+            reps = [fc.score(con, issued_month, as_of=as_of,
+                             version=model_version, radius_m=radius_m,
+                             dry_run=True, progress=say)]
+        finally:
+            con.close()
+    else:
+        reps = fc.score_managed(issued_month, as_of=as_of,
+                                version=model_version, radius_m=radius_m,
+                                progress=say)
+    if not reps:
+        console.print("[yellow]nothing due — no vintage has an elapsed horizon "
+                      "without an outcome row.[/]")
+        return
+
+    for rep in reps:
+        for v, s in rep["versions"].items():
+            console.print(Panel.fit(
+                f"vintage [bold]{rep['issued_month']}[/] · model {v}\n"
+                f"scored as of {rep['scored_month']} "
+                f"({s['horizon_elapsed']} months elapsed)\n"
+                f"n {s['n']:,} · realized {s['realized_rate']:.1%} · "
+                f"mean p {s['mean_p']:.3f}",
+                title="forecast scored"))
+            t = Table()
+            t.add_column("measure"); t.add_column("value", justify="right")
+            t.add_row("AUC", f"{s['auc']:.4f}")
+            t.add_row("Brier", f"{s['brier']:.4f}")
+            t.add_row("log loss", f"{s['log_loss']:.4f}")
+            t.add_row("calibration max decile gap",
+                      f"{s['calibration_max_gap']:.3f}")
+            console.print(t)
+
+            c = Table(title="by category")
+            for col in ("category", "model", "n", "realized", "mean p", "AUC",
+                        "Brier", "cal gap"):
+                c.add_column(col, justify="right" if col != "category" else "left")
+            for cat, r in sorted(s["by_category"].items(),
+                                 key=lambda kv: -kv[1]["realized_rate"]):
+                c.add_row(cat, r["support"], f"{r['n']:,}",
+                          f"{r['realized_rate']:.1%}", f"{r['mean_p']:.3f}",
+                          "—" if r["auc"] != r["auc"] else f"{r['auc']:.3f}",
+                          f"{r['brier']:.4f}", f"{r['calibration_max_gap']:.3f}")
+            console.print(c)
+
+            d = Table(title="calibration deciles (out of sample by construction "
+                            "-- the outcome did not exist at issue)")
+            for col in ("decile", "n", "predicted", "observed"):
+                d.add_column(col, justify="right")
+            for row in s["calibration"]:
+                d.add_row(str(row["decile"]), f"{row['n']:,}",
+                          f"{row['predicted']:.3f}", f"{row['observed']:.3f}")
+            console.print(d)
+
+
+@forecast_app.command("report")
+def forecast_report(
+    issued_month: str = typer.Option(None, "--issued-month",
+                                     help="Restrict the surprise tables to one "
+                                          "vintage. Default: the newest scored."),
+    scored_month: str = typer.Option(None, "--scored-month"),
+    category: str = typer.Option("(all)", "--category",
+                                 help="'(all)' is the roll-up across the 15."),
+    top: int = typer.Option(10, "--top"),
+    min_addresses: int = typer.Option(200, "--min-addresses"),
+) -> None:
+    """The track record, then the NTAs where the market surprised the model.
+
+    Read-only. Everything printed is recomputed FROM THE LEDGER, never from a
+    cached summary, so the table cannot drift from the stored rows.
+    """
+    import json
+
+    from loci.model import forecast as fc
+
+    con = fc.connect_read()
+    fc.require_schema(con)
+
+    runs = fc.runs(con)
+    if len(runs):
+        t = Table(title="vintages issued")
+        for col in ("issued", "model", "fit rows", "NTAs", "AUC", "no-score",
+                    "persist", "cal gap", "ships", "rows"):
+            t.add_column(col, justify="right" if col not in ("issued", "model",
+                                                             "ships") else "left")
+        for _, r in runs.iterrows():
+            cal = json.loads(r["calibration_json"] or "[]")
+            gap = (max(abs(c["predicted"] - c["observed"]) for c in cal)
+                   if cal else float("nan"))
+            t.add_row(r["issued_month"], r["model_version"],
+                      f"{int(r['n_fit_rows'] or 0):,}", str(r["n_fit_ntas"]),
+                      f"{r['auc_blocked']:.4f}", f"{r['auc_no_score']:.4f}",
+                      "—" if r["auc_persistence"] != r["auc_persistence"]
+                      else f"{r['auc_persistence']:.4f}",
+                      "—" if gap != gap else f"{gap:.3f}",
+                      "[green]yes[/]" if r["ships"] else "[red]no[/]",
+                      f"{int(r['n_rows_issued'] or 0):,}")
+        console.print(t)
+
+    tr = fc.track_record(con)
+    if not tr:
+        console.print("[yellow]No vintage has been scored yet. "
+                      "`loci forecast score --issued-month YYYY-MM`.[/]")
+        return
+
+    t = Table(title="THE TRACK RECORD — every scored vintage, failures included")
+    for col in ("vintage", "model", "scored", "months", "n", "realized",
+                "mean p", "AUC", "Brier", "cal max gap"):
+        t.add_column(col, justify="right" if col not in ("vintage", "model",
+                                                          "scored") else "left")
+    for row in tr:
+        sc = fc.vintage_scores(con, row["issued_month"], row["scored_month"],
+                               version=row["model_version"])
+        s = sc.get(row["model_version"], {})
+        t.add_row(row["issued_month"], row["model_version"], row["scored_month"],
+                  str(int(row["horizon_elapsed"])), f"{int(row['n']):,}",
+                  f"{row['realized_rate']:.1%}", f"{row['mean_p']:.3f}",
+                  "—" if not s or s["auc"] != s["auc"] else f"{s['auc']:.4f}",
+                  "—" if not s else f"{s['brier']:.4f}",
+                  "—" if not s else f"{s['calibration_max_gap']:.3f}")
+    console.print(t)
+
+    im = issued_month or tr[-1]["issued_month"]
+    sm = scored_month or tr[-1]["scored_month"]
+    sur = fc.surprise_nta(con, im, sm, category=category, limit=top,
+                          min_addresses=min_addresses)
+    if len(sur):
+        n_tests = int(con.execute(
+            "SELECT count(*) FROM analysis.forecast_surprise_nta "
+            "WHERE issued_month = ? AND scored_month = ? AND category = ? "
+            "AND z_clustered IS NOT NULL", [im, sm, category]).fetchone()[0])
+        # Bonferroni over the number of NTA statistics actually computed. A
+        # "top 10 by z" list is a MAXIMUM over hundreds of statistics and will
+        # contain |z| > 2 under the pure null; the threshold is printed so the
+        # table is read as a ranking, not as a set of findings.
+        from scipy.stats import norm as _norm
+        thresh = (float(abs(_norm.ppf(0.05 / (2 * max(n_tests, 1)))))
+                  if n_tests else float("nan"))
+
+        sur = sur.sort_values("z_clustered", ascending=False)
+        for label, part in (("POSITIVE surprise — the market did MORE than the "
+                             "model expected", sur.head(top)),
+                            ("NEGATIVE surprise — the market did LESS",
+                             sur.tail(top).sort_values("z_clustered"))):
+            t = Table(title=f"{label}  ({im} scored {sm}, category {category})")
+            for col in ("NTA", "addresses", "cells", "realized", "expected",
+                        "surprise", "z clustered", "z naive", "passes Bonferroni"):
+                t.add_column(col, justify="right" if col != "NTA" else "left")
+            for _, r in part.iterrows():
+                t.add_row(str(r["nta_code"]), f"{int(r['n_addresses']):,}",
+                          f"{int(r['n_cells']):,}", f"{r['realized']:.0f}",
+                          f"{r['expected']:.0f}", f"{r['surprise']:+.0f}",
+                          f"{r['z_clustered']:+.2f}", f"{r['z_naive']:+.2f}",
+                          "yes" if abs(r["z_clustered"]) >= thresh else "no")
+            console.print(t)
+        console.print(f"[dim]{n_tests} NTA statistics computed; Bonferroni "
+                      f"|z| threshold {thresh:.2f}. The z is CLUSTER-ROBUST on "
+                      f"800 m cells because two addresses 150 m apart share "
+                      f"nearly the same 400 m disc and are not two "
+                      f"observations; `z naive` is the uncorrected version and "
+                      f"the gap between them is the design effect.[/]")
+
+    console.print("\n[yellow]PLAIN WORDS. This model forecasts ENTRY, not "
+                  "viability (D88). A positive surprise means more doorways saw "
+                  "a nearby opening than a model frozen beforehand expected -- "
+                  "it says the four features miss something about that "
+                  "neighbourhood, NOT that the openings there will succeed. "
+                  "Loci has no identified business-level survival outcome: "
+                  "every closure instrument in the warehouse is a current-state "
+                  "extract, and the one premises-level test that IS identified "
+                  "returns a null whose sign flips with the definition of "
+                  "attrition.[/]")
+
+
+@forecast_app.command("distribution")
+def forecast_distribution(
+    issued_month: str = typer.Option(..., "--issued-month"),
+    model_version: str = typer.Option(None, "--model-version"),
+) -> None:
+    """What a vintage SAYS, before anything is known about whether it is right.
+
+    p_opening quantiles per category. Read this beside the support column: a
+    category predicted by the pooled model is carrying a slope estimated mostly
+    on restaurants, and its p50 is an extrapolation, not a measurement.
+    """
+    from loci.model import forecast as fc
+
+    con = fc.connect_read()
+    fc.require_schema(con)
+    df = fc.p_distribution(con, issued_month, version=model_version)
+    t = Table(title=f"p_opening by category — vintage {issued_month}")
+    for col in ("category", "model", "n", "p10", "p50", "p90", "max"):
+        t.add_column(col, justify="right" if col != "category" else "left")
+    for _, r in df.iterrows():
+        t.add_row(r["category"], r["support"], f"{int(r['n']):,}",
+                  f"{r['p10']:.3f}", f"{r['p50']:.3f}", f"{r['p90']:.3f}",
+                  f"{r['pmax']:.3f}")
+    console.print(t)
+
+
+# ---------------------------------------------------------------------------
+# loci capacity -- carrying capacity (docs/carrying-capacity-2026-09.md)
+# ---------------------------------------------------------------------------
+
+@app.command("capacity")
+def capacity_cmd(
+    residents: float = typer.Option(None, "--residents", "-n",
+                                    help="Catchment population."),
+    density: float = typer.Option(None, "--density", "-d",
+                                  help="Residents per km2 of the catchment."),
+    category: str = typer.Option(None, "--category", "-c",
+                                 help="One of the 15 slugs; default all."),
+    fit: bool = typer.Option(False, "--fit",
+                             help="Re-estimate and rewrite "
+                                  "src/loci/model/carrying_capacity.yaml."),
+    show: bool = typer.Option(False, "--show",
+                              help="Print the fitted parameters per category."),
+    boroughs: str = typer.Option("MN,BK", "--boroughs",
+                                 help="Boroughs for the NYC half of a --fit."),
+    bootstrap: int = typer.Option(None, "--bootstrap",
+                                  help="NTA block-bootstrap draws (0 = skip)."),
+    nyc_only: bool = typer.Option(False, "--nyc-only",
+                                  help="With --fit: skip the national half "
+                                       "(no Census pull)."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="With --fit: estimate and print, write nothing."),
+) -> None:
+    """How many establishments of each category coexist with N people at density D.
+
+    THE ANSWER IS AN OBSERVED EQUILIBRIUM, NOT A CAPACITY. It says what New York
+    HAS at this density in 2024-26, not what a market could hold and not what
+    would survive: Loci has no viability outcome (D88), so no line of output here
+    can be read as "there is room for one more".
+
+    Three numbers ship side by side per category:
+
+      expected      the NYC curve -- establishments within a 400 m NETWORK walk
+                    of a doorway whose walkshed holds this many people. Catchments
+                    overlap, so this is a SITE-LEVEL count, not a count of shops
+                    "belonging to" those residents.
+      national      the same category's establishments per 1,000 residents at
+                    this density on the CBP/ZCTA curve fitted across every US
+                    metro of 500k or more, with New York held out of the fit.
+      cbp/poi       Loci's principled POI count divided by CBP payroll
+                    establishments on the same NYC ZIP partition -- the unit
+                    conversion between the two columns above, and a portability
+                    parameter in its own right (a city without New York's licence
+                    rosters will not reproduce it).
+
+    `--fit` reads the warehouse READ ONLY (retrying a lock a concurrent writer
+    holds) and writes nothing to it: the NYC curve lands in
+    src/loci/model/carrying_capacity.yaml as package data and the Census pulls
+    cache under data/raw/cbp/ and data/raw/zbp/. No analysis table is created or
+    updated by this command, deliberately -- the fit is 15 rows of parameters,
+    not a new grain.
+    """
+    from loci.categories import CATEGORIES
+    from loci.model import carrying_capacity as cc
+
+    if fit:
+        bl = tuple(b.strip().upper() for b in boroughs.split(",") if b.strip())
+        n_boot = cc.BOOTSTRAP_B if bootstrap is None else bootstrap
+        con = cc.connect_read_only_retry()
+
+        def prog(i, n, cat, rec):
+            console.print(f"  [{i}/{n}] {cat}: [bold]{rec.get('form','—')}[/] "
+                          f"({rec.get('fit_seconds','?')}s)")
+
+        console.print(f"[bold]Fitting the NYC curve[/] on {','.join(bl)} lot rows "
+                      f"(bootstrap {n_boot})")
+        doc = (cc.run_fit(con, bl, n_boot, progress=prog) if nyc_only
+               else cc.run_all(con, bl, n_boot, progress=prog))
+        if dry_run:
+            console.print("[yellow]--dry-run: nothing written[/]")
+        else:
+            path = cc.write_fit(doc)
+            console.print(f"wrote [bold]{path}[/]  fit_hash {doc['fit_hash']}")
+        _capacity_fit_table(doc)
+        return
+
+    if show:
+        _capacity_fit_table(cc.load_fit())
+        return
+
+    if residents is None or density is None:
+        raise typer.BadParameter(
+            "give both --residents and --density (or use --fit / --show). "
+            "Density is residents per km2 of the catchment; residents/density "
+            "is the implied walkshed area, which is checked against the band "
+            "the curve was estimated on.")
+    if category and category not in CATEGORIES:
+        raise typer.BadParameter(f"unknown category {category!r}; "
+                                 f"one of {', '.join(CATEGORIES)}")
+
+    rows = cc.capacity(residents, density, category)
+    head, body = rows[0], rows[1:]
+
+    console.print(f"\n[bold]{residents:,.0f} residents at "
+                  f"{density:,.0f}/km²[/] — implied walkshed "
+                  f"{head['implied_walkshed_km2']:.3f} km²"
+                  + ("" if head["in_support_walkshed"]
+                     else f"  [red](outside the {cc.SHED_KM2_SUPPORT[0]}–"
+                          f"{cc.SHED_KM2_SUPPORT[1]} km² band the NYC curve was "
+                          f"fitted on — the NYC column is an extrapolation)[/]"))
+
+    t = Table(show_header=True, header_style="bold")
+    for col, just in (("category", "left"), ("NYC expected", "right"),
+                      ("90% CI", "right"), ("per 1k res", "right"),
+                      ("national per 1k", "right"), ("NYC/nat'l", "right"),
+                      ("CBP/POI", "right"), ("form", "left")):
+        t.add_column(col, justify=just)
+    for r in body:
+        if not r.get("fitted"):
+            t.add_row(r["category"], "—", "—", "—", "—", "—", "—",
+                      f"[dim]{r.get('reason','not fitted')}[/]")
+            continue
+        ci = r.get("ci90")
+        mark = "" if r["in_support_residents"] else " [red]*[/]"
+        t.add_row(r["category"],
+                  f"{r['expected']:.1f}{mark}",
+                  "—" if not ci else f"{ci[0]:.1f}–{ci[1]:.1f}",
+                  f"{r['per_1000_residents']:.2f}",
+                  "—" if r["national_per_1000_residents"] is None
+                  else f"{r['national_per_1000_residents']:.3f}",
+                  "—" if r["nyc_vs_national_ratio"] is None
+                  else f"{r['nyc_vs_national_ratio']:.2f}×",
+                  "—" if r["cbp_per_poi_ratio"] is None
+                  else f"{r['cbp_per_poi_ratio']:.2f}×",
+                  f"{r['form']} [dim]({r['shape']})[/]")
+    t.caption = ("* = this resident count is outside the 1st–99th percentile of "
+                 "MN+BK walksheds, so the NYC number is extrapolated. The shape in "
+                 "brackets is read off the fitted elasticity at the top of the "
+                 "observed range, not off the form's name: `accelerating` means each "
+                 "extra 1,000 residents buys MORE shops than the last.")
+    console.print(t)
+    console.print(f"\n[yellow]{head['caveat']}[/]")
+    console.print("[dim]NYC expected counts POIs within a 400 m walk and catchments "
+                  "overlap, so it is not comparable to the national per-1,000 column "
+                  "without the CBP/POI conversion; `proportional` means the gate "
+                  "refused every curved form and the fit is a straight line through "
+                  "the origin.[/]")
+
+
+def _capacity_fit_table(doc: dict) -> None:
+    """The fitted parameters, the gate's verdict, and both reconciliations."""
+    t = Table(title="NYC carrying capacity — fitted forms (400 m walkshed, MN+BK)",
+              show_header=True, header_style="bold")
+    for col, just in (("category", "left"), ("form / shape", "left"),
+                      ("e(res|area) p10→p90", "right"), ("e(area|res)", "right"),
+                      ("per 1k @p50", "right"), ("flattens at", "right"),
+                      ("gain vs base", "right"), ("D70", "left"),
+                      ("cap-bound", "right")):
+        t.add_column(col, justify=just)
+    for cat, r in (doc.get("categories") or {}).items():
+        if not r.get("fitted"):
+            t.add_row(cat, "[dim]not fitted[/]", "—", "—", "—", "—", "—", "—", "—")
+            continue
+        e = r["elasticity_at"]
+        gain = max((v.get("deviance_gain_vs_baseline", 0.0)
+                    for k, v in r["cv"].items() if k == r["form"]), default=0.0)
+        cb = r.get("capacity_bound_share")
+        t.add_row(
+            cat,
+            f"{r['form']} [dim]{r['shape']}[/]",
+            f"{e['p10']['residents_fixed_area']:.2f}→"
+            f"{e['p90']['residents_fixed_area']:.2f}",
+            f"{e['p50']['area_fixed_residents']:+.2f}",
+            f"{r['estab_per_1000_residents_at']['p50']:.2f}",
+            "—" if r["flatten_residents"] is None
+            else f"{r['flatten_residents']:,.0f} res "
+                 f"({r['flatten_density_residents_km2']:,.0f}/km²)",
+            f"{gain:+.1%}",
+            r.get("d70_regime") or "—",
+            # NaN check without importing math into this module: a float is NaN
+            # iff it is not equal to itself, and ruff's self-comparison warning
+            # is silenced explicitly rather than by restructuring the guard.
+            "—" if cb is None or cb != cb else f"{cb:.0%}")  # noqa: PLR0124
+    t.caption = ("e(res|area) = d log(establishments)/d log(residents) with the "
+                 "walkshed area held fixed: 1.00 is constant-per-capita, below 1 is "
+                 "saturation, above 1 means supply grows FASTER than population. "
+                 "e(area|res) > 0 means shops scale with land (frontage) as well as "
+                 "with customers. D70 is the 2013–23 GROWTH regime at ZIP grain — a "
+                 "different estimand, shown for comparison, not agreement. cap-bound "
+                 "is D91's PLUTO floor-area ceiling share.")
+    console.print(t)
+
+    nat = doc.get("national") or {}
+    if nat:
+        u = doc.get("national_universe", {})
+        t = Table(title=f"National CBP curve — {u.get('n_zctas','?'):,} ZCTAs in "
+                        f"{u.get('n_metros','?')} metros ≥500k, NYC held out",
+                  show_header=True, header_style="bold")
+        for col, just in (("category", "left"), ("form", "left"),
+                          ("per 1k @ nat'l p50", "right"), ("@ p90", "right"),
+                          ("NYC observed/1k", "right"), ("NYC predicted/1k", "right"),
+                          ("NYC ratio", "right"), ("strict-universe ratio", "right")):
+            t.add_column(col, justify=just)
+        for cat, r in nat.items():
+            if not r.get("fitted"):
+                t.add_row(cat, "[dim]not fitted[/]", "—", "—", "—", "—", "—", "—")
+                continue
+            h = r.get("held_out_metro") or {}
+            sens = r.get("sensitivity_cbp_presence_only") or {}
+            ratio = h.get("ratio_observed_over_predicted")
+            colour = ("green" if ratio and ratio >= 1.5
+                      else "red" if ratio and ratio <= 0.67 else "")
+            t.add_row(cat, r["form"],
+                      f"{r['rate_per_1000_at']['p50']:.3f}",
+                      f"{r['rate_per_1000_at']['p90']:.3f}",
+                      "—" if not h else f"{h['observed_per_1000']:.3f}",
+                      "—" if not h else f"{h['predicted_per_1000']:.3f}",
+                      "—" if ratio is None
+                      else (f"[{colour}]{ratio:.2f}×[/]" if colour else f"{ratio:.2f}×"),
+                      "—" if not sens
+                      else f"{sens['nyc_ratio_observed_over_predicted']:.2f}×")
+        t.caption = ("NYC ratio = observed CBP establishments in NYC's 765 ZCTAs "
+                     "divided by what the national curve predicts at their densities. "
+                     "Above 1 = NYC carries more of this category than its density "
+                     "explains. The strict column drops the 1,775 ZCTAs with no CBP "
+                     "presence in any of the 15 categories.")
+        console.print(t)
+
+    near = doc.get("nearest_metros") or []
+    if near:
+        t = Table(title="NYC's nearest metros on the carrying-capacity surface",
+                  show_header=True, header_style="bold")
+        for col in ("metro", "population", "pop-weighted density", "distance"):
+            t.add_column(col, justify="right" if col != "metro" else "left")
+        for r in near:
+            t.add_row(r["cbsa_name"], f"{r['population']:,.0f}",
+                      f"{r['weighted_density']:,.0f}/km²",
+                      f"{r['distance_to_target']:.2f}")
+        t.caption = ("distance = Euclidean on z-scored log(pop-weighted density) plus "
+                     "the log per-1,000 rate of all 15 categories — similar RETAIL MIX "
+                     "at similar density, not merely similar size")
+        console.print(t)
+
+    ratios = doc.get("cbp_poi_ratio") or {}
+    if ratios:
+        t = Table(title="CBP-to-POI bridge on the NYC ZIP partition "
+                        "(principled supply set)",
+                  show_header=True, header_style="bold")
+        for col, just in (("category", "left"), ("Loci POIs", "right"),
+                          ("CBP estab", "right"), ("aggregate ratio", "right"),
+                          ("median ZIP ratio", "right")):
+            t.add_column(col, justify=just)
+        for cat, r in sorted(ratios.items()):
+            t.add_row(cat, f"{r['poi_principled']:,.0f}", f"{r['cbp_estab']:,.0f}",
+                      "—" if r["ratio_aggregate"] is None
+                      else f"{r['ratio_aggregate']:.2f}×",
+                      "—" if r["ratio_median_zip"] is None
+                      else f"{r['ratio_median_zip']:.2f}×")
+        t.caption = ("CBP counts PAYROLL establishments and Loci counts POIs, so a "
+                     "ratio above 1 is mostly sole proprietors CBP never sees plus the "
+                     "D47 dedup residual, and below 1 is Loci coverage. This ratio is "
+                     "itself the portability parameter: a second city reproduces it "
+                     "only as well as it reproduces NYC's licence rosters.")
+        console.print(t)
+
+
+# ---------------------------------------------------------------------------
+# loci colocation -- two businesses at one address, and whether one closed
+# (owner ask 2026-09-14; defect GTM-153, cause D36/GTM-121)
+# ---------------------------------------------------------------------------
+
+@app.command(name="colocation")
+def colocation(
+    supply_set: str = typer.Option("principled", "--supply-set",
+                                   help="all | principled | corroborated"),
+    category: str = typer.Option(None, "--category",
+                                 help="restrict the per-group detail to one category"),
+    collapse_unresolved: bool = typer.Option(
+        False, "--collapse-unresolved",
+        help="ALSO show the set with unresolved co-located groups collapsed to one "
+             "row each. Never applied to the warehouse; the module default stays OFF "
+             "pending an owner ruling."),
+    emit_sql: bool = typer.Option(
+        False, "--emit-sql",
+        help="print the generated DDL for sql/029_poi_colocation.sql and exit"),
+    examples: int = typer.Option(0, "--examples",
+                                 help="print N resolved groups as worked evidence"),
+):
+    """Co-located same-category POIs, by resolution, and what the closure gate costs.
+
+    READ-ONLY: opens the warehouse read_only and runs only SELECTs. The gate
+    itself lives in score/supply.canonical_poi_sql (GATE_CLOSED, default ON);
+    this command only reports it, and `--collapse-unresolved` only PRICES the
+    alternative -- it changes nothing.
+    """
+    from loci.model.poi_presence import (COORD_DP, OPEN_EVIDENCE_MAX_AGE_DAYS,
+                                         colocation_view_sql)
+    from loci.model.recommend import connect_read_only
+    from loci.score.supply import (COLLAPSE_UNRESOLVED, GATE_CLOSED, canonical_poi_sql,
+                                   colocation_report)
+
+    if emit_sql:
+        print(colocation_view_sql())
+        raise typer.Exit(0)
+
+    con = connect_read_only(retries=8, wait_s=30.0)
+    try:
+        df, tot = colocation_report(con, supply_set)
+
+        t = Table(title=f"Co-located same-category groups — {supply_set} supply set",
+                  show_header=True, header_style="bold")
+        for col, just in (("category", "left"), ("canonical", "right"),
+                          ("closed", "right"), ("gated", "right"),
+                          ("groups", "right"), ("one_closed", "right"),
+                          ("all_closed", "right"), ("both_open", "right"),
+                          ("unresolved", "right"), ("collapse −", "right")):
+            t.add_column(col, justify=just)
+        for r in df.sort_values("n_canonical", ascending=False).to_dict("records"):
+            t.add_row(r["category"], f"{r['n_canonical']:,}",
+                      f"[red]{r['n_closed']:,}[/]" if r["n_closed"] else "0",
+                      f"{r['n_gated']:,}", f"{r['n_groups']:,}",
+                      f"{r['groups_one_closed']:,}", f"{r['groups_all_closed']:,}",
+                      f"{r['groups_both_open']:,}",
+                      f"[yellow]{r['groups_unresolved']:,}[/]"
+                      if r["groups_unresolved"] else "0",
+                      f"{r['n_collapse_would_drop']:,}")
+        t.caption = (
+            f"'closed' = the predicate's EVIDENCED closures only (a ledger closed_on "
+            f"or a source-published status); 'unknown' is never gated. Groups are "
+            f"exact-coordinate ({COORD_DP} dp ≈ 1 m) and PER CATEGORY. "
+            f"'collapse −' is what --collapse-unresolved WOULD remove; it is OFF "
+            f"(COLLAPSE_UNRESOLVED={COLLAPSE_UNRESOLVED}) because a large building "
+            f"legitimately holds two restaurants at one geocode.")
+        console.print(t)
+
+        n_ungated = con.execute(
+            "SELECT count(*) FROM (" +
+            canonical_poi_sql(supply_set, "s.poi_id", gate_closed=False) + ")"
+        ).fetchone()[0]
+        n_gated = con.execute(
+            "SELECT count(*) FROM (" +
+            canonical_poi_sql(supply_set, "s.poi_id", gate_closed=True) + ")"
+        ).fetchone()[0]
+        console.print(
+            f"\n[bold]supply count[/]  ungated {n_ungated:,}  →  gated {n_gated:,}  "
+            f"([red]−{n_ungated - n_gated:,}[/], "
+            f"{100 * (n_ungated - n_gated) / max(n_ungated, 1):.2f}%)   "
+            f"GATE_CLOSED={GATE_CLOSED}, open-evidence window "
+            f"{OPEN_EVIDENCE_MAX_AGE_DAYS} d")
+        console.print(
+            f"[bold]co-location blast radius[/]  {tot['n_colocated']:,} of "
+            f"{tot['n_canonical']:,} canonical POIs "
+            f"({100 * tot['share_affected']:.2f}%) sit in a same-category "
+            f"co-located group; {tot['groups_unresolved']:,} groups "
+            f"({tot['n_unresolved_poi']:,} POIs) the published evidence cannot split.")
+
+        if collapse_unresolved:
+            n_collapsed = con.execute(
+                "SELECT count(*) FROM (" +
+                canonical_poi_sql(supply_set, "s.poi_id", gate_closed=True,
+                                  collapse_unresolved=True) + ")").fetchone()[0]
+            console.print(
+                f"[bold]--collapse-unresolved[/]  would be {n_collapsed:,} "
+                f"([yellow]−{n_gated - n_collapsed:,}[/] further, "
+                f"{100 * (n_gated - n_collapsed) / max(n_gated, 1):.2f}%). "
+                "NOT APPLIED — this is the alternative, priced, pending an owner "
+                "ruling.")
+
+        # How often a published DOHMH verdict is what splits a restaurant pair --
+        # the D36 question, asked of the data rather than assumed.
+        cat = category or "restaurant"
+        d = con.execute(f"""
+            WITH s AS (SELECT * FROM analysis.poi_supply_status
+                       WHERE {_supply_col(supply_set)} AND category = ?),
+            g AS (SELECT colocation_key, count(*) AS n_poi,
+                         any_value(colocation_resolution) AS res,
+                         count(*) FILTER (WHERE poi_status_basis LIKE 'nyc_dohmh%'
+                                            AND poi_status <> 'unknown') AS n_dohmh,
+                         count(*) FILTER (WHERE poi_status_basis LIKE '%:stale\\_%'
+                                                ESCAPE '\\') AS n_stale,
+                         count(*) FILTER (WHERE poi_status = 'open') AS n_open
+                  FROM s GROUP BY 1 HAVING count(*) >= 2)
+            SELECT count(*) AS groups,
+                   count(*) FILTER (WHERE res <> 'unresolved') AS resolved,
+                   count(*) FILTER (WHERE res <> 'unresolved' AND n_dohmh > 0)
+                       AS resolved_with_dohmh,
+                   count(*) FILTER (WHERE res = 'unresolved' AND n_stale > 0
+                                      AND n_open > 0) AS stale_vs_open
+            FROM g""", [cat]).fetchone()
+        if d and d[0]:
+            console.print(
+                f"\n[bold]{cat}[/]  {d[0]:,} co-located groups; {d[1]:,} resolved "
+                f"({100 * d[1] / d[0]:.1f}%), {d[2]:,} of those with a published "
+                f"DOHMH verdict among the members ({100 * d[2] / d[0]:.1f}% of all "
+                f"groups). {d[3]:,} unresolved groups pair a DOHMH 'stale_*' record "
+                "with a positively-open one — the D36 turnover signature, which D79 "
+                "refuses to call a closure because it is derived from the ABSENCE of "
+                "a recent inspection, not from anything DOHMH published.")
+
+        if examples:
+            rows = con.execute("""
+                SELECT category, group_key, n_poi, resolution, evidence
+                FROM analysis.poi_colocation
+                WHERE resolution = 'one_closed'
+                  AND (? IS NULL OR category = ?)
+                ORDER BY n_poi, group_key LIMIT ?
+            """, [category, category, examples]).fetchall()
+            for c, key, n, res, ev in rows:
+                console.print(f"\n[bold]{c}[/] {key}  n={n}  {res}")
+                console.print(f"  {ev}")
+    finally:
+        con.close()
+    raise typer.Exit(0)
+
+
+def _supply_col(supply_set: str) -> str:
+    from loci.score.supply import supply_predicate
+    return supply_predicate(supply_set)
