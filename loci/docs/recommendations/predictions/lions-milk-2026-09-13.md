@@ -826,3 +826,5 @@ Two numbers worth separating, because they are easy to confuse:
   the truth**. It is a parameter band that has narrowed (σ_β fell from 0.62 to
   0.09 when ε was pinned by the gate), and a narrower band around a level that
   has moved 5× is a false precision I am flagging rather than hiding.
+
+- **2026-09-14:** owner-facing page sent to the operator via the owner (four questions: sales, rent, staff, weekday orders + average order). Any figure logged below this line arrived after the predictions were sent. Promised in return: a recommendation for a second El Punto location once both sets of answers are in.
