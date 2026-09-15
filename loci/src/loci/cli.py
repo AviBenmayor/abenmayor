@@ -8410,3 +8410,547 @@ def verify_closures_cmd(
     console.print(f"[bold]spend[/]  ${result.spent_usd:.3f} of ${budget:.2f} cap "
                   f"(run_id={result.run_id})")
     raise typer.Exit(0)
+
+
+# ===========================================================================
+# Citi Bike phase 2 -- OD leakage (GTM-167, owner rulings R1/R2/R3 2026-09-15).
+# Appended at the END of this file for the same reason the phase 1 block was:
+# other sessions hold uncommitted hunks above, and appending is the only edit
+# that cannot collide with them. `od-measures` and `od-validate` (the model
+# side) land after this block.
+# ===========================================================================
+
+def _od_require_table(con) -> None:
+    """Refuse to run before sql/037 has been renamed out of `.draft`.
+
+    037_citibike_od.sql.draft is deliberately invisible to `db.init_schema`'s
+    `*.sql` glob: that function runs on EVERY write connection, so an undrafted
+    migration goes live on a peer session's next write and moves the shared
+    supply hash (D105/D106, GTM-179). The rename is the lead's call, announced
+    first. Until then this command must say so rather than raise a bare
+    "Catalog Error: Table with name bike_od_leakage does not exist".
+    """
+    got = con.execute(
+        "SELECT count(*) FROM information_schema.tables "
+        "WHERE table_schema = 'analysis' AND table_name = 'bike_od_leakage'"
+    ).fetchone()[0]
+    if not got:
+        raise typer.BadParameter(
+            "analysis.bike_od_leakage does not exist. The migration is still "
+            "src/loci/sql/037_citibike_od.sql.draft — the .draft suffix keeps it "
+            "out of db.init_schema's glob so it cannot go live on a peer "
+            "session's write and move the shared supply hash. Rename it to "
+            "037_citibike_od.sql (announce the migration to the other sessions "
+            "first) and re-run.")
+
+
+@citibike_app.command("od-ingest")
+def citibike_od_ingest(
+    start: str = typer.Option("2023-01", "--start", help="First month, YYYY-MM."),
+    end: str = typer.Option(None, "--end",
+                            help="Last month, YYYY-MM. Default: the latest month "
+                                 "the BUCKET publishes."),
+    resume: bool = typer.Option(True, "--resume/--no-resume",
+                                help="Skip months already in "
+                                     "analysis.bike_od_leakage. This is what makes "
+                                     "an interrupted multi-hour run cheap to "
+                                     "restart."),
+    refresh: bool = typer.Option(False, "--refresh",
+                                 help="Re-fetch the bucket listing."),
+    keep_csv: bool = typer.Option(False, "--keep-csv",
+                                  help="Leave the extracted CSVs on disk (debug; "
+                                       "~4 GB per month)."),
+    db: Path = typer.Option(None, "--db",
+                            help="Warehouse path (default: data/loci.duckdb)."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Read, check and time; write nothing."),
+) -> None:
+    """Aggregate Citi Bike trips into ORIGIN NTA x DESTINATION NTA leakage cells.
+
+        analysis.bike_od_leakage   origin_nta x destination_nta x month x
+                                   day_type x daypart x origin_type
+
+    PHASE 1 MUST HAVE THE MONTH FIRST. `origin_type` (R2) and the dock -> NTA
+    geography are both derived from staging.citibike_station_month, so a month
+    absent from that panel RAISES rather than typing every dock 'unknown' and
+    quietly emptying the residential class the leakage view reads.
+
+    ONE MONTH IS THE UNIT OF WORK AND OF IDEMPOTENCE, exactly as in phase 1: its
+    CSVs are extracted, aggregated, written and deleted before the next month is
+    touched, and a re-run of March cannot rewrite April.
+
+    A TRIP IS DATED BY ITS DEPARTURE here, unlike `ends` in phase 1, which are
+    dated by the arrival. The origin is what this table partitions on, and
+    origin-side dating is what makes an OD cell reconcile to phase 1's `starts`.
+
+    CARD CONTEXT ONLY under D76 (R1): nothing built from this enters gap_score,
+    supply_ratio_vs_base, any recommendation grade, or the revenue lambda.
+    """
+    from loci.sources.cities.nyc import citibike_od as cbod
+
+    con = _cb_connect(db, read_only=dry_run)
+    try:
+        if not dry_run:
+            locidb.init_schema(con)
+        _od_require_table(con)
+
+        def _tick(a: dict) -> None:
+            if "skipped" in a:
+                console.print(f"[dim]{a['month']}  skipped ({a['skipped']})[/]")
+                return
+            ot = a["origin_types"]
+            console.print(
+                f"[green]{a['month']}[/]  {a['od_trips']:,} od trips · "
+                f"{a['cells']:,} cells · {a['nta_pairs']:,} NTA pairs · "
+                f"{a['round_trip_share']:.2%} round · docks "
+                f"{ot['residential']}R/{ot['mixed']}M/{ot['destination']}D/"
+                f"{ot['unknown']}U · {a['dock_nta']['unmapped']} unmapped · "
+                f"unzip {a['unzip_s']}s + agg {a['aggregate_s']}s + "
+                f"write {a['write_s']}s")
+
+        report = cbod.ingest_od(con, _cb_month(start),
+                                _cb_month(end) if end else None,
+                                refresh=refresh, dry_run=dry_run,
+                                keep_csv=keep_csv, skip_existing=resume,
+                                on_month=_tick)
+        console.print(
+            f"\nwindow [bold]{report['start']}..{report['end']}[/] · "
+            f"{report['months']} months planned · "
+            f"{report['months_ingested']} ingested · "
+            f"{report['trips_in_files']:,} trips read · "
+            f"{report['od_trips']:,} dock-to-dock · "
+            f"{report['seconds']:.0f}s")
+        console.print(
+            f"excluded: {report['dropped_dockless_end']:,} dockless ends "
+            f"(no dock to attribute) · {report['dropped_out_of_system']:,} ends on "
+            f"another operator's dock or a shop id · "
+            f"{report['trips_dropped_unmapped_dock']:,} trips on a dock with no "
+            f"cell in analysis.hex. Round trips ({report['round_trips']:,}) are "
+            f"KEPT, in their own column: they carry no destination and the view "
+            f"subtracts them.")
+        if dry_run:
+            console.print("[dim]--dry-run:[/] nothing written.")
+            raise typer.Exit(0)
+        console.print(f"[green]ok[/] {report['rows_written']:,} rows -> "
+                      f"analysis.bike_od_leakage")
+
+        t = Table(title="validation — analysis.bike_od_leakage")
+        cols = ("month", "cells", "nta_pairs", "trips", "round_trip_pct",
+                "residential_trips", "unknown_trips", "window_trips")
+        for c in cols:
+            t.add_column(c, justify="left" if c == "month" else "right")
+        df = con.execute(cbod.OD_VALIDATION_SQL).fetchdf()
+        bad = df[["bad_round", "bad_member"]].max().max()
+        for r in df.tail(14).to_dict("records"):
+            t.add_row(str(r["month"])[:7] if r["month"] is not None else "ALL",
+                      f"{int(r['cells']):,}", f"{int(r['nta_pairs']):,}",
+                      f"{int(r['trips']):,}", f"{r['round_trip_pct']:.2f}%",
+                      f"{int(r['residential_trips'] or 0):,}",
+                      f"{int(r['unknown_trips'] or 0):,}",
+                      f"{int(r['window_trips'] or 0):,}")
+        console.print(t)
+        if bad:
+            console.print("[red]round_trips or member_trips exceeds trips in at "
+                          "least one month[/] — they are SUBSETS of trips, so that "
+                          "is a double count, not a large number.")
+            raise typer.Exit(1)
+        console.print(
+            "[dim]window_trips is the leakage window (evening OR weekend), "
+            "counted ONCE. residential_trips is the only class the leakage view "
+            "reads; an empty one means the classifier found no dock it could "
+            "type, not a neighbourhood nobody leaves.[/]")
+    finally:
+        con.close()
+
+
+@citibike_app.command("od-stats")
+def citibike_od_stats(
+    db: Path = typer.Option(None, "--db", help="Warehouse path."),
+    origin: str = typer.Option(None, "--origin",
+                               help="One origin NTA code, e.g. BK0101. Prints its "
+                                    "top destinations in the leakage window."),
+    window: str = typer.Option(None, "--window",
+                               help="YYYY-MM,YYYY-MM. Default: the last 12 months "
+                                    "present in the table."),
+    top: int = typer.Option(12, "--top", help="Rows per listing."),
+    conservation: bool = typer.Option(False, "--conservation",
+                                      help="Reconcile OD trips against phase 1 "
+                                           "`starts` per month/day_type/daypart."),
+) -> None:
+    """What the OD panel actually contains. READ-ONLY."""
+    import datetime as _dt
+
+    from loci.sources.cities.nyc import citibike_od as cbod
+
+    con = _cb_connect(db, read_only=True)
+    try:
+        _od_require_table(con)
+        tot = con.execute("""
+            SELECT count(DISTINCT month), min(month), max(month),
+                   count(DISTINCT origin_nta), count(DISTINCT destination_nta),
+                   sum(trips), sum(round_trips)
+            FROM analysis.bike_od_leakage""").fetchone()
+        if not tot or tot[0] == 0:
+            console.print("[red]analysis.bike_od_leakage is empty[/] — run "
+                          "`loci citibike od-ingest`.")
+            raise typer.Exit(1)
+        months, first, last, o_ntas, d_ntas, trips, rt = tot
+        span = (last.year - first.year) * 12 + (last.month - first.month) + 1
+        console.print(
+            f"[bold]{months}[/] months {first:%Y-%m}..{last:%Y-%m} "
+            f"({'CONTIGUOUS' if months == span else f'[red]{span - months} MISSING[/]'}) · "
+            f"[bold]{o_ntas}[/] origin NTAs -> {d_ntas} destination NTAs · "
+            f"[bold]{trips:,}[/] trips ({rt / max(trips, 1):.2%} round)")
+
+        if window:
+            w0, w1 = (_dt.date(*_cb_month(x), 1) for x in window.split(","))
+        else:
+            w1 = last
+            w0 = con.execute(
+                "SELECT min(month) FROM (SELECT DISTINCT month FROM "
+                "analysis.bike_od_leakage ORDER BY month DESC LIMIT 12)"
+            ).fetchone()[0]
+        console.print(f"[dim]window {w0:%Y-%m}..{w1:%Y-%m}[/]")
+
+        t = Table(title="origin_type mix (trips, whole panel)")
+        t.add_column("origin_type"); t.add_column("trips", justify="right")
+        t.add_column("share", justify="right")
+        for ot, n in con.execute(
+                "SELECT origin_type, sum(trips) FROM analysis.bike_od_leakage "
+                "GROUP BY 1 ORDER BY 2 DESC").fetchall():
+            t.add_row(ot, f"{int(n):,}", f"{n / max(trips, 1):.1%}")
+        console.print(t)
+        console.print(
+            "[dim]'unknown' is a real class, never a silent 'residential': a dock "
+            "under the trip floor is one we cannot type. Only 'residential' "
+            "origins enter analysis.bike_od_leakage_evening.[/]")
+
+        if origin:
+            rows = con.execute("""
+                SELECT destination_nta, sum(trips) AS trips,
+                       sum(trips) / nullif(sum(sum(trips)) OVER (), 0) AS share,
+                       bool_or(out_of_nta) AS out_of_nta
+                FROM analysis.bike_od_leakage_evening
+                WHERE origin_nta = ? AND month BETWEEN ? AND ?
+                GROUP BY 1 ORDER BY 2 DESC LIMIT ?
+            """, [origin, w0, w1, top]).fetchall()
+            if not rows:
+                console.print(
+                    f"[yellow]{origin}[/] has no residential-dock outbound flow in "
+                    f"the window. That is NULL, never 0: either the operator has "
+                    f"built no dock there that the classifier can type, or the "
+                    f"docks are too quiet. It is a fact about a capital plan, not "
+                    f"about the sidewalk.")
+            else:
+                t = Table(title=f"{origin} — evening/weekend destinations "
+                                f"(round trips netted out)")
+                t.add_column("destination"); t.add_column("trips", justify="right")
+                t.add_column("share", justify="right"); t.add_column("out of NTA")
+                for d, n, sh, out in rows:
+                    t.add_row(d, f"{int(n):,}", f"{sh:.1%}",
+                              "yes" if out else "[dim]own NTA[/]")
+                console.print(t)
+                console.print(
+                    "[dim]Riders, not residents: Citi Bike mode share is low single "
+                    "digits and skews young, male and higher-income. Docks are "
+                    "endogenous to retail and density — a busy destination is "
+                    "partly a place with many docks. CONTEXT ONLY (D76).[/]")
+
+        if conservation:
+            df = con.execute(cbod.OD_CONSERVATION_SQL).fetchdf()
+            t = Table(title="conservation — OD trips vs phase 1 starts")
+            for c in ("month", "day_type", "daypart", "od_trips", "p1_starts",
+                      "excluded", "excluded_pct"):
+                t.add_column(c, justify="left" if c in ("month", "day_type",
+                                                        "daypart") else "right")
+            for r in df.tail(top).to_dict("records"):
+                t.add_row(str(r["month"])[:7], r["day_type"], r["daypart"],
+                          f"{int(r['od_trips']):,}", f"{int(r['p1_starts']):,}",
+                          f"{int(r['excluded']):,}", f"{r['excluded_pct']:.3f}%")
+            console.print(t)
+            worst = float(df["excluded_pct"].max())
+            console.print(
+                f"[dim]`excluded` is phase 1 starts minus OD trips and must be >= 0: "
+                f"it is exactly the dockless ends and the ends on another operator's "
+                f"dock, which OD drops and phase 1 keeps. Worst month/cell "
+                f"{worst:.3f}%. A NEGATIVE value means OD invented trips.[/]")
+            if float(df["excluded"].min()) < 0:
+                console.print("[red]negative exclusion: OD has more trips than "
+                              "phase 1 has starts.[/]")
+                raise typer.Exit(1)
+    finally:
+        con.close()
+
+
+@citibike_app.command("od-measures")
+def citibike_od_measures(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL."),
+    window_months: int = typer.Option(12, "--window-months",
+                                      help="How many of the OD table's latest "
+                                           "months to pool. 12 covers a full "
+                                           "seasonal cycle; where people ride to "
+                                           "in August is not where they ride to "
+                                           "in February."),
+    min_trips: int = typer.Option(200, "--min-trips",
+                                  help="Below this many non-round evening/weekend "
+                                       "trips out of an NTA's residential docks "
+                                       "over the WHOLE window, write NULL rather "
+                                       "than a destination read off a handful of "
+                                       "rides."),
+    re_sweep: bool = typer.Option(False, "--re-sweep",
+                                  help="Rewrite even when every in-scope address "
+                                       "already carries this window. Needed after "
+                                       "`loci address-gaps` (which destroys the "
+                                       "rows) only if the window has not moved — "
+                                       "otherwise the rebuild is detected."),
+    db: Path = typer.Option(None, "--db", help="Warehouse path (use a snapshot copy "
+                                               "to prove a run without taking the "
+                                               "live write lock)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """Where riders GO, on the card (Citi Bike phase 2, GTM-167).
+
+        analysis.address.bike_od_top_nta / _top_nta_share / _out_share
+        analysis.address.bike_od_window / bike_od_run_at
+        analysis.address_category.bike_od_supplied_share
+
+    Reads `analysis.bike_od_leakage` (run `loci citibike od-ingest` first),
+    restricted to EVENING AND WEEKEND trips out of RESIDENTIAL-type docks —
+    weekday pm_peak is deliberately excluded, because that is the commute home
+    and not a choice about where to spend an evening.
+
+    NEIGHBOURHOOD-WIDE, AND IT SAYS SO (owner ruling R3, 2026-09-15). There is no
+    address-level OD: a dock serves a few hundred addresses. Every value here is
+    the NTA's value stamped identically on every address in it, and every
+    renderer must carry the "neighbourhood-wide" caveat — `model/bike_od.py`'s
+    `card_line()` is the sanctioned wording.
+
+    RIDERS, NEVER RESIDENTS. Citi Bike mode share is low single digits and skews
+    young, male and higher-income. This is where CYCLISTS go.
+
+    NULL, NEVER ZERO. An NTA with no residential dock, or under --min-trips in
+    the window, gets NULL while still carrying the window and run_at, so
+    "measured, no dock" is distinguishable from "never run".
+
+    CONTEXT ONLY (D76). Nothing here enters gap_score, supply_ratio_vs_base, a
+    recommendation grade, or the revenue model's λ (owner ruling R1: revenue.py
+    is untouched). It has to clear `loci citibike od-validate` before it is a
+    number on a card at all rather than a sentence of prose.
+    """
+    from loci.model import bike_od as bod
+
+    boros = _parse_boroughs(boroughs)
+    con = _cb_connect(db, read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+    try:
+        _od_require_table(con)
+        nta, cat, report = bod.build_bike_od(
+            con, boros, window_months=window_months, min_trips=min_trips,
+            re_sweep=re_sweep, dry_run=dry_run)
+
+        console.print(
+            f"window [bold]{report['window']}[/] · {report['origin_ntas']:,} origin "
+            f"NTAs above the {report['min_origin_trips']:,}-trip floor · "
+            f"{report['destination_pairs']:,} NTA pairs · "
+            f"{report['universe_ntas']:,} NTAs in the measurable supply universe")
+        s = report["supplied"]
+        console.print(
+            f"median out-of-NTA share [bold]{report['median_out_share']:.1%}[/] · "
+            f"{100 * s['outbound_outside_universe_share']:.1f}% of outbound trips "
+            f"land outside the measurable universe (fewer than "
+            f"{report['universe_min_addresses']:,} lot addresses there, so supply "
+            f"density is an artefact) · {s['origins_dropped_outside_universe']} "
+            f"origin NTA(s) dropped for sending more than "
+            f"{100 * bod.MAX_OUTSIDE_UNIVERSE_SHARE:.0f}% of their riders there, "
+            f"{s['origins_dropped_thin_outbound']} more for fewer than "
+            f"{s['min_outbound_trips']:,} measurable outbound trips")
+        iqr = report["top_share_monthly_iqr"]
+        if iqr.get("months"):
+            console.print(
+                f"[dim]the window pools {iqr['months']} months and is "
+                f"summer-weighted (August ~2.5x February): the top-share moves by "
+                f"{iqr['median_iqr']:.1%} IQR at the median NTA, "
+                f"{iqr['p90_iqr']:.1%} at the 90th. Reported, never stored — it is "
+                f"a property of the window, not of the address.[/]")
+
+        t = Table(title=f"OD leakage — {','.join(boros)} @ {report['window']} "
+                        f"(NTAs with a residential dock only)")
+        for c, j in (("measure", "left"), ("n", "right"), ("p50", "right"),
+                     ("p90", "right"), ("max", "right")):
+            t.add_column(c, justify=j)
+        for col, frame in (("bike_od_top_nta_share", nta),
+                           ("bike_od_out_share", nta),
+                           ("bike_od_supplied_share", cat)):
+            v = frame[col].dropna()
+            if not len(v):
+                t.add_row(col, "0", "-", "-", "-")
+                continue
+            t.add_row(col, f"{len(v):,}", f"{v.median():.3f}",
+                      f"{v.quantile(0.9):.3f}", f"{v.max():.3f}")
+        console.print(t)
+
+        top = nta.sort_values("bike_od_out_share", ascending=False).head(10)
+        leak = Table(title="leakiest neighbourhoods — most riders leaving in the "
+                           "evening and at weekends")
+        for c, j in (("origin NTA", "left"), ("top destination", "left"),
+                     ("top share", "right"), ("out share", "right"),
+                     ("trips", "right")):
+            leak.add_column(c, justify=j)
+        for r in top.to_dict("records"):
+            leak.add_row(r["nta_code"], r["bike_od_top_nta"],
+                         f"{r['bike_od_top_nta_share']:.1%}",
+                         f"{r['bike_od_out_share']:.1%}",
+                         f"{r['trips_total']:,.0f}")
+        console.print(leak)
+
+        if dry_run:
+            console.print("[dim]--dry-run:[/] nothing written.")
+            raise typer.Exit(0)
+        w = report["_written"]
+        if "skipped" in w:
+            console.print(f"[dim]no write:[/] {w['skipped']}")
+            raise typer.Exit(0)
+        console.print(
+            f"[green]ok[/] {w['addresses_stamped']:,} addresses stamped · "
+            f"{w['addresses_with_a_destination']:,} carry a destination · "
+            f"{w['addresses_null_no_residential_dock']:,} are NULL (no residential "
+            f"dock, or under the trip floor — never 0) · "
+            f"{w['address_category_rows']:,} address_category rows filled "
+            f"(ratio > 1 only, D39)")
+
+        v = Table(title="validation — analysis.address")
+        cols = ("borough", "addresses", "stamped", "with_a_reading",
+                "impossible_zero", "p50_out_share", "min_out_share",
+                "max_out_share", "max_top_share", "distinct_values_per_nta")
+        for c in cols:
+            v.add_column(c, justify="left" if c == "borough" else "right")
+        for r in con.execute(bod.VALIDATION_SQL).fetchdf().to_dict("records"):
+            v.add_row(str(r["borough"] or "ALL"),
+                      *[("-" if r[c] is None else f"{r[c]:,}") for c in cols[1:]])
+        console.print(v)
+        console.print(
+            "[dim]impossible_zero must be 0 (no reading is NULL, never 0) and "
+            "distinct_values_per_nta must be 1 — the value is neighbourhood-wide "
+            "by construction (R3), so two addresses in one NTA disagreeing means "
+            "the join found a second nta_code.[/]")
+    finally:
+        con.close()
+
+
+@citibike_app.command("od-validate")
+def citibike_od_validate(
+    window_months: int = typer.Option(12, "--window-months"),
+    placebo_only: bool = typer.Option(False, "--placebo-only",
+                                      help="Run the pre-condition and stop. The "
+                                           "DOT half needs "
+                                           "staging.dot_pedestrian_count."),
+    csv: Path = typer.Option(None, "--csv",
+                             help="Write the 15x15 placebo matrix here."),
+    db: Path = typer.Option(None, "--db", help="Warehouse path."),
+) -> None:
+    """Does the OD measure survive? The two tests from GTM-167 §Validation.
+
+    PRE-CONDITION — the category placebo. `bike_od_supplied_share` for grocery is
+    supposed to be about where groceries are. If the vector computed with the
+    grocery threshold ranks neighbourhoods the same way as the one computed with
+    the bar threshold, it is destination retail density in a costume and every
+    category is the same column fifteen times. Bar: the mean off-diagonal rank
+    correlation must stay BELOW the diagonal's 1.0 (under 0.95). Fail and the
+    finding ships as PROSE ONLY — no column, no card number.
+
+    GRADUATION — DOT convergent validity. Rank-correlate destination-NTA
+    evening/weekend inflow against DOT PM pedestrian counts aggregated to NTA.
+    Bar: ρ ≥ +0.5 AND the placebo must pass. Reported beside the BASELINE TO
+    BEAT — destination-NTA open POIs per address against the same counts. If the
+    baseline does as well, the trip table added nothing a POI count did not
+    already say.
+
+    DOT publishes am / md / pm and no evening period, so PM is the closest
+    published thing to the leakage window, and it is a known mismatch: DOT's PM
+    includes the commute home, which the leakage window deliberately excludes.
+
+    READ-ONLY. Writes nothing, takes no write lock; safe to run against the live
+    warehouse while a build holds it.
+    """
+    from loci.model import bike_od as bod
+
+    con = _cb_connect(db, read_only=True)
+    try:
+        _od_require_table(con)
+        window = bod.window_bounds(con, window_months)
+        mat, pl = bod.placebo(con, window)
+        if csv:
+            csv.parent.mkdir(parents=True, exist_ok=True)
+            mat.to_csv(csv)
+            console.print(f"[dim]placebo matrix -> {csv}[/]")
+
+        t = Table(title=f"category placebo — {bod.window_label(*window)} "
+                        f"({pl['n_origin_ntas']} origin NTAs)")
+        t.add_column("category", justify="left")
+        for c in mat.columns:
+            t.add_column(c[:6], justify="right")
+        for c in mat.index:
+            t.add_row(c, *[("-" if r != r else f"{r:.2f}") for r in mat.loc[c]])
+        console.print(t)
+        verdict = "[green]PASSES[/]" if pl["passes"] else "[red]FAILS[/]"
+        console.print(
+            f"[dim]description only:[/] mean off-diagonal rho "
+            f"{pl['mean_offdiag']:.3f} (median {pl['median_offdiag']:.3f}, max "
+            f"{pl['max_offdiag']:.3f}). This is NOT the gate — destination supply "
+            f"density already correlates across categories at ~0.76, so any "
+            f"off-diagonal bar passes everything.")
+        n = Table(title=f"the gate: each category vs the null baseline "
+                        f"({pl['null_baseline']:.1%} of measurable outbound trips "
+                        f"land in one of the {pl['null_baseline_all_category_ntas']} "
+                        f"destinations above median in ALL 15 categories)")
+        for c, j in (("category", "left"), ("origins", "right"),
+                     ("median share", "right"), ("median null", "right"),
+                     ("excess", "right"), ("beats null", "right"),
+                     ("verdict", "left")):
+            n.add_column(c, justify=j)
+        for r in pl["per_category"].to_dict("records"):
+            n.add_row(r["category"], f"{r['n_origins']:,}",
+                      f"{r['median_share']:.3f}", f"{r['median_null']:.3f}",
+                      f"{r['median_excess']:+.3f}",
+                      f"{r['share_of_origins_beating_null']:.0%}",
+                      "[green]ships[/]" if r["passes"] else "[red]prose only[/]")
+        n.caption = (f"a category earns its column only by beating the null by "
+                     f"{pl['bar']:.2f} at the median origin.")
+        console.print(n)
+        console.print(f"overall placebo — {verdict}")
+        if not pl["passes"]:
+            console.print(
+                f"[red]{len(pl['categories_failing'])} categories do not beat the "
+                f"null[/] ({', '.join(pl['categories_failing'])}): for those, "
+                f"'riders already reach this elsewhere' is indistinguishable from "
+                f"'riders go to the busy neighbourhoods'. Ship them as PROSE; do "
+                f"not ship bike_od_supplied_share as a column for them.")
+        if placebo_only:
+            raise typer.Exit(0 if pl["passes"] else 1)
+
+        d = bod.dot_validation(con, window)
+        g = Table(title="DOT convergent validity — destination-NTA inflow vs "
+                        f"DOT {d['dot_period'].upper()} pedestrian counts")
+        for c, j in (("test", "left"), ("value", "right"), ("bar", "right")):
+            g.add_column(c, justify=j)
+        g.add_row("ρ  inflow vs DOT", f"{d['rho_inflow_vs_dot']:+.3f}",
+                  f"≥ {d['bar']:+.2f}")
+        g.add_row("ρ  baseline (POIs per 1,000 residential units) vs DOT",
+                  f"{d['rho_baseline_supply_density_vs_dot']:+.3f}", "to beat")
+        g.add_row("placebo — categories failing the null baseline",
+                  f"{len(d['placebo_categories_failing'])}", "0")
+        g.caption = (f"{d['n_ntas']} NTAs carry both, over {d['dot_points']:,} DOT "
+                     f"count points (bridge midpoints excluded).")
+        console.print(g)
+        console.print(
+            f"beats the baseline: {'[green]yes[/]' if d['beats_baseline'] else '[red]no[/]'}   "
+            f"overall: {'[green]GRADUATES[/]' if d['passes'] else '[red]CONTEXT ONLY[/]'}")
+        if not d["passes"]:
+            console.print(
+                "[dim]Staying CONTEXT ONLY is the D76 default, not a failure of "
+                "the build: the measure remains on the card with its caveats and "
+                "enters no score, no ratio and no grade.[/]")
+        raise typer.Exit(0 if d["passes"] else 1)
+    finally:
+        con.close()
