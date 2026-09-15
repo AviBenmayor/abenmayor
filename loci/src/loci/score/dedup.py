@@ -4,7 +4,11 @@ The same real establishment appears in several sources — a nail salon in
 Overture + NYS DOS + OSM, a restaurant in Overture + DOHMH. Counting all of
 them inflates the DNCI exactly where source coverage overlaps, and overlap is
 geographically biased (denser/richer areas are better covered), so the error is
-NOT random — it would bias the residual. Dedup per category before scoring.
+NOT random — it would bias the residual. Dedup before scoring.
+
+Two passes, one union-find (owner ruling 4, 2026-09-14): a CROSS-CATEGORY pass
+for the same business filed under two categories by two sources (GTM-153), and
+the within-category pass that has always run. See the CROSS_CATEGORY block.
 
 Method (CONTEXT.md GTM-20): block candidates by H3 res-11 cell + its neighbors,
 then union any pair within MATCH_METERS (40 m) whose normalized names match.
@@ -36,6 +40,133 @@ BLOCK_RES = 11          # ~24 m edge; +neighbors covers the 25 m match radius
 MATCH_METERS = 40.0
 
 # --------------------------------------------------------------------------
+# CROSS-CATEGORY MERGE (owner ruling 4, 2026-09-14; GTM-153)
+# --------------------------------------------------------------------------
+# Until now dedup ran strictly PER CATEGORY, so a business two sources filed
+# under two different categories survived as two supply records. The motivating
+# case: Lion's Milk at 104 Roebling is `nyc_dohmh_restaurants:50043137`
+# (category restaurant, it holds a food-service permit) and
+# `overture_places:41c0fc63-...` (category cafe_bakery, which is what it looks
+# like from the sidewalk), 11 m apart, both open, the same normalized name --
+# and never merged, because the two rows were never in the same call to
+# `_dedup_category`. One café counted twice in the supply pool is exactly the
+# defect GTM-153 opened.
+#
+# The rule, and why each clause is load-bearing:
+#   DIFFERENT SOURCES -- the ordinary cross-source case. Two feeds seeing one
+#                   storefront and disagreeing about its category is a
+#                   TAXONOMY disagreement, not two businesses. See
+#                   CROSS_CATEGORY_SAME_SOURCE for the same-source case, which
+#                   is a different claim and is OFF by default.
+#   NAMES MATCH   -- the same `names_match` the within-category rule uses, plus
+#                   the minimum-shared-token guard below. Nothing here is
+#                   name-blind; a name-blind cross-category collapse would fuse
+#                   the bar and the barber next door.
+#   MATCH_METERS  -- unchanged at 40 m. This pass only ADDS unions; it never
+#                   prevents one, so every within-category cluster that existed
+#                   before still exists, possibly with more members.
+#
+# THE NAME RULE IS TIGHTER ACROSS CATEGORIES THAN WITHIN ONE, AND IT IS
+# CALIBRATED, NOT ASSERTED. The first cut reused `names_match` (Jaccard >= 0.5
+# or containment of a 2-token name) and was HAND-AUDITED on 100 random merges
+# drawn from the live table: 87 true, 2 ambiguous, 11 false -- precision 0.870,
+# Wilson 95% [0.790, 0.922]. On 18,023 merges that is ~2,300 wrong ones, worse
+# than the double-counting it fixes, so the rule was tightened against the same
+# 100 labels. Candidates measured (precision / recall against the audit):
+#
+#   names_match as-is                      0.870 [0.790, 0.922] / 1.000
+#   >= 2 shared distinctive tokens         0.892 [0.794, 0.947] / 0.667
+#   norm-token EQUALITY                    0.972 [0.903, 0.992] / 0.793
+#   core equality (norm minus venue words) 0.961 [0.892, 0.987] / 0.851
+#   core equality + <= 25 m                0.970 [0.898, 0.992] / 0.747
+#   core equality + <= 20 m                0.964 [0.877, 0.990] / 0.609
+#   full-name equality                     0.984 [0.917, 0.997] / 0.724
+#   CORE EQUALITY + disjoint-venue block   0.986 [0.927, 0.998] / 0.839  <= SHIPPED
+#
+# So the shipped rule is EQUALITY of the distinctive core, plus one veto:
+#
+#   CORE EQUALITY -- strip the corporate boilerplate (`_CORPORATE`), the
+#                   category-type words (`_GENERIC`) and the venue words
+#                   (`_VENUE_WORDS`), and require what is LEFT to be equal, not
+#                   merely overlapping. "Soneros" == "Soneros Bar Restaurant
+#                   Inc"; "Fulton Stall Market" != "The Fulton". Jaccard and
+#                   containment both leak: containment is what let "Hudson
+#                   Yards Grill" merge into "Mount Sinai Hudson Yards", and a
+#                   0.5 Jaccard is what let "Big Red Lantern" merge into "New
+#                   Red Lantern".
+#   DISJOINT VENUE WORDS VETO -- if BOTH names carry category-type words and
+#                   those sets share nothing, the pair does not merge even when
+#                   the cores agree. "Totowa Food" / "Totowa Nails" and
+#                   "Claire's Wine Bar" / "Claire's Kitchen Cafe" are two
+#                   businesses with one brand word, which is an extremely
+#                   common NYC naming pattern; the words the core strip threw
+#                   away are the only evidence that separates them, so they are
+#                   read back rather than discarded. Cost on the audit: one
+#                   true merge ("Kutting Edge Barber Shop" / "Kutting Edge
+#                   Barbershop Llc", where the tokenizer splits one side).
+#
+# DISTANCE IS NOT THE LEVER, measured: among the 100 audited merges the true
+# ones run median 15.8 m (p75 20.9, p90 27.2; 28% beyond 20 m) and the false
+# ones median 24.9 m, so the distributions overlap heavily. Capping the
+# cross-category radius at 25 m costs ~10 points of recall and buys nothing on
+# top of the name rule (0.970 vs 0.986). MATCH_METERS stays 40 m for both
+# passes, and the guard stays purely a NAME rule.
+#
+# The guard applies ONLY to cross-category pairs -- widening it to the
+# within-category rule would REMOVE existing unions, which is not what this
+# ruling asked for.
+CROSS_CATEGORY = True
+
+#: Same-source cross-category pairs. A single feed listing one place under two
+#: categories is a real pattern for the aggregators (Overture and Foursquare
+#: both carry multi-category venues), but it is also how a genuine two-tenant
+#: building looks when both tenants share a brand ("X Pharmacy" / "X
+#: Convenience" in one row each). Measured before choosing: 1,741 such pairs
+#: exist on the live table (foursquare 647, overture 584, nys_dos 385, dohmh
+#: 123, snap 2). Default OFF -- cross-source only.
+CROSS_CATEGORY_SAME_SOURCE = False
+
+#: Venue-type words. `_GENERIC` already covers the food/retail category words;
+#: these are the drinking-venue words that make a bar and its restaurant look
+#: like two names ("X Tavern" vs "X"), which matters because bar<->restaurant
+#: is the single largest cross-category merge class. Stripped from the core and
+#: read back by the disjoint-venue veto.
+_VENUE_WORDS = frozenset({
+    "club", "lounge", "pub", "tavern", "inn", "wine", "beer", "ale",
+    "cocktail", "cocktails", "saloon", "taproom", "brewery", "brew",
+})
+
+#: Which category a merged cluster carries.
+#:   "finer_food" (B, DEFAULT -- owner ruling 2026-09-14, verbatim "go with B")
+#:                -- where the canonical member's category is the coarse
+#:                `_COARSE_FOOD` ("restaurant") and some other member carries a
+#:                finer food category (`_FINER_FOOD`), the FINER one wins and
+#:                the anchor row counts as corroboration. Lion's Milk ->
+#:                cafe_bakery, still DOHMH-canonical. The reasoning: DOHMH
+#:                files every permitted food service as a restaurant and cannot
+#:                distinguish a cafe from a diner, so its label is a permit
+#:                class, not a retail category; the aggregator that says
+#:                "cafe_bakery" is the one carrying the finer fact, and the
+#:                registry's authority over EXISTENCE does not extend to
+#:                taxonomy.
+#:   "anchor"     (A) -- the canonical member's category, i.e. the registry's
+#:                classification. Lion's Milk -> restaurant. Kept because it is
+#:                the BEFORE side of the measurement and a one-constant
+#:                rollback.
+#: CONSEQUENCES OF B, both measured in the GTM-153 dry run and both real:
+#:   1. LEDGER KEYS MOVE. `model.poi_presence.mint_key` hashes the category, so
+#:      every cluster B relabels re-mints, and pass B of `link_to_ledger`
+#:      cannot rescue them because that pass requires the same category.
+#:   2. THE SUPPLY VIEWS MUST READ `poi_dedup.category`. sql/003, 006 and 013
+#:      select `staging.poi.category` off the canonical row, which equals the
+#:      cluster label under A BY CONSTRUCTION and DIVERGES under B.
+#:      sql/032_poi_supply_cluster_category.sql redefines them; without it a B
+#:      relabel is invisible to every downstream count.
+CATEGORY_PRECEDENCE = "finer_food"
+_COARSE_FOOD = "restaurant"
+_FINER_FOOD = ("cafe_bakery", "bar")
+
+# --------------------------------------------------------------------------
 # BOOTH RENTERS: a same-source, same-category, NAME-BLIND proximity collapse.
 # --------------------------------------------------------------------------
 # D47 ruled out licence staleness as the cause of the nails/hair POI-vs-ZBP
@@ -60,9 +191,10 @@ MATCH_METERS = 40.0
 #                   cross-source case, already handled by name matching;
 #                   collapsing that name-blind would erase genuinely distinct
 #                   neighbouring businesses that two aggregators both saw.
-#   SAME CATEGORY-- guaranteed by construction: _dedup_category runs per
-#                   category, so a barbershop and a nail salon in one building
-#                   are never fused.
+#   SAME CATEGORY-- was guaranteed by construction (_dedup_category ran per
+#                   category); since ruling 4 made the pass global it is
+#                   CHECKED EXPLICITLY in _dedup_all, so a barbershop and a
+#                   nail salon in one building are still never fused.
 #   15 m         -- well inside MATCH_METERS (40 m). Two licences 15 m apart in
 #                   NYC are the same doorway; a typical Brooklyn storefront is
 #                   6-8 m wide, so 15 m spans at most two frontages while DOS
@@ -174,6 +306,60 @@ def names_match(a: frozenset[str], b: frozenset[str]) -> bool:
     return len(small) >= 2 and small <= large    # containment of a distinctive name
 
 
+def full_tokens(name) -> frozenset[str]:
+    """`norm_tokens` WITHOUT the category strip -- only the corporate
+    boilerplate goes. The cross-category rule needs both halves of the name:
+    the distinctive core, and the category-type words the core strip threw
+    away (`venue_words`), which are the only thing separating "Totowa Food"
+    from "Totowa Nails"."""
+    if not isinstance(name, str) or not name:
+        return frozenset()
+    toks = re.sub(r"[^a-z0-9]+", " ", name.lower()).split()
+    return frozenset(t for t in toks if t and t not in _CORPORATE)
+
+
+def cross_core(name) -> frozenset[str]:
+    """The distinctive core: `norm_tokens` minus the venue words. This is what
+    must be EQUAL for a cross-category merge."""
+    return frozenset(t for t in norm_tokens(name) if t not in _VENUE_WORDS)
+
+
+def venue_words(name) -> frozenset[str]:
+    """The category-type words `cross_core` removed -- `_GENERIC` plus
+    `_VENUE_WORDS` as they actually appear in this name. Read back by the
+    disjoint-venue veto."""
+    return full_tokens(name) - cross_core(name)
+
+
+def cross_category_names_match(core_a: frozenset[str], core_b: frozenset[str],
+                               venue_a: frozenset[str] = frozenset(),
+                               venue_b: frozenset[str] = frozenset()) -> bool:
+    """The cross-category name rule. Audited precision 0.986, Wilson 95%
+    [0.927, 0.998] on 100 hand-labelled merges; see the CROSS_CATEGORY block
+    for the whole candidate table and why equality beat Jaccard, containment
+    and every distance cap.
+
+    Two clauses, both load-bearing:
+      1. the distinctive cores are EQUAL and non-empty;
+      2. NOT (both names carry category-type words AND those sets are
+         disjoint) -- one brand word under two different trade words is two
+         businesses, not one.
+
+    Note this is NOT `names_match` with an extra condition: equality is
+    strictly stronger than `names_match`, so no cross-category pair the old
+    within-category predicate refused can be admitted here."""
+    if not core_a or core_a != core_b:
+        return False
+    return not (venue_a and venue_b and not (venue_a & venue_b))
+
+
+def cross_category_names_match_raw(name_a, name_b) -> bool:
+    """The same predicate from raw names, for callers with no precomputed token
+    sets (tests, ad-hoc checks)."""
+    return cross_category_names_match(cross_core(name_a), cross_core(name_b),
+                                      venue_words(name_a), venue_words(name_b))
+
+
 def haversine_m(lat1, lon1, lat2, lon2) -> float:
     r = 6371000.0
     p1, p2 = math.radians(lat1), math.radians(lat2)
@@ -192,15 +378,69 @@ class _UF:
     def union(self, a, b): self.p[self.find(a)] = self.find(b)
 
 
-def _dedup_category(rows: list[dict],
-                    booth_meters: float = BOOTH_METERS) -> list[tuple[str, int, bool]]:
-    """rows: dicts with poi_id, source_id, name, lat, lon, confidence.
-    Returns (poi_id, cluster_id, is_canonical).
+def _cluster_category(rows: list[dict], members: list[int], best: int,
+                      precedence: str) -> str:
+    """The label a merged cluster carries. See CATEGORY_PRECEDENCE.
 
-    `booth_meters=0` disables the booth-renter pass, which is how the
-    before/after comparison is measured without two copies of this function."""
+    `best` is the canonical member and is NOT re-chosen here -- variant B moves
+    the label only, so `is_canonical` is identical under both variants."""
+    canon_cat = rows[best]["category"]
+    if precedence == "anchor":
+        return canon_cat
+    if precedence != "finer_food":
+        raise ValueError(f"unknown CATEGORY_PRECEDENCE {precedence!r}")
+    if canon_cat != _COARSE_FOOD:
+        return canon_cat
+    finer = [i for i in members if rows[i]["category"] in _FINER_FOOD]
+    if not finer:
+        return canon_cat
+    # the most authoritative finer-food member names the category
+    pick = min(finer, key=lambda i: (
+        source_rank(rows[i]["category"], rows[i]["source_id"]),
+        -(rows[i]["confidence"] or 0),
+        _FINER_FOOD.index(rows[i]["category"]),
+        rows[i]["poi_id"]))
+    return rows[pick]["category"]
+
+
+def _dedup_all(rows: list[dict],
+               booth_meters: float = BOOTH_METERS,
+               cross_category: bool = CROSS_CATEGORY,
+               cross_category_same_source: bool = CROSS_CATEGORY_SAME_SOURCE,
+               precedence: str | None = None,
+               ) -> list[tuple[str, int, bool, str]]:
+    """rows: dicts with poi_id, source_id, name, category, lat, lon, confidence.
+    Returns (poi_id, cluster_id, is_canonical, cluster_category).
+
+    ONE pass over every category at once. Within a category the rule is
+    unchanged (name match within MATCH_METERS, plus the booth-renter pass);
+    across categories it is the cross-source name rule documented at the top of
+    this module. Blocking, radius and the canonical-selection key are
+    untouched, so a within-category cluster can only GAIN members, never lose
+    them -- which is the ledger-key stability `sql/018` needs.
+
+    ALMOST. Measured on the live table (308,366 staging rows, 227,548 clusters
+    -> 216,170): 85 clusters DO change canonical member. Every one is a
+    transitive bridge -- two same-category clusters joined through a
+    cross-category member -- where the merged membership changes the NAME
+    FREQUENCY tiebreak below and promotes a row that was previously
+    non-canonical. 85 of 216,170 is 0.04%, and 15 of the 85 are carried
+    forward anyway by pass B of `model.poi_presence.link_to_ledger` (same
+    category, names_match, <= 40 m). The rest mint a new `location_key` for a
+    location that did not move. That is the honest cost of a union-find; it is
+    reported, not hidden.
+
+    `booth_meters=0` disables the booth-renter pass and
+    `cross_category=False` disables the new pass, which is how the
+    before/after comparisons are measured without three copies of this
+    function."""
+    precedence = precedence or CATEGORY_PRECEDENCE
     n = len(rows)
     toks = [norm_tokens(r["name"]) for r in rows]
+    core = ([cross_core(r["name"]) for r in rows]
+            if cross_category else [frozenset()] * n)
+    venue = ([venue_words(r["name"]) for r in rows]
+             if cross_category else [frozenset()] * n)
     cell = [h3.latlng_to_cell(r["lat"], r["lon"], BLOCK_RES) for r in rows]
     by_cell: dict[str, list[int]] = {}
     for i, c in enumerate(cell):
@@ -214,13 +454,28 @@ def _dedup_category(rows: list[dict],
         for j in cand:
             if j <= i:
                 continue
-            if not names_match(toks[i], toks[j]):
-                continue
+            same_cat = rows[i]["category"] == rows[j]["category"]
+            if same_cat:
+                if not names_match(toks[i], toks[j]):
+                    continue
+            else:
+                if not cross_category:
+                    continue
+                if (not cross_category_same_source
+                        and rows[i]["source_id"] == rows[j]["source_id"]):
+                    continue
+                if not cross_category_names_match(core[i], core[j],
+                                                   venue[i], venue[j]):
+                    continue
             if haversine_m(rows[i]["lat"], rows[i]["lon"], rows[j]["lat"], rows[j]["lon"]) <= MATCH_METERS:
                 uf.union(i, j)
 
-    # Booth-renter pass: name-BLIND, but only within one source and (by the
-    # per-category call contract) one category. Adds unions only.
+    # Booth-renter pass: name-BLIND, but only within one source and one
+    # category. The category clause used to be guaranteed by construction
+    # (_dedup_category ran per category); this function sees every category at
+    # once, so it is now CHECKED EXPLICITLY -- without it a DOS nail salon and
+    # a DOS barbershop in one building would fuse name-blind, which is exactly
+    # what the rule's comment says must never happen. Adds unions only.
     if booth_meters > 0:
         for i in range(n):
             src = rows[i]["source_id"]
@@ -230,6 +485,8 @@ def _dedup_category(rows: list[dict],
                 for j in by_cell.get(c, ()):
                     if j <= i or rows[j]["source_id"] != src:
                         continue
+                    if rows[j]["category"] != rows[i]["category"]:
+                        continue
                     if haversine_m(rows[i]["lat"], rows[i]["lon"],
                                    rows[j]["lat"], rows[j]["lon"]) <= booth_meters:
                         uf.union(i, j)
@@ -238,7 +495,7 @@ def _dedup_category(rows: list[dict],
     for i in range(n):
         clusters.setdefault(uf.find(i), []).append(i)
 
-    out: list[tuple[str, int, bool]] = []
+    out: list[tuple[str, int, bool, str]] = []
     for cid, members in enumerate(clusters.values()):
         # Canonical name = the MOST COMMON name in the cluster. A booth-renter
         # cluster is one shop name plus several individual operators' names, so
@@ -256,31 +513,54 @@ def _dedup_category(rows: list[dict],
             -(rows[i]["confidence"] or 0),
             -freq.get(_name_key(rows[i]["name"]), 0),
             rows[i]["poi_id"]))
+        cat = _cluster_category(rows, members, best, precedence)
         for i in members:
-            out.append((rows[i]["poi_id"], cid, i == best))
+            out.append((rows[i]["poi_id"], cid, i == best, cat))
     return out
 
 
+def _dedup_category(rows: list[dict],
+                    booth_meters: float = BOOTH_METERS) -> list[tuple[str, int, bool]]:
+    """The pre-ruling-4 behaviour: one category at a time, no cross-category
+    pass. Kept because it is the BEFORE side of every comparison (and the unit
+    under test for the within-category rule). `build_dedup` no longer calls
+    it."""
+    return [(pid, cid, canon)
+            for pid, cid, canon, _cat in _dedup_all(rows, booth_meters=booth_meters,
+                                                    cross_category=False)]
+
+
 def build_dedup(con) -> dict:
-    cats = [r[0] for r in con.execute(
-        "SELECT DISTINCT category FROM staging.poi ORDER BY 1").fetchall()]
+    """One global pass (ruling 4): categories can no longer be resolved
+    independently, because a cluster may span two of them.
+
+    `analysis.poi_dedup.category` is now the CLUSTER's category (the canonical
+    member's, per CATEGORY_PRECEDENCE), which for a cross-category cluster
+    differs from `staging.poi.category` on the absorbed rows. Everything
+    downstream reads poi_dedup, so the cluster label is the one that counts;
+    the source's own label stays recoverable in staging.poi."""
+    import pandas as pd
+
+    rows = con.execute(
+        """SELECT poi_id, source_id, name, category, confidence,
+                  ST_Y(geom) AS lat, ST_X(geom) AS lon
+           FROM staging.poi""").df().to_dict("records")
+    result = _dedup_all(rows)
+
     con.execute("DELETE FROM analysis.poi_dedup")
+    df = pd.DataFrame(result, columns=["poi_id", "cluster_id", "is_canonical", "category"])
+    con.register("_dd", df)
+    con.execute("INSERT INTO analysis.poi_dedup "
+                "SELECT poi_id, cluster_id, is_canonical, category FROM _dd")
+    con.unregister("_dd")
+
+    # report: raw rows by the SOURCE's category, canonical clusters by the
+    # CLUSTER's category. The two denominators differ by exactly the rows a
+    # cross-category merge relabelled, which is the number worth watching.
+    raw = df.merge(pd.DataFrame(rows)[["poi_id", "category"]]
+                   .rename(columns={"category": "src_category"}), on="poi_id")
     report: dict[str, tuple[int, int]] = {}
-    offset = 0
-    for cat in cats:
-        rows = con.execute(
-            """SELECT poi_id, source_id, name, category, confidence,
-                      ST_Y(geom) AS lat, ST_X(geom) AS lon
-               FROM staging.poi WHERE category = ?""", [cat]).df().to_dict("records")
-        result = _dedup_category(rows)
-        # globally-unique cluster ids
-        result = [(pid, cid + offset, canon) for pid, cid, canon in result]
-        offset = max((cid for _, cid, _ in result), default=offset - 1) + 1
-        import pandas as pd
-        df = pd.DataFrame(result, columns=["poi_id", "cluster_id", "is_canonical"])
-        df["category"] = cat
-        con.register("_dd", df)
-        con.execute("INSERT INTO analysis.poi_dedup SELECT poi_id, cluster_id, is_canonical, category FROM _dd")
-        con.unregister("_dd")
-        report[cat] = (len(rows), int(df["is_canonical"].sum()))
+    for cat in sorted(set(raw["src_category"]) | set(df["category"])):
+        report[cat] = (int((raw["src_category"] == cat).sum()),
+                       int(((df["category"] == cat) & df["is_canonical"]).sum()))
     return report
