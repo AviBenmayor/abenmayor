@@ -8,6 +8,12 @@ to drive the owner's real, logged-in Chrome.
 
 - This is a **human-supervised, human-paced session with the owner present** —
   not an unattended job. Roughly **15 anchors per session**, then stop.
+- **Session cap (owner ruling 2026-09-15, QUESTIONS D36):** no Google Maps
+  segment runs longer than **30 minutes**, and consecutive segments are
+  separated by a break of **at least 2 minutes** with no Maps page loads.
+  Note the segment start time in the run notes; when 30 minutes elapse,
+  finish the anchor in progress, `interceptor wait 120000`, then continue.
+  The first session (57 page loads, 19 anchors) ran about 28 minutes.
 - **Never run this in a loop or unattended.** Google's terms of service forbid
   automated querying of Maps/Street View; this protocol is a supervised,
   assistive session at the owner's keyboard, same standing as the
