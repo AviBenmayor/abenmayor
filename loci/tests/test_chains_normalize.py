@@ -97,9 +97,29 @@ def test_repeated_trailing_noise_is_fully_stripped():
     assert brand_key("Apollo Bagels Inc. New York City") == "apollo bagels"
 
 
+def test_all_antico_vinaio_apostrophe_spellings_share_a_brand_key():
+    """The tight spelling ("All'Antico Vinaio") and the apostrophe-with-space
+    filing ("All' Antico Vinaio") normalized to two different keys before the
+    ALIASES entry was added (detected 2026-09-13 as 14 vs. 4 locations, the
+    smaller one auto-flagged). All three real-world spellings must collapse to
+    one brand_key or the chain is invisible as a single growth signal."""
+    keys = {brand_key(n) for n in
+            ("All'Antico Vinaio", "All' Antico Vinaio", "Allantico Vinaio")}
+    assert keys == {"allantico vinaio"}
+
+
 def test_display_name_prefers_the_common_spelling():
     assert display_name(["APOLLO BAGELS", "APOLLO BAGELS", "Apollo Bagels - Wburg"]) \
         == "Apollo Bagels"
     assert display_name([None, "", "  "]) is None
     # a mixed-case spelling is left alone rather than re-title-cased
     assert display_name(["sweetgreen", "sweetgreen"]) == "sweetgreen"
+
+
+def test_raising_canes_long_and_short_trade_names_share_a_brand_key():
+    """"Raising Cane's Chicken Fingers" and "Raising Cane's" filed as two
+    keys (17 vs. 14 locations on the 2026-09-13 snapshot) while the watchlist
+    row keyed only on the short form. Both must collapse to the short key."""
+    keys = {brand_key(n) for n in
+            ("Raising Cane's Chicken Fingers", "Raising Cane's", "Raising Canes")}
+    assert keys == {"raising canes"}

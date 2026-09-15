@@ -4,7 +4,7 @@
 
 # NYC chains to watch
 
-**Generated** 2026-09-13 · **detect snapshot** 2026-09 · **watchlist** 121 brands, 26151 detected brands.
+**Generated** 2026-09-15 · **detect snapshot** 2026-09 · **watchlist** 123 brands, 20988 detected brands.
 
 Two uses: companies to sell a site-selection product to, and — later — the "brand X is opening nearby" signal on a recommendation card. `loci_category` is the join key that will make the second possible; nothing consumes it yet.
 
@@ -14,66 +14,66 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 
 | Brand | Category | loci_category | Net new 12m (curated) | NYC now (curated) | Detected total | Detected new 12m | Pipeline (gov filings) | Confidence | Last verified |
 |---|---|---|---:|---:|---:|---:|---|---|---|
-| Luckin Coffee | App-first / kiosk QSR coffee (Chinese entrant) | cafe_bakery | 15 | 20 | 26 | 17 | — | reported | — |
-| NAYA | Lebanese fast casual | restaurant | 10 | 38 | 54 | 5 | 2 in MN,QN, from 2025-02-27 | reported | — |
-| Raising Cane's | chicken fingers | restaurant | 9 | 14 | 14 | 4 | — | reported | — |
+| Luckin Coffee | App-first / kiosk QSR coffee (Chinese entrant) | cafe_bakery | 15 | 20 | 21 | 16 | — | reported | — |
+| NAYA | Lebanese fast casual | restaurant | 10 | 38 | 54 | 8 | 2 in MN,QN, from 2025-02-27 | reported | — |
+| Raising Cane's | chicken fingers | restaurant | 9 | 14 | 20 | 7 | — | reported | — |
 | Blank Street Coffee | coffee & matcha | cafe_bakery | 8 | 37 | 57 | 3 | — | reported | — |
-| Joe & The Juice | juice bar / coffee | restaurant | 7 | 25 | 44 | 1 | — | reported | — |
-| Paris Baguette | Korean-French bakery café | cafe_bakery | 7 | 39 | 93 | 7 | — | reported | — |
+| Joe & The Juice | juice bar / coffee | restaurant | 7 | 25 | 34 | 5 | — | reported | — |
+| Paris Baguette | Korean-French bakery café | cafe_bakery | 7 | 39 | 85 | 6 | — | reported | — |
 | CAVA | fast casual Mediterranean bowls | restaurant | 6 | 15 | 29 | 2 | — | reported | — |
 | MYKA Greek Frozen Yogurt | Premium Greek frozen yogurt (Madrid-founded franchise) | — | 6 | 6 | — | — | — | reported | — |
-| Apollo Bagels | bagels | cafe_bakery | 5 | 9 | 13 | 5 | — | reported | — |
+| Apollo Bagels | bagels | cafe_bakery | 5 | 9 | 12 | 5 | — | reported | — |
 | The Learning Experience | childcare - daycare & early education franchise | childcare | 5 | 6 | 54 | 0 | — | reported | — |
-| Bluestone Lane | Australian-style café | cafe_bakery | 5 | 25 | 28 | 0 | — | reported | — |
-| Los Tacos No. 1 | Tijuana-style tacos | restaurant | 5 | 10 | 17 | 2 | — | reported | — |
+| Bluestone Lane | Australian-style café | cafe_bakery | 5 | 25 | 23 | 0 | — | reported | — |
+| Los Tacos No. 1 | Tijuana-style tacos | restaurant | 5 | 10 | 17 | 3 | — | reported | — |
 | Chase (JPMorganChase) | bank branches | bank | 5 | 425 | 47 | 0 | — | reported | — |
-| Chipotle Mexican Grill | fast casual Mexican | restaurant | 5 | 45 | 220 | 9 | 16 in BK,MN,QN, from 2025-10-03 | reported | — |
-| HeyTea | boba/tea | cafe_bakery | 5 | 15 | 21 | 1 | — | reported | — |
-| Mixue | ice cream & bubble tea | — | 5 | 5 | 4 | 2 | — | reported | — |
-| Wingstop | chicken wings | restaurant | 5 | 25 | 109 | 4 | — | reported | — |
-| Insomnia Cookies | late-night cookies/bakery | cafe_bakery | 4 | 24 | 28 | 3 | — | reported | — |
+| Chipotle Mexican Grill | fast casual Mexican | restaurant | 5 | 45 | 220 | 17 | 16 in BK,MN,QN, from 2025-10-03 | reported | — |
+| HeyTea | boba/tea | cafe_bakery | 5 | 15 | 20 | 1 | — | reported | — |
+| Mixue | ice cream & bubble tea | — | 5 | 5 | 4 | 3 | — | reported | — |
+| Wingstop | chicken wings | restaurant | 5 | 25 | 109 | 8 | — | reported | — |
+| Insomnia Cookies | late-night cookies/bakery | cafe_bakery | 4 | 24 | 25 | 4 | — | reported | — |
 | Uniqlo | apparel | — | 4 | 10 | — | — | — | reported | — |
-| Aldi | Hard-discount grocery | grocery | 4 | 16 | 70 | 4 | — | reported | — |
+| Aldi | Hard-discount grocery | grocery | 4 | 16 | 70 | 5 | — | reported | — |
 | LaundryBee | 24/7 staffed self-service laundromat chain | laundry | 4 | 20 | 8 | 0 | — | reported | — |
-| Dave's Hot Chicken | Nashville-style hot chicken | restaurant | 4 | 7 | 24 | 3 | — | reported | — |
-| Teapulse | Shanghai tea chain (extension of the Jidong brand) — milk tea, fruit tea, cheese tea | cafe_bakery | 4 | 4 | 9 | 5 | — | reported | — |
-| Bonchon | Korean fried chicken | restaurant | 4 | 11 | 22 | 3 | — | reported | — |
+| Dave's Hot Chicken | Nashville-style hot chicken | restaurant | 4 | 7 | 24 | 5 | — | reported | — |
+| Teapulse | Shanghai tea chain (extension of the Jidong brand) — milk tea, fruit tea, cheese tea | cafe_bakery | 4 | 4 | 9 | 6 | — | reported | — |
+| Bonchon | Korean fried chicken | restaurant | 4 | 11 | 22 | 2 | — | reported | — |
 | Chip City Cookies | cookies | cafe_bakery | 4 | 20 | — | — | — | reported | — |
 | Crumbl Cookies | cookies | cafe_bakery | 4 | 8 | 3 | 0 | — | reported | — |
-| Dos Toros Taqueria | California/Bay Area-style taqueria | restaurant | 4 | 18 | 27 | 1 | — | reported | — |
+| Dos Toros Taqueria | California/Bay Area-style taqueria | restaurant | 4 | 18 | 27 | 2 | — | reported | — |
 | Sugared + Bronzed | beauty - sugaring hair removal & sunless/airbrush tanning | — | 4 | 14 | 11 | 1 | — | reported | — |
 | The Flowery NY | cannabis dispensary (multi-site adult-use retailer) | — | 4 | 10 | — | — | 1 in QN, from 2026-05-21 | reported | — |
 | Vivvi | childcare - infant & toddler early learning campuses | childcare | 4 | 13 | 7 | 0 | — | reported | — |
 | Lidl US | discount grocery | grocery | 3 | 9 | — | — | 7 in BK,MN,QN, from 2024-10-28 | reported | — |
-| Miznon | Israeli pita / street food | restaurant | 3 | 6 | 10 | 1 | 1 in MN, from 2025-09-23 | reported | — |
+| Miznon | Israeli pita / street food | restaurant | 3 | 6 | 10 | 3 | 1 in MN, from 2025-09-23 | reported | — |
 | 7th Street Burger | smash burger | restaurant | 3 | 10 | 29 | 5 | 1 in MN, from 2026-08-20 | reported | — |
 | Glowbar | beauty - membership-based facials/skincare studios | — | 3 | 12 | 11 | 1 | — | reported | — |
 | Haidilao | Sichuan hot pot | restaurant | 3 | 4 | — | — | — | reported | — |
 | LaserAway | dermatology / laser hair removal / medspa aesthetics | clinic | 3 | 15 | 6 | 0 | 2 in MN, from 2026-07-08 | reported | — |
 | Panda Express | Chinese-American fast casual | restaurant | 3 | 8 | 43 | 2 | — | reported | — |
 | Quality Branded | multi-concept restaurant group (steakhouse, Italian, Mexican, Southeast Asian) | restaurant | 3 | 11 | — | — | — | reported | — |
-| %Arabica | specialty coffee | cafe_bakery | 3 | 6 | 6 | 0 | — | reported | — |
+| %Arabica | specialty coffee | cafe_bakery | 3 | 6 | 6 | 2 | — | reported | — |
 | Ever/Body | cosmetic dermatology / medical aesthetics | clinic | 3 | 10 | — | — | — | reported | — |
 | Möge Tee | boba/tea | cafe_bakery | 3 | 11 | 18 | 0 | 1 in QN, from 2025-01-16 | reported | — |
 | Peachy | preventative Botox / wrinkle-relaxer studio | clinic | 3 | 8 | 3 | 0 | — | reported | — |
 | Select by Kung Fu Tea | boba/tea (new premium concept) | cafe_bakery | 3 | 3 | — | — | — | reported | — |
-| PopUp Bagels | bagels | cafe_bakery | 2 | 8 | 11 | 1 | — | reported | — |
+| PopUp Bagels | bagels | cafe_bakery | 2 | 8 | 11 | 3 | — | reported | — |
 | Miniso | international variety/lifestyle retail | — | 2 | 0 | — | — | — | reported | — |
-| Tatte Bakery & Café | Israeli-inspired all-day bakery-cafe (Boston/DC chain entering NY) | cafe_bakery | 2 | 2 | 3 | 1 | — | reported | — |
-| Chelsea Piers Fitness | Large-format premium fitness and sports clubs | fitness | 2 | 9 | 7 | 0 | — | reported | — |
-| Maman | French-American bakery-cafe | cafe_bakery | 2 | 20 | 51 | 4 | — | reported | — |
+| Tatte Bakery & Café | Israeli-inspired all-day bakery-cafe (Boston/DC chain entering NY) | cafe_bakery | 2 | 2 | 2 | 2 | — | reported | — |
+| Chelsea Piers Fitness | Large-format premium fitness and sports clubs | fitness | 2 | 9 | 6 | 0 | — | reported | — |
+| Maman | French-American bakery-cafe | cafe_bakery | 2 | 20 | 35 | 3 | — | reported | — |
 | Beanstalk Academy | Kindergarten-prep / early childhood education | childcare | 2 | 4 | 5 | 0 | — | reported | — |
-| Blo Blow Dry Bar | beauty - blowout/hair styling bar | — | 2 | 6 | 10 | 0 | — | reported | — |
+| Blo Blow Dry Bar | beauty - blowout/hair styling bar | — | 2 | 6 | 9 | 0 | — | reported | — |
 | Goodland Pickleball | Indoor pickleball club | fitness | 2 | 3 | — | — | — | reported | — |
 | Bespoke Physical Therapy | physical therapy (boutique 1-on-1 PT clinics) | clinic | 2 | 5 | — | — | — | reported | — |
-| Nowon | Korean-American gastropub / fried chicken | restaurant | 2 | 3 | 3 | 1 | — | reported | — |
+| Nowon | Korean-American gastropub / fried chicken | restaurant | 2 | 3 | 2 | 0 | — | reported | — |
 | Tacombi | Mexican fast casual | restaurant | 2 | 11 | 19 | 0 | — | reported | — |
 | Unapologetic Foods | multi-concept Indian/Filipino restaurant group (Semma, Dhamaka, Adda, Naks, Rowdy Rooster, Masalawala & Sons, Kebabwala) | restaurant | 2 | 8 | — | — | — | reported | — |
 | Warby Parker | eyewear | — | 2 | 15 | — | — | — | reported | — |
 | bb.q Chicken | Korean fried chicken | restaurant | 2 | 6 | 22 | 2 | — | reported | — |
 | Bond Vet | veterinary (urgent + primary care) | — | 2 | 15 | — | — | — | reported | — |
 | Cafe Landwer | Israeli/Mediterranean all-day cafe | restaurant | 2 | 2 | 2 | 1 | — | reported | — |
-| Devoción | specialty coffee roaster | cafe_bakery | 2 | 6 | 12 | 0 | — | reported | — |
+| Devoción | specialty coffee roaster | cafe_bakery | 2 | 6 | 12 | 1 | — | reported | — |
 | Emmy Squared Pizza | pizza + burger | restaurant | 2 | 8 | 5 | 0 | — | reported | — |
 | Heyday | beauty - custom facials/skincare studios | — | 2 | 9 | 9 | 1 | — | reported | — |
 | Jollibee | Filipino fast food / fried chicken | restaurant | 2 | 4 | 19 | 2 | — | reported | — |
@@ -83,34 +83,34 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 | Sauce Pizzeria (Everyday Hospitality) | pizzeria | restaurant | 2 | 3 | 5 | 0 | — | reported | — |
 | The Travel Agency (formerly Union Square Travel Agency) | cannabis dispensary (multi-site adult-use retailer) | — | 2 | 4 | — | — | — | reported | — |
 | Throw Me A Bone | pet - dog daycare, grooming, boarding, and training | — | 2 | 4 | — | — | — | reported | — |
-| Tiger Sugar | boba/tea | cafe_bakery | 2 | 6 | 15 | 1 | — | reported | — |
-| Upside Pizza | pizza slice shop + soft serve | restaurant | 2 | 9 | 12 | 3 | 1 in MN, from 2025-09-26 | reported | — |
+| Tiger Sugar | boba/tea | cafe_bakery | 2 | 6 | 14 | 1 | — | reported | — |
+| Upside Pizza | pizza slice shop + soft serve | restaurant | 2 | 9 | 10 | 2 | 1 in MN, from 2025-09-26 | reported | — |
 | Westville | neighborhood American comfort-food restaurant | restaurant | 2 | 10 | 11 | 1 | — | reported | — |
-| Xing Fu Tang | boba/tea | cafe_bakery | 2 | 6 | 8 | 2 | — | reported | — |
+| Xing Fu Tang | boba/tea | cafe_bakery | 2 | 6 | 7 | 2 | — | reported | — |
 | SweatHouz | contrast therapy (private infrared sauna + cold plunge suites), franchise | — | 1 | 1 | — | — | — | reported | — |
 | Small Door Veterinary | veterinary (membership-based primary + urgent care) | — | 1 | 5 | — | — | — | reported | — |
 | New York Pilates | reformer Pilates | fitness | 1 | 2 | 4 | 0 | — | reported | — |
-| Life Time | luxury athletic country club / big-box gym | fitness | 1 | 11 | 15 | 1 | — | reported | — |
+| Life Time | luxury athletic country club / big-box gym | fitness | 1 | 11 | 15 | 0 | — | reported | — |
 | CTown Supermarkets | Independent-cooperative supermarket banner (Krasdale) | grocery | 1 | 90 | 115 | 4 | — | reported | — |
 | Golden Age Hospitality | multi-venue bar/restaurant nightlife group (Jon Neidich) | bar | 1 | 9 | — | — | 2 in MN, from 2025-08-18 | reported | — |
-| Socceroof (rebranding to UNLMTD Soccer) | Indoor soccer / multi-sport clubs (also half-court basketball and pickleball) | fitness | 1 | 3 | 5 | 3 | — | reported | — |
+| Socceroof (rebranding to UNLMTD Soccer) | Indoor soccer / multi-sport clubs (also half-court basketball and pickleball) | fitness | 1 | 3 | 4 | 3 | — | reported | — |
 | Arc'teryx | outdoor apparel | — | 1 | 6 | — | — | — | reported | — |
 | Archives of Us | Matcha cafe | cafe_bakery | 1 | 2 | — | — | — | reported | — |
 | Atlantic Market | New independent supermarket | grocery | 1 | 1 | — | — | — | reported | — |
 | Barnes & Noble | Bookstores | — | 1 | 11 | 4 | 0 | — | reported | — |
 | Big Night | Home goods / 'dinner and party shop' | — | 1 | 3 | — | — | — | reported | — |
 | Callen-Lorde Community Health Center | LGBTQ+ community health / FQHC | clinic | 1 | 4 | 2 | 0 | — | reported | — |
-| CVS Pharmacy | pharmacy/drugstore | pharmacy | 1 | 0 | 457 | 10 | 2 in BK,SI, from 2026-07-31 | reported | — |
+| CVS Pharmacy | pharmacy/drugstore | pharmacy | 1 | 0 | 432 | 11 | 2 in BK,SI, from 2026-07-31 | reported | — |
 | Erudite Preschool | Preschool | childcare | 1 | 2 | — | — | — | reported | — |
 | FaceGym | beauty - facial fitness/facial workout studios | — | 1 | 3 | 2 | 0 | — | reported | — |
-| Fitness Factory | Value gym | fitness | 1 | 2 | 6 | 0 | — | reported | — |
-| Five Iron Golf | indoor golf simulator bar / entertainment venue chain | — | 1 | 7 | 10 | 2 | — | reported | — |
+| Fitness Factory | Value gym | fitness | 1 | 2 | 6 | 1 | — | reported | — |
+| Five Iron Golf | indoor golf simulator bar / entertainment venue chain | — | 1 | 7 | 7 | 0 | — | reported | — |
 | Gowanus Golf Club | Indoor golf / social club | fitness | 1 | 3 | — | — | — | reported | — |
 | House of Spells | Fantasy collectibles retail (UK entrant) | — | 1 | 1 | — | — | — | reported | — |
 | Hydrogen Fitness | Boutique gym | fitness | 1 | 1 | — | — | — | reported | — |
 | Ivy Prep Early Learning Academy | Day care centers | childcare | 1 | 3 | 4 | 0 | — | reported | — |
 | Kings Co Imperial | Chinese restaurant mini-chain | restaurant | 1 | 3 | 2 | 1 | — | reported | — |
-| L'Industrie Pizzeria | Slice shop | restaurant | 1 | 3 | 4 | 2 | — | reported | — |
+| L'Industrie Pizzeria | Slice shop | restaurant | 1 | 3 | 3 | 1 | — | reported | — |
 | Mariscos El Submarino | Fast-casual Mexican seafood | restaurant | 1 | 4 | 5 | 1 | — | reported | — |
 | Muji | Japanese home goods and apparel | — | 1 | 8 | — | — | 1 in BX, from 2025-08-25 | reported | — |
 | Municipal Credit Union | Credit union branches | bank | 1 | 23 | 18 | 0 | 6 in BK,BX,MN,QN, from 2024-11-13 | reported | — |
@@ -121,13 +121,14 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 | Union Market | independent specialty grocery | grocery | 1 | 6 | 8 | 0 | 1 in BK, from 2026-02-05 | reported | — |
 | Whole Foods Market Daily Shop | small-format organic/specialty grocery | grocery | 1 | 4 | 4 | 2 | 2 in MN,QN, from 2026-07-22 | reported | — |
 | Winner (Daniel Eddy) | Michelin-starred chef's bakery and cafe | cafe_bakery | 1 | 2 | 3 | 1 | 1 in BK, from 2025-07-08 | reported | — |
+| Super Burrito | burrito shop | restaurant | 1 | 4 | 4 | 1 | 1 in MN, from 2026-08-10 | reported | — |
 | Vital Climbing Gym | climbing gym | fitness | 0 | 4 | 4 | 0 | — | reported | — |
-| Gong Cha | boba/tea | cafe_bakery | 0 | 0 | 69 | 0 | — | reported | — |
+| Gong Cha | boba/tea | cafe_bakery | 0 | 0 | 66 | 1 | — | reported | — |
 | Tide Cleaners | laundry & dry cleaning franchise (in-store drop-off, drive-thru, and kiosk formats) | laundry | 0 | 0 | — | — | — | reported | — |
 | H Mart | Korean/Asian specialty grocery | grocery | 0 | 0 | 25 | 1 | 1 in QN, from 2026-02-27 | reported | — |
 | Lenwich by Lenny's | sandwich/deli chain | restaurant | 0 | 0 | — | — | — | reported | — |
 | Aritzia | apparel | — | 0 | 2 | 3 | 0 | — | reported | — |
-| CityPickle | pickleball club | fitness | 0 | 2 | 2 | 1 | 1 in BK, from 2026-02-17 | reported | — |
+| CityPickle | pickleball club | fitness | 0 | 2 | — | — | 1 in BK, from 2026-02-17 | reported | — |
 | Gracious Hospitality Management | multi-concept restaurant group | restaurant | 0 | 0 | — | — | — | reported | — |
 | Othership | social sauna / contrast therapy club | fitness | 0 | 1 | 2 | 0 | — | reported | — |
 | Reserve Padel | indoor padel club (members-only) | fitness | 0 | 1 | — | — | — | reported | — |
@@ -135,6 +136,7 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 | Amazon Fresh / Amazon Go | grocery / tech-enabled convenience | grocery | -2 | 0 | — | — | — | reported | — |
 | Walgreens / Duane Reade | pharmacy/drugstore | pharmacy | -8 | 0 | — | — | — | reported | — |
 | Rite Aid | pharmacy/drugstore | pharmacy | -35 | 0 | 258 | 0 | — | reported | — |
+| All'Antico Vinaio | sandwich shop | restaurant | — | 8 | 10 | 0 | — | reported | — |
 
 `Pipeline (gov filings)` counts rows in `analysis.storefront_pipeline` that are filed under this brand's key and are **not yet open** — a lease signed, a build-out permitted or a licence applied for, with no regulator having seen a business yet. It is a FLOOR: a franchisee files under its own operating company (`PRIYA FOODS INC` running a Dunkin'), so an empty cell is as often "files under another name" as it is "nothing coming". A filing is also not a store — applications are withdrawn and permits lapse.
 
@@ -143,6 +145,7 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 - **%Arabica** — Design-forward Japanese specialty coffee brand expanding its NYC footprint with architecturally notable flagship openings (MoMA collaboration, Nolita, Dumbo roastery). Pipeline: Brand's own Instagram (Aug 30, 2026) states it has 'four locations across the Big Apple and we're still growing' -- may undercount if MoMA/Nolita openings are more recent than that post.. [[1]](https://www.instagram.com/p/DQZHj4RiI86) [[2]](https://www.urdesignmag.com/arabica-moma-cafe-selgascano-curtis-su-nyc) [[3]](https://www.corner.inc/place/ptd5FDvFkFE2)
 - **7th Street Burger** — Viral, celebrity-endorsed (Bad Bunny) NYC smash-burger concept is both densifying within the five boroughs (new Bronx location) and using that base to launch into NJ, Philly, and Boston. Pipeline: New Bronx location (The Hub, 3rd & 149th) opened August 2026, extending the brand into a 4th/5th NYC borough presence; simultaneously expanding into NJ (Hackensack, Union, Brick, Princeton), Philadelphia, and Boston (Harvard Square, Saugus).. [[1]](https://en.wikipedia.org/wiki/7th_Street_Burger) [[2]](https://www.instagram.com/p/DSajmFHEcIh) [[3]](https://njbiz.com/7th-street-burger-nj-expansion-hackensack-union-brick-princeton) [[4]](https://www.masslive.com/entertainment/2026/09/popular-nyc-smash-burger-chain-to-open-2-more-locations-in-boston-area.html)
 - **Aldi** — The Modern Retail framing is the useful one: discounters are deliberately entering NYC neighborhoods 'less saturated with local competition' — i.e. they are running their own gap analysis, and their site selections are a revealed-preference signal of underserved grocery catchments. Pipeline: First Central/Midtown Manhattan store — roughly 25,000 sf at The Ellery near Times Square, opened June 2026 (this was reported as August 2026's largest NYC retail lease in one account — verify which). Kips Bay-area store (E 32nd St) opened June 19, 2026. A Brooklyn store opened September 2026. Nationally, 180+ new stores across 31 states in 2026 toward 3,200 US units by end-2028.. [[1]](https://www.silive.com/nyc/2026/09/aldis-next-nyc-store-set-to-open-in-brooklyn-next-week-what-shoppers-need-to-know.html) [[2]](https://www.modernretail.co/operations/nyc-sees-discount-grocery-renaissance-with-new-stores-from-aldi-lidl) [[3]](https://www.bluebookservices.com/aldi-to-open-first-midtown-ny-store-in-june) [[4]](https://www.grocerydive.com/news/aldi-180-new-stores-2026-expansion-distribution-centers-discounter/809240) [[5]](https://corporate.aldi.us/newsroom/news/aldi-us-doubles-down-on-growth-in-2026) [[6]](https://www.costar.com/article/1512758845/aldi-plans-180-new-stores-this-year-adding-to-aggressive-us-expansion)
+- **All'Antico Vinaio** — A single hero product (one schiacciata sandwich recipe) lets it open small-footprint, high-throughput counters in the highest-foot-traffic tourist and transit nodes (Times Square, Grand Central, Grand Central-adjacent Midtown) rather than needing a full kitchen build-out. Pipeline: No additional NYC lease or opening announced as of Sept 2026 beyond the 8 locations already open (729 8th Ave, Sullivan St, 36 E 60th St UES, 89 7th Ave S West Village, 7 W 25th St Flatiron/NoMad, Brookfield Place, 125 Park Ave Grand Central, 1450 Broadway). Detect splits this brand into two keys (apostrophe-with-space filing, 14+4 locations, fixed in normalize.py 2026-09-15).. Site selection sits with: **CEO & Founder**. [[1]](https://www.allanticovinaiousa.com/store-locator/) [[2]](https://lavocedinewyork.com/en/new-york/2025/03/28/allantico-vinaio-lands-at-grand-central-with-its-signature-sandwich/) [[3]](https://www.timeout.com/newyork/news/this-iconic-italian-sandwich-shop-is-opening-three-new-locations-in-nyc-021524) [[4]](https://en.ilsole24ore.com/art/the-ancient-vintners-100-million-turnover-twenty-new-openings-2026-AILx6E0) [[5]](https://whatnow.com/new-york/restaurants/allantico-vinaio-to-open-two-new-manhattan-locations/) [[6]](https://secretnyc.co/allantico-vinaio-new-nyc-locations/)
 - **Amazon Fresh / Amazon Go** — N/A — full exit from both formats nationwide. Direct format substitution: Amazon explicitly said it is expanding Whole Foods Market Daily Shop instead of these formats Pipeline: None — Amazon announced Jan 27, 2026 it would close all 72 Amazon Go and Amazon Fresh stores nationwide; all NYC locations closed by Feb 1, 2026. The two NYC Amazon Go stores were at Brookfield Place (Lower Manhattan) and E. 53rd St/Lexington Ave (Midtown). Amazon Fresh never had a store inside the five boroughs (Long Island/NJ only). Amazon is redirecting this investment into Whole Foods Market Daily Shop instead.. [[1]](https://www.nydailynews.com/2026/01/27/amazon-go-amazon-fresh-closing) [[2]](https://www.cspdailynews.com/company-news/amazon-closing-all-amazon-fresh-amazon-go-stores) [[3]](https://en.wikipedia.org/wiki/Amazon_Go)
 - **Apollo Bagels** — Viral single-product cult brand with queue-as-marketing; now vertically integrated on a central bakehouse, so each new storefront is low-capex retail rather than a bakery build-out. Pipeline: No further NYC site publicly announced as of 2026-09-13. 19 Waverly Pl (Greenwich Village) soft-launched 2026-08-31 and is counted in current. International: Apollo Bagels counter at Dean & Deluca Tokyo (May 2026). Hoboken NJ store opened 2025 (outside NYC).. [[1]](https://apollobagels.com/locations) [[2]](https://finance.yahoo.com/small-business/articles/apollo-bagels-opens-centralized-bakehouse-202819519.html) [[3]](https://whatnow.com/new-york/restaurants/apollo-bagels-to-open-new-greenwich-village-location) [[4]](https://tribecacitizen.com/2026/07/02/new-kid-on-the-block-apollo-bagels) [[5]](https://www.instagram.com/p/DRSbjvkFTuf) [[6]](https://cititour.com/NYC_News/Apollo-Bagels-Keeps-NYC-Lining-Up-for-That-Perfect-Crunch/9335) [[7]](https://www.northjersey.com/press-release/story/225734/apollo-bagels-is-now-making-new-york-citys-bagels-from-industry-city)
 - **Arc'teryx** — Amer Sports is prioritizing North American store growth for Arc'teryx post-IPO, using flagship-format openings in top-tier markets like NYC's 5th Avenue to build brand visibility. Pipeline: Opened a new flagship on 5th Avenue, Manhattan (opened ~Sept 3, 2026), within the trailing-12-month window. Parent Amer Sports guided to 25-30 net new Arc'teryx stores globally in 2026 with North America and China as the largest markets, implying continued NYC-area investment.. Site selection sits with: **VP of Retail Excellence (Megan Cheesbrough, quoted on store strategy)**. [[1]](https://www.instagram.com/p/DQxcJ4nk4HP) [[2]](https://shop-eat-surf-outdoor.com/news/arcteryx-salomon-parent-shares-wholesale-plans-forecasts-slower-growth-in-2026/616860) [[3]](https://sgbonline.com/arcteryx-doubles-new-york-retail-footprint)
@@ -236,6 +239,7 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 - **Socceroof (rebranding to UNLMTD Soccer)** — Converts unlettable basement and industrial space in dense districts into revenue — 2026 World Cup demand pull, and explicitly not competing for ground-floor retail. The Wall Street club reportedly runs near 100% capacity. Pipeline: Wall Street flagship at 28 Liberty Street — 20,000 sf in a commercial building's basement, four indoor fields, training areas and a speakeasy-style bar; open 8am to 2am. REBNY's H2 2025 report cited Socceroof by name via the Downtown Alliance as an example of 'new kinds of health and fitness tenants' filling Lower Manhattan. Out-of-market pipeline: South Boston announced; Toronto referenced. Brand is transitioning to UNLMTD Soccer.. Site selection sits with: **Chief Operating Officer (Jonathan Lupinelli — publicly describes the siting strategy: 'our locations aren't on the outskirts; they're in the heart of the city')**. [[1]](https://therealdeal.com/sponsored/the-alliance-for-downtown-new-york/innovation-sparks-downtown-new-yorks-retail-revival) [[2]](https://www.rebny.com/press-release/h2-2025-manhattan-retail-report-broad-based-demand-in-many-corridors) [[3]](https://socceroof.com)
 - **Sugared + Bronzed** — Membership-based, high-margin beauty service (sugaring + spray tan) with young, price-flexible NYC clientele and a proven small-footprint retail model that leases easily into secondary corridors Pipeline: No specific additional NYC sites announced beyond openings already confirmed; brand is on an active nationwide store-opening cadence (50 locations nationwide as of Sept 2026) and has opened NYC stores at roughly one every 1-2 months through the window.. [[1]](https://sugaredandbronzed.com/blogs/news/sugared-bronzeds-heavenly-glows-meet-hells-kitchen) [[2]](https://sugaredandbronzed.com/blogs/news/sugared-bronzed-opens-park-slope-location-11th-nyc-store) [[3]](https://sugaredandbronzed.com/blogs/news/sugared-bronzed-opens-10th-new-york-location-in-carnegie-hill) [[4]](https://www.instagram.com/reel/DRyAc1YD1ur)
 - **Sunday Hospitality** — Brunch-forward flagship (Sunday in Brooklyn) built enough brand equity to license internationally (London) while adding new NYC concepts. Pipeline: Sunday in Brooklyn licensed a London outpost (per LinkedIn 'Sunday in Brooklyn (London)' listing) — first international move.. [[1]](https://www.linkedin.com/company/sundayhospitality) [[2]](https://www.instagram.com/sundayinbrooklyn?hl=en)
+- **Super Burrito** — Founders replicated San Francisco Mission-style burritos they couldn't find in NYC and are now placing them in high-traffic food-hall and avenue locations (Manhattan West, Murray Hill) rather than franchising out. Pipeline: Two kiosks (one indoor, one outdoor) announced for The Market Hall at Manhattan West, targeted Fall 2026 opening -- not yet open.. [[1]](https://superburritonyc.com/locations) [[2]](https://whatnow.com/new-york/restaurants/super-burrito-murray-hill/) [[3]](https://www.theinfatuation.com/new-york/reviews/super-burrito-3rd-ave) [[4]](https://whatnow.com/new-york/restaurants/super-burrito-is-bringing-its-mission-style-burritos-to-manhattan-west/) [[5]](https://www.iloveny.com/thebeat/post/the-market-hall-at-manhattan-west-announces-first-culinary-partners-ahead-of-fall-2026-opening/) [[6]](https://www.sfgate.com/food/article/sf-nyc-mission-burrito-shop-angers-dodgers-18687727.php)
 - **Sushiro** — Japan's largest conveyor-belt sushi chain (600+ locations) choosing a Times Square flagship as its North America launch, betting on tourist/mainstream volume Pipeline: First-ever US/North America location; three-level flagship restaurant; 200+ menu items, $5 starting price/plate, no-tipping policy. [[1]](https://newsonjapan.com/article/149164.php) [[2]](https://www.timeout.com/newyork/news/japans-famous-conveyor-belt-sushi-restaurant-chain-is-coming-to-nyc-this-fall-051126) [[3]](https://www.youtube.com/watch?v=Ej3n90o-7QQ)
 - **SweatHouz** — Signed a large multi-unit territory development deal to blanket Manhattan and Brooklyn with private contrast-therapy suites, applying a scalable franchise real-estate playbook to the same cold-plunge/sauna wave driving Othership, Bathhouse, and Remedy Place. Pipeline: Signed a development agreement with the Wasi Family Group for at least 12 studios across Manhattan and Brooklyn, with Tribeca as the first phase.. [[1]](https://athletechnews.com/sweathouz-sets-nyc-debut-plans-12-studios-across-manhattan-brooklyn) [[2]](https://patch.com/new-york/downtown-nyc/contrast-therapy-studio-sweathouz-open-first-nyc-location-tribeca)
 - **Tacombi** — Fresh growth-equity capital from Danny Meyer's fund is explicitly earmarked to scale the brand roughly 6x nationally, with continued NYC infill as the anchor market. Pipeline: Danny Meyer's Enlightened Hospitality Investments fund put $27.5M into Tacombi (Feb 2026) explicitly to fund expansion toward a 75-location national goal (from 13 total units); FiDi-area growth continuing in NYC.. [[1]](https://www.restaurantbusinessonline.com/financing/tacombi-gets-275m-danny-meyers-investment-fund) [[2]](https://happy-hour.nyc/bars-restaurants/tacombi) [[3]](https://www.zoominfo.com/c/tacombi/348429674)
@@ -264,50 +268,50 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 
 ## Newly detected, not on the watchlist
 
-413 brands flagged by `loci chains detect` (2026-09); the 40 fastest are listed. These are CANDIDATES, not findings — see the caveats.
+633 brands flagged by `loci chains detect` (2026-09); the 40 fastest are listed. These are CANDIDATES, not findings — see the caveats.
 
 | Brand | loci_category | Locations | Dated | New 12m | New 3m | Boroughs | Sources | Why flagged |
 |---|---|---:|---:|---:|---:|---:|---:|---|
 | MoneyGram | bank | 69 | 69 | 67 | 11 | 5 | 1 | 67 new locations in 12 months |
-| Dunkin' | cafe_bakery | 1480 | 1079 | 61 | 50 | 5 | 3 | 61 new locations in 12 months |
+| Dunkin' | cafe_bakery | 1420 | 1279 | 42 | 26 | 5 | 3 | 42 new locations in 12 months |
 | Citizens | bank | 115 | 56 | 26 | 2 | 5 | 2 | 26 new locations in 12 months |
+| Earthbar | cafe_bakery | 28 | 20 | 18 | 2 | 2 | 2 | 18 new locations in 12 months |
+| Starbucks | cafe_bakery | 874 | 726 | 17 | 2 | 5 | 3 | 17 new locations in 12 months |
 | Flagstar Bank | bank | 78 | 34 | 16 | 1 | 5 | 2 | 16 new locations in 12 months |
-| Kikka Sushi | grocery | 32 | 16 | 16 | 0 | 2 | 2 | 16 new locations in 12 months |
-| Pizza Hut | restaurant | 95 | 68 | 15 | 6 | 4 | 3 | 15 new locations in 12 months |
+| Kikka Sushi | grocery | 17 | 16 | 16 | 0 | 2 | 2 | 16 new locations in 12 months |
 | Northwell Health Physician Partners Obstetrics & Gynecology at Williamsburg, Myrtle Avenue | clinic | 18 | 15 | 15 | 15 | 4 | 2 | 15 new locations in 12 months |
-| Food Universe Marketplace | grocery | 45 | 35 | 13 | 0 | 4 | 3 | 13 new locations in 12 months |
-| Starbucks | cafe_bakery | 875 | 630 | 11 | 2 | 5 | 3 | 11 new locations in 12 months |
-| Shah's Halal Food | restaurant | 43 | 27 | 11 | 1 | 5 | 3 | 11 new locations in 12 months |
+| Pizza Hut | restaurant | 95 | 77 | 14 | 6 | 4 | 3 | 14 new locations in 12 months |
+| Shah's Halal Food | restaurant | 43 | 31 | 14 | 1 | 5 | 3 | 14 new locations in 12 months |
+| Wendy's | restaurant | 180 | 148 | 12 | 3 | 5 | 3 | 12 new locations in 12 months |
+| Food Universe Marketplace | grocery | 45 | 35 | 12 | 0 | 4 | 3 | 12 new locations in 12 months |
+| Wonder | restaurant | 36 | 32 | 12 | 0 | 5 | 2 | 12 new locations in 12 months |
+| Stop & Shop | grocery | 114 | 69 | 11 | 10 | 4 | 3 | 11 new locations in 12 months |
+| Gristedes | grocery | 27 | 24 | 11 | 11 | 2 | 3 | 11 new locations in 12 months |
+| Jimmy John's | restaurant | 21 | 17 | 11 | 1 | 5 | 3 | 11 new locations in 12 months |
 | PureGym | fitness | 17 | 17 | 11 | 2 | 4 | 2 | 11 new locations in 12 months |
+| Taco Bell | restaurant | 200 | 173 | 10 | 2 | 5 | 3 | 10 new locations in 12 months |
 | Baskin-Robbins | cafe_bakery | 186 | 183 | 10 | 0 | 5 | 2 | 10 new locations in 12 months |
-| Taco Bell | restaurant | 200 | 148 | 9 | 2 | 5 | 3 | 9 new locations in 12 months |
-| Market Plate | grocery | 25 | 9 | 9 | 0 | 2 | 2 | 9 new locations in 12 months |
-| Jimmy John's | restaurant | 21 | 15 | 9 | 1 | 5 | 3 | 9 new locations in 12 months |
-| EQUIS Pica Pollo | restaurant | 14 | 10 | 9 | 0 | 4 | 3 | 9 new locations in 12 months |
-| Wendy's | restaurant | 180 | 128 | 8 | 1 | 5 | 3 | 8 new locations in 12 months |
+| Cotti Coffee | cafe_bakery | 14 | 12 | 10 | 4 | 3 | 3 | 10 new locations in 12 months |
+| Just Salad | restaurant | 67 | 65 | 9 | 1 | 3 | 3 | 9 new locations in 12 months |
+| Market Plate | grocery | 22 | 9 | 9 | 0 | 2 | 2 | 9 new locations in 12 months |
+| Auntie Anne's | cafe_bakery | 93 | 57 | 8 | 2 | 5 | 3 | 8 new locations in 12 months |
+| Cafe | cafe_bakery | 60 | 48 | 8 | 2 | 4 | 4 | 8 new locations in 12 months |
+| Baya Bar | cafe_bakery | 36 | 34 | 8 | 0 | 4 | 3 | 8 new locations in 12 months |
+| EQUIS Pica Pollo | restaurant | 14 | 11 | 8 | 1 | 4 | 3 | 8 new locations in 12 months |
+| Guacado Mexican Grill | restaurant | 10 | 8 | 8 | 5 | 4 | 3 | 8 new locations in 12 months |
+| Juici Patties | restaurant | 10 | 9 | 8 | 2 | 3 | 2 | 8 new locations in 12 months |
 | Northwell Labs at 170 East 77th Street | clinic | 8 | 8 | 8 | 8 | 3 | 1 | 8 new locations in 12 months |
+| McDonald's | restaurant | 450 | 380 | 7 | 3 | 5 | 3 | 7 new locations in 12 months |
 | Shell | convenience | 142 | 141 | 7 | 0 | 5 | 3 | 7 new locations in 12 months |
-| Auntie Anne's | cafe_bakery | 97 | 50 | 7 | 1 | 5 | 3 | 7 new locations in 12 months |
 | Club Pilates | fitness | 71 | 51 | 7 | 0 | 5 | 2 | 7 new locations in 12 months |
-| SuperFresh | grocery | 19 | 11 | 7 | 0 | 5 | 3 | 7 new locations in 12 months |
-| Raising Cane's Chicken Fingers | restaurant | 17 | 16 | 7 | 1 | 3 | 2 | 7 new locations in 12 months |
+| Teriyaki One | restaurant | 31 | 30 | 7 | 2 | 5 | 2 | 7 new locations in 12 months |
+| Halal Munchies | restaurant | 27 | 26 | 7 | 0 | 4 | 3 | 7 new locations in 12 months |
+| SuperFresh | grocery | 19 | 14 | 7 | 1 | 5 | 3 | 7 new locations in 12 months |
 | USA Hemorrhoid Centers | clinic | 15 | 12 | 7 | 1 | 4 | 2 | 7 new locations in 12 months |
+| Bj'S Wholesale Club Inc. 364 | grocery | 14 | 7 | 7 | 0 | 4 | 1 | 7 new locations in 12 months |
 | Complete Medical Wellness | clinic | 11 | 7 | 7 | 0 | 4 | 2 | 7 new locations in 12 months |
 | Northwell Health Physician Partners Cardiology - Upper East Side, East End Avenue | clinic | 9 | 8 | 7 | 4 | 2 | 2 | 7 new locations in 12 months |
-| Shake Shack | restaurant | 87 | 67 | 6 | 0 | 5 | 4 | 6 new locations in 12 months |
-| Cafe | cafe_bakery | 64 | 35 | 6 | 2 | 4 | 4 | 6 new locations in 12 months |
-| Buffalo Wild Wings Go | restaurant | 22 | 15 | 6 | 0 | 4 | 3 | 6 new locations in 12 months |
-| Moka & Co | cafe_bakery | 16 | 12 | 6 | 2 | 4 | 3 | 6 new locations in 12 months |
-| Sunoco | convenience | 15 | 10 | 6 | 0 | 4 | 3 | 6 new locations in 12 months |
-| Chestnut Market | convenience | 14 | 9 | 6 | 0 | 0 | 2 | 6 new locations in 12 months |
-| Cotti Coffee | cafe_bakery | 14 | 8 | 6 | 4 | 3 | 3 | 6 new locations in 12 months |
-| Yoyo Chicken | restaurant | 12 | 9 | 6 | 0 | 3 | 3 | 6 new locations in 12 months |
-| Guacado Mexican Grill | restaurant | 10 | 6 | 6 | 3 | 4 | 3 | 6 new locations in 12 months |
-| Just Salad | restaurant | 67 | 54 | 5 | 0 | 3 | 3 | 5 new locations in 12 months |
-| The Bar | bar | 60 | 40 | 5 | 1 | 4 | 4 | 5 new locations in 12 months |
-| Xi'An Famous Foods | restaurant | 32 | 20 | 5 | 0 | 3 | 3 | 5 new locations in 12 months |
-| Teriyaki One | restaurant | 31 | 20 | 5 | 2 | 5 | 2 | 5 new locations in 12 months |
-| Krauszer's Food Store | convenience | 24 | 11 | 5 | 1 | 0 | 3 | 5 new locations in 12 months |
+| Shake Shack | restaurant | 86 | 81 | 6 | 0 | 5 | 4 | 6 new locations in 12 months |
 
 `Dated` is how many of that brand's locations carry a first-seen date at all. When `Dated` is much smaller than `Locations`, `New 12m` is a floor computed on a small subset and the ranking is weak evidence.
 
@@ -363,5 +367,5 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 - Detect snapshot: `chains.brand_snapshot` at `2026-09`, built from `analysis.poi_supply` (deduped locations) with no supply-set filter.
 - A brand needs ≥ 2 deduped locations to appear.
 - Flag rule: ≥ 3 new locations in 12 months, OR ≥ 2 new with ≤ 8 total.
-- Manual brand collapses in force (8): `7 11` → `7 eleven`, `cvs pharmacy` → `cvs`, `duane reade by walgreens` → `duane reade`, `dunkin donuts` → `dunkin`, `dunkin donuts baskin robbins` → `dunkin`, `mcdonalds restaurant` → `mcdonalds`, `starbucks coffee` → `starbucks`, `subway sandwiches` → `subway`.
-- Regenerated 2026-09-13 by `loci chains render`.
+- Manual brand collapses in force (10): `7 11` → `7 eleven`, `all antico vinaio` → `allantico vinaio`, `cvs pharmacy` → `cvs`, `duane reade by walgreens` → `duane reade`, `dunkin donuts` → `dunkin`, `dunkin donuts baskin robbins` → `dunkin`, `mcdonalds restaurant` → `mcdonalds`, `raising canes chicken fingers` → `raising canes`, `starbucks coffee` → `starbucks`, `subway sandwiches` → `subway`.
+- Regenerated 2026-09-15 by `loci chains render`.

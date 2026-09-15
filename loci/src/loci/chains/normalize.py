@@ -99,6 +99,18 @@ ALIASES: dict[str, str] = {
     "duane reade by walgreens": "duane reade",
     "subway sandwiches": "subway",
     "7 11": "7 eleven",
+    # apostrophe-with-space filings ("All' Antico Vinaio") normalize to "all
+    # antico vinaio" while the tight spelling ("All'Antico Vinaio") normalizes
+    # to "allantico vinaio" -- same chain, split by a space DOHMH/DCWP filers
+    # add after the apostrophe. Detected 2026-09-13 as two brand_keys (14 vs 4
+    # locations, the smaller one auto-flagged "2 new of only 4"). Canonical key
+    # is the tight spelling because it is the larger, first-seen key.
+    "all antico vinaio": "allantico vinaio",
+    # The full trade name ("Raising Cane's Chicken Fingers") and the short one
+    # ("Raising Cane's") file under both; the watchlist row keys on the short
+    # form, so the 2026-09-13 snapshot showed the curated brand at 14 detected
+    # while 17 more sat under the long key, unlisted. Same chain.
+    "raising canes chicken fingers": "raising canes",
 }
 
 _SEPARATOR = re.compile(r"\s+[-–—|@]\s+|\s+\bat\b\s+(?=\w)")

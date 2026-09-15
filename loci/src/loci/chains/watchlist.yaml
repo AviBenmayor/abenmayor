@@ -35,7 +35,7 @@
 #   last_verified         YYYY-MM-DD or null
 # ---------------------------------------------------------------------------
 version: 1
-updated_on: '2026-09-13'
+updated_on: '2026-09-15'
 brands:
 - brand: Vital Climbing Gym
   brand_key: vital climbing gym
@@ -3779,4 +3779,73 @@ brands:
     note: NYC-area coverage of final closures; ABC7 NY is a local NYC outlet
   confidence: reported
   first_added: '2026-09-13'
+  last_verified: null
+- brand: All'Antico Vinaio
+  brand_key: allantico vinaio
+  category: sandwich shop
+  loci_category: restaurant
+  hq: Florence, Italy
+  nyc_locations_now: 8
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: No additional NYC lease or opening announced as of Sept 2026 beyond the 8 locations
+    already open (729 8th Ave, Sullivan St, 36 E 60th St UES, 89 7th Ave S West Village, 7
+    W 25th St Flatiron/NoMad, Brookfield Place, 125 Park Ave Grand Central, 1450 Broadway).
+    Detect splits this brand into two keys (apostrophe-with-space filing, 14+4 locations,
+    fixed in normalize.py 2026-09-15).
+  ownership: corporate family-owned (Mazzanti family; founded Florence 1989/1991; US expansion
+    via a partnership with restaurateur Joe Bastianich)
+  expansion_role_title: CEO & Founder
+  why_they_grow: A single hero product (one schiacciata sandwich recipe) lets it open small-footprint,
+    high-throughput counters in the highest-foot-traffic tourist and transit nodes (Times
+    Square, Grand Central, Grand Central-adjacent Midtown) rather than needing a full kitchen
+    build-out.
+  evidence:
+  - url: https://www.allanticovinaiousa.com/store-locator/
+    date: '2026-09-15'
+  - url: https://lavocedinewyork.com/en/new-york/2025/03/28/allantico-vinaio-lands-at-grand-central-with-its-signature-sandwich/
+    date: '2025-03-28'
+  - url: https://www.timeout.com/newyork/news/this-iconic-italian-sandwich-shop-is-opening-three-new-locations-in-nyc-021524
+    date: '2024-02-15'
+  - url: https://en.ilsole24ore.com/art/the-ancient-vintners-100-million-turnover-twenty-new-openings-2026-AILx6E0
+    date: '2026'
+  - url: https://whatnow.com/new-york/restaurants/allantico-vinaio-to-open-two-new-manhattan-locations/
+    date: '2024'
+  - url: https://secretnyc.co/allantico-vinaio-new-nyc-locations/
+    date: '2024'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Super Burrito
+  brand_key: super burrito
+  category: burrito shop
+  loci_category: restaurant
+  hq: New York, NY
+  nyc_locations_now: 4
+  nyc_locations_12m_ago: 3
+  net_new_12m: 1
+  pipeline: Two kiosks (one indoor, one outdoor) announced for The Market Hall at Manhattan
+    West, targeted Fall 2026 opening -- not yet open.
+  ownership: founder-led (Eugene Cleghorn & Sam Neely; started as a 2017 Rockaway Beach boardwalk
+    stand, first permanent shop 2020) -- NOT corporate; no evidence of PE backing or franchising
+    found
+  expansion_role_title: null
+  why_they_grow: Founders replicated San Francisco Mission-style burritos they couldn't find
+    in NYC and are now placing them in high-traffic food-hall and avenue locations (Manhattan
+    West, Murray Hill) rather than franchising out.
+  evidence:
+  - url: https://superburritonyc.com/locations
+    date: '2026-09-15'
+  - url: https://whatnow.com/new-york/restaurants/super-burrito-murray-hill/
+    date: '2026-02-03'
+  - url: https://www.theinfatuation.com/new-york/reviews/super-burrito-3rd-ave
+    date: '2026-06-25'
+  - url: https://whatnow.com/new-york/restaurants/super-burrito-is-bringing-its-mission-style-burritos-to-manhattan-west/
+    date: '2026'
+  - url: https://www.iloveny.com/thebeat/post/the-market-hall-at-manhattan-west-announces-first-culinary-partners-ahead-of-fall-2026-opening/
+    date: 2026-07
+  - url: https://www.sfgate.com/food/article/sf-nyc-mission-burrito-shop-angers-dodgers-18687727.php
+    date: '2026'
+  confidence: reported
+  first_added: '2026-09-15'
   last_verified: null

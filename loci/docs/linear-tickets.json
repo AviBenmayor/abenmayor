@@ -1540,6 +1540,66 @@
       "Milestone": "E1 \u00b7 Ingest and Grid"
     },
     {
+      "Title": "`loci chains candidates`: the monthly ranked diff with the reason each row fired",
+      "Description": "There is no admission process today because there is no artefact to say yes or no to (D109) \u2014 the watchlist's 123 rows arrived in one seeded payload on 2026-09-13 and two more (All'Antico Vinaio, Super Burrito) landed the same ad hoc way on 2026-09-15. This command IS the process: it reads chains.brand_snapshot against the candidate predicate (locations_total >= 5 OR detect.flag_for, after aliasing, n_sources >= 2, not excluded, movement in 12m, not already admitted/rejected), diffs against last month, and prints the reason each row fired so the human half of the runbook has something to review rather than a raw table. First real run should re-derive the proposal's 2,341/244/697 backlog figures against the 2026-09-15 detect rebuild (fixed normalizer, post-dedup ledger), since the pre-rebuild numbers are already stale.\n\nOpened 2026-09-15 (CHECKPOINT D109). Pushed to Linear 2026-09-15 as GTM-186.",
+      "Status": "Backlog",
+      "Priority": 2,
+      "Estimate": 3,
+      "Labels": "ingest",
+      "Project": "Loci",
+      "Milestone": "E1 \u00b7 Ingest and Grid"
+    },
+    {
+      "Title": "`loci chains admit` / `reject`: persist tier + reason into the YAML",
+      "Description": "Without a persisted rejection, the same two thousand banks and Northwell practice lines get re-reviewed every month and the process is abandoned by month three \u2014 this is what makes the monthly 45-60 minute human budget survive past the first session. `admit <brand_key> --reason \"...\" --role prospect` and `reject <brand_key> --reason \"...\"` write tier, decided_on and the reason into watchlist.yaml in one edit (mirroring the import fill-only discipline already in chains/watchlist.py). A rejected key must re-surface automatically if locations_total doubles or a capital event lands \u2014 the escape hatch that stops 'rejected at 5 stores' from permanently hiding a brand that grew to 20; without it a correct decision made on thin data becomes a permanent blind spot.\n\nOpened 2026-09-15 (CHECKPOINT D109). Pushed to Linear 2026-09-15 as GTM-187.",
+      "Status": "Backlog",
+      "Priority": 2,
+      "Estimate": 2,
+      "Labels": "infra",
+      "Project": "Loci",
+      "Milestone": "E1 \u00b7 Ingest and Grid"
+    },
+    {
+      "Title": "Exclusion classes as a named, tested rule set",
+      "Description": "MoneyGram was the fastest-growing 'brand' in the city on the first raw detect run \u2014 67 of 69 locations new in 12 months, agent counters inside bodegas, not storefronts \u2014 and four of the top thirty were Northwell practice lines whose long site-specific names normalize into one key. If the exclusion is not a list with a reason per class and a test, it is tribal knowledge in one person's head, and the candidate pool it feeds (T1) is corrupted at the source for every downstream consumer, not just the one bad row. Urgent because this is the check that decides whether the candidate pool is valid at all, not a feature on top of it. Classes: banks, health-system practice lines, agent networks (MoneyGram/Western Union), wireless carriers, parking, ATMs, government/postal, fuel-branded convenience \u2014 each with its one-line reason in docs/chains-process.md. A test per class asserts a known example (MoneyGram, a Northwell line, a Shell station) is excluded and stays excluded across a normalizer change.\n\nOpened 2026-09-15 (CHECKPOINT D109). Pushed to Linear 2026-09-15 as GTM-188.",
+      "Status": "Backlog",
+      "Priority": 1,
+      "Estimate": 2,
+      "Labels": "ingest,rigor",
+      "Project": "Loci",
+      "Milestone": "E1 \u00b7 Ingest and Grid"
+    },
+    {
+      "Title": "Schema: new watchlist.yaml fields + pipeline_filings_12m / pipeline_coverage / press_hits_12m on brand_snapshot",
+      "Description": "Extends the existing grain rather than adding a table (D61: new measures extend the grain). New brand_snapshot columns: pipeline_filings_12m (filings matching the brand name key in analysis.storefront_pipeline, entry_date in 12m), pipeline_coverage ('real'/'structural_zero' \u2014 filings are real only for restaurant/bar/cafe/grocery/pharmacy, and publishing that beside the count is the only way a zero for a fitness brand doesn't read as a lie), press_hits_12m (count from chains.press_hits). New watchlist.yaml fields, all hand-entered and never written by detect (whose --month re-run is a DELETE+INSERT that would destroy a hand fact): tier, sales_role, admission_reason/rejection_reason, decided_on, trajectory_state (hand override), capital_events (list of {kind, date, counterparty, amount, url}), signed_leases (list of {address, signed_on, expected_open, url} \u2014 the three-store-with-leases case detect structurally cannot see), store_count_source (locator/press/filing/hand_count \u2014 only hand_count or locator may support verified), expansion_contact_url. Needs a CHECKPOINT decision because it is two ALTERs plus a change to the curated file's field set \u2014 this ticket IS that decision (D109).\n\nOpened 2026-09-15 (CHECKPOINT D109). Pushed to Linear 2026-09-15 as GTM-189.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 5,
+      "Labels": "ingest",
+      "Project": "Loci",
+      "Milestone": "E1 \u00b7 Ingest and Grid"
+    },
+    {
+      "Title": "trajectory_state derived from snapshot deltas, unmeasured until four snapshots exist",
+      "Description": "This is the owner's actual question, and the one place shipping the wrong thing does active harm: Vital Climbing Gym reads '4 locations' identically whether it is growing or was acquired and frozen in 2021, and a single snapshot cannot tell those apart. Build the classifier now (accelerating / steady / decelerating / declining / static from d3 = trailing-3-month delta, d12 = trailing-12-month delta, against chains.brand_latest.locations_delta_since) so 2026-10 is the month it starts working, but the field MUST return unmeasured, not a guessed label, until four monthly snapshots exist \u2014 shipping 'static' off one snapshot manufactures the exact misreading the field exists to prevent. The threshold set (e.g. d3/3 > 1.5x d12/12 and d3 >= 2 for accelerating) is a methodology choice and needs owner sign-off before it ships, which is why this is its own ticket rather than folded into T4.\n\nOpened 2026-09-15 (CHECKPOINT D109). Pushed to Linear 2026-09-15 as GTM-190.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 5,
+      "Labels": "model,score",
+      "Project": "Loci",
+      "Milestone": "E1 \u00b7 Ingest and Grid"
+    },
+    {
+      "Title": "`chains render --html` to data/, four new PRESS_DOMAINS, the 12/24/24 Tavily query split",
+      "Description": "The HTML page the owner currently reads lives in a session scratchpad and dies with the session; loci chains render --html should write data/chains/watchlist.html instead (data/ is what machines make, docs/ is what humans read, and CHAINS.md already covers the generated-markdown half). Also: add What Now NY, Commercial Observer, The Real Deal and Franchise Times to research.PRESS_DOMAINS (Eater NY, Restaurant Business, QSR and Nation's Restaurant News are already covered), and split the 60-query Tavily budget 12 discovery / 24 signal-refresh on admitted brands (rotated oldest-last_verified first so all ~123 refresh over five months) / 24 candidate triage (one query per row at the top of the ranked diff from T1) \u2014 discovery stays first in build_plan so truncation eats triage, never discovery.\n\nOpened 2026-09-15 (CHECKPOINT D109). Pushed to Linear 2026-09-15 as GTM-191.",
+      "Status": "Backlog",
+      "Priority": 4,
+      "Estimate": 2,
+      "Labels": "ingest,docs",
+      "Project": "Loci",
+      "Milestone": "E1 \u00b7 Ingest and Grid"
+    },
+    {
       "Title": "Storefront filings: widen the lifecycle coverage beyond food/drink and harden the cross-agency link",
       "Description": "D80's analysis.storefront_pipeline (commits 2979cc2, 10a33e8; CHECKPOINT D80) proves the filing-chain approach works (fitout_filing \u2192 first_inspection strict median 259 d, N=67), but the coverage is structurally lopsided and the cross-agency link is thinner than the headline numbers suggest.\n\nopenings_pipeline_400m is structurally zero for 10 of the 15 categories \u2014 laundry, hair, nails, childcare, clinic, fitness, bank, hardware, convenience, tailor \u2014 not because nothing is opening in those trades, but because they are licensed by NYS DOS or NYS Education Department, or not licensed at all, and none of the DOB feeds carry a trade field that would let a filing be attributed to one of these categories. This must never be read as \"nothing is coming\" for those categories \u2014 it is a filing-blind spot, not a market signal. Candidate feeds: NYS DOS licensed professions, NYS OCFS childcare licenses, NYS/NYC DOH Article 28 clinics, DCWP laundry (already ingested but currently maps to no category \u2014 fix the mapping, don't re-ingest), and NYC DOB sign permits with tenant text as a fallback cross-check.\n\nThe cross-agency reconciliation links 2,613 pairs, but 92% are sole-pair-in-BBL, so the reconciled lead-time medians (e.g. 221 d N=741) are weaker evidence than the strict same-record medians (259 d N=67) even though the reconciled N is larger. DOB business_name on job filings is the building owner, not the tenant. SLA pending licenses are a live queue with no history \u2014 a skipped monthly snapshot is a permanent hole, same rule as the D79 first-seen ledger. One bug to fix in the next supply re-run: dohmh.classify(\"Steakhouse\") currently maps to cafe_bakery; it should map to restaurant.\n\nOpened 2026-09-13 (CHECKPOINT D80). Pushed to Linear 2026-09-13 as GTM-152.",
       "Status": "Backlog",

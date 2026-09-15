@@ -969,3 +969,24 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Session:** 2026-09-15, abenmayor-db
 - **Why it matters:** sql/037_citibike_od.sql was developed as `037_citibike_od.sql.draft` (invisible to `init_schema`'s `*.sql` glob), tests executed the draft text against a temp DuckDB, and the rename was an announced, peer-cleared event (D108). If adopted, the rule belongs in CLAUDE.md's concurrent-sessions section, and `check-tickets` could refuse a tree with both a `.sql` and a `.sql.draft` of one number.
 - **Current answer:** —
+
+### D46 — What counts as `confidence: verified`: does a store-locator page count suffice, or must a person reconcile the locator against detect before a row is promoted?
+- **Status:** open
+- **Tag:** *validation / method*
+- **Session:** 2026-09-15
+- **Why it matters:** The quarterly re-verification pass (D109) treats a store-locator count as the only path to `verified`, but the proposal never specified whether reading the locator page is itself sufficient or whether the count must be cross-checked against `chains.brand_snapshot` before the row is promoted. As of 2026-09-15, 0 of 123 admitted rows are `verified` and 0 carry a `last_verified` date, so the first quarterly pass needs this settled before it runs, not after.
+- **Current answer:** —
+
+### D47 — Paid sourcing: request a RetailStat quote now, or stay free until there is revenue?
+- **Status:** open
+- **Tag:** *infra / cost*
+- **Session:** 2026-09-15
+- **Why it matters:** RetailStat Location (#23, P2, gap f, $10,000/yr tier floor, no published price) is the one paid source that replaces real hand work outright — it carries brand AND individual store location, standing in for the locator hand-count and `signed_leases`. Coresight and Data Axle are lower priority (Data Axle at $8,000/yr is already in the $23k sprint subset and is the best value of the three, but is national-brand grain and cannot place a store at a borough for Coresight, or covers all fifteen categories but still needs a human curator for trajectory). The decision gates whether GTM-xxx (source expansion) scopes a paid quote request into the same session as T1-T6 or defers it.
+- **Current answer:** —
+
+### D48 — Pre-chain detection: can Loci flag a one- or two-location operator BEFORE it becomes a chain (owner examples: Bathhouse, Mink)?
+- **Status:** open
+- **Tag:** *method / sourcing*
+- **Session:** 2026-09-15
+- **Why it matters:** The D109 candidate predicate starts at 5 locations or the fast-small flag (2 new of ≤8), so by construction it sees a brand only after it has already expanded. The owner wants the earlier signal: an operator with one or two sites and intent to grow. Candidate intent signals, none built: (a) a second-site government filing (SLA pending application, DOB fit-out, DOHMH pre-permit) under a name key that already has exactly one open location — the filings pipeline (D80) can see this today for restaurant/bar/café/grocery/pharmacy only; (b) press with expansion language ("second location", "raised", "signed a lease") on a one-location name — a Tavily query kind that does not exist yet; (c) a capital event (seed/Series A, PE minority) on a single-site hospitality or wellness operator — hand-entered, Crunchbase free tier; (d) an expansion-role job posting (director of real estate, head of development) at a one- or two-site brand; (e) a trademark filing or a new "Brand Name II LLC"/"Brand Name Holdings" entity at NYS DOS. Bathhouse (Williamsburg → Flatiron, 2 sites) and Mink would each have tripped (a) and (b) before their second opening. Design question: does this become a third tier ("watch: pre-chain", 1–2 locations + ≥1 intent signal) in the D109 process, with its own admission reason, and which of (a)–(e) is cheap enough to run monthly inside the existing 60-query Tavily budget and the filings pipeline?
+- **Current answer:** —

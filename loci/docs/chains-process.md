@@ -105,6 +105,124 @@ year of snapshots, and that is the whole reason for the cron job.
 
 ---
 
+## Sourcing and admission
+
+*Owner ruling, 2026-09-15, triggered by two rows (All'Antico Vinaio, Super
+Burrito) landing on the watchlist with no process behind them.* Full case:
+`docs/CHECKPOINT.md` D1XX.
+
+### Two tiers, and which one wins
+
+On top of the three layers above, the list now has a machine half and a
+human half. **CANDIDATE** is mechanical, lives in `chains.brand_snapshot` —
+nobody hand-picked these rows, they cleared a predicate. **ADMITTED** is the
+YAML, hand-vetted, and **outranks both CANDIDATE and detection**, same as
+the watchlist already outranks Press. A rejected CANDIDATE stays rejected
+until it earns a re-review (below).
+
+### The candidate predicate
+
+A brand enters CANDIDATE when **all** hold:
+
+- `n_sources >= 2` **after aliasing** — two spellings of one chain are one
+  two-source brand, not two real ones.
+- `locations_total >= 5` **OR** `detect.flag_for` fires (≥3 new in 12m, or
+  ≥2 new of ≤8). "5+" alone admits incumbents wholesale and misses the
+  small-fast movers `flag_for` catches; detection can't see a 3-store brand
+  with signed leases at all — the OR does the real floor-setting.
+- not in an excluded class (below).
+- a movement signal in the last 12 months — an opening, a press hit, or a
+  filing. A brand that hasn't moved is a logo, not a lead.
+- not already `admitted` or `rejected` — a rejection has to stick, or the
+  same brands come back every month.
+
+### Exclusions
+
+Hard excludes, never surfaced as a candidate, each with a reason:
+
+| Class | Reason |
+|---|---|
+| Banks | Not a retail tenant |
+| Health-system practice lines | Site-specific names collapsing to one key; a clinic network |
+| Agent networks (MoneyGram, Western Union) | Bodega counters — the fastest-"growing" name in the first raw run |
+| Wireless carriers | Kiosk format, not a site-selection lead |
+| Parking, ATMs, government/postal | Not commercial tenants |
+| Fuel-branded convenience | The storefront is a gas station, not the brand |
+
+### `sales_role`, and who reads it
+
+| `sales_role` | Meaning | Lead list | Recommend card (D19) |
+|---|---|---|---|
+| `prospect` | growing, a lead | included, default sort | context |
+| `incumbent` | 100+ NYC locations (Dunkin', Starbucks, Chase) | off default sort | feeds "brand X opening nearby" |
+| `contraction` | net-negative, a supply event | included, reverse sort | context |
+| `excluded` | hard-excluded class | never surfaced | never surfaced |
+
+Daily-needs `loci_category` is **not required** — a null-category admitted
+row is a real lead that simply joins to no card.
+
+### Signal schema
+
+| Signal | Source | Cadence | Derived / hand |
+|---|---|---|---|
+| `locations_total`, `locations_new_12m/3m`, `n_boroughs`, `n_sources`, `flagged` | `brand_snapshot` | monthly | derived |
+| `locations_delta_since` — cross-snapshot delta | `brand_latest` | monthly | derived; NULL until 2 snapshots |
+| `pipeline_filings_12m`, `pipeline_coverage` (`real`/`structural_zero`) *(not built)* | `storefront_pipeline` | monthly | derived |
+| `press_hits_12m` *(not built)* | `press_hits` | monthly | derived |
+| `trajectory_state` — `unmeasured` until 4 snapshots exist, else accelerating/steady/decelerating/declining/static from `d3`/`d12` *(not built)* | `brand_snapshot` deltas | monthly | derived |
+| `tier`, `sales_role`, `*_reason`, `decided_on`, `capital_events`, `signed_leases`, `store_count_source`, `expansion_contact_url` *(not built)* | `watchlist.yaml` | on review | hand — never in `brand_snapshot`, a DELETE+INSERT per `--month` that would destroy it |
+
+### Sources
+
+| Source | Feeds |
+|---|---|
+| `chains detect`, `poi_first_seen`, `storefront_pipeline`, `press_hits` (free, running) | candidate floor; filing and press signals |
+| Trade press — What Now NY, Eater NY, Commercial Observer, The Real Deal, Restaurant Business, QSR, Nation's Restaurant News, Franchise Times (Tavily) | discovery, `capital_events`, `signed_leases` |
+| Company store-locator pages (Tavily extract) | the **only** scheduled path to `verified` |
+| SEC EDGAR full-text (free) | public-parent counts, closures, franchise deals |
+| NYS SLA pending, DOB NOW filings (free) | `signed_leases` for food/drink |
+| RetailStat, Coresight, Data Axle (paid, not built; RetailStat quote open) | store-level location, national trajectory, cross-category openings/closings |
+
+### The monthly runbook
+
+**Automatic** — `loci chains candidates` *(not built)*: the ranked diff
+since last month with the reason each row fired, run inside
+`make chains-refresh` after `detect`.
+
+**Human, ~45–60 min.** Read the diff (~10 min); `admit <key> --reason "…"
+--role prospect` / `reject --reason "…"` *(not built)* write `tier`,
+`decided_on` and the reason into the YAML in one edit; refresh signals the
+press pass flagged (~20 min). A rejected key **re-surfaces automatically**
+if `locations_total` doubles or a capital event lands, so "rejected at 5"
+never permanently hides a brand at 20.
+
+**First-run backlog.** On the 2026-09-13 snapshot the unlisted pool at the
+floor ran 2,341, narrowing to 244 sub-5 flagged adds and 697 after excluding
+banks/clinics and requiring 12-month movement — too large for one sitting.
+A 2026-09-15 rebuild (fixed normalizer, post-dedup ledger) shrank the base
+~20%, so treat those three numbers as scale only and re-derive on the first
+real `candidates` run. Owner plan: hand-triage the top 100 by
+`locations_new_12m`; the rest waits for the 2026-10 diff.
+
+### Quarterly re-verification
+
+Every admitted row with `confidence: reported` and `last_verified` older
+than 90 days gets a store-locator count — the only path to `verified`; an
+import can never produce one. As of 2026-09-15, 0 of 123 rows are
+`verified` or carry a `last_verified` date, so the first quarterly pass is
+not maintenance — it's the first time anyone here will have counted a store.
+
+### Trajectory: honestly unmeasured
+
+One snapshot cannot separate "growing" from "acquired and frozen" — both
+read as a flat count. `trajectory_state` returns `unmeasured`, never a
+label, until four monthly snapshots exist to compute `d3`/`d12` deltas.
+Shipping a `static` guess off one would manufacture the exact misreading
+(a frozen-since-2021 gym reading like a growing one) the field exists to
+prevent.
+
+---
+
 ## The first-seen ledger
 
 *Owner's ask, 2026-09-13: "make sure moving forward we have dates on which
