@@ -81,10 +81,16 @@ in Long Island City can be neither "supplied" nor "not supplied" -- it is
 unmeasured. Counting it in the denominator would silently push every share DOWN
 in proportion to how close the neighbourhood is to Queens, which is a geography
 artefact, not a retail finding. So the denominator is outbound trips landing
-INSIDE the measurable universe, the excluded share is reported, and an origin
-NTA that sends more than `MAX_OUTSIDE_UNIVERSE_SHARE` of its outbound flow
-outside the universe gets NULL rather than a number about a minority of its
-riders.
+INSIDE the measurable universe.
+
+EVERY ORIGIN NTA STILL GETS A NUMBER (owner ruling D44, 2026-09-15, on the D75
+no-eligibility-gate footing). An earlier draft NULLed any origin sending more
+than 20% of its riders outside the universe; that dropped precisely the
+neighbourhoods nearest the borough edge, which is a geography filter, not a
+quality control. The conditionality is DISCLOSED rather than enforced:
+`bike_od_outside_share` is stored on every address and BOTH card lines print it,
+always, so a reader can see how much of the flow the number does not cover and
+discount it themselves.
 
 RE-APPLY AFTER EVERY SCREEN RE-RUN
 ---------------------------------------------------------------------------
@@ -131,13 +137,6 @@ DEFAULT_WINDOW_MONTHS = 12
 #: -month, applied to the NTA-window cell; deliberately low, because the R2
 #: classifier has already sent thin docks to origin_type='unknown'.
 MIN_ORIGIN_TRIPS = 200
-
-#: Above this share of an NTA's outbound flow landing outside the measurable
-#: universe (see the module docstring), `bike_od_supplied_share` is NULL.
-#: Tightened from 0.5 to 0.2 after the red-team pass: at 0.5 a number could be
-#: published describing barely half of a neighbourhood's riders, and the half it
-#: describes is selected by geography (proximity to Queens), not by retail.
-MAX_OUTSIDE_UNIVERSE_SHARE = 0.2
 
 #: An NTA enters the measurable universe only with at least this many lot-frame
 #: addresses. PHANTOM NTAs are the reason: BX0401 carries ONE address and 728
@@ -501,7 +500,6 @@ def top_share_monthly_iqr(con, first: dt.date, last: dt.date,
 def supplied_share(flow_df: pd.DataFrame, density: pd.DataFrame,
                    thresholds: pd.DataFrame,
                    min_trips: int = MIN_ORIGIN_TRIPS,
-                   max_outside: float = MAX_OUTSIDE_UNIVERSE_SHARE,
                    ) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     """((nta_code, category, bike_od_supplied_share), per-origin frame, report).
 
@@ -510,20 +508,28 @@ def supplied_share(flow_df: pd.DataFrame, density: pd.DataFrame,
     above `thresholds`. Computed once per (origin NTA, category) and stamped on
     every address in the NTA (R3).
 
-    THREE WAYS TO BE NULL, none of them zero:
-      * the category has no threshold (nowhere open in the universe);
-      * the origin sends more than `max_outside` of its outbound flow outside the
-        measurable universe -- the number would describe a minority of its riders,
-        selected by geography;
-      * the origin's INSIDE-UNIVERSE outbound total is below `min_trips`. This is
-        the same floor `nta_measures` applies, and it has to be applied again
-        HERE: the floor there is on the origin's TOTAL flow (staying trips
-        included), so an NTA whose riders almost all stay could clear it with 20
-        outbound trips and publish a supplied_share read off twenty rides.
+    EVERY ORIGIN NTA IS REPORTED (owner ruling D44, 2026-09-15, on the D75
+    no-eligibility-gate footing). There is no cut on how much of a neighbourhood's
+    outbound flow left the measurable universe. An earlier draft NULLed an origin
+    above 20% outside; that was an eligibility gate wearing a quality label, and
+    it removed exactly the neighbourhoods nearest the borough edge -- a geography
+    filter, which is the thing D75 forbids. The conditionality is DISCLOSED
+    instead: `bike_od_outside_share` is stored per origin and BOTH card lines
+    print it, always.
+
+    TWO WAYS TO BE NULL, neither of them an eligibility gate, neither of them zero:
+      * the category has no threshold (nowhere open in the universe) -- nothing to
+        compare against;
+      * the origin's INSIDE-UNIVERSE outbound total is below `min_trips` -- no
+        denominator. This is not a quality cut on a measurable neighbourhood: it
+        is the absence of one. It has to be applied HERE as well as in
+        `nta_measures`, whose floor is on the origin's TOTAL flow (staying trips
+        included), so an NTA whose riders almost all stay could clear that with 20
+        outbound trips and publish a share read off twenty rides.
 
     The denominator is outbound trips landing INSIDE the measurable universe --
     see the module docstring for why, and the per-origin frame (returned second,
-    and stored as `bike_od_outside_share`) for how much was set aside.
+    and stored as `bike_od_outside_share`) for how much it excludes.
     """
     universe = set(density["nta_code"])
     out = flow_df[flow_df["destination_nta"] != flow_df["origin_nta"]]
@@ -540,8 +546,6 @@ def supplied_share(flow_df: pd.DataFrame, density: pd.DataFrame,
     outside["bike_od_outside_share"] = (
         1.0 - outside["trips_outbound_inside"]
         / outside["trips_outbound"].replace(0, np.nan))
-    too_far = set(outside.loc[outside["bike_od_outside_share"] > max_outside,
-                              "nta_code"])
     too_thin = set(outside.loc[outside["trips_outbound_inside"] < float(min_trips),
                                "nta_code"])
 
@@ -551,8 +555,8 @@ def supplied_share(flow_df: pd.DataFrame, density: pd.DataFrame,
         return (pd.DataFrame(columns=["nta_code", "category",
                                       "bike_od_supplied_share"]),
                 outside,
-                {"origins": 0, "rows": 0, "origins_dropped_outside_universe": 0,
-                 "origins_dropped_thin_outbound": 0})
+                {"origins": 0, "rows": 0, "origins_dropped_thin_outbound": 0,
+                 "min_outbound_trips": int(min_trips)})
     m["supplied_trips"] = np.where(
         m["poi_per_1k_units"] > m["threshold"], m["trips"], 0.0)
     g = (m.groupby(["origin_nta", "category"], as_index=False)
@@ -562,16 +566,24 @@ def supplied_share(flow_df: pd.DataFrame, density: pd.DataFrame,
     # A category with no median (nowhere open in the universe) is unmeasurable,
     # not "nothing is supplied": NaN, never 0.
     g.loc[g["threshold"].isna(), "bike_od_supplied_share"] = np.nan
-    g.loc[g["origin_nta"].isin(too_far | too_thin), "bike_od_supplied_share"] = np.nan
+    g.loc[g["origin_nta"].isin(too_thin), "bike_od_supplied_share"] = np.nan
     g = g.rename(columns={"origin_nta": "nta_code"})
     rep = {
         "origins": int(g["nta_code"].nunique()),
         "rows": len(g),
-        "origins_dropped_outside_universe": len(too_far),
-        "origins_dropped_thin_outbound": len(too_thin - too_far),
+        "origins_dropped_thin_outbound": len(too_thin),
         "min_outbound_trips": int(min_trips),
         "outbound_outside_universe_share": float(
             1.0 - inside["trips"].sum() / max(out["trips"].sum(), 1.0)),
+        # The DISTRIBUTION, not a count of exclusions: nothing is excluded for
+        # being far from the universe any more (D44), so what a reader needs is
+        # how conditional the typical and the worst-case number is.
+        "outside_share_p50": float(
+            outside["bike_od_outside_share"].median(skipna=True)),
+        "outside_share_p90": float(
+            outside["bike_od_outside_share"].quantile(0.9)),
+        "outside_share_max": float(
+            outside["bike_od_outside_share"].max()),
         "median_supplied_share": float(
             g["bike_od_supplied_share"].median(skipna=True))
         if len(g) else float("nan"),
@@ -812,6 +824,9 @@ def build_bike_od(con, boroughs: list[str] | None = None,
         "median_outside_share": float(
             outside["bike_od_outside_share"].median(skipna=True))
         if len(outside) else float("nan"),
+        "p90_outside_share": float(
+            outside["bike_od_outside_share"].quantile(0.9))
+        if len(outside) else float("nan"),
         # The pooled window is summer-weighted (August ~2.5x February), so the
         # top-share on a card is mostly a warm-weather reading. Report only.
         "top_share_monthly_iqr": top_share_monthly_iqr(con, first, last, nta),
@@ -846,8 +861,21 @@ def _isnull(v) -> bool:
     return v is None or (isinstance(v, float) and np.isnan(v))
 
 
+def _outside_clause(outside_share: float | None) -> str:
+    """The disclosure both card lines carry, ALWAYS (owner ruling D44). No origin
+    is dropped for sending its riders somewhere we cannot measure, so every card
+    has to say how much of the flow that was."""
+    if _isnull(outside_share):
+        return ("How much of that flow left the neighbourhoods we can measure is "
+                "not recorded for this run.")
+    return (f"{outside_share:.0%} of the riders who left went to a neighbourhood "
+            f"outside Manhattan and Brooklyn, or to one too small to measure "
+            f"supply in, and are not in the supply reading below.")
+
+
 def card_line(nta_code: str, top_nta: str | None, top_share: float | None,
               out_share: float | None, window: str | None = None,
+              outside_share: float | None = None,
               labels: dict[str, str] | None = None) -> str:
     """One sentence for the address card, plus the standing caveat.
 
@@ -883,7 +911,7 @@ def card_line(nta_code: str, top_nta: str | None, top_share: float | None,
     return (f"Where riders go{win}: {where}, and {out_share:.0%} leave "
             f"{here} altogether — both out of every non-round evening and "
             f"weekend trip from those docks, trips that stay included. "
-            f"{CARD_PREAMBLE}")
+            f"{_outside_clause(outside_share)} {CARD_PREAMBLE}")
 
 
 def category_card_line(nta_code: str, category: str,
@@ -895,8 +923,10 @@ def category_card_line(nta_code: str, category: str,
     The denominator is stated in the sentence (red-team fix): outbound trips
     landing in a Manhattan or Brooklyn neighbourhood whose supply can be
     measured. `outside_share` -- `bike_od_outside_share` on the address -- is the
-    rest, and it is quoted rather than hidden, because a conditional share that
-    does not name its condition reads as an unconditional one.
+    rest, and under owner ruling D44 it is ALWAYS quoted, never used to suppress
+    the row: a conditional share that does not name its condition reads as an
+    unconditional one, and a neighbourhood dropped for being near the borough
+    edge is an eligibility gate (D75).
     """
     labels = labels or {}
     here = labels.get(nta_code, nta_code)
@@ -904,7 +934,8 @@ def category_card_line(nta_code: str, category: str,
             else category)
     if _isnull(supplied):
         return (f"Whether {here}'s riders already reach a {name} elsewhere is "
-                f"not measured here. {CARD_PREAMBLE}")
+                f"not measured here. {_outside_clause(outside_share)} "
+                f"{CARD_PREAMBLE}")
     elsewhere = ("" if _isnull(outside_share)
                  else f" ({outside_share:.0%} went elsewhere)")
     return (f"{supplied:.0%} of the evening and weekend Citi Bike trips that "

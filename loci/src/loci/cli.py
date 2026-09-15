@@ -8760,11 +8760,15 @@ def citibike_od_measures(
             f"{100 * s['outbound_outside_universe_share']:.1f}% of outbound trips "
             f"land outside the measurable universe (fewer than "
             f"{report['universe_min_addresses']:,} lot addresses there, so supply "
-            f"density is an artefact) · {s['origins_dropped_outside_universe']} "
-            f"origin NTA(s) dropped for sending more than "
-            f"{100 * bod.MAX_OUTSIDE_UNIVERSE_SHARE:.0f}% of their riders there, "
-            f"{s['origins_dropped_thin_outbound']} more for fewer than "
-            f"{s['min_outbound_trips']:,} measurable outbound trips")
+            f"density is an artefact). Per origin NTA that share is "
+            f"[bold]{s['outside_share_p50']:.1%}[/] at the median, "
+            f"{s['outside_share_p90']:.1%} at the 90th, {s['outside_share_max']:.1%} "
+            f"at worst — reported, never a cut (owner ruling D44 on the D75 "
+            f"no-eligibility-gate footing), and stored as bike_od_outside_share so "
+            f"both card lines can print it. {s['origins_dropped_thin_outbound']} "
+            f"origin NTA(s) are NULL for having fewer than "
+            f"{s['min_outbound_trips']:,} measurable outbound trips — no "
+            f"denominator, which is not a gate.")
         iqr = report["top_share_monthly_iqr"]
         if iqr.get("months"):
             console.print(

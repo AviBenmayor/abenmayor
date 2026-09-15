@@ -310,23 +310,28 @@ def test_trips_to_a_phantom_nta_count_as_outside_the_universe(warehouse):
     o = outside.set_index("nta_code")["bike_od_outside_share"]
     assert o[A] == pytest.approx(60 / 660)
     s = cat.set_index(["nta_code", "category"])["bike_od_supplied_share"]
-    assert s[(A, "grocery")] == pytest.approx(1.0)     # still under the 20% bar
+    assert s[(A, "grocery")] == pytest.approx(1.0)
 
 
-def test_an_origin_over_the_outside_bar_is_null(warehouse):
-    """RED-TEAM FIX 2, second half: 0.2, not 0.5. 30% outside is already a number
-    about a selected majority."""
-    assert bo.MAX_OUTSIDE_UNIVERSE_SHARE == 0.2
+def test_a_mostly_outside_origin_is_reported_not_suppressed(warehouse):
+    """OWNER RULING D44 (2026-09-15), on the D75 no-eligibility-gate footing. An
+    earlier draft NULLed any origin sending more than 20% of its riders outside
+    the measurable universe. That dropped precisely the neighbourhoods nearest the
+    borough edge — a geography filter, not a quality control. The share is
+    reported and the conditionality is DISCLOSED instead."""
+    assert not hasattr(bo, "MAX_OUTSIDE_UNIVERSE_SHARE")
     _od(warehouse, [
-        (A, B, "2026-08-01", "weekday", "evening", "residential", 700, 0),
-        (A, P, "2026-08-01", "weekday", "evening", "residential", 300, 0),
+        (A, B, "2026-08-01", "weekday", "evening", "residential", 300, 0),
+        (A, P, "2026-08-01", "weekday", "evening", "residential", 700, 0),
     ])
     cat, outside, rep = bo.supplied_share(*_parts(warehouse))
     assert outside.set_index("nta_code").loc[A, "bike_od_outside_share"] == \
-        pytest.approx(0.3)
+        pytest.approx(0.7)
     s = cat.set_index(["nta_code", "category"])["bike_od_supplied_share"]
-    assert np.isnan(s[(A, "grocery")])
-    assert rep["origins_dropped_outside_universe"] == 1
+    assert s[(A, "grocery")] == pytest.approx(1.0)   # of the 300 we can measure
+    assert "origins_dropped_outside_universe" not in rep
+    assert rep["outside_share_p50"] == pytest.approx(0.7)
+    assert rep["outside_share_max"] == pytest.approx(0.7)
 
 
 def test_the_trip_floor_is_applied_to_the_outbound_subset_too(warehouse):
@@ -342,6 +347,7 @@ def test_the_trip_floor_is_applied_to_the_outbound_subset_too(warehouse):
     s = cat.set_index(["nta_code", "category"])["bike_od_supplied_share"]
     assert np.isnan(s[(C, "grocery")])
     assert rep["origins_dropped_thin_outbound"] == 1
+    # ... and that is the ONLY suppression left: no denominator, not a gate.
     # and it passes once the floor is low enough to be honest about 50 trips
     cat2, _, _ = bo.supplied_share(*_parts(warehouse, min_trips=10))
     s2 = cat2.set_index(["nta_code", "category"])["bike_od_supplied_share"]
@@ -495,6 +501,20 @@ def test_the_card_line_names_its_denominator(loaded):
     quoting both without saying so invites a reader to subtract them."""
     line = bo.card_line(A, B, 0.6, 0.6, labels={A: "Bushwick", B: "Williamsburg"})
     assert "trips that stay included" in line
+
+
+def test_both_card_lines_always_print_the_outside_share(loaded):
+    """OWNER RULING D44. Nothing is suppressed for leaving the measurable
+    universe, so every card states how much of the flow did."""
+    line = bo.card_line(A, B, 0.6, 0.6, outside_share=0.34,
+                        labels={A: "Bushwick", B: "Williamsburg"})
+    assert "34% of the riders who left" in line
+    assert "not in the supply reading below" in line
+    cat = bo.category_card_line(A, "grocery", 0.9, outside_share=0.34)
+    assert "34% went elsewhere" in cat
+    # and when it is unknown the card says so rather than staying silent
+    assert "not recorded" in bo.card_line(A, B, 0.6, 0.6)
+    assert "not recorded" in bo.category_card_line(A, "grocery", None)
 
 
 def test_the_card_line_for_a_null_states_the_absence_rather_than_a_zero():
