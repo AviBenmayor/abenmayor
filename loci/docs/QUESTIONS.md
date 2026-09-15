@@ -1,6 +1,23 @@
 # Loci — Research Questions
 
-**The build compass.** Two lists, kept separate:
+**The build compass.** Every question below carries exactly one lifecycle state:
+
+- **`open`** — no answer yet, or the answer is still partial/in-progress. Full content kept.
+- **`answered`** — the question has a real answer; cites the CHECKPOINT decision (D-id),
+  commit, or ticket that answered it. Reduced to title + the answering citation — the
+  reasoning that produced the answer stays in CHECKPOINT's decision log / commit history,
+  not duplicated here.
+- **`dropped`** — out of scope per the SCOPE CORRECTION section of CHECKPOINT.md, or made
+  moot by a later decision. Reduced to title + what dropped it.
+
+This is a restructure only (2026-09-15): every entry below is unchanged in substance from
+the previous version of this file, just re-sectioned by state and — where an entry's own
+prose already recorded a clear answer or ruling that its `Status:` field hadn't caught up
+to — reclassified to match. `loci check-questions` still parses every `### ID — text`
+block wherever it lives in the file, so IDs and anchors are untouched: existing links keep
+working.
+
+Two lists live inside **Open**, kept separate as before:
 
 - **Part A — questions the project answers.** Tiered by how much each can honestly claim:
   Measurement → Descriptive → Explanatory → Predictive → Causal. The charter's three
@@ -18,7 +35,20 @@ exists in `src/loci/tickets.py`, every epic cited in *Unblocks* exists, every st
 vocabulary, and each of P1, P2, P3 is claimed by at least one question. Run it with
 `make check`.
 
-**Status vocabulary:** `open` · `in-progress` · `answered` · `deferred` · `dropped`.
+**Status vocabulary:** the validator still accepts the legacy five-value set
+(`open` · `in-progress` · `answered` · `deferred` · `dropped`) for compatibility, but as of
+this restructuring every entry in this file uses only the three states above — `in-progress`
+entries were folded into `open` (still active, just not finished) and `deferred` entries
+(C1–C3, Tier C · Causal, parked at Phase 5) were folded into `open` too, since Phase 5 is a
+real future phase, not an abandonment. See the Dropped section's note for the judgment calls
+left open on purpose.
+
+---
+
+## Open
+
+Full content, unchanged from the previous version of this file, minus the entries moved
+to Answered below.
 
 ## Stopping rule
 
@@ -40,7 +70,7 @@ These gate every tier below. A "no" here does not narrow a claim; it removes the
 claim stands on.
 
 ### M1 — Is the measured retail gap real, or a POI-coverage artifact?
-- **Status:** in-progress
+- **Status:** open
 - **Prediction:** P3
 - **Answered by:** `Design stratified coverage validation sample` · `Run Google Places ground-truth enumeration on sampled gap addresses` · `DOHMH-anchored undercount calibration (address level)` · `Coverage-bias chart` · `USDA SNAP retailer adapter (ANCHOR for grocery/convenience)`
 - **Fails if:** the undercount rate by income decile is materially higher in hexes flagged as underserved than in their well-served peers.
@@ -61,7 +91,7 @@ claim stands on.
 - **Current answer:** —
 
 ### M4 — Do Overture, Foursquare and OSM agree on presence, and where do they disagree?
-- **Status:** in-progress
+- **Status:** open
 - **Prediction:** —
 - **Answered by:** `Cross-source POI dedup / entity resolution` · `Foursquare OS Places adapter`
 - **Fails if:** disagreement is concentrated by geography or by category (laundromats, salons) rather than spread randomly — then source choice is itself a bias.
@@ -74,13 +104,6 @@ claim stands on.
 - **Fails if:** propagated MOEs on hex median income are wide enough that the income control cannot distinguish neighbouring hexes.
 - **Current answer:** —
 
-### M6 — For each loci category, are Google's included types narrower or wider than loci's definition?
-- **Status:** open
-- **Prediction:** —
-- **Answered by:** `Google type-map audit per category`
-- **Fails if:** n/a — measurement. But any Google-validation survival rate is uninterpretable until this is aligned; D29 already found hardware narrower (excludes home_improvement_store) and fitness wider (gym/fitness_center sweeps in hotel/building gyms loci excludes) by inspection, not by a systematic audit.
-- **Current answer:** Answered 2026-09-08 (GTM-105, D50). Both, per category: wider for restaurant/bar/grocery/convenience/hair/nails (any-type matching, now fixed to primary type), narrower for cafe_bakery (Google lacked donut/bagel/ice-cream/juice/dessert/tea that loci's own DOHMH keywords include) and fitness (missing yoga/sports_club). Structural: the 20-result cap right-censored counts (clinic 87.6% of sampled hexes, fitness 15.3%, hardware 0%), so D29's clinic and fitness numbers are not usable; hardware's survive. clinic and tailor_repair have no Google equivalent. Type histograms are now persisted per call, so the next run answers this empirically. Remaining open here: none — follow-ups are M8 (radius) and the anchor contradictions logged in CHECKPOINT next action 7.
-
 ### M7 — What anchor source would establish a true fitness coverage hole?
 - **Status:** open
 - **Prediction:** —
@@ -88,15 +111,8 @@ claim stands on.
 - **Fails if:** n/a — measurement/sourcing question. Needed because D29 found a real ~21% [10–37] true-coverage-hole rate for fitness after removing geometry artifacts, and OSM/Overture/Foursquare are the only sources feeding that category today — none is a near-census the way DOHMH is for food or SNAP is for grocery.
 - **Current answer:** Open. Candidates to evaluate: NYS business registry, DOHMH (if it licenses fitness facilities), state gym/health-club licensing. None yet verified for NYC coverage or access.
 
-### M8 — Should the validator compare against network distance rather than a straight-line radius?
-- **Status:** open
-- **Prediction:** —
-- **Answered by:** `Validator: network distance or circuity correction`
-- **Fails if:** n/a — measurement. D29's GEOMETRY-artifact category exists precisely because the validator's straight-line radius and the screen's network-distance threshold disagree; a circuity correction or a direct network-distance comparison would remove the need to split results after the fact.
-- **Current answer:** Answered 2026-09-08 (D53): circuity correction, not network re-measurement — Google Nearby Search only accepts a disc, so the fix is to make loci's disc match the network-800 set. Circuity measured on analysis.hex_poi_distance at 1.233 (borough spread 1.226–1.279; the four dense boroughs within 1%), giving 649 m; radius is config in reach_tiers.yaml, derived in code, stamped per row, and never pooled across radii. Closed.
-
 ### M9 — How do Loci's deduped POI counts compare with Census ZIP Business Patterns establishment counts, per category and ZIP?
-- **Status:** in-progress
+- **Status:** open
 - **Prediction:** —
 - **Answered by:** (not ticketed yet — Linear cleanup 2026-09-05 adds one) — CLI subcommands ingest-zbp and zbp-compare; table analysis.zip_coverage_check; CHECKPOINT D40
 - **Fails if:** ratios are far above 1 in categories that are NOT sole-proprietor-heavy — that would mean the POI feeds overcount supply (stale or duplicate records), which tightens every reach value and hides gaps.
@@ -104,17 +120,10 @@ claim stands on.
  UPDATE (per-source run, CHECKPOINT D47): the overcount is mostly uncorroborated single-source records — dropping them gives restaurant 1.09, cafe 1.12, hardware 0.86, hair 0.65, but bar 1.54, fitness 1.74, nails 1.77 remain; fitness and hardware have NO license anchor (Overture+Foursquare only), so the "license-anchored" framing above applies to restaurant/cafe/hair/nails/bar only. Staleness untestable for DOHMH and DOS because the adapters do not fetch date fields; SLA 0% expired. Residual hypothesis: dedup misses (registry name vs storefront name).
 
 ### M10 — Which MN+BK addresses have laundry in the basement or in unit, and from what source?
-- **Status:** in-progress
+- **Status:** open
 - **Answered by:** (not ticketed) — loci ingest-ll84, loci ingest-listings pilot, DCWP laundry anchor (D55, owner request 2026-09-08)
 - **Why it matters:** An address with in-building laundry does not experience a laundromat gap, so the laundry category's supply is under-counted wherever such buildings cluster; laundry currently owns the top of the ratio ranking.
 - **Current answer:** None; research agent probing DOB certificates of occupancy, DOB job filings, HPD registrations, and listing-site amenity data.
-
-### M11 — What is the co-location structure of the 15 categories net of density, and how should 'expected presence given neighbors' enter the grade?
-- **Status:** answered
-- **Answered by:** (not ticketed) — scratchpad colocation.md, coloc_*.csv, session 13 (2026-09-08)
-- **Tag:** *method / grading*
-- **Why it matters:** Each category's grade needs to account for which neighbors' presence should be predictive of this one. Partial correlations sorted by R² inform which categories are supply-independent (stand-alone risk) vs demand-dependent (predictable from peers).
-- **Current answer:** Manhattan is saturated (8/15 categories at 100% presence), structure is identified off Brooklyn; hair↔nails partial r 0.65; food block (restaurant/cafe/bodega/bar); hardware↔grocery 0.50; bank↔tailor pair alone; laundry↔bodega/cafe; zero significant negative pairs. The five categories with most absences (laundry, bar, tailor, bank, bodega) are worst-predicted (pseudo-R² 0.18–0.39) — their absence is not conspicuous given neighbors; hardware (R² 0.53) and cafe (0.39) best-conditioned. Use as a grade input (expected presence), not a finder; re-run once the supply set is settled.
 
 ### M12 — Does an 800 m or distance-decay transit variable stop being binary in Brooklyn, and does it beat homes_400m at the quiet end of the distribution? · *graduation test for D76*
 - **Status:** open
@@ -129,20 +138,6 @@ claim stands on.
 - **Why it matters:** D88's retrodiction found Foursquare's unfiltered closure re-pull ascertains only ~3% of the true two-year food-service closure rate, and categorically non-random (a bar closing is announced, a tailor closing is not). Without an ascertainment model per category, no hazard curve fitted on any current source can be trusted, and the business-level survival question stays permanently untested rather than answered null.
 - **Fails if:** ascertainment cannot be estimated per category against the LL157 go-dark base rate (8.4% strict / 28% with attrition) and DOHMH absence with usable precision, and Google Places Insights (GTM-159) does not materially improve coverage — in which case business-level survival stays out of reach until a new source lands.
 - **Current answer:** Open, ticketed GTM-161.
-
-### M14 — Should fitness's Google type map drop sports_club and marina, the type-map defect the GTM-48 coverage validation found?
-- **Status:** in-progress
-- **Answered by:** `Fitness type map: remove sports_club and marina from GOOGLE_TYPES (validator-only)`
-- **Why it matters:** M6/D50's Google type map for fitness is validator-only — it decides what GTM-48 counts as a fitness hit, not loci's own fitness category or its POI adapters. CHECKPOINT D90's coverage-validation run found fitness's apparent 35.6% true-coverage-hole rate was entirely sports_club and marina returns (yacht clubs, tennis clubs), 0 of 180 sampled Google hits actually a gym — a type-map defect inherited from D50, not a real hole.
-- **Fails if:** n/a — measurement/validator fix, not a claim to validate.
-- **Current answer:** Ruled 2026-09-14 (owner, "yes to all 4," see CHECKPOINT D90): drop sports_club and marina from fitness's GOOGLE_TYPES. Implementation in progress (GTM-173); once landed, fitness's true-coverage-hole rate must be re-measured on the fixed type map rather than quoting the 35.6% figure.
-
-### M15 — Should cross-category name+distance dedup run before per-category dedup?
-- **Status:** answered
-- **Answered by:** `Co-located POIs: tri-state poi_is_open predicate, analysis.poi_colocation view, closure gate on the supply set (owner rule 2026-09-14)`, `Cross-category name+distance dedup before per-category dedup (Lion's Milk / GTM-153 proper)`
-- **Why it matters:** extends M4 — per-category dedup cannot catch a single storefront filed under two different categories by two sources (Lion's Milk: DOHMH restaurant vs Overture cafe_bakery, 11 m apart, both reading open — flagged inline in D91 as GTM-153), so every count-based measure downstream (supply ratio, gap score, the D90 coverage validation, the D91/D93 revenue and carrying-capacity models) can double-count a business that crosses a category boundary.
-- **Fails if:** n/a — data-quality fix, not a claim to validate; but a similarity threshold loose enough to merge genuinely mixed-use sites (a bakery-café that legitimately sells restaurant-grade meals) would wrongly collapse real supply.
-- **Current answer:** Ruled 2026-09-14 (owner, "yes to all 4," see CHECKPOINT D90) and shipped 2026-09-15 (CHECKPOINT D101, commit 13f0fec): one global cross-source union-find; different-category pairs merge iff their distinctive name cores match and trade words aren't disjoint within 40 m (CATEGORY_PRECEDENCE=finer_food, DOHMH "restaurant" yields to a finer aggregator category). 12,928 merges, clusters 227,548 → 219,133 (−3.7%); audited precision 0.970 [0.915, 0.990] on a fresh 100-pair sample (recall ~0.84, precision bought deliberately). Lion's Milk is now one cluster; ledger keys re-minted by abenmayor-88's migration (sql/035).
 
 ### Tier D · Descriptive — what is where
 
@@ -161,7 +156,7 @@ claim stands on.
 - **Current answer:** —
 
 ### D3 — How sensitive is the completeness picture to walk threshold and tier weights?
-- **Status:** in-progress
+- **Status:** open
 - **Prediction:** —
 - **Answered by:** `Run 5/10/15-minute threshold sweep` · `Tier-weight sensitivity analysis`
 - **Fails if:** the bottom decile of hexes reshuffles substantially between 5/10/15 minutes or across plausible reweightings — then "underserved" is an artifact of parameter choice.
@@ -192,36 +187,12 @@ claim stands on.
 - **Fails if:** n/a — descriptive. This is the thesis stated as one image.
 - **Current answer:** —
 
-### D5 — How far apart do same-type businesses sit, and how far is the nearest missing business from a gap hex?
-- **Status:** answered
-- **Prediction:** —
-- **Answered by:** `Spacing and nearest-missing distance diagnostics` · `Cross-source POI dedup / entity resolution`
-- **Fails if:** n/a — descriptive. Bears on what a "gap" means: a hex 900 m from a hardware store is a marginal ten-minute gap; 3 km is a hole.
-- **Current answer:** (2026-09-02, **walk-network metres**, five boroughs, canonical POIs, same graph as `hex_access`) **Same-type spacing is tight.** Median network distance to the nearest other business of the same type: 0 m for nails and restaurants (same address), 13–32 m for bars, cafes, salons, groceries, clinics, gyms, 65–113 m for banks, pharmacies, bodegas, laundromats, ~200 m for childcare and hardware. Share with no competitor within a 10-minute walk: hardware 11%, tailors 16%, childcare 6%, everything else under 4%. **Gap hexes are a 10-to-17-minute band, not holes.** The nearest missing business is a median 860–1,030 m on foot from the hex (p90 1,100–1,400 m); only 26 of 726 hexes are beyond 1.5 km and none beyond 4 km. Run `loci spacing` (2 min). Straight-line numbers quoted earlier were superseded; D16 records the distance bug found on the way. Dedup lead in H-D11.
-
-### D6 — What is the empirical distribution of hex-to-nearest-business network distance per category, and should each category's "missing" threshold be set from it?
-- **Status:** answered
-- **Prediction:** —
-- **Answered by:** `Redefine 'missing' via per-category reach (monotonicity fix)`
-- **Fails if:** n/a — descriptive/method question. **Finding (2026-09-03, owner-identified):** the current "missing" rule violates monotonicity. A hex is a gap for category c at window w iff (no c within w) AND (c is present within w for ≥80% of walkable hexes). Anything absent within 800m is absent within 400m, so a gap at 10 min must survive at 5 min — but D3's Manhattan sweep (D31) shows hardware gaps at 10 min vanishing at 5 min, because hardware's 400m prevalence drops to 51% and the 80% bar simply stops expecting it. The rule fuses two questions that must be separated: (a) how far people normally go for category c — a property of the category; (b) whether this hex is anomalous relative to that norm — a property of the hex. Reusing one window for both means the window silently decides which categories are eligible to be missing, so the 10-min and 5-min lists are two different screens, not two views of one.
-  **Definition (supersedes the single citywide window):** each category gets a fixed REACH, set once from revealed spacing (e.g. the distance within which ≥80% of populated hexes already have one — the 80% bar survives only as the quantile that sets reach, never again as an eligibility filter). A hex is a gap for c iff its nearest c is beyond reach(c); no global window remains. The "walkable" eligibility gate (currently ≥12/15 categories present within the window) gets the same treatment: walkable iff within reach of most categories, each at its own reach.
-  **Acceptance test — MONOTONICITY:** tightening any distance parameter may only add gaps, never remove them. The current screen fails this; the reach-based redefinition must pass it as a unit test.
-  **Caveat to carry:** revealed spacing reflects historical supply, not demand — a category the whole city under-supplies will look like it "naturally" spaces wide and its gaps vanish. Contrarian review required before trusting the reach values. See D3 (the Manhattan sweep that exposed this), D7 (density-class scaling of reach), CHECKPOINT D33.
-- **Current answer:** Built and verified 2026-09-05 (CHECKPOINT D34): fixed per-category reach, `loci gaps --rule reach`, monotone on real data. But reach = p80 of the hex-to-nearest distribution fixes the gap rate at ~20% per category by construction, so per-category counts are flat and the exactly-one list is a quantile artifact (p80∩p90 = 95/468). The architecture stands; the calibration statistic and the lead rule do not. Continues as D8.
-
 ### D7 — Should thresholds vary by density class or transit/car-dependence, not just by category?
 - **Status:** open
 - **Prediction:** —
 - **Answered by:** `Density-class / mode-dependent thresholds`
 - **Fails if:** n/a — descriptive/method question. Lower Manhattan and car-dependent outer-borough areas should not share one walk window. Cheap proxy: scale the threshold by residential density class (no new data needed). Honest version: ACS vehicle ownership per tract (needs an ACS vehicle-ownership ingest; key is set). Note the interaction with D6: threshold(category, density_class) is one parameterization, not two independent sweeps — keep it small to avoid overfitting a matrix.
 - **Current answer:** Open; still needs the ACS vehicle-ownership ingest for the mode/car-dependence threshold (key is set). 2026-09-05 (CHECKPOINT D43): mature Manhattan's complete areas reveal amenity distances 3–7× tighter than the adopted citywide tiers — a single reach is either too loose for Manhattan or too tight for Queens. Proposed: reach(c) per density class from complete addresses in that class, floored by reach_tiers.yaml's cited values. See docs/market_reach_manhattan.md.
-
-### D8 — What statistic sets reach(c) without fixing the per-category gap rate, and how should the lead category be ranked?
-- **Status:** answered
-- **Prediction:** —
-- **Answered by:** `Redefine 'missing' via per-category reach (monotonicity fix)`
-- **Fails if:** every candidate calibration statistic still yields flat per-category gap counts, or the exactly-one list overlaps <80% across reasonable calibration variants — in which case "the one missing business" is not identifiable from spacing alone and needs an external norm (walk-time tiers per category, D7 density classes). Candidates to compare: (a) median same-type nearest-neighbour spacing; (b) external per-category walk-time norms (H-L3, H-L4); (c) p80 restricted to the gated universe (shrinks reach 8–25%). Acceptance battery is in CHECKPOINT D34: monotonicity, non-flat category counts, ≥80% list stability, lead excess ≥100 m, coverage split on the lowest POI-density decile. Also carry: corr(n_missing, log local POI count) = −0.67 — any calibration must be checked against M1's coverage question before a gap count is quoted.
-- **Current answer:** Compared 2026-09-05 (CHECKPOINT D35). Same-type store-to-store spacing measures clustering (median 0–218 m) and is unusable; p80 on any universe pins the gap rate (CV 0.003–0.063). External walk-time tiers (400/800/1,200 m by trip frequency) are the only calibration whose per-category counts carry information (CV 1.07) and the most stable under ±10% perturbation (Jaccard 0.54); lead by max nearest/reach ratio. Not adopted: the tier assignment is now the load-bearing judgment and must be pinned to H-L3/H-L4 or to conveniences.yaml's owner norms. The −0.6 to −0.7 correlation with local POI density survives every calibration — that is M1, not D8. Address-level re-run 2026-09-05 (CHECKPOINT D39) confirms: external tiers are the only non-tautological calibration, the tier assignment is load-bearing, and the exactly-one list is unstable under every calibration — publish a continuous ranking, not a binary list. The eligibility gate must be reach-independent or monotonicity fails. Tier sources researched 2026-09-05: 4/15 categories have a citable walk threshold (grocery 800 m — USDA FARA 0.5 mi urban, NYC FRESH, Portland 20-min; pharmacy 800 m — Guadamuz/Qato 2021 low-income/low-vehicle threshold; restaurant and cafe_bakery 400 m — Walk Score full-credit radius), 3 are analogs (convenience 400, bar 400 weak, fitness 1200 vs CDC's 1 mi), 8 have no walk-scale literature (laundry, hair_barber, nails_beauty, tailor_repair, childcare, clinic, bank, hardware — clinic and bank standards are drive-based). Literature runs ~25% wider than conveniences.yaml where both exist. Walk Score uses continuous decay, not tiers. Proposed table: src/loci/reach_tiers.yaml; sources: docs/reach_sources.md. Recommendation pending owner: cited values where they exist, owner norms elsewhere, continuous ranking. ADOPTED 2026-09-05 (CHECKPOINT D41): reach_tiers.yaml (cited where available, owner norms elsewhere) + continuous max nearest/reach ranking; tier edges set only the flag, not the order. Shipped at address level 2026-09-05 (CHECKPOINT D44); ranking is dominated by tailor_repair and laundry, so a lead-viability rule is the next decision.
 
 ### D9 — Is a count/distance-based gap flag missing quality gaps that a size or diversity measure would catch?
 - **Status:** open
@@ -237,7 +208,7 @@ claim stands on.
 - **Current answer:** None. Session-13 description on MN+BK and a data-scientist proposal are in progress; contrarian to attack whatever the proposal picks.
 
 ### D11 — Which supply set is real: all POIs, corroborated-only (≥2 sources), or active-licensed?
-- **Status:** in-progress
+- **Status:** open
 - **Answered by:** (not ticketed yet) — D52 supply-set principle: loci anchor-coverage, loci zbp-compare --supply-sets, view analysis.poi_supply (2026-09-08)
 - **Why it matters:** The contrarian's re-run showed the act band moves 6× and rank-correlates at 0.19 between the all-POI and corroborated-only sets; nothing else in the grade matters until this is settled.
 - **Current answer:** None; D36/D47 plumbing in progress (fetch DOHMH/NYS DOS date fields, active-establishment filter).
@@ -262,34 +233,6 @@ claim stands on.
 - **Why it matters:** anchor qualifies for the wrong reason; PRINCIPLED nails still 3.74× ZBP, flagged OVER; what to do about it?
 - **Current answer:** None.
 
-### D15 — Should `age_fit` extend to pharmacy and childcare, the two categories that also passed the CEX survey gate and whose supply-revealed placebo b(w18) signs are the OPPOSITE of bar's (−0.846 and −0.574 against +1.256)?
-- **Status:** open
-- **Answered by:** (not ticketed)
-- **Fails if:** either category's Brooklyn-only Conley CI on its own high-vs-low age contrast includes 1.0, or its dispersion ratio falls below 1 — the same F2/F3 gate `bar` had to clear, applied without relaxation because two independent sources agreeing on a sign is corroboration, not a licence to skip the gate.
-- **Unblocks:** E2 · Access Engine
-- **Current answer:** — (D64→D65→D66→D69: `childcare` SHIPS — the floor-anchor amendment to D52 (`anchor_is_floor: true`) restored `in_principled` 2,657 → 6,066 and the re-fit passes on its own regressor at `b(under_18_share)` +2.744 pooled (t +6.15), Brooklyn contrast 2.353 [1.662, 3.330], applied to 281,839 rows with Borough Park 2.306 ± 0.811 > East Village 0.718 ± 0.120. `pharmacy` is REFUSED and un-applied: F2 now also requires the primary demand regressor's own Brooklyn CI to exclude zero with the stated sign, and `b(age_65_plus_share)` is +0.396 (Conley se 0.284, t +1.39, CI [−0.161, +0.954]) — the D66 contrast was five-sixths "fewer 18–34s". Fix is the NYS Board of Pharmacy registry, not a relaxed gate.)
-
-### D16 — Does a category have headroom (room for more of the same type) given current plus incoming residents, and does headroom predict entry?
-- **Status:** answered
-- **Prediction:** —
-- **Answered by:** `Per-category clustering-vs-saturation coefficient for the grade (from the headroom backtest)`
-- **Fails if:** n/a — answered negatively for headroom-as-forecast.
-- **Current answer:** Headroom has no predictive skill. Bars, cafés and restaurants cluster rather than saturate; ZIPs above the norm added MORE, not less. For chore categories (laundry, grocery, pharmacy, hair), the regime is demand÷incumbents and the pipeline adds directly. For social categories, the cap is spend per resident by age/income, not headcount. Greenpoint illustrates: read "full" on bars in 2013, added the most in 2023. Headroom ships as a descriptive ratio with interval, never a forecast. Per-category clustering-vs-saturation coefficient ticketed for the grade design (GTM-138). 2026-09-11 (CHECKPOINT D70): the direct per-category test supersedes the clustering half — nothing clusters at ZIP grain (cafés fail the cross-category placebo, bars fail significance); eight chore categories saturate (childcare, clinic, laundry, grocery, tailor, fitness, nails, bank); the rest show no signal and are scored on residents only. Shipped as src/loci/model/density_elasticity.yaml. 2026-09-11 (CHECKPOINT D73): supply per 1,000 homes vs the MN+BK baseline on the principled set is now the ranking statistic (`loci supply-ratio`); in the Gowanus core pharmacy 0.00×, convenience 0.40×, hardware 0.72× are thin and laundry 0.94× is normal — the laundry lead was a gap-screen selection artifact.
-
-### D17 — Should the eligibility gate be POI-free (PLUTO retail floor area within 800 m) rather than ≥12-of-15 categories present within 800 m of the current supply set?
-- **Status:** answered
-- **Answered by:** (not ticketed yet)
-- **Fails if:** on an NTA-level 50/50 holdout the built-form gate's AUC against DOF storefront density does not exceed the incumbent's with a Conley/NTA-clustered CI excluding zero, or the seeded 10% supply-perturbation leakage is not materially below the incumbent's 243 addresses.
-- **Current answer:** — (gate removed by owner ruling D75, 2026-09-13; the built-form gate question is moot for eligibility and survives only as a possible ranking feature.)
-- **Unblocks:** E2 · Access Engine
-
-### D18 — Should clusters be ranked by capped units or by mean gap_score?
-- **Status:** open
-- **Answered by:** (not ticketed yet)
-- **Fails if:** the two rankings agree on the top-50 (Jaccard ≥ 0.8) so the choice is immaterial.
-- **Current answer:** Settled by owner ruling 2026-09-13 (D83) — clusters rank by `cluster_density_400m` (the `units_capped`-weighted median of members' `homes_400m ÷ walkshed_km2_400m`, walk-shed = convex hull of the 400 m reachable nodes), with Σ`units_capped` as the tiebreak and still displayed; `--rank-by units` keeps the old order selectable, `gap_score` and the gap set are untouched; open: the minimum member count (9 of the top 50 are single addresses; `--min-addresses` exists, default 1).
-- **Unblocks:** E4 · Validation and Artifact
-
 ### D19 — Should `chains.loci_category` feed the `loci recommend` card as a "brand X opening nearby" line, and is that context or evidence?
 - **Status:** open
 - **Answered by:** (not ticketed) — GTM-148
@@ -297,26 +240,12 @@ claim stands on.
 - **Fails if:** the line is added as a load-bearing grade section before the chains watchlist has a growth measure (a snapshot delta, per D77) to point to — a raw brand-count with no trend is exactly the "context, not evidence" mistake D76 was written to prevent.
 - **Current answer:** Open; decide only after the 2026-10 chains snapshot exists (D77 next action).
 
-### D20 — Can site revenue be predicted from public data well enough to grade the economics of a recommendation?
-- **Status:** answered
-- **Prediction:** —
-- **Answered by:** Site-revenue model v0 (D81, GTM-150): CEX spend pool × fitted capture share, leakage calibrated to Economic Census 2022 county receipts, gated by a leave-one-ZIP-out backtest and cross-category placebo.
-- **Fails if:** —
-- **Current answer:** Restaurant alone passes the gate — ρ_oos 0.763, R² 0.577, β 0.50, γ −0.25 (agglomerative, 65 of 73 folds stable), placebo pass — and grades C on the recommendation card ("modelled, uncalibrated to local P&Ls"). Nine other categories honestly not modelled: café/grocery/hair/nails/pharmacy beat baselines but fail placebo (commercial intensity proxy); laundry/convenience/bar fail baselines; fitness too sparse. Gowanus core restaurant revenue p25/p50/p75 $1.08M / $1.67M / $2.66M (1.81× Kings county average); rent ceiling $11.2k/mo vs one local comp $7.3k/mo (1.53×). Caveats: county anchors blur Park Slope with Gowanus; CEX quintiles are national; the MN+BK-only universe drops edge-shed households; λ (leakage) is right by construction with no out-of-sample test; backtest target is establishment count, a revenue proxy only if per-employee revenue is flat within category; a model output is never an operator forecast, and C is the highest grade a modelled category can earn — real P&Ls are the only path to B.
-
 ### D21 — Should `poi_is_open` gain a "stale" state for a DOHMH record whose last inspection is well beyond a fresher co-located record's?
 - **Status:** open
 - **Answered by:** `poi_is_open: add a 'stale' state for inspection-gap-beside-fresh co-located records`
 - **Why it matters:** the co-location closure gate (commit a67f03e, `analysis.poi_colocation`) built `poi_is_open` as a tri-state predicate (open / closed / unresolved) but has no way to flag a record that is merely stale: Okozushi at 376 Graham was last inspected 384 days ago and still reads "open" under the current predicate, sitting beside a co-located record with a much fresher inspection. D79 forbids treating absence-as-closure, so a plain "no recent inspection → closed" rule is exactly the mistake that decision exists to prevent — but an aging gap next to a fresher neighbor is a weaker, different signal than either open or closed, and today it is silently folded into "open."
 - **Fails if:** n/a — data-quality/method question; but a stale-age threshold set without reference to a co-located comparator would reintroduce the absence-as-closure mistake D79 already rejected.
 - **Current answer:** Open. Not part of the 2026-09-14 "yes to all 4" ruling (CHECKPOINT D90).
-
-### D22 — What is the numeric Wilson-upper coverage-grade ladder (G9) that replaces presence-only grade A?
-- **Status:** in-progress
-- **Answered by:** `Coverage grade G9: numeric Wilson-upper ladder replacing presence-only grade A`
-- **Why it matters:** GTM-112's category-expansion fail-closed checklist (commit 766d9a2) found gate G9 has no numeric threshold — a category's coverage grade reads A on bare presence with no test of how confident that presence is.
-- **Fails if:** n/a — method/grading question; but a ladder that ignores per-category sample size would over- or under-state confidence exactly where the D90 statistician review found the first coverage-validation pass had made that mistake (row-level, not stratum-level, inference).
-- **Current answer:** Ruled 2026-09-14 (owner, "yes to all 4," see CHECKPOINT D90): adopt the Wilson-upper ladder — coverage-hole rate's Wilson upper bound ≤10% → A, ≤25% → B, else → C. Applied to the D90 rates this grades grocery and hardware B and hair_barber, tailor_repair and clinic C, everything else A. Implementation in progress (GTM-174).
 
 ### D23 — Are the bank/hardware/clinic anchor NAICS-vs-adapter contradictions (Next-actions item 21) resolved?
 - **Status:** open
@@ -352,13 +281,6 @@ claim stands on.
 - **Why it matters:** the shipped D101 dedup rule audited at 0.970 [0.915, 0.990] precision on a fresh 100-pair sample, meaning roughly 390 of its 12,928 merges are estimated wrong. The residual failure mode named during the audit is one brand operating two nearby, genuinely separate storefronts under names that share a core (e.g. "Saraghina Bakery" vs "Saraghina") — the name-core-equality rule cannot distinguish a second location of the same brand from one business double-counted across sources, because both present as "the same distinctive name within 40 m."
 - **Fails if:** n/a — data-quality/method question; but a brand-suffix rule loose enough to separate "Saraghina Bakery" from "Saraghina" without reintroducing the cross-category duplicates D101 was built to fix would need its own precision audit before shipping.
 - **Current answer:** Open. Not part of the 2026-09-14/15 dedup ruling — recorded as a residual worth a look, not decided.
-
-### D28 — Should a system-wide zero-ridership day (2026-02-23) stay in the per-weekday divisor?
-- **Status:** answered
-- **Answered by:** (not ticketed) — CHECKPOINT D102
-- **Why it matters:** Citi Bike phase 1's completeness check (D102, commit ac914da) found 2026-02-23 reads a true system-wide zero across every station (a storm), distinct from a truncated file — the code currently keeps it in the per-weekday divisor as an interior outage day rather than excluding it, which understates every weekday-mean measure built from that month by one day's worth of real (zero) activity.
-- **Fails if:** n/a — data-treatment/method question; but silently keeping or silently dropping it without a stated rule would make the choice invisible to anyone reading a downstream weekday-mean number.
-- **Current answer:** Answered 2026-09-15 (owner, D108 addendum): stays in the divisor.
 
 ### Tier X · Explanatory — conditional structure, no temporal claim
 
@@ -441,27 +363,6 @@ claim stands on.
 
 ### Tier T · Predictive — temporal ordering, no identification claim
 
-### T1 — Does a negative residual in 2013 predict above-average growth 2013→2023?
-- **Status:** open
-- **Prediction:** P2
-- **Answered by:** `Main growth regression (prediction P2)` · `Assemble outcome variables`
-- **Fails if:** β is null or positive across population, households, rents and permitted units. Gaps then persist because they reflect durable demand suppression, not latent opportunity.
-- **Current answer:** —
-
-### T2 — Does the 2013 residual also "predict" the prior decade?
-- **Status:** open
-- **Prediction:** —
-- **Answered by:** `Pre-trend test (2003→2013)`
-- **Fails if:** u_2013 predicts 2003→2013 growth with the same sign. Parallel trends is broken and the causal reading is unavailable. Report it either way.
-- **Current answer:** —
-
-### T3 — Does a placebo outcome with no mechanism return a null?
-- **Status:** open
-- **Prediction:** —
-- **Answered by:** `Placebo outcome`
-- **Fails if:** change in share of population aged 65+ is "predicted" by the residual — the specification is picking up generic neighbourhood trajectory.
-- **Current answer:** —
-
 ### T4 — Do the results survive MAUP and a spatial error specification?
 - **Status:** open
 - **Prediction:** —
@@ -511,13 +412,6 @@ claim stands on.
 - **Fails if:** the candidate feeds (NYS DOS licensed professions, NYS OCFS childcare licenses, DOH Article 28 clinics, DCWP laundry — already ingested but currently unmapped to a category) either don't exist in bulk-downloadable form, don't carry a usable address/BBL, or arrive with a lead time too short to matter (e.g. the license is issued at or after opening, not before it).
 - **Current answer:** Open, ticketed GTM-152.
 
-### T11 — Does the opening-time score (supply ratio, gap score) predict survival to today, and does it beat a placebo? · *predictive*
-- **Status:** answered
-- **Prediction:** —
-- **Answered by:** `Retrodiction: does supply ratio at opening predict survival? (gating test for any decision-value claim)` — GTM-158, Done
-- **Fails if:** AUC / rank correlation on 2023–24 openings (first-seen ledger, D79; filings pipeline, D80) scored at opening date is indistinguishable from the contrarian's placebo, or its confidence interval includes the no-skill line — then the screen has no demonstrated ability to predict which sites survive, and every decision-value claim in docs/GTM.md is unsupported.
-- **Current answer:** Answered 2026-09-14 (D88): "The frozen 2023-01-01 screen predicts where 2023-24 openings landed out of sample (NTA-blocked AUC 0.866 vs 0.854 for the same model without the score, and above a spatially structured placebo at p95 0.8545), with a positive supply coefficient that survives NTA fixed effects and conditioning on other-category density (+1.17 [0.87, 1.47]) — so the screen ranks retail streets, not unserved demand, and Loci may claim cost of search only; decision value remains unclaimed because the one survival-adjacent outcome we can test returns a null and the business-level outcome remains untested rather than absent." (LL157 go-dark, the one survival-adjacent outcome tested: AUC 0.549 vs 0.535, sign flips with the attrition definition — null.) See docs/retrodiction-2026-09.md.
-
 ### T12 — Do planners confirm the legality-vs-herding reading on the ground (Packet A), and does the 20-lot overlay threshold survive the ten held-out corridors (Packet B)?
 - **Status:** open
 - **Answered by:** (not ticketed) — GTM-165
@@ -535,21 +429,21 @@ claim stands on.
 ### Tier C · Causal — deferred; requires identification
 
 ### C1 — Does adding daily-needs retail to a transit-rich, underserved hex *cause* residential growth?
-- **Status:** deferred
+- **Status:** open
 - **Prediction:** —
 - **Answered by:** `Identification strategy: quasi-experimental variation`
 - **Fails if:** no plausibly exogenous source of variation in retail supply can be found (candidates: historic rezonings, the L-train shutdown). Without one the project makes no causal claim, and the memo says so (CONTEXT.md §7.2).
 - **Current answer:** Out of scope at four weeks. Phase 5.
 
 ### C2 — Does the effect appear in behaviour before it appears in residence?
-- **Status:** deferred
+- **Status:** open
 - **Prediction:** —
 - **Answered by:** `Foot-traffic outcome`
 - **Fails if:** foot-traffic data is unaffordable within the ~$400 headroom after the validation sample is enlarged, which has priority.
 - **Current answer:** Phase 5, budget-dependent. **Budget premise superseded 2026-09-13 (D76):** the ~$200–400/yr assumption in CONTEXT.md §3.5 is stale — in 2026 Advan via Dewey Data is $3,600/yr and academic-only, Placer.ai/Replica/Cuebiq are enterprise-only with no published price, and MTA turnstile data (the free legacy alternative) is discontinued. Free proxies (transit_entries_400m, jobs_400m) were built instead (D76) and validate at ρ +0.79 headline / +0.56 [0.14, 0.83] Brooklyn-only — good enough for card context, not for this question. The behavioural-outcome question itself — does foot traffic move before residence does — stays deferred: a card-context correlate at one point in time says nothing about lead/lag, which is what C2 actually asks.
 
 ### C3 — Does the pattern generalize beyond NYC?
-- **Status:** deferred
+- **Status:** open
 - **Prediction:** —
 - **Answered by:** `Extract universal interface; run a second city`
 - **Fails if:** the universal-source-only run on a second city produces a residual distribution with no usable spread, or the NYC-only controls (PLUTO zoning) turn out to be load-bearing with no national analogue.
@@ -571,28 +465,21 @@ questions here — a smaller remaining gap.
 - **Current answer:** —
 
 ### O2 — Is a premium-amenity "gap" real, or a supply-coverage artifact (worse than M1)? · *measurement*
-- **Status:** in-progress
+- **Status:** open
 - **Prediction:** —
 - **Answered by:** `Ingest premium-amenity supply + Google-validate (mandatory here)`
 - **Fails if:** Google + a manual web check finds the amenity already present within the candidate's catchment. This threat is *sharper* than M1: padel barely existed before 2022 and boutique studios open fast, so OSM/Foursquare snapshots undercount them severely and unevenly — a padel "gap" is more likely a data hole than a daily-needs gap is.
 - **Current answer:** **Confirmed, and for padel it's total.** 2026-09-02 Google validation (8 budget-charged calls, `src/loci/validation/google_places.py`): **PADEL — Foursquare 0 vs Google 22 real named venues** (Padel Haus Williamsburg/Greenpoint/Dumbo, Reserve Padel Hudson Yards/UES, Court 16 LIC) — a 100% coverage artifact, so padel CANNOT be screened from OSM/Foursquare and its supply must come from Google/manual. The existing venues cluster in the exact high-demand NTAs the model flagged, so the demand model validates but the top cores are already served — the real padel opportunity is the demand-rich + buildable + not-yet-served set (e.g. Sunnyside: 241 large-format sites, no venue found). SPA and PILATES: Google returns ≥20 (API cap) at every top candidate, so those are NOT coverage holes and the Foursquare counts are trustworthy there. Next: subtract the Google-found padel venues from the padel opportunity map (feeds GTM-75); run the stratified premium validation before publishing any site list.
 
 ### O3 — Where does each neighborhood sit on its development maturity curve today? · *descriptive*
-- **Status:** in-progress
+- **Status:** open
 - **Prediction:** —
 - **Answered by:** `Neighborhood maturity-stage classifier` · `Assemble the multi-decade neighborhood trajectory panel`
 - **Fails if:** n/a — descriptive. But the stage must be defined by **level + rate + acceleration** (1st and 2nd derivative), or it collapses into a static wealth map that just re-labels rich = mature.
 - **Current answer:** First cut, 2026-09-02. A momentum maturity index (0.45·real income + 0.55·college, fixed anchors, 2013→2023) places all 145 3-borough NTAs; the frontier reads East New York / Ridgewood / Bed-Stuy East (emerging) → Bushwick (just arrived) → Williamsburg / UES-UWS / Tribeca (saturated at the $250k cap). This is level+rate only — no acceleration term yet, and a single 2-point momentum, so it is not the full classifier.
 
-### O4 — Where could each neighborhood reach by 2033, and does the projection survive a backtest? · *predictive*
-- **Status:** in-progress
-- **Prediction:** —
-- **Answered by:** `2033 trajectory projection with scenario bands` · `Backtest the projection (fit 2000→2013, predict 2013→2023)` · `Assemble the multi-decade neighborhood trajectory panel`
-- **Fails if:** the backtest — fit through 2013, predict 2013→2023 — cannot retrodict the Bushwick / Crown Heights / East New York arc, or fails to beat a naive persistence baseline. Then the 2033 numbers ship only as scenario illustration, not forecast. Hard honesty guardrail: the retail residual is never an input to this projection (that is the rejected D1 thesis); retail is the dependent read.
-- **Current answer:** Pre-backtest projection, 2026-09-02: damped-momentum extrapolation projects the arriving-now set (Bed-Stuy East 44→56, Bushwick 49→64) into the premium-boutique tier by 2033; only 3 of 145 cross the top-end/Equinox line (Astoria Central, Fort Greene, UWS-Manhattan Valley). **First backtest (2026-09-02, 5-yr proxy: fit 2013→2018, predict 2023):** the method **beats a naive persistence baseline** — MAE 4.0 vs 5.1, median |err| 2.95 vs 4.09, better on **65%** of the 145 NTAs — with the largest gain exactly where it matters, the **emerging cohort** (MAE 3.4 vs 5.1). It directionally retrodicts the arc (Bushwick 21/35→pred 44 vs actual 49; Williamsburg 49/66→pred 72 vs actual 81). **But it systematically UNDER-predicts (bias −2.7):** real 2013→2023 gentrification outran a damped extrapolation, so the damping is too aggressive and the 2033 arrows are, if anything, **conservative**. **Full 10-yr backtest done overnight 2026-09-02** (multi-decade panel built — ACS 2009 via the B15002→B15003 college crosswalk + 2013/2018/2023, per-vintage tract centroids; `nta_trajectory.json`, 611 rows / 4 years / 155 NTAs). Verdict at the 10-year horizon (fit 2009→2013, predict 2023): the method **largely FAILS as a point forecast.** Damped MAE 8.25 vs naive persistence 9.35 (only ~12% better, beats naive on just 56% of NTAs); severe under-prediction bias −7.75; damping-gain tuning under LOO-CV barely helps (8.17). The neighborhoods that mattered were flat 2009→2013 then surged — Bed-Stuy East 20/23→pred 27 vs actual 44; Ridgewood 23/23→pred 24 vs actual 41; Williamsburg 39/49→pred 62 vs actual 81 — so **momentum does not anticipate ignition at a 10-yr horizon** (the flat-then-surge S-curve defeats it; 2009–13 was also an anomalously flat post-crisis base). Contrast the 5-yr proxy above, which worked because the surge was already visible by 2013–18: **the method's skill decays sharply with horizon.** What survives is **rank order** (corr 0.96) — it sorts neighborhoods by trajectory well. **Rubric verdict: the 2033 numbers ship as ranking + scenario illustration, NOT as a point forecast** — mirroring §0, another confident-looking extrapolation caught by its own backtest. The **acceleration (2nd-derivative) term was tested and REJECTED** (2026-09-02): it carries no systematic signal for the next-period jump (R²≈0.03, wrong-signed/negative coefficient, corr≈−0.08) and adding it *worsens* forecast MAE (4.0→5.3→7.5, shrinking bias only by overshooting). Even the flat-then-surge winners aren't separable ex-ante by acceleration — plenty of NTAs accelerated then reverted. **Conclusion: ignition is not in the demographic trajectory at all** (not level, slope, or acceleration); it's driven by exogenous shocks (rezonings, adjacency spillover, macro cycles) the trajectory doesn't encode — so the decennial-2000 pull for a strict as-of-2013 test is not worth it. **O4 is settled: the 2033 numbers are ranking + scenario, never a point forecast.** Remaining (unlikely to overturn): logistic/Markov forms, a placebo/pre-trend pass.
-
 ### O5 — Where does the next neighborhood ignite — and is that predictable? · *explanatory / predictive*
-- **Status:** in-progress
+- **Status:** open
 - **Prediction:** —
 - **Answered by:** `Frontier-diffusion map: where the edge moved, where it goes next`
 - **Fails if:** neither adjacency to an already-risen NTA nor a committed exogenous catalyst predicts which neighborhoods rise next.
@@ -618,14 +505,6 @@ questions here — a smaller remaining gap.
 - **Answered by:** — (not yet ticketed; scope decision pending investor-agent review before it enters Axis 1 investability)
 - **Fails if:** n/a — strategy/feasibility question, not a screen result to validate.
 - **Current answer:** Open, sketch only (2026-09-03). For a category and area, is it cheaper (risk-adjusted) to acquire an existing store than to open one, and what saturation level flips the answer? Sketch: acquisition cost ≈ multiple of seller's discretionary earnings (small retail typically 2–3×; category-dependent — bodega goodwill low, restaurant higher) vs. build cost = startup cost + ramp-period losses + failure risk. Inflection = the catchment-saturation level at which the acquisition premium falls below the ramp-plus-risk cost. Key structural link to the core screen: in a true gap hex there is nothing to acquire by definition, so buy-vs-build applies to the NON-gap, saturated areas — the gap screen says "build here," O8 says "elsewhere, buy instead." Data candidates: BizBuySell / BizQuest listings (asking price, revenue, cash flow — public but self-reported), SBA 7(a) loan data (public; flags business-acquisition loans by NAICS and location), the O6 catchment model. Threats: listing prices are asks, not closes; survivorship (only businesses worth selling get listed); ramp curves are category folklore. Depends on O6 and O7 (cross-ref O6, Axis 1). Scope-creep risk flagged: this is a second product (an acquisition screen), not a refinement of the first. Investor-agent review required before any build.
-
-### O9 — Should the three parallel uncommitted streams (comps, conveniences, spend.yaml) be kept, parked, or deleted? · *governance / scope*
-- **Status:** answered
-- **Prediction:** —
-- **Answered by:** owner decision with investor-agent review (as O6–O8 already require)
-- **Fails if:** n/a — governance. Found 2026-09-05: model/comps.py + benchmarks.yaml + tests/test_comps.py (O7/O8 comps; zero real listings, listing sites 403, one failing test); model/conveniences.py + conveniences.yaml + sources/cities/nyc/addresses.py (address-level owner-set-norm check citing a nonexistent CHECKPOINT decision); spend.yaml (fair-value parameters for an `analysis.site_fairvalue` model that does not exist in this tree). All build toward O6–O8 without the review those entries require. Until decided: no further work, no tickets.
-- **Current answer:** Owner directed 2026-09-05 that all streams be picked back up. Conveniences: wired as `loci conveniences` with tests. Spend: grounded in real BLS tables (CHECKPOINT Session 10) but no model reads it and the cited fair-value spec/model do not exist. Comps: 59 BizQuest NYC listings via owner-approved human-paced browser session (commit fe59eb2); fill rates thin with cash_flow_sde ~14% (hidden behind sign-in on most listings), and only restaurant meets benchmarks.yaml's ≥8-row bar for fair-value modeling; scripted fetches remain 403.
-- **Demand annotation (2026-09-08, D49):** contrarian review found the eight `assumed` rows contradicted spend.yaml's BLS CEX elasticities and the 0.80 cutoff used the wrong denominator; both fixed, annotation now continuous and MOE-gated. See CHECKPOINT D49. Open follow-ups: GTM-110 port; renderers must not truncate `demand_caveat_text`; `hex_gaps_reach` had drifted from reach.yaml and was rebuilt (1,966 hexes / 5,053 pairs); checked 2026-09-08 — no published number cited the stale table (all citations are dated log entries D34/D37; the address screen reads reach_tiers.yaml), so nothing re-tabulated.
 
 ### O10 — Within the cities that are trying to become walkable (H-L13), which neighborhoods have the most opportunity? · *predictive screen*
 - **Status:** open
@@ -658,11 +537,6 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Unblocks:** E3 · Residual and Panel
 - **Current answer:** — (Glaeser, Kolko & Saiz 2001; Couture & Handbury 2020. Would T1 replicate or contradict them? What controls did they use?)
 
-### H-L2 — What have Meltzer & Schuetz, and Meltzer & Capperis, already established about NYC neighbourhood retail?
-- **Status:** answered
-- **Unblocks:** E3 · Residual and Panel
-- **Current answer:** Meltzer & Schuetz 2012 (EDQ 26(1):73–94; full text https://www.rachelmeltzer.com/uploads/1/4/5/3/14532900/appendix_23_retail_edq.pdf). Unit: 208 NYC ZIPs, ZBP 1998–2007 averaged over ten years to suppress year noise, Census 2000 income/race, PLUTO/DoF for corridors and transit, CUF 2009 chain list. Findings that bind Loci: (a) NECESSITY vs DISCRETIONARY split — low-income ZIPs (<80% of citywide mean HH income) have MORE grocery establishments per acre (0.051 vs 0.036) but smaller ones (7.5 vs 14.6 emp/est), and small drugstore gaps; food service, gyms (0.29 vs 1.04/ZIP), and upscale chains concentrate in higher-income ZIPs. So a missing restaurant/cafe/gym in a low-income hex is plausibly demand-following, a missing grocery/pharmacy is a real gap. Implemented 2026-09-05 as `demand.yaml` + `demand_caveat` annotation in gaps.py (annotates, never filters). (b) Transit and retail space per building do NOT explain the income disparity — low-income ZIPs have more of both — so subway access is not a valid "expected supply" covariate for the screen. (c) Density, size, diversity (Herfindahl over NAICS subsectors) and corridor proximity are weakly inter-correlated; count-based reach alone is one-dimensional (see D9). (d) Race predicts retail net of income in opposite directions: predominantly Black ZIPs have less retail and less corridor proximity than White despite more transit; predominantly Hispanic ZIPs have more diverse retail and closer access despite less transit (see X6). (e) Method bits to reuse: 80%-of-mean income cutoff; exclude-Manhattan / exclude-tiny-units / alternate-cutoff robustness battery; symmetric growth rate g=(x1−x0)/(0.5(x1+x0)); within-stratum difference-in-differences for growth comparisons. A residual thesis is NOT what they test; they are explicitly descriptive.
-
 ### H-L3 — What thresholds and saturation forms do food-desert and 15-minute-city measurements use?
 - **Status:** open
 - **Unblocks:** E2 · Access Engine
@@ -682,11 +556,6 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Status:** open
 - **Unblocks:** E7 · Maturity and 2033 Projection
 - **Current answer:** [was: Axis 2 (Rising) · D9] — (Zukin, Trujillo, Frase, Jackson, Recuber & Walker, "New Retail Capital and Neighborhood Change: Boutiques and Gentrification in NYC", City & Community 8:47–64. Harlem/Williamsburg: gentrification arrives as independent boutique retail. Question for Loci: a cafe "gap" closing may be a trajectory signal, not a need being met — should discretionary-category arrivals feed rising.py rather than gaps?)
-
-### H-L7 — What covariates does Schuetz, Kolko & Meltzer (2010, 58 metros) find for retail density, and can they make the screen city-agnostic?
-- **Status:** open
-- **Unblocks:** E8 · Second-City Feasibility
-- **Current answer:** [was: D7] — (SSRN 1681734. Density + with population density, − with distance to CBD and with owner-occupancy share; establishment size + with income for all types. Loci stores renter_share already; test it as a density-class covariate before ACS vehicle ownership.) 2026-09-08 (D54): tested within MN+BK — replicates citywide, dissolves under a density control (partials 0.02–0.16, sign flips in Manhattan); renter_share is a density proxy, not a mode variable. Closed for the D7 purpose; keep as a demand covariate.
 
 ### H-L8 — Does Waldfogel (2008) "median consumer" logic mean "comparable areas" must be defined on composition, not income alone?
 - **Status:** open
@@ -766,11 +635,6 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Unblocks:** E3 · Residual and Panel
 - **Current answer:** — (Count before committing rent as an outcome. CONTEXT.md already labels it the weakest of the four.)
 
-### H-D5 — How does DOHMH represent closed establishments within the 3-year rolling window?
-- **Status:** open
-- **Unblocks:** E1 · Ingest and Grid
-- **Current answer:** — (What is the effective "active" definition? A closed restaurant still in the window inflates the anchor.) Finding 2026-09-05 (CHECKPOINT D36): the adapter dedupes by CAMIS but never drops closed establishments, so successive tenants at one address survive as separate canonical points — the source of the 13–14% exact-coordinate same-type share in restaurant/nails_beauty/clinic. Fix: active-establishment filter before dedup.
-
 ### H-D6 — ACS tract vintages: 2009–13 is on 2010 tracts, 2019–23 on 2020 tracts. Crosswalk, or interpolate per vintage?
 - **Status:** open
 - **Unblocks:** E1 · Ingest and Grid
@@ -795,11 +659,6 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Status:** open
 - **Unblocks:** E4 · Validation and Artifact
 - **Current answer:** — (Medical Center is 6,971 of the 10,579 Foursquare clinic rows before the freshness gate and looks like a catch-all; Gym and Studio is a level-2 label used as a leaf on ~4k rows. Both are exactly what the Google sample on clinic/fitness should test — run `loci validate --categories clinic,fitness` and compare undercount by source.)
-
-### H-D11 — Are same-category cross-source pairs within 25 m the same business under two names?
-- **Status:** open
-- **Unblocks:** E1 · Ingest and Grid
-- **Current answer:** — (71k restaurant pairs sit within 25 m across sources with non-matching names, e.g. DOHMH "Bronx Burger Company" vs Overture "Peter Dorcas Ventures Inc". Some are food halls and shared addresses; some are legal-name vs trade-name for one establishment. Sample 50 by hand; if most are the same business, dedup needs an address-level merge for anchor sources, and every count-based result is inflated.) 2026-09-05: of 24,908 restaurant pairs within 15 m, 0.09% share a normalized name; cross-source naming is not the dominant duplication driver (see H-D5, CHECKPOINT D36).
 
 ### H-D12 — Is there any public per-entrance transit volume to replace the even split across station entrances?
 - **Status:** open
@@ -860,8 +719,16 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Unblocks:** E1 · Ingest and Grid
 - **Current answer:** — (Convention is EPSG:4326 in the database; metric work reprojects explicitly. Where does the CRS get re-attached on the way out?)
 
+### Recent session decisions (D29–D50)
+
+Logged directly by recent sessions (2026-09-14/15) rather than filed under a
+tier above; IDs continue the Tier D (Descriptive) sequence. Kept together here
+rather than re-sorted into Part A, since these are mostly operational/protocol
+decisions pending an owner ruling, not descriptive-tier research questions.
+
 ### D29 — When closure evidence names a successor at the same address (Windclimb → D's Grab and Go), should Loci mint a POI for the successor?
 - **Status:** open
+- **Answered by:** — (not ticketed)
 - **Tag:** *data / supply*
 - **Session:** 2026-09-14, abenmayor-29
 - **Why it matters:** Today successor_name is recorded on the evidence row only; minting would fabricate a first-seen date (D79 tension) but the map otherwise shows a hole where a business trades.
@@ -869,18 +736,21 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 
 ### D30 — spend_ledger provider CHECK is ('places','tavily','anthropic'); plan-billed Claude CLI prose is recorded as provider 'anthropic' with usd 0 and a 'plan-billed' detail. Widen the CHECK in a migration, or keep provider = model vendor and add a billing column?
 - **Status:** open
+- **Answered by:** — (not ticketed)
 - **Tag:** *data / schema*
 - **Session:** 2026-09-14, abenmayor-29
 - **Current answer:** —
 
 ### D31 — verify-closures orders candidates by colocation_n then distance to the bbox centre. Should staleness of the last observation (oldest observed_on first) rank above distance, since stale POIs are the likeliest closures?
 - **Status:** open
+- **Answered by:** — (not ticketed)
 - **Tag:** *method*
 - **Session:** 2026-09-14, abenmayor-29
 - **Current answer:** —
 
 ### D32 — Freeze protocol for a stamped supply hash: a "final" declaration must go to every active session in one message before the first fit stamps it; any poi_status-changing write after that is a re-stamp event. Where should this live: CHECKPOINT rules, CLAUDE.md, or a `loci freeze` marker table the CLI refuses to write past?
 - **Status:** open
+- **Answered by:** — (not ticketed)
 - **Tag:** *infra / decision*
 - **Session:** 2026-09-14, abenmayor-29
 - **Why it matters:** Prevents supply hash moving under a running screen re-run due to mid-run evidence updates.
@@ -888,31 +758,18 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 
 ### D33 — The grandfathering POI test uses a 20 m point radius; PLUTO lot polygons would make it exact (POI inside the lot). Worth the geometry ingest, given the sensitivity table (20 m -> 30 m moves grandfathered 15k -> 34k under the not-closed rule)?
 - **Status:** open
+- **Answered by:** — (not ticketed)
 - **Tag:** *method*
 - **Session:** 2026-09-14, abenmayor-29
 - **Current answer:** —
 
 ### D34 — db.init_schema re-renders the co-location view with evidence after sql/033 from poi_presence.colocation_view_sql(evidence=True); a single-file apply of sql/029 alone would regress it to the evidence-less form, the same class of defect as storefront_pipeline.ensure_schema reverting poi_first_seen (fixed f8142e0). Should view definitions be owned by exactly one renderer with a drift test?
 - **Status:** open
+- **Answered by:** — (not ticketed)
 - **Tag:** *infra / data-model*
 - **Session:** 2026-09-14, abenmayor-29
 - **Why it matters:** Two independent instances of this class of bug in D101/D103 suggest the fix belongs at the init_schema/ensure_schema level, not per-caller.
 - **Current answer:** —
-
-### D35 — Ground-truth subjects: all 15 open ledger recs are one point (Gowanus bbox centroid). Add address-level recs for the four 2026-09-14 report addresses via `loci recommendations add` so the instrument checks real storefronts? Owner call.
-- **Status:** answered
-- **Tag:** *validation / data*
-- **Answered by:** `Ground-truth browser session: verify the ledger anchors with Interceptor and score the miss view`
-- **Session:** 2026-09-14, abenmayor-cc
-- **Why it matters:** The ledger's 15 open rows all key to `anchor_address_id NULL` at one shared anchor (the 2026-09-11 Gowanus bbox centroid), so a ground-truth session against them is one look producing 15 category verdicts, not 15 independent address checks. The four docs/recommendations/*-2026-09-14.md reports (376 Graham Ave, 4 East 8th St, 379 Broome St, the Gowanus BBL) are real, address-level subjects the instrument could check instead.
-- **Current answer:** Owner 2026-09-14: add the four address reports as subjects (376 Graham Ave, 4 East 8th St, 379 Broome St, the Gowanus BBL) as address-level ledger rows via `loci recommendations add`; the Gowanus centroid stays as the fifth look. Rows being added by a parallel agent.
-
-### D36 — Standing of the supervised Google Maps browser session under Google's terms: same footing as the BizQuest session (fe59eb2), human-paced, owner present, ~15 anchors per session. Confirm the owner is comfortable and whether a per-session cap should be enforced in the protocol.
-- **Status:** answered
-- **Tag:** *infra / policy*
-- **Answered by:** `Ground-truth browser session: verify the ledger anchors with Interceptor and score the miss view`
-- **Session:** 2026-09-14, abenmayor-cc
-- **Current answer:** Owner 2026-09-15: "as long as Google Maps sessions aren't over 30 minutes without a 2 minute break in between, we are good." Rule: no Maps segment longer than 30 minutes; consecutive segments separated by a break of at least 2 minutes with no Maps page loads; owner present; never unattended. Written into docs/ground-truth-protocol.md §1 (commit d7c6fd1). The first session (57 page loads, 19 anchors) ran about 28 minutes, inside the cap.
 
 ### D37 — Benchmarks: which of the surveyed public sources should enter the revenue model — IRS SOI nonfarm sole-proprietorship receipts by NAICS (targets the D40 owner-operated undercount), trade-association per-store anchors (NCPA pharmacy ~$5.4M, NGA grocery $380/sqft independents, NACS convenience ~$2.25M/store, laundromat $410–564k), and ICSC's measured occupancy-cost ratios by tenant category (fitness ~32%, specialty restaurant ~24%, drug store ~6%) to replace benchmarks.yaml's generic occupancy_cost_ratio. Nothing public gives per-storefront revenue.
 - **Status:** open
@@ -965,14 +822,6 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Why it matters:** With density per 1,000 residential units, only 2 of the measurable NTAs are above median in all 15 categories, so the null is 0.6% and every category "beats" it by +0.211 to +0.824 (D108). What null actually tests whether supplied_share is destination retail density in a costume? Candidates: a permutation null over category labels; the trip-weighted rank of destination density; or requiring category c's supplied_share to exceed the mean of the other 14 categories' supplied_share at the same origins by a margin.
 - **Current answer:** Open; until ruled, the placebo line on `od-validate` is descriptive only.
 
-### D44 — 74 of 124 Citi Bike origin NTAs lose supplied_share to the 0.2 outside-universe threshold: is 0.2 right, should the universe admit QN/BX lot addresses for the denominator only, or should the share report with its outside share and no NULL cut at all?
-- **Status:** answered
-- **Answered by:** `Citi Bike phase 2: origin-destination leakage per NTA × category ('where residents of this gap area go') and the card line`
-- **Tag:** *model / rigor*
-- **Session:** 2026-09-15, abenmayor-db
-- **Why it matters:** The measurable universe is 79 MN+BK NTAs with ≥500 lot-frame addresses; Queens/Bronx destinations are outside by D78's MN+BK screen scope (D108). The owner's no-eligibility-gate ruling (D75) argues for reporting with the outside share rather than NULLing.
-- **Current answer:** Answered 2026-09-15 (owner, D108 addendum): report all origins, outside share always shown; no NULL cut. Commit 82db230.
-
 ### D45 — Should the `.sql.draft` pattern be the standing rule for D25's uncommitted-migration hazard?
 - **Status:** open
 - **Answered by:** —
@@ -997,14 +846,6 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Why it matters:** RetailStat Location (#23, P2, gap f, $10,000/yr tier floor, no published price) is the one paid source that replaces real hand work outright — it carries brand AND individual store location, standing in for the locator hand-count and `signed_leases`. Coresight and Data Axle are lower priority (Data Axle at $8,000/yr is already in the $23k sprint subset and is the best value of the three, but is national-brand grain and cannot place a store at a borough for Coresight, or covers all fifteen categories but still needs a human curator for trajectory). The decision gates whether GTM-xxx (source expansion) scopes a paid quote request into the same session as T1-T6 or defers it.
 - **Current answer:** —
 
-### D48 — Pre-chain detection: can Loci flag a one- or two-location operator BEFORE it becomes a chain (owner examples: Bathhouse, Mink)?
-- **Status:** answered
-- **Answered by:** — (GTM-192, tier 3 watch; the ticket title contains backticks the citation parser cannot carry, see CHECKPOINT D110)
-- **Tag:** *method / sourcing*
-- **Session:** 2026-09-15
-- **Why it matters:** The D109 candidate predicate starts at 5 locations or the fast-small flag (2 new of ≤8), so by construction it sees a brand only after it has already expanded. The owner wants the earlier signal: an operator with one or two sites and intent to grow. Candidate intent signals, none built: (a) a second-site government filing (SLA pending application, DOB fit-out, DOHMH pre-permit) under a name key that already has exactly one open location — the filings pipeline (D80) can see this today for restaurant/bar/café/grocery/pharmacy only; (b) press with expansion language ("second location", "raised", "signed a lease") on a one-location name — a Tavily query kind that does not exist yet; (c) a capital event (seed/Series A, PE minority) on a single-site hospitality or wellness operator — hand-entered, Crunchbase free tier; (d) an expansion-role job posting (director of real estate, head of development) at a one- or two-site brand; (e) a trademark filing or a new "Brand Name II LLC"/"Brand Name Holdings" entity at NYS DOS. Bathhouse (Williamsburg → Flatiron, 2 sites) and Mink would each have tripped (a) and (b) before their second opening. Design question: does this become a third tier ("watch: pre-chain", 1–2 locations + ≥1 intent signal) in the D109 process, with its own admission reason, and which of (a)–(e) is cheap enough to run monthly inside the existing 60-query Tavily budget and the filings pipeline?
-- **Current answer:** tier 3 `watch` designed and ticketed as GTM-192, internal-only, signals (a)/(e)/(f) derived in the filings pipeline plus a new Tavily watch query kind with the cap raised to 68; Mink Padel retrospective shows premium categories enter no feed Loci reads, so signal (f) fit-out free-text scan is the only in-warehouse route to them.
-
 ### D49 — Premium services: what business types fall in, and how could a price signal be obtained?
 - **Status:** open
 - **Tag:** *data / sourcing*
@@ -1021,3 +862,176 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Session:** 2026-09-15, abenmayor-db
 - **Why it matters:** (a) `bike_growth_verdict` assumes the run is the primary vintage; when `--asof` is the confirmatory one the P7 line should say so instead of "the confirmatory vintage has not been run". (b) The P9 lagged-growth pre-trend requires a lag column the CLI does not build (`build_panel` has `bike_growth_lag_asof`; the retrodiction run has no flag for it) — moot for a null result but mandatory before any positive result could ship. (c) The run stamps the baseline table's supply hash (d993b3802c6a) rather than the live one (ba944e18c57b); provenance should read `live_supply_hash`. Fix all three in one small ticket before the growth test is ever re-run.
 - **Current answer:** —
+
+---
+
+## Answered
+
+### M6 — For each loci category, are Google's included types narrower or wider than loci's definition?
+- **Status:** answered
+- **Answered by:** `Google type-map audit per category`
+- **Current answer:** Answered 2026-09-08 (GTM-105, D50): both, per category — wider for restaurant/bar/grocery/convenience/hair/nails, narrower for cafe_bakery and fitness; the structural 20-result cap invalidated D29's clinic/fitness rates. Remainder moved to M8 (radius) and D23 (anchor contradictions).
+
+### M8 — Should the validator compare against network distance rather than a straight-line radius?
+- **Status:** answered
+- **Answered by:** `Validator: network distance or circuity correction`
+- **Current answer:** Answered 2026-09-08 (D53): circuity correction adopted (measured 1.233, giving a 649 m radius) instead of a network re-measurement. Closed.
+
+### M11 — What is the co-location structure of the 15 categories net of density, and how should 'expected presence given neighbors' enter the grade?
+- **Status:** answered
+- **Answered by:** (not ticketed) — scratchpad colocation.md, coloc_*.csv, session 13 (2026-09-08)
+- **Current answer:** Manhattan is saturated (8/15 categories at 100% presence); structure identified off Brooklyn — hair↔nails partial r 0.65, hardware↔grocery 0.50. Use as a grade input (expected presence), not a finder (session 13, 2026-09-08).
+
+### M14 — Should fitness's Google type map drop sports_club and marina, the type-map defect the GTM-48 coverage validation found?
+- **Status:** answered
+- **Answered by:** `Fitness type map: remove sports_club and marina from GOOGLE_TYPES (validator-only)`
+- **Current answer:** Ruled 2026-09-14 (owner "yes to all 4," CHECKPOINT D90): drop sports_club and marina from fitness's GOOGLE_TYPES. Implementation GTM-173.
+
+### M15 — Should cross-category name+distance dedup run before per-category dedup?
+- **Status:** answered
+- **Answered by:** `Co-located POIs: tri-state poi_is_open predicate, analysis.poi_colocation view, closure gate on the supply set (owner rule 2026-09-14)`, `Cross-category name+distance dedup before per-category dedup (Lion's Milk / GTM-153 proper)`
+- **Current answer:** Ruled 2026-09-14 (D90) and shipped 2026-09-15 (D101, commit 13f0fec): one global cross-source union-find on name-core + distance; 12,928 merges, precision 0.970 [0.915, 0.990] on a fresh 100-pair audit sample.
+
+### D5 — How far apart do same-type businesses sit, and how far is the nearest missing business from a gap hex?
+- **Status:** answered
+- **Answered by:** `Spacing and nearest-missing distance diagnostics` · `Cross-source POI dedup / entity resolution`
+- **Current answer:** Same-type spacing is tight (median 0–200 m); the nearest missing business sits a median 860–1,030 m from a gap hex — a 10–17 min band, not a hole. `loci spacing`, 2026-09-02.
+
+### D6 — What is the empirical distribution of hex-to-nearest-business network distance per category, and should each category's "missing" threshold be set from it?
+- **Status:** answered
+- **Answered by:** `Redefine 'missing' via per-category reach (monotonicity fix)`
+- **Current answer:** Built and verified 2026-09-05 (CHECKPOINT D34): fixed per-category reach passes the monotonicity test the old shared-window rule failed. The calibration statistic itself continues as D8.
+
+### D8 — What statistic sets reach(c) without fixing the per-category gap rate, and how should the lead category be ranked?
+- **Status:** answered
+- **Answered by:** `Redefine 'missing' via per-category reach (monotonicity fix)`
+- **Current answer:** External walk-time tiers adopted 2026-09-05 (D41, reach_tiers.yaml) as the only non-tautological calibration; continuous max nearest/reach ranking ships, the binary exactly-one list rejected as a quantile artifact.
+
+### D15 — Should `age_fit` extend to pharmacy and childcare, the two categories that also passed the CEX survey gate and whose supply-revealed placebo b(w18) signs are the OPPOSITE of bar's (−0.846 and −0.574 against +1.256)?
+- **Status:** answered
+- **Answered by:** (not ticketed)
+- **Current answer:** childcare SHIPS (age-fit applied, D69, pooled b +2.744); pharmacy REFUSED under the tightened F2 gate — its own regressor's Brooklyn CI includes near-zero (D64→D66→D69).
+
+### D16 — Does a category have headroom (room for more of the same type) given current plus incoming residents, and does headroom predict entry?
+- **Status:** answered
+- **Answered by:** `Per-category clustering-vs-saturation coefficient for the grade (from the headroom backtest)`
+- **Current answer:** Headroom has no predictive skill (bars/cafés cluster rather than saturate); shipped as `density_elasticity.yaml` (D70, GTM-138) and superseded as the ranking statistic by supply-ratio-vs-baseline (D73).
+
+### D17 — Should the eligibility gate be POI-free (PLUTO retail floor area within 800 m) rather than ≥12-of-15 categories present within 800 m of the current supply set?
+- **Status:** answered
+- **Answered by:** (not ticketed yet)
+- **Current answer:** Gate removed entirely by owner ruling 2026-09-13 (D75); the built-form-gate question is moot for eligibility, survives only as a possible ranking feature.
+
+### D18 — Should clusters be ranked by capped units or by mean gap_score?
+- **Status:** answered
+- **Answered by:** (not ticketed yet)
+- **Current answer:** Settled by owner ruling 2026-09-13 (D83): clusters rank by `cluster_density_400m`, Σ`units_capped` as tiebreak; `--rank-by units` kept selectable.
+
+### D20 — Can site revenue be predicted from public data well enough to grade the economics of a recommendation?
+- **Status:** answered
+- **Answered by:** Site-revenue model v0 (D81, GTM-150): CEX spend pool × fitted capture share, leakage calibrated to Economic Census 2022 county receipts, gated by a leave-one-ZIP-out backtest and cross-category placebo.
+- **Current answer:** Restaurant alone passes the leave-one-ZIP-out backtest (ρ_oos 0.763) and grades C (D81, GTM-150); nine other categories honestly not modelled. v0.2 refit (D91) tightens levels 3–5×.
+
+### D22 — What is the numeric Wilson-upper coverage-grade ladder (G9) that replaces presence-only grade A?
+- **Status:** answered
+- **Answered by:** `Coverage grade G9: numeric Wilson-upper ladder replacing presence-only grade A`
+- **Current answer:** Ruled 2026-09-14 (owner "yes to all 4," D90): Wilson-upper ladder — coverage-hole rate ≤10% → A, ≤25% → B, else C. Implementation GTM-174.
+
+### D28 — Should a system-wide zero-ridership day (2026-02-23) stay in the per-weekday divisor?
+- **Status:** answered
+- **Answered by:** (not ticketed) — CHECKPOINT D102
+- **Current answer:** Answered 2026-09-15 (owner, D108 addendum): the zero-ridership day stays in the per-weekday divisor.
+
+### T1 — Does a negative residual in 2013 predict above-average growth 2013→2023?
+- **Status:** answered
+- **Prediction:** P2
+- **Answered by:** `Main growth regression (prediction P2)` · `Assemble outcome variables`
+- **Current answer:** REJECTED, wrong sign. CONTEXT.md §0 (2026-09-01 headline): regressing 2013→2023 growth on the 2013 residual gives β = +0.069 (p=4.7e-16) — over-retailed hexes grew MORE.
+
+### T2 — Does the 2013 residual also "predict" the prior decade?
+- **Status:** answered
+- **Answered by:** `Pre-trend test (2003→2013)`
+- **Current answer:** Parallel trends BROKEN. CONTEXT.md §0: the 2013 gap also "predicts" prior (2002→2013) retail growth (β=+0.27) — retail and residents co-move, the gap does not identify latent opportunity.
+
+### T3 — Does a placebo outcome with no mechanism return a null?
+- **Status:** answered
+- **Answered by:** `Placebo outcome`
+- **Current answer:** Clean null. CONTEXT.md §0: the placebo confirms the T1/P2 reversal is real, not a specification artifact.
+
+### T11 — Does the opening-time score (supply ratio, gap score) predict survival to today, and does it beat a placebo? · *predictive*
+- **Status:** answered
+- **Answered by:** `Retrodiction: does supply ratio at opening predict survival? (gating test for any decision-value claim)` — GTM-158, Done
+- **Current answer:** Answered 2026-09-14 (D88, GTM-158 Done): the frozen screen ranks retail streets (AUC 0.866 vs 0.854 no-score), not unserved demand; the one survival-adjacent outcome tested (LL157 go-dark) returns a null. Cost-of-search only — decision value stays unclaimed.
+
+### O4 — Where could each neighborhood reach by 2033, and does the projection survive a backtest? · *predictive*
+- **Status:** answered
+- **Answered by:** `2033 trajectory projection with scenario bands` · `Backtest the projection (fit 2000→2013, predict 2013→2023)` · `Assemble the multi-decade neighborhood trajectory panel`
+- **Current answer:** Settled 2026-09-02: fails as a 10-yr point forecast (only ~12% better MAE than naive persistence) but rank order survives (corr 0.96) — ships as ranking + scenario illustration, never a point forecast.
+
+### O9 — Should the three parallel uncommitted streams (comps, conveniences, spend.yaml) be kept, parked, or deleted? · *governance / scope*
+- **Status:** answered
+- **Answered by:** owner decision with investor-agent review (as O6–O8 already require)
+- **Current answer:** Owner directed 2026-09-05 to resume all three streams; conveniences and spend wired in, comps thin (BizQuest, only restaurant clears the ≥8-row bar); demand annotation fixed 2026-09-08 (D49).
+
+### H-L2 — What have Meltzer & Schuetz, and Meltzer & Capperis, already established about NYC neighbourhood retail?
+- **Status:** answered
+- **Unblocks:** E3 · Residual and Panel
+- **Answered by:** — (not ticketed)
+- **Current answer:** Read and applied 2026-09-05 as `demand.yaml` + the `demand_caveat` annotation in gaps.py; findings feed D9, X6 and H-L6.
+
+### H-L7 — What covariates does Schuetz, Kolko & Meltzer (2010, 58 metros) find for retail density, and can they make the screen city-agnostic?
+- **Status:** answered
+- **Unblocks:** E8 · Second-City Feasibility
+- **Answered by:** — (not ticketed)
+- **Current answer:** Closed for the D7 purpose 2026-09-08 (D54): the density↔retail relationship replicates citywide but dissolves under a density control within MN+BK; renter_share is a density proxy, not a mode variable — kept as a demand covariate.
+
+### H-D5 — How does DOHMH represent closed establishments within the 3-year rolling window?
+- **Status:** answered
+- **Unblocks:** E1 · Ingest and Grid
+- **Answered by:** — (not ticketed)
+- **Current answer:** Found 2026-09-05 (CHECKPOINT D36, 2026-09-05 session): the DOHMH adapter dedupes by CAMIS but never drops closed establishments — the source of the 13–14% exact-coordinate same-type share; fix is an active-establishment filter before dedup.
+
+### H-D11 — Are same-category cross-source pairs within 25 m the same business under two names?
+- **Status:** answered
+- **Unblocks:** E1 · Ingest and Grid
+- **Answered by:** — (not ticketed)
+- **Current answer:** 2026-09-05: of 24,908 restaurant pairs within 15 m, only 0.09% share a normalized name — cross-source naming is not the dominant duplication driver (see H-D5).
+
+### D35 — Ground-truth subjects: all 15 open ledger recs are one point (Gowanus bbox centroid). Add address-level recs for the four 2026-09-14 report addresses via `loci recommendations add` so the instrument checks real storefronts? Owner call.
+- **Status:** answered
+- **Answered by:** `Ground-truth browser session: verify the ledger anchors with Interceptor and score the miss view`
+- **Current answer:** Owner 2026-09-14: add the four 2026-09-14 address reports as ledger rows via `loci recommendations add`; the Gowanus bbox centroid stays as a fifth look.
+
+### D36 — Standing of the supervised Google Maps browser session under Google's terms: same footing as the BizQuest session (fe59eb2), human-paced, owner present, ~15 anchors per session. Confirm the owner is comfortable and whether a per-session cap should be enforced in the protocol.
+- **Status:** answered
+- **Answered by:** `Ground-truth browser session: verify the ledger anchors with Interceptor and score the miss view`
+- **Current answer:** Owner 2026-09-15: no Maps segment over 30 minutes without a 2-minute break, owner present, never unattended; written into docs/ground-truth-protocol.md §1 (commit d7c6fd1).
+
+### D44 — 74 of 124 Citi Bike origin NTAs lose supplied_share to the 0.2 outside-universe threshold: is 0.2 right, should the universe admit QN/BX lot addresses for the denominator only, or should the share report with its outside share and no NULL cut at all?
+- **Status:** answered
+- **Answered by:** `Citi Bike phase 2: origin-destination leakage per NTA × category ('where residents of this gap area go') and the card line`
+- **Current answer:** Answered 2026-09-15 (owner, D108 addendum): report all Citi Bike origins with the outside share always shown; no NULL cut (commit 82db230).
+
+### D48 — Pre-chain detection: can Loci flag a one- or two-location operator BEFORE it becomes a chain (owner examples: Bathhouse, Mink)?
+- **Status:** answered
+- **Answered by:** — (GTM-192, tier 3 watch; the ticket title contains backticks the citation parser cannot carry, see CHECKPOINT D110)
+- **Current answer:** Designed and ticketed as GTM-192 (D110): tier-3 `watch` for 1–2-location operators with an intent signal, internal-only until graduation.
+
+---
+
+## Dropped
+
+No entry currently clears the dropped bar (out of scope per CHECKPOINT's SCOPE CORRECTION,
+or made moot). Left **open** on purpose, flagged here for a future owner look rather than
+guessed shut:
+
+- **T4, T5, T6** (MAUP/spatial robustness, gap-closure convergence, retail-lead/lag timing) —
+  all three test or extend the residual/growth thesis that CONTEXT.md §0 and T1/T2/T3 already
+  found REJECTED with a broken pre-trend (2026-09-01 headline finding). Nothing in QUESTIONS.md
+  or CHECKPOINT explicitly closes them, so they stay open rather than being guessed dropped.
+- **C1, C2, C3** (Tier C · Causal — identification strategy, foot-traffic lead/lag, second-city
+  generalization) — `Status: deferred` in the source file, parked at "Phase 5" per CONTEXT.md's
+  phase plan. Folded into `open` above rather than `dropped`, since deferred-to-a-later-phase
+  is not the same claim as out-of-scope, but they are the same family of question as T4–T6 and
+  worth the same owner look.
+
