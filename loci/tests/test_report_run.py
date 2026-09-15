@@ -181,6 +181,14 @@ def test_ac20_dry_run_makes_no_paid_calls_and_prints_a_plan(tmp_path, monkeypatc
 
 def test_closure_checks_false_makes_zero_places_calls_and_shows_the_disabled_line(
         tmp_path, monkeypatch):
+    """This fixture's synthetic address grades below C (see the sibling test
+    below), so unforced it renders the no-trade note -- `render.is_below_c`
+    is forced False here so this test can keep proving what it always proved
+    (the full memo's closure-checks-disabled line and its POI appendix),
+    independent of the grade gate GTM-172 added."""
+    import loci.report.render as render_mod
+
+    monkeypatch.setattr(render_mod, "is_below_c", lambda pack: False)
     con = _db()      # include_unknown_poi=True by default -- "Mystery Cafe"
     places, web, prose = _clients()
     result = _generate(con, tmp_path, monkeypatch, closure_checks=False,
@@ -189,9 +197,30 @@ def test_closure_checks_false_makes_zero_places_calls_and_shows_the_disabled_lin
     assert con.execute(
         "SELECT count(*) FROM analysis.poi_closure_evidence").fetchone()[0] == 0
     assert "Closure checks disabled for this run (status shown as of" in result.markdown
-    # The unknown POI is still listed, status untouched.
+    # The unknown POI is still listed, status untouched -- in the appendix now
+    # (investor review item 4: the raw POI table moved out of section 2).
+    assert "## Appendix — supply detail" in result.markdown
     assert "Mystery Cafe" in result.markdown
     assert "unknown" in result.markdown
+
+
+def test_below_c_grade_renders_the_no_trade_note_end_to_end(tmp_path, monkeypatch):
+    """Investor review item 2, the other half of the gate: THIS fixture's
+    synthetic address grades below C on the real grading rules (unforced --
+    see the sibling test above, which forces the opposite path). The
+    no-trade note has no POI table/appendix, no rents/leases web signals
+    (item 2's "no web enrichment beyond news"), and still makes zero paid
+    Places calls when `--no-closure-checks` is set."""
+    con = _db()
+    places, web, prose = _clients()
+    result = _generate(con, tmp_path, monkeypatch, closure_checks=False,
+                       clients=(places, web, prose))
+    assert "**NO TRADE.**" in result.markdown
+    assert "## Appendix — supply detail" not in result.markdown
+    assert "Mystery Cafe" not in result.markdown
+    for h in HEADINGS:
+        assert h in result.markdown
+    assert places.calls == []
 
 
 # --------------------------------------------------------------- AC-21

@@ -17,12 +17,27 @@ nearest-first. A `CapExceeded` anywhere stops the WHOLE enrichment pass
 (remaining searches and remaining checks alike) rather than skipping just
 the one call that failed -- once the cap is gone, the honest thing is to
 stop spending, not to keep trying cheaper things.
+
+WEB-HIT QUALITY GATE (investor review item 5, GTM-172): every rents/leases/
+news hit is run through `filter_hits` before it ever reaches `Enrichment` --
+banned domains (Reddit, YouTube, Instagram, Facebook, TikTok, DNAinfo), tag/
+archive/search-index URLs, a chamber-of-commerce homepage, and any hit whose
+text never mentions the lot's own street or neighborhood (the geo-scope
+check: a hit that never mentions Gowanus cannot be reporting a Court Street
+comp by construction of what it DOES mention). `rents` hits additionally
+require a real published date AND a dollar-per-square-foot figure with a
+unit -- a price quoted with no unit ("$302.72", one of the review's own
+examples) is exactly what this gate exists to catch. Rejected hits are kept
+(with a reason) on `Enrichment.rejected_hits` for the report's provenance
+footer -- dropped silently would make the filter unauditable.
 """
 from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 from loci.report import evidence as ev
 from loci.report.ledger import PRICES, CapExceeded
@@ -30,6 +45,90 @@ from loci.report.ledger import PRICES, CapExceeded
 logger = logging.getLogger(__name__)
 
 MAX_SEARCH_RESULTS = 5
+
+#: Domains never trusted for a rents/leases/news signal, however their
+#: content reads (investor review item 5, cross-cutting complaint (b)).
+BANNED_DOMAIN_FRAGMENTS: tuple[str, ...] = (
+    "reddit.com", "youtube.com", "instagram.com", "facebook.com",
+    "tiktok.com", "dnainfo.com",
+)
+
+#: A URL path that looks like a tag/category/archive/search index rather than
+#: one article -- these rotate their listed content and will not show the
+#: same figures tomorrow (the review's own complaint about the LoopNet/98
+#: Graham Avenue citations).
+_INDEX_URL_RE = re.compile(r"/(tag|tags|category|categories|archive|archives|search)(/|\?|$)",
+                           re.I)
+
+#: A dollar figure with an explicit per-square-foot unit -- "$302.72" alone
+#: (the review's own example, "unit unstated") does not match this.
+_RENT_FIGURE_RE = re.compile(
+    r"\$\s?\d[\d,]*(?:\.\d+)?\s*(?:/|\bper\b)\s*(?:sq\.?\s*ft\.?|square\s*foot|"
+    r"square\s*feet|sf)\b", re.I)
+
+
+@dataclass
+class RejectedHit:
+    """One web hit the quality gate refused, kept for the provenance footer
+    (investor review item 5: "keep a rejected-hits list in the pack")."""
+    url: str
+    reason: str
+    tag: str
+
+
+def _is_banned_domain(domain: str | None) -> bool:
+    d = (domain or "").lower()
+    return any(frag in d for frag in BANNED_DOMAIN_FRAGMENTS)
+
+
+def _is_index_or_archive_url(url: str) -> bool:
+    return bool(_INDEX_URL_RE.search(url or ""))
+
+
+def _is_chamber_homepage(url: str, domain: str | None) -> bool:
+    if "chamber" not in (domain or "").lower():
+        return False
+    return urlparse(url or "").path.strip("/") == ""
+
+
+def _mentions_locality(text: str, pack) -> bool:
+    """The geo-scope check (item 5): the hit's own title/snippet must name
+    the lot's own street or neighborhood. A positive requirement, not a
+    denylist of other NYC corridor names -- a hit that never mentions this
+    address's own locality cannot be reporting a different corridor's comp
+    by construction of what it DOES mention (the review's own Gowanus/Court
+    Street example)."""
+    low = text.lower()
+    for candidate in (pack.address.get("street_name"), pack.context.get("neighborhood")):
+        if candidate and candidate.lower() in low:
+            return True
+    return False
+
+
+def filter_hits(hits, pack, *, tag: str) -> tuple[list, list["RejectedHit"]]:
+    """`(kept, rejected)` for one batch of Tavily hits. `tag` is
+    "rents" | "leases" | "news" -- only "rents" hits are held to the
+    dated-page + figure-with-a-unit bar (a lease listing or a news item does
+    not necessarily quote a $/sq ft figure at all)."""
+    kept: list = []
+    rejected: list[RejectedHit] = []
+    for h in hits:
+        text = f"{h.title or ''} {h.snippet or ''}"
+        if _is_banned_domain(h.domain):
+            rejected.append(RejectedHit(h.url, "banned_domain", tag)); continue
+        if _is_index_or_archive_url(h.url):
+            rejected.append(RejectedHit(h.url, "index_or_archive_url", tag)); continue
+        if _is_chamber_homepage(h.url, h.domain):
+            rejected.append(RejectedHit(h.url, "chamber_homepage", tag)); continue
+        if not _mentions_locality(text, pack):
+            rejected.append(RejectedHit(h.url, "off_corridor", tag)); continue
+        if tag == "rents":
+            if not h.published:
+                rejected.append(RejectedHit(h.url, "undated", tag)); continue
+            if not _RENT_FIGURE_RE.search(text):
+                rejected.append(RejectedHit(h.url, "no_rent_figure_with_unit", tag)); continue
+        kept.append(h)
+    return kept, rejected
 
 
 @dataclass
@@ -42,6 +141,7 @@ class Enrichment:
     checks_planned: int = 0
     checks_done: int = 0
     closure_checks_disabled: bool = False
+    rejected_hits: list = field(default_factory=list)   # list[RejectedHit]
 
 
 def _locality(pack) -> str:
@@ -139,7 +239,8 @@ def _check_one(con, pack, poi, budget, places, web, now: dt.datetime) -> bool:
     return wrote
 
 
-def enrich(pack, budget, places, web, *, closure_checks: bool = True) -> Enrichment:
+def enrich(pack, budget, places, web, *, closure_checks: bool = True,
+          skip_rents_leases: bool = False) -> Enrichment:
     """The paid enrichment pass for one `EvidencePack`. Mutates `pack.supply`
     in place (via `evidence.refresh_supply`) when any closure check wrote a
     row, so `render.py` sees the UPDATED statuses without re-assembling the
@@ -150,21 +251,36 @@ def enrich(pack, budget, places, web, *, closure_checks: bool = True) -> Enrichm
     call, no `poi_evidence` row, no `poi_status` change. `checks_planned`
     reports 0 (not `len(unknown_pois(pack))`) so a caller reading the
     `Enrichment` alone sees "nothing was planned", not "planned and skipped".
-    The three general searches (rents/leases/news) are unaffected -- they are
-    not closure checks and still run."""
+
+    `skip_rents_leases=True` (investor review item 2, set by `run.generate`
+    when `render.is_below_c(pack)` -- a below-C or ungraded address gets the
+    one-page no-trade note, which carries "no web enrichment beyond news")
+    skips the rents/leases Tavily searches entirely; the news search always
+    runs regardless of grade. Every kept hit from all three searches has
+    already passed `filter_hits` (geo-scope, banned domains, dated-page +
+    unit checks) -- rejects land on `Enrichment.rejected_hits`, never
+    silently dropped."""
     con = budget.con
     now = dt.datetime.now()
     rents: list = []
     leases: list = []
     news: list = []
+    rejected: list = []
     unknown = ev.unknown_pois(pack) if closure_checks else []
     checks_planned = len(unknown)
     checks_done = 0
     cap_hit = False
     try:
-        rents = _search(web, budget, _rents_query(pack), "rents")
-        leases = _search(web, budget, _leases_query(pack), "leases")
-        news = _search(web, budget, _news_query(pack), "news")
+        if not skip_rents_leases:
+            rents_raw = _search(web, budget, _rents_query(pack), "rents")
+            rents, rej = filter_hits(rents_raw, pack, tag="rents")
+            rejected += rej
+            leases_raw = _search(web, budget, _leases_query(pack), "leases")
+            leases, rej = filter_hits(leases_raw, pack, tag="leases")
+            rejected += rej
+        news_raw = _search(web, budget, _news_query(pack), "news")
+        news, rej = filter_hits(news_raw, pack, tag="news")
+        rejected += rej
         if closure_checks and (places is not None or web is not None):
             for poi in unknown:
                 if _check_one(con, pack, poi, budget, places, web, now):
@@ -179,4 +295,5 @@ def enrich(pack, budget, places, web, *, closure_checks: bool = True) -> Enrichm
 
     return Enrichment(rents=rents, leases=leases, news=news, cap_hit=cap_hit,
                       checks_planned=checks_planned, checks_done=checks_done,
-                      closure_checks_disabled=not closure_checks)
+                      closure_checks_disabled=not closure_checks,
+                      rejected_hits=rejected)

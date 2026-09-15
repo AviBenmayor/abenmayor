@@ -13,13 +13,31 @@ test below can build a pack without touching GeoSearch or the network at all.
 """
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import json
+import pathlib
+import re
 from dataclasses import dataclass, field
 
 from loci.model.recommend import area_facts, build_cards, load_rules
 from loci.score.dedup import haversine_m
 from loci.score.supply import canonical_poi_sql
+
+#: NY ABC Law's "500-foot rule" (SLA sections 64-a/110-b): a new on-premises
+#: liquor licence application draws a mandatory public-interest hearing when
+#: 3+ existing on-premises licences already sit within 500 feet. 500 ft =
+#: 152.4 m -- investor review item 6, checked only for a bar/restaurant lead
+#: category (the rule is meaningless context for any other category).
+SLA_500FT_RADIUS_M = 152.4
+SLA_500FT_TRIGGER_CATEGORIES = frozenset({"bar", "restaurant"})
+SLA_500FT_LICENSE_COUNT_TRIGGER = 3
+
+#: No flood-zone / Superfund-boundary source is loaded in this warehouse
+#: (investor review item 6: render this rather than inventing a number).
+#: Kept as a named constant, not a magic string, so a future source landing
+#: is a one-place fix (see the session report for what was checked).
+FLOOD_ENVIRONMENTAL_NOT_LOADED = "flood/environmental overlays: not loaded"
 
 #: Half the seed's "catchment" default (500 m) is generous for a single-block
 #: memo but matches D100's own facts section ("assemble(con, address_id, *,
@@ -56,6 +74,46 @@ class POIRow:
 
 
 @dataclass
+class VacantStorefrontRow:
+    """One DOF Storefront Registry premises currently reading vacant (investor
+    review item 4: NAME the vacant space, don't just count it)."""
+    premises_id: str
+    address: str | None
+    dist_m: float
+    floor_area_sqft: float | None   # PLUTO retailarea on the storefront's own
+                                     # BBL, None when no PLUTO match/record
+    last_use: str | None            # most recent non-null primary_business_activity
+    vacant_since: int | None        # earliest reporting_year of the CURRENT
+                                     # contiguous vacant streak
+    bbl: str | None = None
+
+
+@dataclass
+class PipelineRow:
+    """One SLA-pending or DOB fit-out filing in the catchment
+    (`analysis.storefront_pipeline`, D80) -- investor review item 4."""
+    pipeline_id: str
+    business_name: str | None
+    category: str | None            # loci_category, may be None (uncategorised)
+    kind: str                       # 'SLA pending' | 'DOB fit-out'
+    stage: str | None               # raw entry_stage
+    entry_date: object               # date | None
+    dist_m: float
+
+
+@dataclass
+class ChainWatchRow:
+    """One flagged, expanding chain location within the watch radius
+    (`chains.brand_location`/`brand_latest`, D77) -- investor review item 4."""
+    brand_key: str
+    display_name: str
+    category: str | None
+    dist_m: float
+    locations_new_12m: int | None
+    locations_total: int | None
+
+
+@dataclass
 class EvidencePack:
     address: dict
     scores: dict                 # raw `area_facts` output (facts dict)
@@ -66,6 +124,9 @@ class EvidencePack:
     legality: dict
     context: dict                 # transit/DOT/pipeline context, best-effort
     provenance: dict = field(default_factory=dict)
+    vacant_storefronts: list = field(default_factory=list)  # list[VacantStorefrontRow]
+    pipeline: list = field(default_factory=list)             # list[PipelineRow]
+    chains_watch: list = field(default_factory=list)         # list[ChainWatchRow]
 
     @property
     def lead_category(self) -> str | None:
@@ -92,6 +153,10 @@ class EvidencePack:
                  self.forecast.get("model_version")),
             "supply": sorted((p.poi_id, p.status, p.basis) for p in self.supply),
             "demand": self.demand,
+            "vacant_storefronts": sorted(
+                (v.premises_id, v.vacant_since) for v in self.vacant_storefronts),
+            "pipeline": sorted((p.pipeline_id, p.stage) for p in self.pipeline),
+            "chains_watch": sorted(c.brand_key for c in self.chains_watch),
         }
         blob = json.dumps(payload, sort_keys=True, default=str)
         return hashlib.sha1(blob.encode("utf-8")).hexdigest()
@@ -133,17 +198,96 @@ def _legality_row(con, address_id: str) -> dict:
     if row:
         base.update({"legality": row[0], "legality_basis": row[1],
                      "has_open_commercial_poi": row[2]})
-    for col in ("zonedist1", "overlay1", "overlay2", "landuse", "ownertype",
-               "histdist", "landmark"):
+    plu_cols = ("zonedist1", "overlay1", "overlay2", "landuse", "ownertype",
+               "histdist", "landmark", "spdist1")
+    for col in plu_cols:
         base[col] = None
     plu = con.execute(
-        "SELECT zonedist1, overlay1, overlay2, landuse, ownertype, histdist, landmark "
-        "FROM analysis.address WHERE address_id = ?", [address_id]).fetchone()
+        f"SELECT {', '.join(plu_cols)} FROM analysis.address WHERE address_id = ?",
+        [address_id]).fetchone()
     if plu:
-        base.update(dict(zip(
-            ("zonedist1", "overlay1", "overlay2", "landuse", "ownertype",
-             "histdist", "landmark"), plu)))
+        base.update(dict(zip(plu_cols, plu)))
     return base
+
+
+def _sla_500ft_context(con, category: str | None, lat: float, lon: float) -> dict | None:
+    """The SLA 500-foot rule (investor review item 6): applies only when the
+    lead category is `bar` or `restaurant`. Counts ACTIVE, `on_premises`
+    licences (`staging.alcohol_licences`) within `SLA_500FT_RADIUS_M`
+    straight-line metres -- the same table and `active`/`classification`
+    fields the hand-written comparator memos read. Returns `None` when the
+    category does not trigger the rule (render prints nothing in that case,
+    rather than a line that never applies to the address's own lead
+    category)."""
+    if category not in SLA_500FT_TRIGGER_CATEGORIES:
+        return None
+    df = con.execute("""
+        SELECT ST_X(geom) AS lon, ST_Y(geom) AS lat
+        FROM staging.alcohol_licences
+        WHERE active AND classification = 'on_premises' AND geom IS NOT NULL
+    """).fetchdf()
+    n = 0
+    for r in df.itertuples(index=False):
+        if haversine_m(lat, lon, r.lat, r.lon) <= SLA_500FT_RADIUS_M:
+            n += 1
+    return {
+        "n_on_premises_licenses": n,
+        "triggers_hearing": n >= SLA_500FT_LICENSE_COUNT_TRIGGER,
+    }
+
+
+def _same_bbl_consistency(bbl: str | None, lead_category: str | None, *,
+                          recommendations_dir: "pathlib.Path | str | None" = None,
+                          exclude_path: "pathlib.Path | str | None" = None,
+                          now: dt.datetime | None = None,
+                          within_days: int = 7) -> list[str]:
+    """Best-effort same-BBL consistency check (investor review item 6): scan
+    the OTHER files in `docs/recommendations/` -- this project's own
+    generated memos and hand-written companion analyses alike, since both
+    live in the same directory -- modified within `within_days` days for a
+    mention of THIS address's BBL, and flag a DIFFERENT `lead_category` named
+    for it there. A text scan, not a database join: the hand-written
+    comparator memos (e.g. `graham-ave-376-2026-09-13.md`) are prose, not
+    structured data, so this can only ever be a heuristic cross-check -- it
+    flags disagreement, it does not resolve it. Returns `[]` (never raises)
+    when there is no BBL, no directory, or nothing recent mentions it."""
+    if not bbl:
+        return []
+    if recommendations_dir is None:
+        from loci.report.render import OUT_DIR as recommendations_dir
+    directory = pathlib.Path(recommendations_dir)
+    if not directory.exists():
+        return []
+    from loci.categories import CATEGORIES
+
+    now = now or dt.datetime.now()
+    cutoff = now - dt.timedelta(days=within_days)
+    exclude = pathlib.Path(exclude_path).resolve() if exclude_path else None
+    cat_res = {c: re.compile(rf"\b{re.escape(c)}\b", re.I) for c in CATEGORIES}
+
+    out: list[str] = []
+    for path in sorted(directory.glob("*.md")):
+        if exclude is not None and path.resolve() == exclude:
+            continue
+        try:
+            if dt.datetime.fromtimestamp(path.stat().st_mtime) < cutoff:
+                continue
+            text = path.read_text(errors="replace")
+        except OSError:
+            continue
+        if bbl not in text:
+            continue
+        # A markdown table row often reads "`lead_category` | 0.526 /
+        # **tailor_repair**" -- the category name shares the LINE with the
+        # "lead_category" mention, not a fixed offset from it, so this scans
+        # whole lines rather than a single regex with a bounded gap.
+        found = {c for line in text.splitlines() if "lead_category" in line.lower()
+                for c, rx in cat_res.items() if rx.search(line)}
+        conflicting = found - ({lead_category} if lead_category else set())
+        if conflicting:
+            out.append(f"{path.name} names lead_category {sorted(conflicting)} for BBL "
+                       f"{bbl}; this report reads {lead_category!r}")
+    return out
 
 
 def _forecast_row(con, address_id: str, category: str | None) -> dict | None:
@@ -210,6 +354,186 @@ def unknown_pois(pack: EvidencePack) -> list[POIRow]:
     return [p for p in pack.supply if p.status == "unknown"]
 
 
+#: `analysis.storefront_pipeline.entry_stage` values read as "SLA pending"
+#: (an on-premises liquor application, not yet issued) vs "DOB fit-out" (a
+#: construction/sign filing on the storefront itself) -- investor review item
+#: 4: name these filings, don't fold them into a count. `license_application`
+#: is deliberately excluded from SLA_PENDING_STAGES: `storefront_pipeline`
+#: mixes SLA and DCA/DOHMH license applications under one generic stage name
+#: in some feeds, and only `liquor_application` is unambiguously SLA.
+SLA_PENDING_STAGES: tuple[str, ...] = ("liquor_application",)
+DOB_FITOUT_STAGES: tuple[str, ...] = ("fitout_filing", "permit_issued", "sign_permit")
+
+#: Straight-line radius for the chains watchlist (investor review item 4:
+#: "chains-watchlist entries within 800 m", stated as a fixed radius, not the
+#: report's own `catchment_m`).
+CHAINS_WATCH_RADIUS_M = 800.0
+
+
+def _present(v) -> bool:
+    """`v` is a real, non-null value -- true for anything but `None` and
+    pandas' float `NaN` (DuckDB's `fetchdf()` renders some NULL VARCHARs as
+    `NaN`, not `None`, depending on the column's inferred dtype; `NaN != NaN`
+    is the standard float trick to catch that without importing pandas here
+    just for `pd.notna`)."""
+    return v is not None and v == v
+
+
+def _isnull(v) -> bool:
+    """True for None, NaN and pandas NA (fetchdf yields all three)."""
+    if v is None:
+        return True
+    try:
+        return bool(v != v)          # NaN is the only value unequal to itself
+    except (TypeError, ValueError):  # pd.NA: comparison is ambiguous
+        return True
+
+
+def _flag(v) -> bool:
+    """A nullable-boolean flag read as a plain bool; NULL/NA/NaN is False."""
+    if _isnull(v):
+        return False
+    try:
+        return bool(v)
+    except (TypeError, ValueError):
+        return False
+
+
+def _vacant_storefront_rows(con, lat: float, lon: float,
+                            catchment_m: float) -> list[VacantStorefrontRow]:
+    """Every DOF Storefront Registry premises within `catchment_m` that reads
+    vacant as of its OWN latest filing -- named (address, last use, vacant
+    since), not counted. `vacant_since` is the earliest `reporting_year` of
+    the contiguous run of vacant filings ending at that latest filing (a gap
+    year breaks the streak); `last_use` is the most recent non-null
+    `primary_business_activity` across ALL filings for the premises (often
+    from a filing before the vacancy began -- that's the point: it names what
+    used to be there). Floor area is PLUTO `retailarea` on the storefront's
+    own BBL when that address has been through `address_legality`'s build
+    step; `None` (rendered "not on file") otherwise -- this module never
+    invents a square footage."""
+    df = con.execute("""
+        SELECT premises_id, address, bbl, ST_X(geom) AS lon, ST_Y(geom) AS lat,
+               reporting_year, vacant_1231, vacant_0630, primary_business_activity
+        FROM analysis.storefront
+        WHERE geom IS NOT NULL AND premises_id IS NOT NULL
+    """).fetchdf()
+    if df.empty:
+        return []
+
+    groups: dict[str, list] = {}
+    for r in df.itertuples(index=False):
+        groups.setdefault(r.premises_id, []).append(r)
+
+    out: list[VacantStorefrontRow] = []
+    for premises_id, rows in groups.items():
+        rows = sorted(rows, key=lambda r: (r.reporting_year is None, r.reporting_year))
+        last = rows[-1]
+        # DOF flags come back as pandas nullable booleans: bool(pd.NA) raises,
+        # so a NULL flag must read as "not vacant", never crash the pack.
+        if not (_flag(last.vacant_1231) or _flag(last.vacant_0630)):
+            continue      # not currently vacant on its own latest filing
+        if _isnull(last.lat) or _isnull(last.lon):
+            continue
+        dist_m = haversine_m(lat, lon, last.lat, last.lon)
+        if dist_m > catchment_m:
+            continue
+
+        vacant_since = last.reporting_year
+        prev_year = last.reporting_year
+        for r in reversed(rows[:-1]):
+            is_vacant = _flag(r.vacant_1231) or _flag(r.vacant_0630)
+            if (is_vacant and r.reporting_year is not None and prev_year is not None
+                    and prev_year - r.reporting_year <= 1):
+                vacant_since = r.reporting_year
+                prev_year = r.reporting_year
+            else:
+                break
+
+        last_use = None
+        for r in reversed(rows):
+            if _present(r.primary_business_activity):
+                last_use = r.primary_business_activity
+                break
+
+        out.append(VacantStorefrontRow(
+            premises_id=premises_id, address=last.address, dist_m=round(dist_m, 1),
+            floor_area_sqft=None, last_use=last_use, vacant_since=vacant_since,
+            bbl=last.bbl))
+
+    bbls = sorted({v.bbl for v in out if v.bbl})
+    if bbls:
+        placeholders = ",".join("?" for _ in bbls)
+        area_by_bbl = dict(con.execute(
+            f"SELECT bbl, TRY_CAST(retailarea AS DOUBLE) FROM analysis.address "
+            f"WHERE bbl IN ({placeholders})", bbls).fetchall())
+        for v in out:
+            if v.bbl in area_by_bbl:
+                v.floor_area_sqft = area_by_bbl[v.bbl]
+
+    out.sort(key=lambda v: v.dist_m)
+    return out
+
+
+def _pipeline_rows(con, lat: float, lon: float, catchment_m: float) -> list[PipelineRow]:
+    """SLA-pending and DOB-fit-out filings within `catchment_m`, nearest
+    first, EXCLUDING anything `storefront_pipeline` already marks
+    `is_open` (that filing has already resolved into a business -- it
+    belongs in the supply table, not "what is coming"). Investor review item
+    4: name these rows, don't fold them into `openings_pipeline_400m`."""
+    df = con.execute("""
+        SELECT pipeline_id, business_name, loci_category, entry_stage, entry_date,
+               lon, lat, is_open
+        FROM analysis.storefront_pipeline
+        WHERE lon IS NOT NULL AND lat IS NOT NULL
+          AND entry_stage IN ?
+    """, [list(SLA_PENDING_STAGES) + list(DOB_FITOUT_STAGES)]).fetchdf()
+    out: list[PipelineRow] = []
+    for r in df.itertuples(index=False):
+        if _flag(r.is_open):
+            continue
+        kind = "SLA pending" if r.entry_stage in SLA_PENDING_STAGES else "DOB fit-out"
+        dist_m = haversine_m(lat, lon, r.lat, r.lon)
+        if dist_m > catchment_m:
+            continue
+        out.append(PipelineRow(
+            pipeline_id=r.pipeline_id, business_name=r.business_name,
+            category=r.loci_category, kind=kind, stage=r.entry_stage,
+            entry_date=r.entry_date, dist_m=round(dist_m, 1)))
+    out.sort(key=lambda p: p.dist_m)
+    return out
+
+
+def _chains_watch_rows(con, lat: float, lon: float,
+                       radius_m: float = CHAINS_WATCH_RADIUS_M) -> list[ChainWatchRow]:
+    """Flagged, expanding chain locations (D77: `chains.brand_latest.flagged`)
+    within `radius_m` straight-line metres of the latest snapshot, nearest
+    first. Investor review item 4: name the chains-watchlist entries, don't
+    fold them into a generic supply row."""
+    df = con.execute("""
+        SELECT bl.brand_key, bl.category, bl.lon, bl.lat,
+               br.display_name, br.locations_new_12m, br.locations_total
+        FROM chains.brand_location bl
+        JOIN chains.brand_latest br
+          ON br.brand_key = bl.brand_key AND br.snapshot_month = bl.snapshot_month
+        WHERE br.flagged
+          AND bl.snapshot_month = (SELECT max(snapshot_month) FROM chains.brand_latest)
+    """).fetchdf()
+    out: list[ChainWatchRow] = []
+    for r in df.itertuples(index=False):
+        if _isnull(r.lat) or _isnull(r.lon):
+            continue
+        dist_m = haversine_m(lat, lon, r.lat, r.lon)
+        if dist_m > radius_m:
+            continue
+        out.append(ChainWatchRow(
+            brand_key=r.brand_key, display_name=r.display_name or r.brand_key,
+            category=r.category, dist_m=round(dist_m, 1),
+            locations_new_12m=r.locations_new_12m, locations_total=r.locations_total))
+    out.sort(key=lambda c: c.dist_m)
+    return out
+
+
 def _demand_facts(con, address_id: str, category: str | None, row: dict) -> dict:
     out = {
         "homes_400m": row.get("homes_400m"),
@@ -246,9 +570,16 @@ def _demand_facts(con, address_id: str, category: str | None, row: dict) -> dict
     return out
 
 
-def assemble(con, address_id: str, *, catchment_m: float = DEFAULT_CATCHMENT_M) -> EvidencePack:
+def assemble(con, address_id: str, *, catchment_m: float = DEFAULT_CATCHMENT_M,
+            recommendations_dir=None) -> EvidencePack:
     """Every warehouse fact the four sections need, for ONE address. Pure
-    read: no INSERT/UPDATE anywhere in this function, no paid call."""
+    read: no INSERT/UPDATE anywhere in this function, no paid call.
+
+    `recommendations_dir` overrides where the same-BBL consistency check
+    (investor review item 6) looks for other recent memos -- production
+    callers never pass it (it defaults to `render.OUT_DIR`, the real
+    `docs/recommendations/`); tests pass a `tmp_path` so this never reads or
+    depends on the real repo's memo directory."""
     address = _address_row(con, address_id)
     legality = _legality_row(con, address_id)
     bbox = _bbox_around(address["lat"], address["lon"], GRADE_BBOX_HALF_WIDTH_M)
@@ -259,13 +590,22 @@ def assemble(con, address_id: str, *, catchment_m: float = DEFAULT_CATCHMENT_M) 
     forecast = _forecast_row(con, address_id, lead_category)
     supply = _supply_rows(con, address["lat"], address["lon"], catchment_m)
     demand = _demand_facts(con, address_id, lead_category, address)
+    vacant_storefronts = _vacant_storefront_rows(con, address["lat"], address["lon"], catchment_m)
+    pipeline = _pipeline_rows(con, address["lat"], address["lon"], catchment_m)
+    chains_watch = _chains_watch_rows(con, address["lat"], address["lon"])
+    sla_500ft = _sla_500ft_context(con, lead_category, address["lat"], address["lon"])
+    same_bbl_conflicts = _same_bbl_consistency(
+        address.get("bbl"), lead_category, recommendations_dir=recommendations_dir)
     context = {
         "neighborhood": address.get("neighborhood"),
         "nta_code": address.get("nta_code"),
         "borough": address.get("borough"),
         "catchment_m": catchment_m,
     }
-    provenance = {"asof": scores.get("asof"), "supply_hash": scores.get("live_hash")}
+    provenance = {"asof": scores.get("asof"), "supply_hash": scores.get("live_hash"),
+                 "sla_500ft": sla_500ft, "same_bbl_conflicts": same_bbl_conflicts,
+                 "flood_environmental": FLOOD_ENVIRONMENTAL_NOT_LOADED}
     return EvidencePack(address=address, scores=scores, grades=grades, forecast=forecast,
                         supply=supply, demand=demand, legality=legality, context=context,
-                        provenance=provenance)
+                        provenance=provenance, vacant_storefronts=vacant_storefronts,
+                        pipeline=pipeline, chains_watch=chains_watch)

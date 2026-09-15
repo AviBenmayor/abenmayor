@@ -1431,7 +1431,16 @@ function charRiProp(L,j){ const c=charAt(L,j); return (c&&c.ri!=null)?c.ri:-1; }
 // legality is safety information for an allocator (D75/D82), not an optional
 // layer, so it shows on every card that has a reading, always.
 function legHTML(L,j){
-  const g=legAt(L,j); if(!g||g.val==null) return '';
+  const g=legAt(L,j); if(!g) return '';
+  return legHTMLFromRecord(g);
+}
+// Rendering half of legHTML, split out so a legality reading that did NOT
+// come from a gap array's parallel arrays (e.g. data/address_index.json,
+// for an address that is not a gap on the selected category) can still be
+// drawn with the exact same text -- one definition, two sources, like
+// reportButtonHTML's eligibility gate below.
+function legHTMLFromRecord(g){
+  if(!g||g.val==null) return '';
   let h='';
   if(g.val==='ineligible')
     h+='<div class="warn">not commercially zoned — no open business to grandfather it</div>';
@@ -3689,14 +3698,20 @@ document.getElementById('valBtn').onclick=async()=>{
 //
 // SEARCH: NYC Planning Labs GeoSearch (free, keyless — same endpoint
 // geo/geosearch.py uses server-side) resolves free text to a point and,
-// where PLUTO has one, a BBL. A BBL resolves to a Loci address_id locally
-// via data/address_index.json (written by `loci export-webmap`,
-// viz/webmap_export.py's `write_address_index`) — no round trip. A hit with
-// no BBL, or a BBL the index has no entry for, falls back to
-// GET /api/snap?lat&lon (report_routes.js), which calls
-// `loci.geo.geosearch.snap` server-side for the <=50 m nearest-address rule.
-// Either miss path raises/returns 'not in Loci coverage' — the seed's exact
-// wording, shown as a toast, and the search NEVER opens a degraded card.
+// where PLUTO has one, a BBL. A BBL resolves to a Loci address_id, AND its
+// legality reading, locally via data/address_index.json (written by `loci
+// export-webmap`, viz/webmap_export.py's `write_address_index`) — no round
+// trip. The file is `{values:[...], idx:{bbl:[address_id, legality_idx,
+// histdist, landmark]}}` -- `values` is LEGALITY_VALUES, the same order
+// every `gaps/<cat>.json` uses, so `addrIndexEntry` below can produce the
+// exact shape `legAt()` does. A hit with no BBL, or a BBL the index has no
+// entry for, falls back to GET /api/snap?lat&lon (report_routes.js), which
+// calls `loci.geo.geosearch.snap` server-side for the <=50 m nearest-address
+// rule -- that fallback carries no legality reading (no round trip for it
+// either), so a card opened that way shows no legality line, same as
+// before this file gained one. Either miss path (no address_id at all)
+// raises/returns 'not in Loci coverage' — the seed's exact wording, shown
+// as a toast, and the search NEVER opens a degraded card.
 //
 // REPORT: the address card's 'Generate report' button (hidden when legality
 // reads 'ineligible' — see `reportButtonHTML`) POSTs to /api/report, then
@@ -3707,9 +3722,19 @@ let ADDR_IDX=null;
 async function loadAddrIndex(){
   if(ADDR_IDX) return ADDR_IDX;
   try{ const r=await fetch('data/address_index.json');
-    ADDR_IDX=r.ok?await r.json():{};
-  }catch(e){ ADDR_IDX={}; }
+    ADDR_IDX=r.ok?await r.json():{values:[],idx:{}};
+  }catch(e){ ADDR_IDX={values:[],idx:{}}; }
   return ADDR_IDX;
+}
+// {addressId, leg:{val,histdist,landmark}} for a bbl in the loaded index,
+// or null on a miss -- `leg` has the exact shape `legAt()` returns, so
+// `legHTMLFromRecord`/`reportButtonHTML` need not know which source a
+// legality reading came from.
+function addrIndexEntry(idx,bbl){
+  const rec=(bbl&&idx&&idx.idx)?idx.idx[bbl]:null;
+  if(!rec) return null;
+  const [addressId,li,hd,lm]=rec, vals=(idx&&idx.values)||[];
+  return {addressId, leg:{val:(li==null?null:vals[li]), histdist:hd, landmark:lm}};
 }
 
 async function geoSearchLookup(text){
@@ -3751,8 +3776,8 @@ function showToast(msg){
 // 'Generate report' button, shared by the 'pt' click handler above and the
 // search-opened card below, so the eligibility gate cannot drift between
 // the two paths.
-function reportButtonHTML(L,j,addressId){
-  const leg=(L&&j>=0)?legAt(L,j):null;
+function reportButtonHTML(L,j,addressId,idxLeg){
+  const leg=(L&&j>=0)?legAt(L,j):(idxLeg||null);
   if(leg&&leg.val==='ineligible') return '';
   return `<button class="reportBtn" type="button" data-addr="${esc(addressId)}">Generate report</button>`;
 }
@@ -3767,8 +3792,12 @@ function wireReportButton(popup){
 // address is a gap address for the category on screen (reuses its exact
 // HTML, `legHTML` included); otherwise a minimal card naming the address —
 // it is still IN the Loci universe (D75: every address is), it simply is
-// not a gap for the currently selected business.
-async function openAddressCard(addressId,lon,lat){
+// not a gap for the currently selected business. `idxLeg`, when the caller
+// has one (data/address_index.json's reading for this bbl), fills the same
+// legality/fit-out line via `legHTMLFromRecord` so THIS branch is not
+// silently missing safety information `legHTML` would have shown had the
+// address happened to be a gap (the defect this fixes, D104-followup).
+async function openAddressCard(addressId,lon,lat,idxLeg){
   map.flyTo({center:[lon,lat],zoom:16});
   const L=CACHE.gaps[biz];
   const j=(L&&L.ids)?L.ids.indexOf(addressId):-1;
@@ -3785,9 +3814,10 @@ async function openAddressCard(addressId,lon,lat){
   }else{
     html=`<div class="pnb">Address found</div>`+
       `<div class="ppop">not a ${label().toLowerCase()} gap on this view</div>`+
+      (idxLeg?legHTMLFromRecord(idxLeg):'')+
       `<div class="pmi">bbl ${esc(addressId)}</div>`;
   }
-  html+=reportButtonHTML(L,j,addressId);
+  html+=reportButtonHTML(L,j,addressId,idxLeg);
   const popup=new maplibregl.Popup({closeButton:true,maxWidth:'320px'}).setLngLat([lon,lat]).setHTML(html).addTo(map);
   wireReportButton(popup);
 }
@@ -3801,9 +3831,10 @@ document.getElementById('addrSearch').addEventListener('keydown',async e=>{
     const hit=await geoSearchLookup(q);
     if(!hit){ showToast('not in Loci coverage'); return; }
     const idx=await loadAddrIndex();
-    const addressId=(hit.bbl&&idx[hit.bbl])||await snapAddress(hit);
+    const entry=hit.bbl?addrIndexEntry(idx,hit.bbl):null;
+    const addressId=(entry&&entry.addressId)||await snapAddress(hit);
     if(!addressId){ showToast('not in Loci coverage'); return; }
-    await openAddressCard(addressId,hit.lon,hit.lat);
+    await openAddressCard(addressId,hit.lon,hit.lat,entry&&entry.leg);
   }catch(err){ showToast('not in Loci coverage'); }
   finally{ input.disabled=false; }
 });

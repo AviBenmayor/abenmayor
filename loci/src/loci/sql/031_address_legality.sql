@@ -53,6 +53,11 @@ ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS histdist  VARCHAR;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS landmark  VARCHAR;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS retailarea VARCHAR;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS bldgclass VARCHAR;
+-- spdist1 added 2026-09-15 (investor review, GTM-172 item 6): PLUTO's primary
+-- Special Purpose District, e.g. the Special Gowanus Mixed Use District --
+-- LABEL ONLY for the allocator report's legality section, never a branch of
+-- model/address_legality.py's legality_case_sql().
+ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS spdist1 VARCHAR;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS has_open_commercial_poi BOOLEAN;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS legality VARCHAR;
 ALTER TABLE analysis.address ADD COLUMN IF NOT EXISTS legality_basis VARCHAR;

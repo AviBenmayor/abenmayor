@@ -189,10 +189,15 @@ INSTITUTIONAL_OWNERTYPES: tuple[str, ...] = ("C", "O", "P", "X")
 #: `retailarea` and `bldgclass` were added 2026-09-14 (D97 item 3, contrarian
 #: review) for the PLUTO-retail-evidence half of the grandfathering test --
 #: the column SET is this module's; extending sql/031's ALTERs to match is
-#: part of this same change.
+#: part of this same change. `spdist1` was added 2026-09-15 (investor review,
+#: GTM-172 item 6) for the allocator report's legality section -- PLUTO's
+#: primary Special Purpose District (e.g. the Special Gowanus Mixed Use
+#: District). LABEL ONLY, exactly like `histdist`/`landmark`: it never enters
+#: `legality_case_sql()` or any branch of the eligibility rule above, it is
+#: carried through for the report to print (or print "not loaded" when NULL).
 PLUTO_LEGALITY_COLUMNS: tuple[str, ...] = (
     "zonedist1", "overlay1", "overlay2", "landuse", "ownertype",
-    "histdist", "landmark", "retailarea", "bldgclass",
+    "histdist", "landmark", "retailarea", "bldgclass", "spdist1",
 )
 
 #: PLUTO building-class prefixes read as retail evidence (D97 item 3): 'K'

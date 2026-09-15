@@ -4392,14 +4392,27 @@ def write(bundle: dict, out_dir: pathlib.Path) -> dict[str, int]:
 
 
 def write_address_index(con, boroughs: list[str], out_dir: pathlib.Path) -> int:
-    """`webmap/data/address_index.json` -- `{bbl: address_id}` for every
-    LOT-FRAME address in `boroughs` (D99, GTM-171, seed AC-14).
+    """`webmap/data/address_index.json` -- `{"values": [...], "idx": {bbl:
+    [address_id, legality_idx, histdist, landmark]}}` for every LOT-FRAME
+    address in `boroughs` (D99/GTM-171, extended D104-followup/GTM-169 so a
+    searched address that is NOT a gap for the selected category still gets
+    a legality line instead of a bare "Address found" card).
 
     The browser search box resolves a GeoSearch hit's BBL to a Loci
     `address_id` locally, without a round trip, by the same bbl-first rule
     `loci.geo.geosearch.snap()` uses server-side (design-allocator-report.md
     S4/S5) -- so a hit this file cannot resolve still gets the fallback
-    `/api/snap?lat&lon` route, never a wrong address.
+    `/api/snap?lat&lon` route, never a wrong address. That server-side
+    fallback carries no legality reading, same as before this change.
+
+    `values` is `LEGALITY_VALUES` (the same order `legAt()`/`legHTML()`
+    already read out of every `gaps/<cat>.json`, D82) -- `legality_idx`
+    indexes into it, or is `null` when `collect_legality_detail` has no
+    reading for the address (no `loci address-legality build` yet, or the
+    address predates it). `histdist`/`landmark` are 1/0/null card-label
+    flags, same contract `_Legality.add` uses -- kept as small ints, never
+    re-spelled as strings per row, so the file stays cheap to ship even
+    though every LOT-FRAME address now carries four values instead of one.
 
     LOT-FRAME ONLY: street-midpoint rows (D84, `frame = 'street'`) have no
     BBL to key on -- PLUTO's lot ownership means nothing at a street
@@ -4422,9 +4435,18 @@ def write_address_index(con, boroughs: list[str], out_dir: pathlib.Path) -> int:
         """,
         list(boroughs),
     ).fetchall()
-    index = {bbl: address_id for bbl, address_id in rows}
+    detail = collect_legality_detail(con, boroughs)  # {} when has_legality() is false
+    idx: dict[str, list] = {}
+    for bbl, address_id in rows:
+        leg = detail.get(address_id)
+        if leg is None:
+            idx[bbl] = [address_id, None, None, None]
+        else:
+            legality_i, histdist, landmark = leg
+            idx[bbl] = [address_id, legality_i, int(histdist), int(landmark)]
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    text = json.dumps(index, separators=(",", ":"))
+    payload = {"values": list(LEGALITY_VALUES), "idx": idx}
+    text = json.dumps(payload, separators=(",", ":"))
     (out_dir / "address_index.json").write_text(text)
     return len(text.encode())

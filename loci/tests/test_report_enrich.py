@@ -1,7 +1,10 @@
 """AC-17, AC-18: `loci.report.enrich`. Own local warehouse fixture (pytest's
 default import mode does not resolve `tests.<module>` cross-imports between
 sibling test files -- see `test_report_prose.py`'s note), condensed from the
-same pattern `test_report_evidence.py::_synthetic_db` uses."""
+same pattern `test_report_evidence.py::_synthetic_db` uses.
+
+Also covers investor review item 5 (GTM-172, 2026-09-14/15): the web-hit
+quality gate (`filter_hits`) and item 2's `skip_rents_leases` wiring."""
 from __future__ import annotations
 
 import datetime as dt
@@ -9,9 +12,11 @@ import json
 
 import loci.db as locidb
 from loci.categories import CATEGORIES
+from loci.evidence.web_search import Hit
 from loci.report import evidence as ev
 from loci.report.clients import FakePlaces, PlaceStatusResult
-from loci.report.enrich import enrich
+from loci.report.enrich import RejectedHit, enrich, filter_hits
+from loci.report.evidence import EvidencePack
 from loci.report.ledger import PRICES, Budget
 
 ADDR_ID = "addr1"
@@ -161,3 +166,139 @@ def test_dry_run_makes_no_places_calls_and_only_charges_the_plan():
         "SELECT count(*) FROM analysis.poi_closure_evidence").fetchone()[0] == 0
     assert len(budget.plan) == 3                  # one planned Places charge per unknown POI
     assert all(p.provider == "places" for p in budget.plan)
+
+
+# ------------------------------------------------- investor review item 5: web layer
+
+
+def _hit(url, title="", snippet="", published="2026-09-10", domain=None):
+    from loci.evidence.web_search import domain_of
+
+    return Hit(url=url, title=title, snippet=snippet, published=published,
+              domain=domain if domain is not None else domain_of(url))
+
+
+def _filter_pack() -> EvidencePack:
+    """A minimal pack for `filter_hits` -- pure function, no DB needed. The
+    locality it geo-scopes against is 'Test Street' / 'Testville'."""
+    return EvidencePack(
+        address={"address_id": "addr1", "street_name": "Test Street"},
+        scores={}, grades=[], forecast=None, supply=[], demand={}, legality={},
+        context={"neighborhood": "Testville", "borough": "BK", "catchment_m": 500.0})
+
+
+def test_filter_hits_bans_reddit_youtube_instagram_facebook_tiktok_dnainfo():
+    pack = _filter_pack()
+    hits = [
+        _hit("https://www.reddit.com/r/nyc/comments/1/test-street", snippet="Test Street talk"),
+        _hit("https://www.youtube.com/watch?v=1", snippet="Test Street walking tour"),
+        _hit("https://www.instagram.com/p/1", snippet="Test Street pic"),
+        _hit("https://www.facebook.com/events/1", snippet="Test Street event"),
+        _hit("https://www.tiktok.com/@x/video/1", snippet="Test Street"),
+        _hit("https://www.dnainfo.com/new-york/test-street-news", snippet="Test Street"),
+    ]
+    kept, rejected = filter_hits(hits, pack, tag="news")
+    assert kept == []
+    assert {r.reason for r in rejected} == {"banned_domain"}
+    assert len(rejected) == 6
+
+
+def test_filter_hits_rejects_tag_archive_and_search_index_urls():
+    pack = _filter_pack()
+    hits = [
+        _hit("https://example.com/tag/test-street", snippet="Test Street rents"),
+        _hit("https://example.com/category/nyc-retail", snippet="Test Street rents"),
+        _hit("https://example.com/archive/2026/09", snippet="Test Street rents"),
+        _hit("https://example.com/search?q=test+street", snippet="Test Street rents"),
+    ]
+    kept, rejected = filter_hits(hits, pack, tag="leases")
+    assert kept == []
+    assert all(r.reason == "index_or_archive_url" for r in rejected)
+
+
+def test_filter_hits_rejects_a_chamber_of_commerce_homepage_but_not_a_deep_link():
+    pack = _filter_pack()
+    homepage = _hit("https://www.testvillechamber.org/", snippet="Test Street business news")
+    deep_link = _hit("https://www.testvillechamber.org/news/test-street-retail",
+                     snippet="Test Street retail news")
+    kept_home, rejected_home = filter_hits([homepage], pack, tag="news")
+    kept_deep, rejected_deep = filter_hits([deep_link], pack, tag="news")
+    assert kept_home == [] and rejected_home[0].reason == "chamber_homepage"
+    assert kept_deep == [deep_link]
+
+
+def test_filter_hits_rejects_off_corridor_hits():
+    """The geo-scope check (item 5): a hit that never mentions this address's
+    own street or neighborhood is rejected -- the Gowanus-priced-off-Court-
+    Street failure mode from the investor review."""
+    pack = _filter_pack()
+    off_corridor = _hit("https://example.com/court-street-comps",
+                        snippet="Court Street asking rents are strong this quarter")
+    on_corridor = _hit("https://example.com/testville-comps",
+                       snippet="Test Street asking rents in Testville")
+    kept, rejected = filter_hits([off_corridor, on_corridor], pack, tag="leases")
+    assert kept == [on_corridor]
+    assert rejected[0].reason == "off_corridor"
+
+
+def test_filter_hits_rents_require_a_dated_page_and_a_figure_with_a_unit():
+    pack = _filter_pack()
+    no_date = _hit("https://example.com/a", snippet="Test Street asking $45/sq ft",
+                   published=None)
+    no_unit = _hit("https://example.com/b", snippet="Test Street asking $302.72")
+    good = _hit("https://example.com/c", snippet="Test Street asking $45.00/sq ft")
+    kept, rejected = filter_hits([no_date, no_unit, good], pack, tag="rents")
+    assert kept == [good]
+    reasons = {r.url: r.reason for r in rejected}
+    assert reasons["https://example.com/a"] == "undated"
+    assert reasons["https://example.com/b"] == "no_rent_figure_with_unit"
+
+
+def test_filter_hits_leases_and_news_do_not_require_a_rent_figure():
+    pack = _filter_pack()
+    lease_hit = _hit("https://example.com/lease", snippet="Test Street storefront for lease",
+                     published=None)
+    kept, rejected = filter_hits([lease_hit], pack, tag="leases")
+    assert kept == [lease_hit]
+    assert rejected == []
+
+
+def test_enrich_only_surfaces_hits_that_survive_the_quality_gate():
+    class _Web:
+        def __init__(self):
+            self.calls = []
+
+        def search(self, query, *, max_results=8):
+            self.calls.append(query)
+            if "rent" in query:
+                return [
+                    _hit("https://www.reddit.com/r/x", snippet="Testville rent talk"),
+                    _hit("https://example.com/good", snippet="Testville asking $50/sq ft"),
+                ]
+            return []
+
+    con = _db_with_n_unknowns(0)
+    pack = ev.assemble(con, ADDR_ID)
+    budget = Budget(run_id="e8", cap_usd=1.0, con=con)
+    result = enrich(pack, budget, None, _Web())
+    assert [h.url for h in result.rents] == ["https://example.com/good"]
+    assert any(r.reason == "banned_domain" for r in result.rejected_hits)
+
+
+def test_skip_rents_leases_only_runs_the_news_search():
+    class _Web:
+        def __init__(self):
+            self.calls = []
+
+        def search(self, query, *, max_results=8):
+            self.calls.append(query)
+            return []
+
+    con = _db_with_n_unknowns(0)
+    pack = ev.assemble(con, ADDR_ID)
+    budget = Budget(run_id="e9", cap_usd=1.0, con=con)
+    web = _Web()
+    result = enrich(pack, budget, None, web, skip_rents_leases=True)
+    assert result.rents == [] and result.leases == []
+    assert len(web.calls) == 1
+    assert "news" in web.calls[0].lower()

@@ -167,6 +167,240 @@ def test_resolve_address_passes_through_an_existing_address_id():
     assert ev.resolve_address(con, ADDR_ID) == ADDR_ID
 
 
+def _vacant_storefront(con, premises_id, address, dlat_m, reporting_year, vacant,
+                       bbl="3099990001", activity=None):
+    lat = ADDR_LAT + dlat_m / 111_320.0
+    con.execute(
+        "INSERT INTO analysis.storefront (storefront_id, premises_id, filing_due_date, "
+        "reporting_year, universe, borough, source, ingested_at, "
+        "bbl, address, geom, vacant_1231, vacant_0630, primary_business_activity) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,ST_Point(?,?),?,?,?)",
+        [f"{premises_id}-{reporting_year}", premises_id, dt.date(reporting_year, 12, 31),
+         reporting_year, "full", "BK", "nyc_dof_storefront_registry", dt.datetime.now(),
+         bbl, address, ADDR_LON, lat, vacant, vacant, activity])
+
+
+def _pipeline_filing(con, pipeline_id, business_name, category, entry_stage, dlat_m,
+                     is_open=False, entry_date=None):
+    lat = ADDR_LAT + dlat_m / 111_320.0
+    con.execute(
+        "INSERT INTO analysis.storefront_pipeline (pipeline_id, group_kind, business_name, "
+        "loci_category, entry_stage, entry_date, lon, lat, is_open, n_filings, n_sources, "
+        "bbl_missing, name_key_missing, asof_date, built_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [pipeline_id, "filing", business_name, category, entry_stage, entry_date,
+         ADDR_LON, lat, is_open, 1, 1, False, False, dt.date(2026, 9, 14),
+         dt.datetime.now()])
+
+
+def _chain_location(con, brand_key, display_name, category, dlat_m,
+                    locations_new_12m=10, flagged=True, snapshot_month="2026-09"):
+    lat = ADDR_LAT + dlat_m / 111_320.0
+    con.execute(
+        "INSERT INTO chains.brand_location (snapshot_month, brand_key, location_key, poi_id, "
+        "category, borough, lon, lat, first_seen_on, first_seen_src) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        [snapshot_month, brand_key, f"{brand_key}-loc1", f"{brand_key}-poi1", category, "BK",
+         ADDR_LON, lat, None, None])
+    con.execute(
+        "INSERT INTO chains.brand_snapshot (snapshot_month, brand_key, display_name, "
+        "loci_category, locations_total, locations_dated, locations_new_12m, "
+        "locations_new_3m, n_boroughs, boroughs, categories, n_sources, flagged, "
+        "flag_reason, detected_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [snapshot_month, brand_key, display_name, category, 100, 100, locations_new_12m,
+         5, 1, "BK", category, 1, flagged, None, dt.datetime.now()])
+
+
+def _alcohol_license(con, licence_id, dlat_m, active=True, classification="on_premises"):
+    lat = ADDR_LAT + dlat_m / 111_320.0
+    con.execute(
+        "INSERT INTO staging.alcohol_licences (licence_id, description, licence_class, "
+        "classification, name, address, zip, borough, geom, expires_on, active, "
+        "observed_on) VALUES (?,?,?,?,?,?,?,?,ST_Point(?,?),?,?,?)",
+        [licence_id, "test", "0340", classification, "Test Bar", "1 Test St", "11211",
+         "BK", ADDR_LON, lat, None, active, dt.date(2026, 1, 1)])
+
+
+# ----------------------------------- investor review item 4: named supply/pipeline
+
+
+def test_vacant_storefront_is_named_with_address_last_use_and_vacant_since():
+    con = _synthetic_db()
+    _vacant_storefront(con, "sf1", "318 Graham Ave", 77.0, 2025, True,
+                       activity="FOOD SERVICES")
+    pack = ev.assemble(con, ADDR_ID)
+    assert len(pack.vacant_storefronts) == 1
+    row = pack.vacant_storefronts[0]
+    assert row.address == "318 Graham Ave"
+    assert row.last_use == "FOOD SERVICES"
+    assert row.vacant_since == 2025
+    assert row.dist_m == pytest.approx(77.0, abs=1.0)
+
+
+def test_vacant_storefront_since_is_the_earliest_year_of_the_contiguous_streak():
+    con = _synthetic_db()
+    _vacant_storefront(con, "sf1", "1 Test Row", 80.0, 2022, False, activity="RETAIL")
+    _vacant_storefront(con, "sf1", "1 Test Row", 80.0, 2023, True, activity="RETAIL")
+    _vacant_storefront(con, "sf1", "1 Test Row", 80.0, 2024, True, activity="RETAIL")
+    _vacant_storefront(con, "sf1", "1 Test Row", 80.0, 2025, True, activity=None)
+    pack = ev.assemble(con, ADDR_ID)
+    assert len(pack.vacant_storefronts) == 1
+    row = pack.vacant_storefronts[0]
+    assert row.vacant_since == 2023            # 2022 breaks the streak
+    assert row.last_use == "RETAIL"             # most recent NON-NULL activity
+
+
+def test_currently_occupied_storefront_is_not_named_as_vacant():
+    con = _synthetic_db()
+    _vacant_storefront(con, "sf1", "1 Test Row", 80.0, 2024, True, activity="RETAIL")
+    _vacant_storefront(con, "sf1", "1 Test Row", 80.0, 2025, False, activity="RETAIL")
+    pack = ev.assemble(con, ADDR_ID)
+    assert pack.vacant_storefronts == []
+
+
+def test_vacant_storefront_null_flags_do_not_crash_and_are_not_listed():
+    """Regression: `analysis.storefront.vacant_1231`/`vacant_0630` come back
+    from `fetchdf()` as pandas nullable booleans, so a premises whose latest
+    filing has BOTH flags NULL used to crash `_vacant_storefront_rows` with
+    "boolean value of NA is ambiguous" on `bool(last.vacant_1231)`. The
+    `_flag()`/`_isnull()` guards must read a NULL flag as not-vacant without
+    raising, while a real TRUE flag on another premises still lists it."""
+    con = _synthetic_db()
+    _vacant_storefront(con, "sfnull", "1 Null Row", 90.0, 2025, None, activity="RETAIL")
+    _vacant_storefront(con, "sftrue", "2 True Row", 95.0, 2025, True, activity="RETAIL")
+    pack = ev.assemble(con, ADDR_ID)   # must not raise
+    ids = {row.premises_id for row in pack.vacant_storefronts}
+    assert "sfnull" not in ids
+    assert "sftrue" in ids
+
+
+def test_vacant_storefront_null_flags_mid_streak_break_the_streak():
+    """Regression sibling to the crash guard above: a NULL-flagged filing
+    SANDWICHED between two TRUE-flagged filings must still break the
+    contiguous-streak walk (the guard reads NULL as not-vacant, and
+    not-vacant breaks the streak per the docstring's "a gap year breaks the
+    streak") -- the premises is still listed (it reads vacant on its own
+    latest filing) but `vacant_since` must not walk past the NULL row back
+    to the earliest TRUE filing."""
+    con = _synthetic_db()
+    _vacant_storefront(con, "sfgap", "3 Gap Row", 85.0, 2023, True, activity="RETAIL")
+    _vacant_storefront(con, "sfgap", "3 Gap Row", 85.0, 2024, None, activity="RETAIL")
+    _vacant_storefront(con, "sfgap", "3 Gap Row", 85.0, 2025, True, activity="RETAIL")
+    pack = ev.assemble(con, ADDR_ID)   # must not raise
+    assert len(pack.vacant_storefronts) == 1
+    row = pack.vacant_storefronts[0]
+    assert row.premises_id == "sfgap"
+    assert row.vacant_since == 2025    # the NULL 2024 filing breaks the streak
+
+
+def test_vacant_storefront_floor_area_from_pluto_retailarea_when_present():
+    con = _synthetic_db()
+    con.execute(
+        "INSERT INTO analysis.address (address_id, bbl, lon, lat, borough, "
+        "eligible, present_count, n_missing, reach_source, reach_hash, graph_version, "
+        "run_at, retailarea) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ["addr2", "3055550001", ADDR_LON, ADDR_LAT, "BK", True, 0, 0, "tiers", "h",
+         "g", dt.datetime(2026, 9, 11), "900"])
+    _vacant_storefront(con, "sf1", "318 Graham Ave", 77.0, 2025, True,
+                       bbl="3055550001", activity="FOOD SERVICES")
+    pack = ev.assemble(con, ADDR_ID)
+    assert pack.vacant_storefronts[0].floor_area_sqft == pytest.approx(900.0)
+
+
+def test_pipeline_filings_are_named_and_open_filings_excluded():
+    con = _synthetic_db()
+    _pipeline_filing(con, "pl1", "Riff", "bar", "liquor_application", 82.0)
+    _pipeline_filing(con, "pl2", "TFS Burger Works", "restaurant", "fitout_filing", 90.0)
+    _pipeline_filing(con, "pl3", "Already Open Cafe", "cafe_bakery", "fitout_filing",
+                     95.0, is_open=True)
+    _pipeline_filing(con, "pl4", "Just Inspected", "restaurant", "first_inspection", 60.0)
+    pack = ev.assemble(con, ADDR_ID)
+    names = {p.business_name for p in pack.pipeline}
+    assert names == {"Riff", "TFS Burger Works"}
+    kinds = {p.business_name: p.kind for p in pack.pipeline}
+    assert kinds["Riff"] == "SLA pending"
+    assert kinds["TFS Burger Works"] == "DOB fit-out"
+
+
+def test_chains_watch_lists_only_flagged_brands_and_respects_the_radius():
+    con = _synthetic_db()
+    _chain_location(con, "dunkin", "Dunkin'", "cafe_bakery", 32.0,
+                    locations_new_12m=61, flagged=True)
+    _chain_location(con, "unflagged", "Steady Chain", "restaurant", 40.0, flagged=False)
+    _chain_location(con, "far_chain", "Far Away Chain", "restaurant", 900.0, flagged=True)
+    pack = ev.assemble(con, ADDR_ID)
+    names = {c.display_name for c in pack.chains_watch}
+    assert names == {"Dunkin'"}
+    assert pack.chains_watch[0].locations_new_12m == 61
+
+
+# --------------------------- investor review item 6: SLA 500-ft, same-BBL check
+
+
+def test_sla_500ft_only_populated_for_bar_or_restaurant_lead_category():
+    con = _synthetic_db()      # lead category here is 'grocery'
+    pack = ev.assemble(con, ADDR_ID)
+    assert pack.provenance["sla_500ft"] is None
+
+
+def test_sla_500ft_counts_active_on_premises_licenses_within_500ft():
+    con = _synthetic_db()
+    con.execute("UPDATE analysis.address_category SET supply_ratio_vs_base = 0.05 "
+               "WHERE address_id = ? AND category = 'bar'", [ADDR_ID])
+    _alcohol_license(con, "lic1", 50.0, active=True, classification="on_premises")
+    _alcohol_license(con, "lic2", 100.0, active=True, classification="on_premises")
+    _alcohol_license(con, "lic3", 120.0, active=False, classification="on_premises")  # inactive
+    _alcohol_license(con, "lic4", 130.0, active=True, classification="off_premises_beer")
+    _alcohol_license(con, "lic5", 300.0, active=True, classification="on_premises")   # > 500 ft
+    pack = ev.assemble(con, ADDR_ID)
+    assert pack.lead_category == "bar"
+    sla = pack.provenance["sla_500ft"]
+    assert sla["n_on_premises_licenses"] == 2
+    assert sla["triggers_hearing"] is False
+
+
+def test_sla_500ft_triggers_hearing_at_three_or_more_licenses():
+    con = _synthetic_db()
+    con.execute("UPDATE analysis.address_category SET supply_ratio_vs_base = 0.05 "
+               "WHERE address_id = ? AND category = 'bar'", [ADDR_ID])
+    for i, d in enumerate((30.0, 60.0, 90.0)):
+        _alcohol_license(con, f"lic{i}", d, active=True, classification="on_premises")
+    pack = ev.assemble(con, ADDR_ID)
+    assert pack.provenance["sla_500ft"]["triggers_hearing"] is True
+
+
+def test_same_bbl_consistency_flags_a_conflicting_lead_category(tmp_path):
+    other = tmp_path / "other-memo-2026-09-14.md"
+    other.write_text(
+        "Some analysis for BBL 3012340001. `gap_score` / `lead_category` | 0.526 / "
+        "**tailor_repair** (0.00x supply)")
+    con = _synthetic_db()
+    pack = ev.assemble(con, ADDR_ID, recommendations_dir=tmp_path)
+    conflicts = pack.provenance["same_bbl_conflicts"]
+    assert len(conflicts) == 1
+    assert "tailor_repair" in conflicts[0]
+    assert "grocery" in conflicts[0]
+
+
+def test_same_bbl_consistency_ignores_files_older_than_seven_days(tmp_path):
+    import os as _os
+    import time as _time
+
+    other = tmp_path / "old-memo-2026-08-01.md"
+    other.write_text("BBL 3012340001, lead_category **tailor_repair**")
+    old_ts = _time.time() - 30 * 86400
+    _os.utime(other, (old_ts, old_ts))
+    con = _synthetic_db()
+    pack = ev.assemble(con, ADDR_ID, recommendations_dir=tmp_path)
+    assert pack.provenance["same_bbl_conflicts"] == []
+
+
+def test_same_bbl_consistency_is_empty_with_no_recent_files(tmp_path):
+    con = _synthetic_db()
+    pack = ev.assemble(con, ADDR_ID, recommendations_dir=tmp_path)
+    assert pack.provenance["same_bbl_conflicts"] == []
+
+
 def test_refresh_supply_picks_up_a_new_evidence_row():
     con = _synthetic_db()
     pack = ev.assemble(con, ADDR_ID)

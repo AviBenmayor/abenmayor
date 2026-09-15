@@ -95,7 +95,8 @@ def generate(con, address_id: str, *, cap_usd: float = DEFAULT_CAP_USD,
 
     budget.reserve(PROSE_RESERVE_USD)
     enrichment = enrich_mod.enrich(pack, budget, places, web,
-                                   closure_checks=closure_checks)
+                                   closure_checks=closure_checks,
+                                   skip_rents_leases=render.is_below_c(pack))
     budget.release_reserve(PROSE_RESERVE_USD)
 
     prose_sections: dict = {}
