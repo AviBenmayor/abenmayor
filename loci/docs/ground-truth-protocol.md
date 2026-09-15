@@ -24,6 +24,16 @@ to drive the owner's real, logged-in Chrome.
   equivalent unambiguous label, e.g. "Temporarily closed") yields a `closed`
   status. No inference from a shuttered gate, no storefront, or dark windows
   alone.
+- **The free price channel (owner decision 2026-09-15, D105).** Google Maps
+  shows a price token (`$`, `$$`, `$10–20`, ...) right next to the rating on
+  most listings the protocol already reads. Copying it costs nothing extra —
+  no new page load, no new read — so every storefront record also carries
+  `price_label`, copied verbatim, never parsed or inferred (see §3, §4). This
+  does **not** extend the session cap or the scope above: price is captured
+  only for storefronts this protocol was already going to read. QUESTIONS D49
+  found the token present on roughly 80% of matched food/bar places and on
+  none of the service categories checked, so in practice this channel is
+  food-only — a coverage limit, not a bug in the copying rule.
 
 ## 2. Inputs
 
@@ -101,6 +111,12 @@ interceptor text --group loci-ground-truth
 #   - "Permanently closed" appears in the SAME position in the listing as an
 #     open business's status (e.g. "Open · Closes 5 PM") -- read that field
 #     for every hit, it is not a separate flag.
+#   - A price token often follows the rating in the SAME line, e.g.
+#     "4.5(304) · $$" or "4.2(88) · $10–20". Copy it into `price_label`
+#     VERBATIM -- the whole token, including a range -- and leave it null
+#     when no such token is shown. Never infer a price from the category or
+#     the neighborhood; this is a free byproduct of a read already made, not
+#     a second lookup (see §1).
 
 # 2. Open the address search for the anchor's own building (skip when
 #    address_url is null -- a bbox/NTA card has no doorway to look up)
@@ -108,6 +124,10 @@ interceptor open "<address_url>" --group loci-ground-truth --reuse --text-only
 interceptor wait-stable
 interceptor find "Permanently closed" --group loci-ground-truth
 interceptor text --group loci-ground-truth
+# If the panel shows a rating line ("4.5(304) · $$"), copy that same price
+# token into `price_label` as in step 1 -- one field, whichever read supplied
+# it; do not merge two conflicting tokens from the two reads. If neither read
+# showed one, price_label stays null.
 # If the URL landed on a list of results rather than a single building panel,
 # use tree refs to open the first result:
 interceptor tree --group loci-ground-truth
@@ -178,6 +198,12 @@ For **each storefront seen** at the anchor, record:
     D79, absence alone is always `unknown`, never `closed`.
 - **maps_status_label** — the exact label text from Maps, verbatim (e.g.
   `"Permanently closed"`), or `null` if Maps showed no status label.
+- **price_label** — the exact price token from Maps, verbatim (e.g. `"$$"`,
+  `"$10–20"`, `"$100+"`), copied from wherever the rating line was already
+  being read (§3) — never normalised to a tier and never inferred when Maps
+  showed none. `null` when absent. String, at most 32 characters. This is the
+  free price channel (§1, D105): captured only for storefronts already being
+  read, and in practice populated mostly for food/bar places (D49).
 
 For **each anchor**, record one `gap_verdict`:
 
@@ -195,7 +221,7 @@ For **each anchor**, record one `gap_verdict`:
 Write one JSONL record per anchor, exactly in this schema:
 
 ```json
-{"rec_id": "string", "observed_at": "ISO-8601", "observer": "string", "maps_url": "string", "streetview_url": "string|null", "streetview_capture_date": "YYYY-MM|null", "screenshot_path": "string|null", "storefronts": [{"name": "string", "category_guess": "string|null", "status": "open|closed|vacant|unknown", "maps_status_label": "string|null", "notes": "string|null"}], "gap_verdict": "confirmed_gap|supply_missed|closure_missed|inconclusive", "notes": "string|null"}
+{"rec_id": "string", "observed_at": "ISO-8601", "observer": "string", "maps_url": "string", "streetview_url": "string|null", "streetview_capture_date": "YYYY-MM|null", "screenshot_path": "string|null", "storefronts": [{"name": "string", "category_guess": "string|null", "status": "open|closed|vacant|unknown", "maps_status_label": "string|null", "price_label": "string|null, <=32 chars, verbatim", "notes": "string|null"}], "gap_verdict": "confirmed_gap|supply_missed|closure_missed|inconclusive", "notes": "string|null"}
 ```
 
 Then ingest and report:

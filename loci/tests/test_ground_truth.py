@@ -129,9 +129,9 @@ def _obs(rec_id, storefronts, *, gap_verdict="confirmed_gap", observed_at=OBSERV
 
 
 def _sf(name="Sudsy Wash", *, category_guess="laundry", status="open",
-        label=None, notes=None):
+        label=None, notes=None, price_label=None):
     return {"name": name, "category_guess": category_guess, "status": status,
-            "maps_status_label": label, "notes": notes}
+            "maps_status_label": label, "price_label": price_label, "notes": notes}
 
 
 # ================================================================ 0. URLs
@@ -378,6 +378,84 @@ def test_a_bad_status_or_category_guess_stops_the_file(con):
                        ).fetchone()[0] == 0
 
 
+# ========================================================= 2b. price_label
+
+def test_price_label_is_stored_verbatim(con):
+    """D105 2026-09-15: the free price channel. A price token Maps showed is
+    copied through unparsed and lands on the row exactly as given."""
+    rec_id = _rec(con)
+    gt.record(con, [_obs(rec_id, [_sf(price_label="$$")])])
+    assert con.execute("SELECT price_label FROM analysis.address_observation"
+                       ).fetchone()[0] == "$$"
+
+
+def test_price_label_is_null_when_maps_showed_none(con):
+    rec_id = _rec(con)
+    gt.record(con, [_obs(rec_id, [_sf()])])
+    assert con.execute("SELECT price_label FROM analysis.address_observation"
+                       ).fetchone()[0] is None
+
+
+def test_a_vacant_row_carries_a_null_price_label(con):
+    """A NULL-name 'nothing observed' row has no storefront to have read a
+    price off -- price_label is NULL there too, never inferred."""
+    rec_id = _rec(con)
+    gt.record(con, [_obs(rec_id, [])])
+    assert con.execute("SELECT price_label FROM analysis.address_observation"
+                       ).fetchone()[0] is None
+
+
+def test_a_price_label_over_32_chars_is_rejected(con):
+    rec_id = _rec(con)
+    with pytest.raises(ValueError, match="price_label"):
+        gt.record(con, [_obs(rec_id, [_sf(price_label="x" * (gt.PRICE_LABEL_MAX_LEN + 1))])])
+    assert con.execute("SELECT count(*) FROM analysis.address_observation"
+                       ).fetchone()[0] == 0
+
+
+def test_a_price_label_at_the_length_limit_is_accepted(con):
+    rec_id = _rec(con)
+    label = "x" * gt.PRICE_LABEL_MAX_LEN
+    gt.record(con, [_obs(rec_id, [_sf(price_label=label)])])
+    assert con.execute("SELECT price_label FROM analysis.address_observation"
+                       ).fetchone()[0] == label
+
+
+def test_summary_counts_n_priced_and_the_miss_view_carries_price_label(con):
+    rec_id = _rec(con, category="laundry")
+    gt.record(con, [_obs(rec_id, [_sf(name="Bubbles Laundromat", price_label="$$")])])
+    s = gt.summary(con)
+    [row] = s["by_rec"]
+    assert row["n_priced"] == 1
+    [miss] = s["misses"]
+    assert miss["price_label"] == "$$"
+
+
+def test_cli_report_renders_the_price_column(con, monkeypatch):
+    """The 'price' column in the misses table and 'n_priced' in the by-rec
+    table both render through `_gt_cell`/plain ints without error, and the
+    stored label is visible in the output.
+
+    The by-rec table's OWN headers are asserted against the live `Table`
+    object, not the printed text: with ten narrow columns, rich's CliRunner
+    console (fixed, narrow width) already truncates neighbouring headers like
+    'same-cat open' -> 'same…' -- pre-existing behavior this test must not
+    depend on to pass. The misses table's 'price' header is short enough to
+    survive that truncation, so it IS asserted against the printed text."""
+    from typer.testing import CliRunner
+
+    from loci import cli
+
+    rec_id = _rec(con, category="laundry")
+    gt.record(con, [_obs(rec_id, [_sf(name="Bubbles Laundromat", price_label="$$")])])
+
+    monkeypatch.setattr(cli.locidb, "connect", lambda *a, **k: con)
+    result = CliRunner().invoke(cli.app, ["ground-truth", "report"])
+    assert result.exit_code == 0, result.output
+    assert "$$" in result.output
+    assert "price" in result.output
+
+
 # =========================================================== 3. miss view
 
 def test_the_miss_view_is_the_supply_model_s_miss(con):
@@ -564,13 +642,20 @@ def test_sql_036_touches_no_object_sql_033_created(con):
     `source` CHECK. DuckDB 1.5.5 implements no in-place CHECK alteration, and
     a create-copy-swap of `analysis.poi_closure_evidence` would fire inside a
     peer session mid-write. So 036 must not name that table at all -- the
-    'maps_ui' distinction lives in `domain_class`."""
+    'maps_ui' distinction lives in `domain_class`.
+
+    036 DOES now carry one `ALTER TABLE` (D105 2026-09-15, the price_label
+    column), but it targets `analysis.address_observation` -- the table this
+    file itself owns -- never `poi_closure_evidence`, which is the specific
+    thing this test guards against."""
     sql = gt.SQL_036.read_text()
     body = "\n".join(line for line in sql.splitlines()
                      if not line.lstrip().startswith("--"))
     assert "poi_closure_evidence" not in body
     assert "DROP TABLE" not in body.upper()
-    assert "ALTER TABLE" not in body.upper()
+    alters = [ln for ln in body.upper().splitlines() if "ALTER TABLE" in ln]
+    assert alters, "expected the price_label ADD COLUMN ALTER TABLE"
+    assert all("ADDRESS_OBSERVATION" in a for a in alters)
 
 
 def test_category_check_matches_the_categories_module():

@@ -5948,25 +5948,26 @@ def ground_truth_report() -> None:
     t.add_column("rec_id", overflow="fold", no_wrap=False)
     for col, j in (("category", "left"), ("verdict", "left"), ("storefronts", "right"),
                    ("open", "right"), ("closed", "right"), ("vacant", "right"),
-                   ("matched", "right"), ("same-cat open", "right"), ("imagery", "left")):
+                   ("matched", "right"), ("same-cat open", "right"),
+                   ("n_priced", "right"), ("imagery", "left")):
         t.add_column(col, justify=j)
     for r in s["by_rec"]:
         t.add_row(_gt_cell(r["rec_id"]), _gt_cell(r["category"]), _gt_cell(r["gap_verdict"]),
                   str(int(r["n_storefronts"])), str(int(r["n_open"])),
                   str(int(r["n_closed"])), str(int(r["n_vacant"])),
                   str(int(r["n_matched"])), str(int(r["n_same_category_open"])),
-                  _gt_cell(r["imagery"]))
+                  str(int(r["n_priced"])), _gt_cell(r["imagery"]))
     console.print(t)
 
     if s["misses"]:
         m = Table(title="analysis.address_observation_miss — the supply model's misses")
         m.add_column("rec_id", overflow="fold", no_wrap=False)
-        for col in ("category", "observed storefront", "guess", "status"):
+        for col in ("category", "observed storefront", "guess", "status", "price"):
             m.add_column(col)
         for r in s["misses"]:
             m.add_row(_gt_cell(r["rec_id"]), _gt_cell(r["category"]),
                       _gt_cell(r["storefront_name"]), _gt_cell(r["category_guess"]),
-                      _gt_cell(r["status"]))
+                      _gt_cell(r["status"]), _gt_cell(r["price_label"]))
         console.print(m)
         console.print("[red]Each row above is an open business of the recommended "
                       "category standing at an anchor the screen called empty — a "

@@ -112,6 +112,11 @@ CREATE TABLE IF NOT EXISTS analysis.address_observation (
     maps_status_label VARCHAR,             -- the RAW label, e.g. 'Permanently closed'.
                                            --   Stored beside `status` so a re-reading of
                                            --   the observer's mapping is possible later.
+    price_label     VARCHAR,               -- Maps' price token, VERBATIM ('$', '$$',
+                                           --   '$10-20', ...), copied not parsed. NULL
+                                           --   means Maps showed none (D105 2026-09-15:
+                                           --   the free price channel; see
+                                           --   model/ground_truth.py's docstring).
     matched_poi_id  VARCHAR,               -- analysis.poi_presence.poi_id_latest, ANY category
     match_distance_m DOUBLE,               -- anchor -> matched location, straight line
     gap_verdict     VARCHAR CHECK (gap_verdict IN (
@@ -124,6 +129,14 @@ CREATE TABLE IF NOT EXISTS analysis.address_observation (
     run_id          VARCHAR,
     created_at      TIMESTAMP NOT NULL
 );
+
+-- D105 2026-09-15 (price channel): the shared warehouse already has this table
+-- from 036's first application, and db.init_schema re-applies every *.sql on
+-- each write connection -- CREATE TABLE IF NOT EXISTS above is therefore a
+-- no-op there and never adds the column a fresh DB gets from the literal
+-- above. This ALTER is the one place price_label actually lands on an
+-- existing table; it is idempotent (IF NOT EXISTS) and touches no row.
+ALTER TABLE analysis.address_observation ADD COLUMN IF NOT EXISTS price_label VARCHAR;
 
 CREATE INDEX IF NOT EXISTS address_observation_rec
     ON analysis.address_observation (rec_id);

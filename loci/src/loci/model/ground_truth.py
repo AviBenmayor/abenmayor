@@ -426,6 +426,9 @@ def write_manifest(entries: list[dict], path: pathlib.Path | str) -> pathlib.Pat
                              "category_guess": f"one of {sorted(CATEGORIES)} or null",
                              "status": "|".join(STATUSES),
                              "maps_status_label": "str|null, the raw label text",
+                             "price_label": "str|null, <=32 chars, verbatim from Maps "
+                                            "(e.g. '$', '$$', '$10–20') -- never "
+                                            "inferred or normalised at ingest",
                              "notes": "str|null"}],
             "gap_verdict": "|".join(GAP_VERDICTS),
             "notes": "str|null",
@@ -525,6 +528,14 @@ def _match(con, name_key: str, lon: float, lat: float):
     return row[0], float(row[1])
 
 
+#: Longest `price_label` accepted -- covers every label seen live ('$', '$$$$',
+#: '$10–20', '$100+') with headroom, while still catching a caller that
+#: pasted an unrelated sentence into the field. Matches sql/036's
+#: `price_label VARCHAR` column, which carries no CHECK of its own (a price
+#: token is free-form text, not a closed set like `status`).
+PRICE_LABEL_MAX_LEN = 32
+
+
 def _validate(rec: dict, sf: dict) -> None:
     status = sf.get("status")
     if status not in STATUSES:
@@ -534,6 +545,15 @@ def _validate(rec: dict, sf: dict) -> None:
     if guess is not None and guess not in CATEGORIES:
         raise ValueError(f"{rec.get('rec_id')}: category_guess {guess!r} is not "
                          f"a loci category; one of {sorted(CATEGORIES)}")
+    price = sf.get("price_label")
+    if price is not None:
+        if not isinstance(price, str):
+            raise ValueError(f"{rec.get('rec_id')}: price_label {price!r} must "
+                             f"be a string or null")
+        if len(price) > PRICE_LABEL_MAX_LEN:
+            raise ValueError(f"{rec.get('rec_id')}: price_label {price!r} is "
+                             f"{len(price)} chars, over the {PRICE_LABEL_MAX_LEN}-char "
+                             f"limit -- copy the label verbatim, never a longer note")
 
 
 def record(con, observations: Iterable[dict], run_id: str | None = None,
@@ -579,7 +599,7 @@ def record(con, observations: Iterable[dict], run_id: str | None = None,
         # row at all still reads "not yet checked"; the two are different.
         rows = storefronts or [{"name": None, "category_guess": None,
                                 "status": "vacant", "maps_status_label": None,
-                                "notes": None}]
+                                "price_label": None, "notes": None}]
 
         for sf in rows:
             name = sf.get("name")
@@ -593,17 +613,17 @@ def record(con, observations: Iterable[dict], run_id: str | None = None,
                 (observation_id, rec_id, anchor_address_id, anchor_lon, anchor_lat,
                  category, observed_at, observer, maps_url, streetview_url,
                  streetview_capture_date, screenshot_path, storefront_name, name_key,
-                 category_guess, status, maps_status_label, matched_poi_id,
+                 category_guess, status, maps_status_label, price_label, matched_poi_id,
                  match_distance_m, gap_verdict, notes, raw, run_id, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?)
+                        ?, ?, ?, ?, ?)
             """, [oid, rec_id, anchor["anchor_address_id"], anchor["anchor_lon"],
                   anchor["anchor_lat"], anchor["category"], observed_at,
                   obs.get("observer"), obs.get("maps_url"), obs.get("streetview_url"),
                   obs.get("streetview_capture_date"), obs.get("screenshot_path"),
                   name, name_key, sf.get("category_guess"), sf["status"],
-                  sf.get("maps_status_label"), matched_poi_id, distance_m,
-                  verdict, sf.get("notes") or obs.get("notes"),
+                  sf.get("maps_status_label"), sf.get("price_label"), matched_poi_id,
+                  distance_m, verdict, sf.get("notes") or obs.get("notes"),
                   json.dumps(sf), run_id, now])
             res.n_rows += 1
             if name is None:
@@ -673,6 +693,7 @@ def summary(con) -> dict:
                count(*) FILTER (WHERE o.matched_poi_id IS NOT NULL)    AS n_matched,
                count(*) FILTER (WHERE o.category_guess = o.category
                                   AND o.status = 'open')              AS n_same_category_open,
+               count(*) FILTER (WHERE o.price_label IS NOT NULL)       AS n_priced,
                any_value(o.streetview_capture_date)                    AS imagery
         FROM analysis.address_observation o
         GROUP BY o.rec_id
@@ -680,7 +701,7 @@ def summary(con) -> dict:
     """).fetchdf().to_dict("records")
     misses = con.execute("""
         SELECT rec_id, category, storefront_name, category_guess, status,
-               maps_status_label, anchor_address_id, observed_at
+               maps_status_label, price_label, anchor_address_id, observed_at
         FROM analysis.address_observation_miss
         ORDER BY rec_id, storefront_name
     """).fetchdf().to_dict("records")
