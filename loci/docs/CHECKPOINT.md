@@ -1770,6 +1770,8 @@ Warehouse effect: record wrote 103 address_observation rows, 41 poi_closure_evid
 
 Fixes in the same window: name match 40 m → 400 m (the nearby read spans the catchment, so known POIs 120 m out were false misses: 63 → 45 candidates); `record --replace-run`; report NaN crash. 35 tests. Commits: f579c08 (manifest URLs, protocol), 74bc539 (400 m match, replace-run, report fix), plus this docs commit.
 
+Addendum (2026-09-15, later): owner answered QUESTIONS D36 — Google Maps segments capped at 30 minutes with at least a 2-minute break between segments, owner present, never unattended; protocol §1 updated (d7c6fd1). The cap is a protocol rule, not code, because the browser half is a supervised session rather than a pipeline; the first session ran ~28 minutes.
+
 Reading of the miss view: 45 rows is a candidate list, not a count — chain-name mismatches and hits beyond 400 m dominate the sample; see GTM-185 (a)(b).
 
 Why the decision: the instrument did what it was built for (P3 falsification at the anchor) and is kept as a verifier; it stays out of the screen, forecast and grades. Interceptor assessment: strong at structured DOM reads in the owner's own browser and at running from a text protocol on a cheap model; weak where Google's labels or imagery are thin; setup needs one probe per new site.

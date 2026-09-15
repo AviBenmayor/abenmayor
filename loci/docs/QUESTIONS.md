@@ -907,10 +907,10 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Current answer:** Owner 2026-09-14: add the four address reports as subjects (376 Graham Ave, 4 East 8th St, 379 Broome St, the Gowanus BBL) as address-level ledger rows via `loci recommendations add`; the Gowanus centroid stays as the fifth look. Rows being added by a parallel agent.
 
 ### D36 — Standing of the supervised Google Maps browser session under Google's terms: same footing as the BizQuest session (fe59eb2), human-paced, owner present, ~15 anchors per session. Confirm the owner is comfortable and whether a per-session cap should be enforced in the protocol.
-- **Status:** open
+- **Status:** answered
 - **Tag:** *infra / policy*
 - **Session:** 2026-09-14, abenmayor-cc
-- **Current answer:** —
+- **Current answer:** Owner 2026-09-15: "as long as Google Maps sessions aren't over 30 minutes without a 2 minute break in between, we are good." Rule: no Maps segment longer than 30 minutes; consecutive segments separated by a break of at least 2 minutes with no Maps page loads; owner present; never unattended. Written into docs/ground-truth-protocol.md §1 (commit d7c6fd1). The first session (57 page loads, 19 anchors) ran about 28 minutes, inside the cap.
 
 ### D37 — Benchmarks: which of the surveyed public sources should enter the revenue model — IRS SOI nonfarm sole-proprietorship receipts by NAICS (targets the D40 owner-operated undercount), trade-association per-store anchors (NCPA pharmacy ~$5.4M, NGA grocery $380/sqft independents, NACS convenience ~$2.25M/store, laundromat $410–564k), and ICSC's measured occupancy-cost ratios by tenant category (fitness ~32%, specialty restaurant ~24%, drug store ~6%) to replace benchmarks.yaml's generic occupancy_cost_ratio. Nothing public gives per-storefront revenue.
 - **Status:** open
