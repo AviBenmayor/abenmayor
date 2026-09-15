@@ -5806,6 +5806,153 @@ def recs_report(
 
 
 # ===========================================================================
+# `loci ground-truth` (D105) -- WHAT IS PHYSICALLY AT THE ANCHOR. A
+# human-supervised browser session opens each open recommendation on Google
+# Maps / Street View, writes down every storefront it can see, and `record`
+# lands the observation in analysis.address_observation. See
+# model/ground_truth.py and sql/036_address_observation.sql.
+#
+# Placed HERE, between two sections that other sessions are appending to, so
+# this hunk is contiguous and touches nothing above or below it.
+# ===========================================================================
+
+gt_app = typer.Typer(add_completion=False, help=(
+    "Check what is ACTUALLY at the recommendation anchors. `plan` emits the "
+    "manifest a browser session works through (one Maps URL and one Street "
+    "View URL per open recommendation); `record` ingests the JSONL it writes "
+    "back; `report` prints what was seen. The load-bearing output is the MISS "
+    "list -- an open storefront of the recommended category standing where the "
+    "supply model says there is nothing, i.e. a measured false positive of the "
+    "screen. An anchor where nothing was seen is STORED, never inferred (D79)."))
+app.add_typer(gt_app, name="ground-truth")
+
+
+def _gt_connect(read_only: bool = False):
+    """Open the warehouse, waiting out a concurrent writer's lock (D69)."""
+    from loci.model.ground_truth import ensure_schema
+    from loci.model.recommend import connect_read_only
+    from loci.model.recommendation_ledger import connect_write
+
+    if read_only:
+        return connect_read_only()
+    con = connect_write()
+    ensure_schema(con)
+    return con
+
+
+@gt_app.command("plan")
+def ground_truth_plan(
+    limit: int = typer.Option(None, "--limit", help="Stop after N anchors."),
+    category: str = typer.Option(None, "--category", help="One loci category only."),
+    out: str = typer.Option(None, "--out", help="Manifest JSON path "
+                            "(default data/ground_truth/manifest-<date>.json)."),
+) -> None:
+    """The manifest for a browser session: every OPEN recommendation with an
+    anchor, its claim, and the two URLs to open."""
+    import datetime as _dt
+    import pathlib as _pl
+
+    from loci.model import ground_truth as gt
+
+    con = _gt_connect(read_only=True)
+    entries = gt.plan(con, limit=limit, category=category)
+    if not entries:
+        console.print("[yellow]no open, anchored recommendations — run "
+                      "`loci recommendations backfill` or `loci recommend --record`[/]")
+        raise typer.Exit(0)
+
+    t = Table(title=f"analysis.recommendation — {len(entries)} anchors to verify")
+    t.add_column("rec_id", overflow="fold", no_wrap=False)
+    for col, j in (("category", "left"), ("grade", "center"), ("address", "left"),
+                   ("lon,lat", "left"), ("proposed", "left")):
+        t.add_column(col, justify=j)
+    for e in entries:
+        t.add_row(e["rec_id"], e["category"], e["grade"] or "—",
+                  e["address_label"] or "—",
+                  f"{e['anchor_lon']:.5f},{e['anchor_lat']:.5f}",
+                  (e["proposed_solution"] or "—")[:60])
+    console.print(t)
+
+    path = _pl.Path(out) if out else (
+        _pl.Path("data/ground_truth") /
+        f"manifest-{_dt.date.today().isoformat()}.json")
+    gt.write_manifest(entries, path)
+    console.print(f"[green]manifest[/] {path}")
+    console.print("[yellow]Street View imagery is often months to years old. Record "
+                  "its capture month in `streetview_capture_date` — an observation "
+                  "is only ever as current as the panorama it was read off.[/]")
+
+
+@gt_app.command("record")
+def ground_truth_record(
+    observations: str = typer.Argument(..., help="JSONL, one record per anchor."),
+    run_id: str = typer.Option(None, "--run-id", help="Tie the rows to a run."),
+) -> None:
+    """Ingest an observation JSONL. Idempotent: re-running the same file
+    changes nothing (observation_id is sha1(rec_id|observed_at|name))."""
+    from loci.model import ground_truth as gt
+
+    con = _gt_connect(read_only=False)
+    res = gt.record(con, gt.load_jsonl(observations), run_id=run_id)
+    console.print(f"[green]ok[/] {res.n_records} anchors, {res.n_rows} observation "
+                  f"rows ({res.n_vacant_rows} nothing-observed), {res.n_matched} "
+                  f"matched to analysis.poi_presence, {res.n_evidence} closure-evidence "
+                  f"rows written; run_id {res.run_id}")
+    console.print("[yellow]'vacant' and 'unknown' write NO evidence row: seeing "
+                  "nothing is not seeing a closure (D79).[/]")
+
+
+@gt_app.command("report")
+def ground_truth_report() -> None:
+    """What was seen at each anchor, and the supply model's misses."""
+    from loci.model import ground_truth as gt
+
+    con = _gt_connect(read_only=True)
+    try:
+        s = gt.summary(con)
+    except RuntimeError as exc:
+        # The table does not exist yet: a read-only connection cannot create
+        # it, so say what would, rather than raising a Catalog Error at the
+        # reader (the `recommendation_ledger.require_schema` pattern).
+        console.print(f"[yellow]{exc}[/]")
+        raise typer.Exit(0) from None
+    if not s["by_rec"]:
+        console.print("[yellow]nothing observed yet — run `loci ground-truth plan` "
+                      "then `loci ground-truth record <file.jsonl>`[/]")
+        raise typer.Exit(0)
+
+    t = Table(title=f"analysis.address_observation — {len(s['by_rec'])} anchors checked")
+    t.add_column("rec_id", overflow="fold", no_wrap=False)
+    for col, j in (("category", "left"), ("verdict", "left"), ("storefronts", "right"),
+                   ("open", "right"), ("closed", "right"), ("vacant", "right"),
+                   ("matched", "right"), ("same-cat open", "right"), ("imagery", "left")):
+        t.add_column(col, justify=j)
+    for r in s["by_rec"]:
+        t.add_row(r["rec_id"], r["category"], r["gap_verdict"],
+                  str(int(r["n_storefronts"])), str(int(r["n_open"])),
+                  str(int(r["n_closed"])), str(int(r["n_vacant"])),
+                  str(int(r["n_matched"])), str(int(r["n_same_category_open"])),
+                  r["imagery"] or "—")
+    console.print(t)
+
+    if s["misses"]:
+        m = Table(title="analysis.address_observation_miss — the supply model's misses")
+        m.add_column("rec_id", overflow="fold", no_wrap=False)
+        for col in ("category", "observed storefront", "guess", "status"):
+            m.add_column(col)
+        for r in s["misses"]:
+            m.add_row(r["rec_id"], r["category"], r["storefront_name"],
+                      r["category_guess"], r["status"])
+        console.print(m)
+        console.print("[red]Each row above is an open business of the recommended "
+                      "category standing at an anchor the screen called empty — a "
+                      "MEASURED false positive, not an estimate.[/]")
+    else:
+        console.print("[green]no misses[/] — every open storefront of a recommended "
+                      "category at a checked anchor is already in analysis.poi_presence")
+
+
+# ===========================================================================
 # retrodiction (GTM-158, QUESTIONS T11) -- gates every decision-value claim
 # in docs/GTM.md (D87). Appended at the END of this file; nothing above is
 # touched, because two sessions are appending here concurrently.
