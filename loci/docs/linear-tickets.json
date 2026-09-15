@@ -1858,6 +1858,16 @@
       "Labels": "validation,ingest",
       "Project": "Loci",
       "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Quiet-warehouse re-baseline on supply d993b3802c6a: baseline, canonical order, revenue, forecast and map re-stamped in one pass",
+      "Description": "CHECKPOINT D106. After the fourth hash drift of the day (D105: 467cd5969200 \u2192 d993b3802c6a, nine POIs flipped closed when sql/036's creation forced a poi_status re-render), all sessions were frozen and the hash steward ran the whole re-stamp chain once instead of chasing a fifth drift \u2014 including the peers' steps that a re-run alone would have skipped.\n\nSteps run in the canonical order plus revenue and forecast: `supply-ratio --fit-baseline` (77 s, every median moved 0.000%), street-frame, address-gaps (215 s), address-demand, pipeline, storefronts, `age-fit fit` (bar and childcare pass; pharmacy refused, Brooklyn 65+ CI includes 0) and apply, supply-ratio, address-access, transit-profile, citibike address-measures, address-character (345 s), storefront-pipeline openings (208 s), dot-counts address-context, `address-legality build` (3,449 s \u2014 the long pole; commercial 49,036 / grandfathered 19,102 / ineligible 213,522 / unknown 50,381), `revenue fit` (345 s; restaurant alone passes, \u03b5 0.4, \u03b2 1.25, \u03b3 \u22120.5, \u03c1_oos 0.829) and `revenue --boroughs MN,BK` (223 s), `forecast issue --month 2026-09 --force` (1,050 s; model_version 0.1.1+ae3eadb3, supply_hash d993b3802c6a, 4,227,630 rows, AUC 0.8768 vs 0.8513 no-score), forecast-export, citibike export, `export-webmap` (148 files, 123.6 MB, meta.json stamps d993b3802c6a). Hash guard equal at six checks.\n\nResult: the gap screen is byte-identical to re-run #3 (223,107 gap addresses, \u03a3gap_score 485,854.61, \u03a3gap_score_fit 401,798.02, every lead-gap count unchanged, lead_censored BK 14,422 / MN 720); only supply_hash and legality (previously NULL) changed on analysis.address; suite 1,876 passed; commit 17900c2. abenmayor-cc is verifying its four 2026-09-14 ledger rows against d993b3802c6a (the re-run check compared a count-based ratio with the rows' distance ratio, so no move is established); outcome logged under D105.\n\nWhy: three canonical re-runs earlier in the night were each chased by another session's write (a closure verdict, a key migration, a migration file's schema sweep); the fix was not a fourth chase but a freeze of every session followed by one pass that also ran the absent peers' steps (revenue, forecast) so nothing ended a hash behind. Rules confirmed: a 'final' signal freezes poi_status writes, migrations AND view re-renders; the steward runs the first write after any new sql/*.sql; peers' re-stamp steps are part of the canonical order, not separate follow-ups.\n\nDone 2026-09-15 (CHECKPOINT D106). Pushed to Linear 2026-09-15 as GTM-184.",
+      "Status": "Done",
+      "Priority": 2,
+      "Estimate": 3,
+      "Labels": "score,rigor,infra",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
     }
   ]
 }
