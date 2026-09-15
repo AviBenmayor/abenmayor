@@ -422,6 +422,143 @@ def test_pad_lon_uses_cos_latitude_and_catches_an_18m_east_poi():
         "test ever ran")
 
 
+def _grid_fixture_con():
+    """An address and a POI table laid out around ONE grid cell edge, with
+    every case that can distinguish the bucketed join from the reference one.
+
+    The cell edge is at `lon = -73.980` exactly (a multiple of
+    `POI_GRID_DEG`), so `floor(lon / POI_GRID_DEG)` changes value there. Each
+    address sits a hair to one side of it and each POI a hair to the other,
+    which is the only arrangement in which a 3x3 neighbourhood that was one
+    cell too small would silently lose a row."""
+    import math
+
+    con = _mem_spatial_con()
+    edge_lon, lat = -73.980, 40.72
+    # metres -> degrees at this latitude, the same two rates the pre-filter uses
+    def dlat(m):
+        return m / al.METRES_PER_DEGREE
+
+    def dlon(m):
+        return m / (al.METRES_PER_DEGREE * math.cos(math.radians(lat)))
+
+    r = al.POI_MATCH_RADIUS_M
+
+    con.execute("CREATE TABLE addr (address_id VARCHAR, lon DOUBLE, lat DOUBLE)")
+    con.executemany("INSERT INTO addr VALUES (?, ?, ?)", [
+        # west of the edge, POIs east of it -> match must cross the cell edge
+        ("west_near",    edge_lon - dlon(2.0),  lat),
+        ("west_far",     edge_lon - dlon(30.0), lat),
+        # east of the edge, a POI west of it
+        ("east_near",    edge_lon + dlon(2.0),  lat),
+        # exactly ON the edge (floor() sends it to the eastern cell)
+        ("on_edge",      edge_lon,              lat),
+        # a north-south edge case too: lat edge at 40.720 exactly
+        ("lat_edge",     -73.9855,              40.720),
+        # duplicate coordinates: two address ids at one point
+        ("dup_a",        -73.9705,              lat),
+        ("dup_b",        -73.9705,              lat),
+        # nothing anywhere near it
+        ("isolated",     -73.9500,              lat),
+        # NULL coordinates must match nothing and must not raise
+        ("null_coords",  None,                  None),
+    ])
+
+    con.execute("CREATE TABLE poi (poi_id VARCHAR, category VARCHAR, "
+                "poi_status VARCHAR, geom GEOMETRY)")
+    con.executemany(
+        "INSERT INTO poi VALUES (?, ?, ?, ST_Point(?, ?))", [
+            # 4 m east of the edge: inside 20 m of west_near, across the cell edge
+            ("across_edge",   "grocery", "open",    edge_lon + dlon(4.0), lat),
+            # 1 m west of the edge: catches east_near and on_edge
+            ("just_west",     "grocery", "unknown", edge_lon - dlon(1.0), lat),
+            # EXACTLY at the radius from west_far (30 m west of it): the
+            # floating-point boundary of `<= radius_m`
+            ("exactly_at_r",  "grocery", "open",
+             edge_lon - dlon(30.0) - dlon(r), lat),
+            # duplicate POI coordinates, both on the duplicate addresses
+            ("dup_poi_1",     "grocery", "open",    -73.9705, lat),
+            ("dup_poi_2",     "bar",     "unknown", -73.9705, lat),
+            # a closed POI on top of the isolated address -- excluded by status
+            ("closed_on_iso", "grocery", "closed",  -73.9500, lat),
+            # 3 m north of the lat cell edge, address is ON the edge
+            ("across_lat_edge", "grocery", "open",  -73.9855, 40.720 + dlat(3.0)),
+            # far enough away to be in the 3x3 neighbourhood but outside 20 m
+            ("neighbour_cell", "grocery", "open",   edge_lon + dlon(60.0), lat),
+        ])
+    return con
+
+
+def test_bucketed_match_agrees_with_the_reference_on_boundary_cases():
+    """GTM-169: `open_poi_match_sql` gained a grid-bucket equi-join so DuckDB
+    stops planning a nested loop (6.8e10 pair evaluations, ~2,000 s). The
+    bucket may only change WHICH PAIRS the exact test sees, never the
+    answer -- so the fast query is pinned row-for-row against
+    `open_poi_match_reference_sql`, the pre-change form, on a fixture built
+    entirely out of the cases a too-small neighbourhood would break: POIs
+    just across a cell edge (east-west AND north-south), an address exactly
+    on an edge, a POI exactly at the radius, duplicate coordinates on both
+    sides, and NULL coordinates."""
+    con = _grid_fixture_con()
+    fast = sorted(r[0] for r in con.execute(al.open_poi_match_sql(
+        address_table="addr", poi_view="poi")).fetchall())
+    ref = sorted(r[0] for r in con.execute(al.open_poi_match_reference_sql(
+        address_table="addr", poi_view="poi")).fetchall())
+    assert fast == ref, (
+        "the bucketed join returned a different row set than the reference "
+        f"bounding-box join: fast={fast} reference={ref}")
+    # Guard the guard: a fixture that matched nothing, or everything, would
+    # pass the comparison above while testing nothing at all.
+    assert "west_near" in fast, "the across-the-cell-edge match was lost"
+    assert "east_near" in fast and "on_edge" in fast
+    assert "lat_edge" in fast, "the across-the-LATITUDE-edge match was lost"
+    assert {"dup_a", "dup_b"} <= set(fast)
+    assert "isolated" not in fast, "a 'closed' POI must not match"
+    assert "null_coords" not in fast
+
+
+def test_bucketed_match_returns_one_row_per_address_despite_the_3x3_fanout():
+    """The POI side is fanned out to nine cells. If the GROUP BY were ever
+    dropped, an address near several POIs would come back up to nine times
+    per POI and `build_legality_columns`' UPDATE ... FROM would silently do
+    nine times the work -- the same duplicate-fanout class of bug that
+    edge-mirroring caused elsewhere in this project."""
+    con = _grid_fixture_con()
+    rows = [r[0] for r in con.execute(al.open_poi_match_sql(
+        address_table="addr", poi_view="poi")).fetchall()]
+    assert len(rows) == len(set(rows)), f"duplicate address_ids: {rows}"
+
+
+def test_grid_cell_is_wider_than_the_prefilter_pad_at_nyc_latitudes():
+    """The ONE correctness invariant of the bucket (see `POI_GRID_DEG`): a
+    cell must be at least as wide as the pad, or the 3x3 neighbourhood stops
+    being a superset of the bounding box. Checked at the widest latitude in
+    the five boroughs (Wakefield, ~40.92N) and well past it."""
+    for lat in (40.4, 40.72, 40.92, 45.0):
+        al.assert_grid_covers_pad(lat)          # must not raise
+        assert al.pad_lon_deg(lat) < al.POI_GRID_DEG
+        assert al.pad_lat_deg() < al.POI_GRID_DEG
+
+
+def test_grid_guard_raises_rather_than_silently_narrowing_the_join():
+    """Fail loud, not quiet: a radius (or a latitude) that outgrows the cell
+    must stop the build, because the failure mode is dropped grandfathering
+    evidence -- an address quietly labelled 'ineligible'. D97 item 2 is the
+    precedent for taking a silently-narrowed spatial pre-filter seriously."""
+    with pytest.raises(ValueError, match="POI_GRID_DEG"):
+        al.assert_grid_covers_pad(40.72, radius_m=500.0)
+    with pytest.raises(ValueError, match="POI_GRID_DEG"):
+        al.assert_grid_covers_pad(89.9)
+
+
+def test_poi_cte_stays_materialized():
+    """Not cosmetic: without the hint DuckDB inlines the CTE into each arm of
+    the 3x3 fan-out and re-evaluates the four-CTE `poi_supply_status` view
+    nine times -- measured at 561 s on a 50k-address sample against 296 s for
+    the nested loop it replaced, and 0.9 s with the hint."""
+    assert "AS MATERIALIZED" in al.open_poi_match_sql()
+
+
 def test_poi_match_radius_is_a_same_building_distance_not_a_block():
     """Documents the empirical choice (see module docstring): wide enough to
     absorb a PLUTO-vs-POI geocode offset, narrow enough it is not a walkshed."""

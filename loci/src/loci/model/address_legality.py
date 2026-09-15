@@ -83,9 +83,16 @@ built on that match is not just slightly stale, it is nearly empty.
 Widening the match to a real distance test (`POI_MATCH_RADIUS_M`, see below)
 fixed the join (14,736 addresses gain an open-commercial-POI within 20 m) but
 made the computation genuinely expensive: ~90 s over the full MN+BK address
-set on the real warehouse. A `CREATE OR REPLACE VIEW` re-runs that on EVERY
-read -- the webmap export, every `recs add`, every `address-legality stats`
-call -- which is not acceptable for a read path.
+set on the real warehouse (and it grew from there -- 178 s measured
+2026-09-15 over 332,041 addresses x 204,437 not-closed commercial POIs, the
+nested-loop join GTM-169 then fixed; see `open_poi_match_sql`). A
+`CREATE OR REPLACE VIEW` re-runs that on EVERY read -- the webmap export,
+every `recs add`, every `address-legality stats` call -- which is not
+acceptable for a read path. The GTM-169 bucket brought the SELECT to ~1 s,
+which does NOT reopen the question: the stored-column contract is what the
+rest of the pipeline (and the `legality_run_at` re-apply sentinel) is built
+on, and a live view would still re-evaluate the four-CTE
+`poi_supply_status` on every read.
 
 So `has_open_commercial_poi`, `legality` and `legality_basis` are STORED
 columns on `analysis.address` (sql/031's ALTERs), computed once by
@@ -224,6 +231,24 @@ POI_MATCH_RADIUS_M = 20.0
 #: match up to ~4.9 m further east or west than that was silently dropped
 #: before the real haversine test ever ran on it).
 METRES_PER_DEGREE = 111_320.0
+
+#: Side of the square lon/lat cell both sides of the POI match are bucketed
+#: into before the exact test (GTM-169, 2026-09-15). See
+#: `open_poi_match_sql` for why the bucket exists at all; the ONE correctness
+#: invariant it has to satisfy is
+#:
+#:     grid_deg >= pad_lat  AND  grid_deg >= pad_lon(lat)   for every row
+#:
+#: because the bucket join only looks at the 3x3 neighbourhood of a cell. If a
+#: pad were WIDER than a cell, a true match two cells away would be dropped
+#: before the haversine test ever ran -- exactly the east-west under-coverage
+#: failure D97 item 2 fixed once already, which is why this is guarded in code
+#: (`assert_grid_covers_pad`, called from `build_legality_columns`) rather than
+#: left as a comment. At POI_MATCH_RADIUS_M = 20 m the pads are 1.797e-4 deg
+#: (lat) and 2.371e-4 deg (lon at 40.7N), so 1e-3 clears the wider one by 4.2x
+#: -- and the guard proves it for whatever latitudes the frame actually holds,
+#: which is the city-agnostic form of the claim.
+POI_GRID_DEG = 0.001
 
 VIEW_NAME = "analysis.address_legality"
 #: 'unknown' (D97 item 5) is a FOURTH first-class value, not a fallback: a
@@ -436,26 +461,138 @@ def _haversine_m_sql(lon1: str, lat1: str, lon2: str, lat2: str) -> str:
             f"))")
 
 
+def pad_lat_deg(radius_m: float = POI_MATCH_RADIUS_M) -> float:
+    """Half-height of the bounding-box pre-filter, degrees of latitude."""
+    return radius_m / METRES_PER_DEGREE
+
+
+def pad_lon_deg(lat_deg: float, radius_m: float = POI_MATCH_RADIUS_M) -> float:
+    """Half-width of the bounding-box pre-filter at `lat_deg`, degrees of
+    longitude -- the `cos(latitude)` correction of D97 item 2, in Python, so
+    the grid guard can be evaluated without a database."""
+    import math
+
+    return radius_m / (METRES_PER_DEGREE * math.cos(math.radians(lat_deg)))
+
+
+def assert_grid_covers_pad(max_abs_lat_deg: float, *,
+                           radius_m: float = POI_MATCH_RADIUS_M,
+                           grid_deg: float = POI_GRID_DEG) -> None:
+    """Fail LOUD if `POI_GRID_DEG` is too fine for `radius_m` at the widest
+    latitude the address frame actually contains.
+
+    `open_poi_match_sql`'s bucket join only inspects the 3x3 cell
+    neighbourhood, which is a superset of the bounding box ONLY while a cell
+    is at least as wide as the pad. If that ever stops holding -- a bigger
+    radius, or a city far enough from the equator that the cos(latitude)
+    blow-up in `pad_lon_deg` bites -- true matches would be silently dropped,
+    and a silently-narrowed spatial join is precisely the failure D97 item 2
+    already cost this module once. Raises rather than warns: a legality label
+    that quietly loses grandfathering evidence is worse than a build that
+    stops."""
+    need = max(pad_lat_deg(radius_m), pad_lon_deg(max_abs_lat_deg, radius_m))
+    if grid_deg < need:
+        raise ValueError(
+            f"POI_GRID_DEG={grid_deg} is narrower than the "
+            f"{radius_m} m pre-filter pad ({need:.3e} deg) at latitude "
+            f"{max_abs_lat_deg}. The 3x3 bucket neighbourhood in "
+            "open_poi_match_sql would drop true matches. Widen POI_GRID_DEG "
+            "(a wider cell is always correct, only slower) before building.")
+
+
 def open_poi_match_sql(*, address_table: str = "analysis.address",
                        poi_view: str = "analysis.poi_supply_status",
-                       radius_m: float = POI_MATCH_RADIUS_M) -> str:
+                       radius_m: float = POI_MATCH_RADIUS_M,
+                       grid_deg: float = POI_GRID_DEG) -> str:
     """Addresses within `radius_m` straight-line metres of a NOT-CLOSED
     commercial POI (`poi_status <> 'closed'` -- open OR unknown, D97 item 3:
     D79 forbids reading an unresolved POI as "nothing here") -- one
     `address_id` per row, the semi-join `build_legality_columns` UPDATEs
-    against. Two-stage: a bounding-box pre-filter on raw lon/lat degrees
-    (cheap, wide -- and, UNLIKE THE PRE-2026-09-14 VERSION, actually
-    conservative: see `METRES_PER_DEGREE`'s docstring for the east-west
-    under-coverage bug this fixes, D97 item 2) then `_haversine_m_sql` (the
-    real, verified test). See module docstring for why an exact-coordinate
-    match does not work here, and that function's own docstring for why
-    this uses a plain formula rather than `ST_Distance_Sphere`."""
+    against.
+
+    THREE stages since 2026-09-15 (GTM-169), and the middle one is new:
+
+      1. a GRID-BUCKET equi-join -- both sides floored to a `grid_deg` cell,
+         the POI side fanned out to its 3x3 cell neighbourhood, joined on
+         cell equality;
+      2. the bounding-box pre-filter on raw lon/lat degrees (cheap, wide,
+         and -- unlike the pre-2026-09-14 version -- actually conservative:
+         see `METRES_PER_DEGREE` for the east-west under-coverage bug of
+         D97 item 2);
+      3. `_haversine_m_sql`, the real verified distance test.
+
+    Stages 2 and 3 are BYTE-FOR-BYTE the old predicate, so the result set is
+    unchanged; stage 1 only decides which pairs stage 2 ever sees, and the
+    3x3 neighbourhood is a strict superset of the stage-2 box whenever
+    `assert_grid_covers_pad` holds (guarded, not assumed).
+
+    WHY IT EXISTS. Stages 2+3 alone gave DuckDB four inequality conditions
+    and no equality, over a `poi_view` whose cardinality the planner cannot
+    estimate through (`analysis.poi_supply_status` is a four-CTE view over
+    3.8M `poi_dedup` rows; the plan estimated it at ~1 row). The planner
+    therefore chose a NESTED_LOOP_JOIN: 332,041 addresses x 204,437
+    not-closed commercial POIs = 6.8e10 pair evaluations, ~2,000 s, and the
+    single longest step in the whole canonical order (3,449 s for
+    `address-legality build` against 345 s for the next longest, D106).
+    One equality condition turns it into a HASH_JOIN.
+
+    WHY `AS MATERIALIZED` ON THE POI CTE -- NOT COSMETIC. Without it DuckDB
+    inlines the CTE into each arm of the 3x3 fan-out and re-evaluates that
+    entire four-CTE view NINE times; measured, that was SLOWER than the
+    nested loop it replaced (561 s vs 296 s on a 50k-address sample, against
+    0.9 s with the hint). Do not remove it."""
     cats = ", ".join(f"'{c}'" for c in sorted(commercial_poi_categories()))
-    pad_lat = radius_m / METRES_PER_DEGREE
+    pad_lat = pad_lat_deg(radius_m)
     # Longitude degrees are shorter than latitude degrees by cos(latitude);
     # padding by the same fixed value used for latitude under-covers the
     # east-west axis (D97 item 2). Computed PER ROW from that address's own
     # latitude -- there is no single constant that is correct for every row.
+    pad_lon = f"({radius_m} / ({METRES_PER_DEGREE} * cos(radians(a.lat))))"
+    dist = _haversine_m_sql("p.lon", "p.lat", "a.lon", "a.lat")
+    # floor(), not CAST/round(): floor is the only one that buckets negative
+    # longitudes (every NYC lon is negative) the same way it buckets positive
+    # latitudes, and both sides must agree on the cell edge exactly.
+    cell = "CAST(floor({v} / " + str(grid_deg) + ") AS BIGINT)"
+    return f"""
+        WITH poi AS MATERIALIZED (
+            SELECT ST_X(geom) AS lon, ST_Y(geom) AS lat
+            FROM {poi_view}
+            WHERE poi_status <> 'closed' AND category IN ({cats})
+        ),
+        poi_cells AS (
+            SELECT poi.lon, poi.lat,
+                   {cell.format(v='poi.lon')} + ox.dx AS cell_lon,
+                   {cell.format(v='poi.lat')} + oy.dy AS cell_lat
+            FROM poi
+            CROSS JOIN (VALUES (-1), (0), (1)) AS ox(dx)
+            CROSS JOIN (VALUES (-1), (0), (1)) AS oy(dy)
+        )
+        SELECT a.address_id
+        FROM {address_table} a
+        JOIN poi_cells p
+          ON p.cell_lon = {cell.format(v='a.lon')}
+         AND p.cell_lat = {cell.format(v='a.lat')}
+         AND p.lon BETWEEN a.lon - {pad_lon} AND a.lon + {pad_lon}
+         AND p.lat BETWEEN a.lat - {pad_lat} AND a.lat + {pad_lat}
+         AND {dist} <= {radius_m}
+        GROUP BY a.address_id
+    """
+
+
+def open_poi_match_reference_sql(*, address_table: str = "analysis.address",
+                                 poi_view: str = "analysis.poi_supply_status",
+                                 radius_m: float = POI_MATCH_RADIUS_M) -> str:
+    """The pre-GTM-169 single-stage form of `open_poi_match_sql`: bounding
+    box then haversine, no grid bucket, no equality condition.
+
+    KEPT DELIBERATELY, and only as a REFERENCE -- nothing in the pipeline
+    calls it. It is the definition the bucketed query is pinned against
+    (`test_bucketed_match_agrees_with_the_reference_on_boundary_cases`), so
+    "the fast path returns the same rows" stays a machine-checked claim
+    rather than an argument in a docstring. It is far too slow to run over
+    the full frame (see `open_poi_match_sql` for the measurement)."""
+    cats = ", ".join(f"'{c}'" for c in sorted(commercial_poi_categories()))
+    pad_lat = pad_lat_deg(radius_m)
     pad_lon = f"({radius_m} / ({METRES_PER_DEGREE} * cos(radians(a.lat))))"
     dist = _haversine_m_sql("p.lon", "p.lat", "a.lon", "a.lat")
     return f"""
@@ -492,9 +629,15 @@ def build_legality_columns(con, pluto_csv: pathlib.Path | str = PLUTO_CSV,
       1. The nine raw PLUTO columns, by BBL join, read straight off the CSV
          with `read_csv_auto` -- never materialized into a pandas frame in
          this process (the file is 334 MB).
-      2. `has_open_commercial_poi`, via `open_poi_match_sql()` (the expensive
-         step, ~90 s over MN+BK on the real warehouse -- this is why it is
-         computed here once and stored, not left as a live view).
+      2. `has_open_commercial_poi`, via `open_poi_match_sql()` -- this used
+         to be the expensive step and the longest single step in the whole
+         canonical order (178 s for the bare SELECT read-only, 3,449 s for
+         the enclosing build in the 2026-09-15 re-baseline, against 345 s for
+         the next longest step; D106). GTM-169 gave it a grid-bucket
+         equi-join and the SELECT now runs in ~1 s over the full frame; what
+         remains here is UPDATE write cost, not join cost. Still computed
+         once and stored, not left as a live view -- see the module
+         docstring.
       3. `legality` / `legality_basis`, via `legality_case_sql()` against the
          now-stored `has_open_commercial_poi` (cheap).
 
@@ -527,6 +670,17 @@ def build_legality_columns(con, pluto_csv: pathlib.Path | str = PLUTO_CSV,
             ) AS p
             WHERE p.bbl = a.bbl
         """, [str(pluto_csv)])
+
+        # GTM-169: the bucketed pre-filter in open_poi_match_sql is only a
+        # superset of the bounding box while a grid cell is at least as wide
+        # as the pad. Check it against the latitudes THIS frame actually
+        # holds, before the join runs, and raise rather than silently drop
+        # grandfathering evidence.
+        max_lat = con.execute(
+            "SELECT max(abs(lat)) FROM analysis.address WHERE lat IS NOT NULL"
+        ).fetchone()[0]
+        if max_lat is not None:
+            assert_grid_covers_pad(float(max_lat))
 
         con.execute("UPDATE analysis.address SET has_open_commercial_poi = FALSE")
         con.execute(f"""
