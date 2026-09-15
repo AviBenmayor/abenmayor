@@ -911,3 +911,33 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Tag:** *infra / policy*
 - **Session:** 2026-09-14, abenmayor-cc
 - **Current answer:** —
+
+### D37 — Benchmarks: which of the surveyed public sources should enter the revenue model — IRS SOI nonfarm sole-proprietorship receipts by NAICS (targets the D40 owner-operated undercount), trade-association per-store anchors (NCPA pharmacy ~$5.4M, NGA grocery $380/sqft independents, NACS convenience ~$2.25M/store, laundromat $410–564k), and ICSC's measured occupancy-cost ratios by tenant category (fitness ~32%, specialty restaurant ~24%, drug store ~6%) to replace benchmarks.yaml's generic occupancy_cost_ratio. Nothing public gives per-storefront revenue.
+- **Status:** open
+- **Tag:** *model / data*
+- **Session:** 2026-09-15, abenmayor-cc
+- **Current answer:** —
+
+### D38 — What counts as a ground-truth "miss": a name_key mismatch against a chain alias is not missing supply; a hit beyond 400 m is not in the catchment; propose the rule (reconcile aliases, require storefront distance ≤ 400 m, then hand-review) before any miss count is quoted.
+- **Status:** open
+- **Tag:** *validation / method*
+- **Session:** 2026-09-15, abenmayor-cc
+- **Current answer:** —
+
+### D39 — Convenience search terms: should the protocol query 'deli' and 'bodega' alongside 'convenience store', and should each category carry several Maps terms?
+- **Status:** open
+- **Tag:** *validation / data*
+- **Session:** 2026-09-15, abenmayor-cc
+- **Current answer:** —
+
+### D40 — Anchor eligibility: how did a fenced construction lot (545 Sackett St) pass as a 'commercial' address-level anchor; should address-level recommendations require a Storefront Registry or building-class check?
+- **Status:** open
+- **Tag:** *validation / rigor*
+- **Session:** 2026-09-15, abenmayor-cc
+- **Current answer:** —
+
+### D41 — Instrument writes vs re-baseline windows: should `ground-truth record` be batched to the start of a planned re-baseline instead of running ad hoc, given each closed verdict moves the hash under stamped artefacts?
+- **Status:** open
+- **Tag:** *infra / policy*
+- **Session:** 2026-09-15, abenmayor-cc
+- **Current answer:** —

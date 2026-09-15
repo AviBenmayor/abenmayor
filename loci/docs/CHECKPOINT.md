@@ -259,7 +259,7 @@ no longer a blocker — all 58 issues are pushed.
 | `anthropic` SDK | **Installed in pyproject** | version ≥ 0.28, but `ANTHROPIC_API_KEY` is unset in `loci/.env`; `loci report` falls back to ClaudeCliProse plan-billed when key is absent. |
 | NYC GeoSearch | **Reachable, keyless** | `geo/geosearch.py` verified working; no auth required. |
 | `claude` CLI | **Present on PATH** | `/opt/homebrew/bin/claude` (verify: `which claude`); used by ClaudeCliProse fallback when `ANTHROPIC_API_KEY` unset. |
-| Interceptor (browser-driving CLI) | **Missing** | Owner installs Interceptor-Browser-1.0.1.pkg (github.com/Hacker-Valley-Media/Interceptor/releases) and the Chrome Web Store extension; `interceptor status` must read browser-only (D105, GTM-183). |
+| Interceptor (browser-driving CLI) | **Working** | Browser-only 1.0.1, Chrome store extension, one context; `interceptor status` → browser-only (D105/D107, GTM-183 Done). |
 
 ---
 
@@ -1756,6 +1756,30 @@ Why: the ledger's monthly outcome check (D89) matches only against Foursquare fi
 
 Decided: after the fourth hash drift of the day (D105: 467cd5969200 → d993b3802c6a, nine POIs flipped closed when sql/036's creation forced a poi_status re-render), all sessions were frozen and the hash steward ran the whole re-stamp chain once, including the peers' steps: `supply-ratio --fit-baseline` (77 s, every median moved 0.000%), street-frame, address-gaps (215 s), address-demand, pipeline, storefronts, `age-fit fit` (bar and childcare pass; pharmacy refused, Brooklyn 65+ CI includes 0) and apply, supply-ratio, address-access, transit-profile, citibike address-measures, address-character (345 s), storefront-pipeline openings (208 s), dot-counts address-context, `address-legality build` (3,449 s — the long pole; commercial 49,036 / grandfathered 19,102 / ineligible 213,522 / unknown 50,381), `revenue fit` (345 s; restaurant alone passes, ε 0.4, β 1.25, γ −0.5, ρ_oos 0.829) and `revenue --boroughs MN,BK` (223 s), `forecast issue --month 2026-09 --force` (1,050 s; model_version 0.1.1+ae3eadb3, supply_hash d993b3802c6a, 4,227,630 rows, AUC 0.8768 vs 0.8513 no-score; earlier vintages kept as history), forecast-export, citibike export, `export-webmap` (148 files, 123.6 MB, meta.json stamps d993b3802c6a for screen and ageFit). Hash guard equal at six checks. Result: the gap screen is byte-identical to re-run #3 (223,107 gap addresses, Σgap_score 485,854.61, Σgap_score_fit 401,798.02, every lead-gap count unchanged, lead_censored BK 14,422 / MN 720); only supply_hash and legality (previously NULL) changed on analysis.address; suite 1,876 passed / 1 skipped; commit 17900c2. abenmayor-cc is verifying its four 2026-09-14 ledger rows against d993b3802c6a (the re-run check compared a count-based ratio with the rows' distance ratio, so no move is established); outcome logged under D105. Why: three canonical re-runs earlier in the night were each chased by another session's write (a closure verdict, a key migration, a migration file's sweep); the fix was not a fourth chase but a freeze of every session followed by one pass that also ran the absent peers' steps (revenue, forecast) so nothing ended a hash behind. Rules confirmed: a 'final' signal freezes poi_status writes, migrations AND view re-renders; the steward runs the first write after any new sql/*.sql; peers' re-stamp steps are part of the canonical order, not separate follow-ups. Cross-reference D105 for the cause and D94/D101 for the two supply changes this re-stamps.
 
+**D107 — First ground-truth session: 12 of 19 recommendation anchors have open supply of the recommended category inside 400 m; five warehouse POIs found Permanently closed; the instrument stays a verifier and is not wired into the screen.** *(2026-09-15, session 27 continued, abenmayor-cc; ticket GTM-183 Done, follow-ups GTM-185)*
+
+Setup: Interceptor Browser 1.0.1 installed (pkg SHA256 verified, Developer ID Hacker Valley Media LLC, notarized); first extension install landed in Arc because the Web Store link followed the OS default browser — reinstalled in Chrome; one Chrome context. 57 page loads, human-paced (3 s waits), zero timeouts, dedicated tab group loci-ground-truth, owner present throughout.
+
+Protocol change from the live probe: the coordinate pin URL lists no businesses; the reads that work are the category-nearby search (`/maps/search/<term>/@lat,lon,18z`), the address panel ("At this place"), and Street View. Manifest now carries nearby_url (per-category search term table), address_url (MapPLUTO street address by BBL, fallback rec area_label, then neighborhood), area_kind; write is atomic. Commit f579c08.
+
+Results (run gt-2026-09-15-session1): verdicts supply_missed 12, confirmed_gap 7, inconclusive 0. Address anchors: 376 Graham bank — Cross County Savings Bank open 122 m away (cleanest falsification; building holds Thee Brooklyn Barber + El Punto Cubano, open); 379 Broome convenience — two open stores ≤150 m (confirms the pre-registered no-gap conclusion); 4 East 8th convenience — four open stores ≤300 m (the 0.0 ratio was a status-coverage hole); 545 Sackett convenience — nearest open store 407 m, but the parcel is a fenced construction lot, not a retail site. Gowanus centroid: 9 of 15 categories have open supply inside 400 m; bank/hair/pharmacy/hardware are gaps at 524–732 m; convenience (410 m) and laundry (405 m) sit within measurement error of the radius.
+
+Closure misses: five POIs open in the warehouse (closed_on NULL, last_seen 2026-09) are Permanently closed on Maps: OKOZUSHI by Megumi (overture) and Okozushi (dohmh 50100674) at 376 Graham; Greecologies (overture) at the 379 Broome anchor itself, now Stone Street Café; Daphne European Skincare (foursquare) 375 Broome; Wild Ginger Vegetarian Kitchen (dohmh 41433964) 380 Broome. Control passed: Concord Hill (376 Graham) closed on Maps and already closed_on 2022-10-15 in the warehouse. Six POIs with no Maps listing recorded unknown, not closed (D79).
+
+Warehouse effect: record wrote 103 address_observation rows, 41 poi_closure_evidence rows (source web, domain_class maps_ui; 6 closed, 35 open). The 6 closed verdicts moved the supply hash d993b3802c6a → ba944e18c57b (announced; abenmayor-db held writes; abenmayor-61 no objection; steward abenmayor-cf offline). Re-ingest under the 400 m match did not move it again. tests/test_supply_ratio.py::test_baseline_supply_hash_matches_the_live_poi_supply is red until the re-baseline; owner ruled "run it now" and the next session needing stamped artefacts owns the re-baseline on ba944e18c57b.
+
+Fixes in the same window: name match 40 m → 400 m (the nearby read spans the catchment, so known POIs 120 m out were false misses: 63 → 45 candidates); `record --replace-run`; report NaN crash. 35 tests. Commits: f579c08 (manifest URLs, protocol), 74bc539 (400 m match, replace-run, report fix), plus this docs commit.
+
+Reading of the miss view: 45 rows is a candidate list, not a count — chain-name mismatches and hits beyond 400 m dominate the sample; see GTM-185 (a)(b).
+
+Why the decision: the instrument did what it was built for (P3 falsification at the anchor) and is kept as a verifier; it stays out of the screen, forecast and grades. Interceptor assessment: strong at structured DOM reads in the owner's own browser and at running from a text protocol on a cheap model; weak where Google's labels or imagery are thin; setup needs one probe per new site.
+
+### 2026-09-15 — Session 27 (continued, abenmayor-cc): first ground-truth run scored, five closures found (D107)
+- Ran the first live `loci ground-truth` session against Interceptor 1.0.1 on 19 anchors (four addresses + Gowanus centroid); 12 of 19 verdicts are supply_missed, 7 confirmed_gap.
+- Five warehouse POIs found Permanently closed on Maps (376 Graham x2, 379 Broome x2, 380 Broome x1); wrote 41 poi_closure_evidence rows; supply hash moved d993b3802c6a → ba944e18c57b (announced, writes held by peers).
+- Follow-ups opened as GTM-185 (a-d): storefront distance in the observation grain, name-alias reconciliation of the 45 miss candidates, deli/bodega search terms for convenience, and an anchor eligibility (building-class) check before an address-level recommendation issues.
+- Next action: re-baseline on ba944e18c57b owed by the next session needing stamped artefacts.
+
 ### 2026-09-14 — Session 27 (abenmayor-cc): Interceptor evaluated for Loci, ground-truth instrument built (D105)
 - Interceptor (github.com/Hacker-Valley-Media/Interceptor) evaluated as the browser-driving CLI for Loci's ground-truth checks; owner ruled it in, with the 15 ledger anchors as first subjects, later narrowed by the owner to the four 2026-09-14 report addresses plus the Gowanus centroid (QUESTIONS D35).
 - Built sql/036, `src/loci/model/ground_truth.py`, `loci ground-truth` cli.py sub-app, `tests/test_ground_truth.py` (20 tests), `docs/ground-truth-protocol.md`. D105, ticket GTM-183.
@@ -1765,9 +1789,12 @@ Decided: after the fourth hash drift of the day (D105: 467cd5969200 → d993b380
 
 ## Next actions
 
+00) **Re-baseline on ba944e18c57b (baseline → canonical order incl. legality → age-fit → revenue → forecast re-issue → export-webmap) — owed by the next session needing stamped artefacts; drift test red until then (D107).**
+00-bis) **GTM-185 ground-truth follow-ups (a)-(d): storefront distance in the observation grain, name-alias reconciliation of the 45 miss candidates, deli/bodega convenience search terms, anchor eligibility (building-class) check (D107).**
+
 0) ~~Re-baseline the supply hash (d993b3802c6a after the ledger/036 re-render); abenmayor-cf running it 2026-09-15; every stamped artefact must be re-stamped or its discrepancy recorded.~~ done — 17900c2 (D106).
 
-0-bis) **Install Interceptor and run the first ground-truth session on the four address anchors + Gowanus centroid (GTM-183);** decide address-level subjects (QUESTIONS D35, answered — rows to be added via `loci recommendations add`).
+0-bis) ~~Install Interceptor and run the first ground-truth session on the four address anchors + Gowanus centroid (GTM-183)~~ done — first session run 2026-09-15, 19 anchors, run gt-2026-09-15-session1 (D107, GTM-183 Done); follow-ups at GTM-185 (a)-(d) above.
 
 0-ter) **abenmayor-cc: settle which ratio supply_ratio_at_issue records and log the outcome under D105.**
 0-quater) **address-legality build is the canonical order's long pole (GTM-169, D106):** 3,449 s in the 2026-09-15 re-baseline against 345 s for the next longest step; the open-POI join in model/address_legality.open_poi_match_sql needs an index on poi_supply_status(lat, lon) or a vectorised spatial join before the next re-run (abenmayor-29).
