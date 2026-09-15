@@ -3849,3 +3849,1272 @@ brands:
   confidence: reported
   first_added: '2026-09-15'
   last_verified: null
+- brand: Somedays Bakery
+  brand_key: somedays bakery
+  category: bakery
+  loci_category: cafe_bakery
+  hq: Astoria, Queens, NY
+  nyc_locations_now: 4
+  nyc_locations_12m_ago: 3
+  net_new_12m: 1
+  pipeline: Forest Hills, Queens (73-05 Austin St) announced for November 2026; Lexington
+    Ave/Midtown East (560 Lexington Ave at 50th St) announced for September 2026 ("shortly
+    after Labor Day") -- neither confirmed open as of 2026-09-15. A Montclair, NJ and a Philadelphia
+    location are also open/announced but are out of scope (not NYC). Detect's ~7-location,
+    3-new estimate likely folds in these announced-not-open NYC units plus the out-of-market
+    NJ/Philadelphia stores.
+  ownership: corporate (founder-led by the co-founder of Chip City Cookies; no franchising
+    found)
+  expansion_role_title: null
+  why_they_grow: The founder is replicating the Chip City multi-unit playbook -- a narrow,
+    Instagram-friendly pastry menu (stuffed croissants) that fits small-footprint storefronts
+    -- across outer-borough retail corridors and now into Manhattan.
+  evidence:
+  - url: https://www.somedaysbakery.com/
+    date: '2026-09-15'
+  - url: https://qns.com/2025/12/queens-somedays-bakery-expands-manhattan/
+    date: '2025-12-11'
+  - url: https://qns.com/2025/08/bayside-somedays-bakery/
+    date: '2025-08-06'
+  - url: https://whatnow.com/new-york/retail/somedays-bakery-to-add-midtown-east-location-amid-a-major-brand-expansion/
+    date: '2026-09-15'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Stout NYC
+  brand_key: stout
+  category: sports bar / pub
+  loci_category: bar
+  hq: New York, NY
+  nyc_locations_now: 4
+  nyc_locations_12m_ago: 4
+  net_new_12m: 0
+  pipeline: Signed a ~14,000 sq ft lease at 373 Park Ave S (former Dos Caminos space, NoMad)
+    for a fifth NYC location; Commercial Observer/Crain's (May 2026) reported an end-of-2026
+    target, WhatNow cites January 2027 -- not open as of 2026-09-15.
+  ownership: corporate (single operator, "Midtown Sports Pub Group"; led by owner Martin Whelan;
+    no franchising found)
+  expansion_role_title: null
+  why_they_grow: A single high-ceiling, multi-level sports-pub format is deliberately sited
+    within a block of major Manhattan transit/commuter hubs, so growth means finding another
+    large transit-adjacent space rather than a franchise rollout.
+  evidence:
+  - url: https://www.stoutnyc.com/all-locations/
+    date: '2026-09-15'
+  - url: https://commercialobserver.com/2026/05/stout-nyc-lease-373-park-avenue-south/
+    date: '2026-05-01'
+  - url: https://www.crainsnewyork.com/real-estate/commercial/cny-stout-nyc-14k-nomad-location-20260526/
+    date: '2026-05-26'
+  - url: https://whatnow.com/new-york/restaurants/another-round-stout-expands-with-fifth-nyc-sports-bar/
+    date: '2026-09-15'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: 101 Chicken
+  brand_key: 101 chicken
+  category: Korean fried chicken shop
+  loci_category: restaurant
+  hq: Fort Lee, NJ
+  nyc_locations_now: 2
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: 513 Grand St, Williamsburg, Brooklyn listed as "Coming This Winter" on the company's
+    own ordering page -- not yet open as of 2026-09-15.
+  ownership: corporate (single small NJ-based operator; core base is Fort Lee, Lodi, and Ridgefield
+    Park NJ -- the last listed "Temporarily Closed"; no franchising evidence found)
+  expansion_role_title: null
+  why_they_grow: A marketed "robotic kitchen" fry system standardizes output enough to run
+    as a stall inside an existing anchor (an H Mart food hall) rather than requiring a full
+    standalone build-out.
+  evidence:
+  - url: https://www.101chicken.com/ordernow
+    date: '2026-09-15'
+  - url: https://www.yelp.com/biz/101-chicken-long-island-city
+    date: '2026-07-01'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Taco Tek Mexican Grill
+  brand_key: taco tek mexican grill
+  category: Mexican grill (build-your-own tacos/burritos/bowls)
+  loci_category: restaurant
+  hq: Bronx, NY
+  nyc_locations_now: 4
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: Taco Tek Bethlehem, PA (3211 Schoenersville Rd) listed "Coming Soon" on the official
+    locations page -- not NYC. No additional NYC lease or opening announced as of 2026-09-15
+    beyond the 4 already open.
+  ownership: corporate (single small independent Bronx-based operator; no franchising or PE-backing
+    evidence found)
+  expansion_role_title: null
+  why_they_grow: A low-build-out, build-your-own taco/burrito/bowl fast-casual format lets
+    the operator repeat itself along Bronx retail corridors it already knows, using grand-opening
+    promotions to seed each new store.
+  evidence:
+  - url: https://www.tacotekus.com/locations
+    date: '2026-09-15'
+  - url: https://www.nycforfree.co/events/taco-tek-bronx-grand-opening
+    date: '2026-04-24'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Chahalo
+  brand_key: chahalo
+  category: tea shop
+  loci_category: cafe_bakery
+  hq: Xi'an, China
+  nyc_locations_now: 4
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: No additional NYC lease or opening announced as of Sept 2026 beyond the 4 open
+    stores (Manhattan Chinatown 79 Mott St, East Village 23 St Marks Pl, Flushing, LIC). Company
+    is actively opening in CA (Rowland Heights, Berkeley; Irvine/Santa Clara/San Diego announced)
+    and TX (Plano, Houston announced) but no further NYC pipeline found.
+  ownership: franchise (Xi'an-based Chinese tea-culture brand with ~1,000 stores across 170+
+    China cities; US stores expanding under a 'Join ChaHalo' franchise/master-license program)
+  expansion_role_title: null
+  why_they_grow: A single-recipe bubble/tea-culture format needs only a small storefront,
+    letting the brand clone counters quickly into dense Chinese-immigrant retail corridors
+    plus opportunistic non-enclave test sites like the East Village.
+  evidence:
+  - url: https://evgrieve.com/2025/04/another-bubble-tea-option-for-st-marks.html
+    date: '2025-04-14'
+  - url: https://www.chahalo.com/
+    date: '2026-09-15'
+  - url: https://www.yelp.com/biz/chahalo-new-york-4
+    date: '2026-09-15'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Ziyan Chicken
+  brand_key: ziyan chicken
+  category: Chinese braised/marinated meats deli
+  loci_category: restaurant
+  hq: Shanghai, China
+  nyc_locations_now: null
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: 3 confirmed NYC addresses found via aggregated listings (Manhattan Chinatown 147
+    Mott St, Flushing/Elmhurst Queens 136-55 Roosevelt Ave, LIC Jacx food hall 28-17 Jackson
+    Ave) against an expected ~4 -- no official US store-locator page found to confirm the
+    full count, so nyc_locations_now is left null rather than guessed. No additional signed
+    NYC leases found as of Sept 2026. First US stores (Chinatown + Flushing) reported as a
+    dual launch in 2025 alongside Cotti Coffee's US entry.
+  ownership: franchise (publicly-listed parent Shanghai Ziyan Foods Co., Ltd., Shanghai Stock
+    Exchange 603057, 6,000+ global units; US stores operate under a 'Ziyan Foods USA' entity)
+  expansion_role_title: null
+  why_they_grow: One of China's largest cold-braised-meat chains is using a low-capex takeout-counter
+    format (no cooking line, just deli-style pre-marinated product) to enter NYC's dense Chinese-immigrant
+    retail corridors alongside other Chinese F&B brands making a coordinated 2025 US push.
+  evidence:
+  - url: https://www.cnbc.com/2025/06/10/chinas-homegrown-coffee-giants-are-brewing-up-a-us-expansion.html
+    date: '2025-06-10'
+  - url: https://www.yelp.com/biz/ziyan-foods-mott-new-york
+    date: '2026-09-15'
+  - url: https://himalayanfood.org/wp-content/uploads/2025/08/ZIYAN-FOODS.pdf
+    date: '2025-08-01'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Teppanyaki One
+  brand_key: teppanyaki one
+  category: teriyaki/hibachi quick-service restaurant
+  loci_category: restaurant
+  hq: New York, NY
+  nyc_locations_now: 6
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: 'No newly-announced NYC lease beyond the 6 open storefronts found under the ''Teppanyaki
+    One'' name (1912 3rd Ave & 60 W 125th St Manhattan; 86 Court St Brooklyn; 40-17 Queens
+    Blvd Sunnyside & Junction Blvd Corona Queens; 260 E 161st St Bronx). The Sunnyside store
+    opened June 2025 (QNS), inside the 12-month window. teppanyakione.com is a bare ''Coming
+    Soon'' placeholder, suggesting further rollout/rebrand is planned but unspecified. IMPORTANT:
+    teriyakione.com states the ''Teriyaki One'' brand is owned by the same operator, Harmony
+    Dining Group Inc., and lists ~37 total NY/NJ locations; third-party platforms label several
+    of those same addresses ''Teppanyaki One Teriyaki & Sushi.'' This is very likely the SAME
+    operator/network under two trade names (possibly a hibachi-grill-added storefront variant
+    of Teriyaki One), not two separate brands, and detect''s 3-new-in-12mo signal for ''Teppanyaki
+    One'' specifically may partly reflect a trade-name relabeling (Teriyaki One -> Teppanyaki
+    One) rather than net-new construction.'
+  ownership: corporate (Harmony Dining Group Inc.; same parent as the larger 'Teriyaki One'
+    chain -- see pipeline note)
+  expansion_role_title: null
+  why_they_grow: A compact teriyaki/hibachi-bowl quick-service format lets the parent operator
+    clone stores cheaply into secondary retail corridors across the boroughs without building
+    full-service restaurant space.
+  evidence:
+  - url: https://qns.com/2025/06/teppanyaki-one-opens-in-sunnyside/
+    date: '2025-06-01'
+  - url: https://teriyakione.com/
+    date: '2026-09-15'
+  - url: https://www.yelp.com/biz/teppanyaki-one-bronx
+    date: '2026-09-15'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Zhengxin Chicken Steak
+  brand_key: zhengxin chicken steak
+  category: fried chicken steak shop
+  loci_category: restaurant
+  hq: Shanghai, China
+  nyc_locations_now: null
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: 5 distinct NYC addresses found via aggregated listings (Manhattan Chinatown 67
+    Bayard St and a separate 47 Broadway listing; Brooklyn Bath Beach 2343 86th St and Sunset
+    Park 6315 8th Ave; Flushing Queens 40-33 Main St) against an expected ~8 -- the official
+    NY site (zhengxinchickensteaknewyork.com) returned HTTP 403 and could not be checked,
+    so nyc_locations_now is left null rather than guessed. No additional signed leases found
+    as of Sept 2026 beyond these addresses.
+  ownership: franchise (Shanghai Zhenxin Food Group Co., Ltd., founded 2006, 20,000+ China
+    locations -- one of China's largest fried-chicken chains; US entry via separately-registered
+    entities)
+  expansion_role_title: null
+  why_they_grow: A single deep-fried 'chicken steak' hero product sold from a narrow storefront
+    lets one of China's largest fried-chicken franchisors clone cheap takeout counters into
+    NYC's Chinese-immigrant retail corridors the same way it scaled to 20,000+ units in China.
+  evidence:
+  - url: https://www.facebook.com/cpldc/photos/zhengxin-chicken-steak-has-arrived-to-chinatown-at-67-bayard-st-and-still-offers/1481180187387632/
+    date: '2026-09-15'
+  - url: https://www.yelp.com/biz/zhengxin-chicken-steak-flushing
+    date: '2026-09-15'
+  - url: https://www.yelp.com/biz/zhengxin-chicken-steak-brooklyn
+    date: '2026-09-15'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Carrot Express
+  brand_key: carrot express
+  category: healthy fast-casual restaurant
+  loci_category: restaurant
+  hq: Miami, FL
+  nyc_locations_now: 6
+  nyc_locations_12m_ago: 3
+  net_new_12m: 3
+  pipeline: 1290 Avenue of the Americas (Midtown, Vornado Realty Trust tower) -- 2,334 sq
+    ft ground-floor lease signed Oct 2025 as the company's next NYC location; as of mid-2026
+    reporting still in development / not yet open.
+  ownership: corporate (founder-led by Mario Laufer, launched Miami Beach 1993; 25+ locations
+    mostly Florida; no franchising found)
+  expansion_role_title: Senior Vice President of Operations (Michael Schatten)
+  why_they_grow: A Florida-based fast-casual healthy-food chain using its NYC entry to chase
+    dense office and tourist foot traffic, with landlords actively courting it as an 'amenity
+    repositioning' tenant for office-tower ground floors.
+  evidence:
+  - url: https://commercialobserver.com/2025/10/carrot-express-fifth-location-1290-avenue-of-the-americas/
+    date: '2025-10-01'
+  - url: https://www.ilovetheupperwestside.com/a-broadway-health-spot-thats-been-in-the-works-for-a-year-has-an-opening-date-and-a-new-name/
+    date: '2026-06-30'
+  - url: https://whatnow.com/new-york/restaurants/carrot-express-lines-up-another-new-york-location-targeting-upper-west-side/
+    date: '2026-06-01'
+  - url: https://carrotexpress.com/locations/
+    date: '2026-09-15'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Guacado
+  brand_key: guacado
+  category: Mexican grill
+  loci_category: restaurant
+  hq: null
+  nyc_locations_now: 11
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: 'One more NYC storefront listed ''Coming Soon'' on the brand''s own site (1884
+    3rd Ave, Manhattan); no other NYC lease/opening announced beyond that as of Sept 2026.
+    The chain is also opening outside NYC (Buffalo NY open; Pittsburgh PA and a second Baltimore
+    MD site ''coming soon''). NOTE: detected in Loci''s snapshot under two spellings -- ''Guacado''
+    and ''Guacado Mexican Grill'' -- same chain, needs a normalize.py alias (''guacado mexican
+    grill'' -> ''guacado''). nyc_locations_now (11) counts only the five boroughs from the
+    brand''s own locations page (Brooklyn: Avenue U, Cropsey Ave, Clarkson Ave; Bronx: Lydig
+    Ave, Tremont Ave, 149th St; Queens: Corona, Howard Beach, Forest Hills; Manhattan: 207th
+    St, 3504 Broadway; Staten Island: Hylan Blvd), excluding Hempstead NY and Buffalo NY (outside
+    NYC) and NJ/MD/CT/MI/RI units. No founder, franchisor entity, or press coverage was found
+    for this brand at all -- it exists only on delivery-app and Yelp listings plus its own
+    bare-bones site, which is unusual for a chain with 20+ storefronts across seven states.'
+  ownership: franchise (probable -- 20+ small-footprint units spread across NY/NJ/MD/CT/MI/RI/PA;
+    no franchisor entity, founder, or press coverage found to confirm the ownership model)
+  expansion_role_title: null
+  why_they_grow: A cheap, small-footprint counter-and-delivery Mexican format lets a single
+    concept slot into strip-mall storefronts across many disconnected metro areas at once,
+    rather than building out full-service restaurants.
+  evidence:
+  - url: https://guacadomexican.com/brooklyn-guacado-mexican-grill-locations
+    date: '2026-09-15'
+  - url: https://www.doordash.com/city/new-york-ny/b/guacado-mexican-grill-14231153/
+    date: 2026-09
+  - url: https://www.yelp.com/biz/guacado-mexican-grill-brooklyn
+    date: 2026-07
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Juici Patties
+  brand_key: juici patties
+  category: Jamaican patty shop
+  loci_category: restaurant
+  hq: Fort Lauderdale, FL (U.S. arm); parent chain HQ is May Pen, Clarendon, Jamaica
+  nyc_locations_now: 12
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: '57 U.S. franchise agreements signed as of 2025 with locations targeted through
+    2027 and an explicit 3,000-store long-term U.S. goal. Multiple NYC ''Coming Soon'' addresses
+    already listed on the company site: Brooklyn (1110 Eastern Pkwy), Bronx (1445 Metropolitan
+    Ave, Fordham Plaza/E 189th St, 4124 White Plains Rd), Queens (219-15 & 225-19 Jamaica
+    Ave, 150th Ave & 148th St).'
+  ownership: franchise (100% family-owned per the company; founded 1980 in Jamaica by Jukie
+    Chin, now Jamaica's largest patty chain at 65+ stores; son Daniel Chin leads the new U.S.
+    franchise arm)
+  expansion_role_title: Head of U.S. Operations (Daniel Chin, son of founder)
+  why_they_grow: Jamaica's dominant patty chain is using its 45-year home-market brand and
+    Caribbean diaspora demand to enter the U.S. for the first time via aggressive franchising,
+    landing first in South Florida (2024) and then in the Caribbean-heavy corridors of Brooklyn,
+    the Bronx, and Jamaica, Queens.
+  evidence:
+  - url: https://juicipattiesusa.com/locations-usa/
+    date: '2026-09-15'
+  - url: https://afrotech.com/jamaican-fast-food-chain-juici-patties-us-expansion
+    date: '2025'
+  - url: https://abc7ny.com/post/nyc-neighborhood-eats-juici-patties-serves-authentic-golden-jamaican-patty-pastries-brooklyn-bronx-new-york-city/17066982/
+    date: '2026'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Club Pilates
+  brand_key: club pilates
+  category: Pilates studio
+  loci_category: fitness
+  hq: Irvine, CA (Xponential Fitness, Inc.)
+  nyc_locations_now: 15
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: Xponential Fitness has signed a 70-studio multistate development deal (Maryland,
+    Michigan, New York) and a separate 127-studio nationwide agreement; NYC-specific new-lease
+    pipeline is not broken out separately in public filings. One NYC franchisee alone already
+    operates 14 studios with more under development.
+  ownership: 'franchise (wholly owned subsidiary brand of Xponential Fitness, Inc. [NYSE:
+    XPOF]; individual studios are franchisee-operated)'
+  expansion_role_title: EVP of Real Estate, Xponential Fitness (Adam Pennington)
+  why_they_grow: As Xponential Fitness's flagship, largest brand, it benefits from a corporate
+    franchise-development machine that signs multi-studio territory deals with individual
+    franchisees rather than doing one-off site selection itself.
+  evidence:
+  - url: https://www.clubpilates.com/regional/new-york
+    date: '2026-09-15'
+  - url: https://www.credaily.com/briefs/club-pilates-signs-70-studio-expansion-in-northeast-us/
+    date: '2025'
+  - url: https://www.franchisetimes.com/franchise_news/club-pilates-signs-major-127-studio-agreement-for-nationwide-expansion-plus-more-multi-unit-news/article_5988fd08-effc-4eff-a5a7-9cac0f488dea.html
+    date: '2025'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Teriyaki One
+  brand_key: teriyaki one
+  category: Japanese grill
+  loci_category: restaurant
+  hq: null
+  nyc_locations_now: 6
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: 'No dated lease/opening announcement found beyond the units already open as of
+    Sept 2026. NOTE: detected in Loci''s snapshot under two spellings -- ''Teriyaki One''
+    and ''Teriyaki One Japanese Grill'' -- same Harmony Dining Group chain, needs a normalize.py
+    alias (''teriyaki one japanese grill'' -> ''teriyaki one''; canonical picked as the larger
+    detect count).'
+  ownership: corporate/mixed (single operating company, Harmony Dining Group Inc., per the
+    brand's own site footer; individual-unit ownership structure not disclosed)
+  expansion_role_title: null
+  why_they_grow: A single fast, cheap teriyaki-bowl format travels easily into small storefronts
+    across every outer-borough commercial strip, letting one operating company multiply the
+    format without a full kitchen build-out.
+  evidence:
+  - url: https://teriyakione.com/store/
+    date: '2026-09-15'
+  - url: https://www.yelp.com/biz/teriyaki-one-brooklyn
+    date: 2026-08
+  - url: https://www.yelp.com/biz/teriyaki-one-elmhurst
+    date: 2026-08
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Halal Munchies
+  brand_key: halal munchies
+  category: halal fast food
+  loci_category: restaurant
+  hq: Queens, NY
+  nyc_locations_now: 7
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: Company markets a 'PARTNER WITH US' expansion program and its own site claims
+    '50+ LOCATIONS' spanning New York/Long Island plus out-of-state markets (Virginia Beach
+    VA, Richmond VA, Berlin CT, Middletown CT, Ohio) -- none of those out-of-state units could
+    be independently confirmed via press or listings, so treat the 50+ claim with caution.
+    No specific signed NYC lease found as of Sept 2026.
+  ownership: franchise (probable, per its own 'Partner With Us' program; no founder or corporate
+    entity name found in public records)
+  expansion_role_title: null
+  why_they_grow: A halal fried-chicken-and-rice-platter format that already works as a Halal-Guys-style
+    delivery and late-night play lets it expand fast into outer-borough commercial strips
+    via a partner/franchise recruitment page rather than one company opening every store itself.
+  evidence:
+  - url: https://www.halalmunchiesus.com/
+    date: '2026-09-15'
+  - url: https://qns.com/2022/04/popular-halal-chain-comes-to-queens-center-mall/
+    date: 2022-04
+  - url: https://www.yelp.com/biz/halal-munchies-long-island-city
+    date: 2026-09
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Xi'an Famous Foods
+  brand_key: xian famous foods
+  category: Shaanxi-style Chinese noodle restaurant
+  loci_category: restaurant
+  hq: New York, NY (founded in Flushing, Queens, 2005)
+  nyc_locations_now: 19
+  nyc_locations_12m_ago: 18
+  net_new_12m: 1
+  pipeline: 'The brand''s active growth is now outside NYC: it opened in Clarendon, Arlington
+    VA (Aug 2026) and is opening its first Maryland location in Rockville (targeted Oct 2026).
+    CEO Jason Wang has said he is investing in a shared production kitchen to support further
+    DMV-area expansion rather than adding more NYC density. Loci''s detect count (32, 6 new)
+    is well above the company''s own current NYC count (19) and is likely counting historical/renewal
+    filings rather than distinct open locations.'
+  ownership: corporate (100% family-owned by the Wang family; no outside investors; Jason
+    Wang is CEO & President)
+  expansion_role_title: CEO & President (Jason Wang)
+  why_they_grow: The Wang family has kept NYC expansion deliberately slow and self-funded
+    for two decades, and is now using the brand's NYC-honed hand-pulled-noodle format to open
+    in new, adjacent metros (Washington DC/Maryland/Virginia) instead of adding much further
+    NYC density.
+  evidence:
+  - url: https://www.xianfoods.com/locations
+    date: '2026-09-15'
+  - url: https://www.arlnow.com/2026/08/31/xian-famous-foods-opens-to-big-crowds-in-clarendon/
+    date: '2026-08-31'
+  - url: https://en.wikipedia.org/wiki/Xi'an_Famous_Foods
+    date: '2025'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Moka & Co
+  brand_key: moka and co
+  category: Yemeni coffee shop
+  loci_category: cafe_bakery
+  hq: Brooklyn, NY / Melvindale, MI (dual corporate offices per the company's own site)
+  nyc_locations_now: 10
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: 'Actively opening across many new states since its 2024 launch (Arizona, California,
+    Illinois, Michigan, New Jersey, Ohio, Pennsylvania, Rhode Island, Texas, in addition to
+    NY); no specific additional signed NYC lease found beyond the 10 NYC cafes already open
+    as of Sept 2026 (Astoria, Bay Ridge, Brighton Beach, Fort Greene, Cortelyou, Midwood,
+    and Staten Island in addition to the two Manhattan units). NOTE: normalize.py''s brand_key
+    for ''Moka & Co'' collapses to ''moka and'' because ''Co'' is stripped as a legal suffix
+    after the ''&'' is expanded -- worth a normalize.py ALIAS entry mapping ''moka and'' to
+    something distinguishable if this brand is watched going forward, since the same key would
+    also catch any other ''___ & Co'' business.'
+  ownership: franchise (launched 2024 by a five-person founding team; CEO Numan Ali has 20+
+    years running multi-unit franchises including Planet Fitness and Tim Hortons, explicitly
+    applying that franchise playbook to Yemeni coffee)
+  expansion_role_title: CEO (Numan Ali)
+  why_they_grow: A founding team pairing a Yemeni coffee-farming family with a veteran multi-unit
+    franchise operator (ex-Planet Fitness/Tim Hortons) is deliberately running Yemeni coffee
+    like a franchise concept, expanding into ten-plus states within two years of launch rather
+    than staying a single specialty cafe.
+  evidence:
+  - url: https://mokanco.com/locations/
+    date: '2026-09-15'
+  - url: https://www.westsiderag.com/2024/07/01/new-coffee-shop-brings-yemens-renowned-coffee-and-little-known-culture-to-the-upper-west-side
+    date: '2024-07-01'
+  - url: https://mokanco.com/meet-the-founders-of-moka-co-vogue-michigan/
+    date: '2026'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Pura Vida Miami
+  brand_key: pura vida miami
+  category: all-day cafe and wellness bar
+  loci_category: cafe_bakery
+  hq: Miami, FL
+  nyc_locations_now: 5
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: A fresh PE growth investment (TSG Consumer Partners, Nov 2025) is funding a stated
+    plan to reach 10 New York locations. A 7th NYC location (Dumbo, 79 Front St) was targeted
+    for Q2 2026, a NoHo cafe (65 Bleecker St) has opened, and a UES location has been announced
+    -- so the actual current count is very likely higher than the last cleanly verified figure
+    of 5 (Wikipedia, sourced to 2025); nyc_locations_now is reported as that verified floor.
+  ownership: pe_backed (TSG Consumer Partners took a growth-investment stake in Nov 2025;
+    founded 2012 by Omer & Jennifer Horev)
+  expansion_role_title: Co-Founder (Omer Horev)
+  why_they_grow: A fresh PE growth investment is funding an explicit push to open ten New
+    York locations, replicating the wellness-cafe playbook (smoothies, cold-pressed juice,
+    acai bowls) that built out its home Miami market.
+  evidence:
+  - url: https://en.wikipedia.org/wiki/Pura_Vida_Miami
+    date: '2025'
+  - url: https://whatnow.com/new-york/restaurants/pura-vida-miami-bringing-new-location-to-dumbo/
+    date: '2026'
+  - url: https://noho.nyc/welcome-to-noho-pura-vida/
+    date: '2026'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: SoBol
+  brand_key: sobol
+  category: acai bowl and smoothie shop
+  loci_category: cafe_bakery
+  hq: Long Island, NY (founded in Sayville)
+  nyc_locations_now: 5
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: 'Company states an aggregate 100+ location national milestone (already reported
+    reached); no NYC-specific signed lease beyond what is already open was found as of Sept
+    2026. NOTE: nyc_locations_now (5: Upper West Side, Flatbush, Fresh Meadows, Whitestone,
+    Forest Hills) is a floor read off the first two pages of the company''s paginated NY locator
+    -- more NY pages exist and were not fully enumerated.'
+  ownership: franchise (co-founded 2014 by Jason Mazzarone and Jim Kalomiris; began franchising
+    2016; majority of units are franchisee-operated)
+  expansion_role_title: Co-Founder (Jim Kalomiris -- real estate and construction background)
+  why_they_grow: A low-capex, no-kitchen acai-bowl format with a kosher-certification angle
+    lets franchisees open cheaply in dense Orthodox and general residential corridors across
+    Long Island, Queens, and Brooklyn, and the brand has been explicit about chasing a 100-location
+    national milestone.
+  evidence:
+  - url: https://mysobol.com/location_state/ny/
+    date: '2026-09-15'
+  - url: https://www.westsiderag.com/2026/01/07/openings-bar-manje-natural-pilates-sobol-vive-la-crepe
+    date: '2026-01-07'
+  - url: https://mysobol.com/sobol-celebrates-milestone-75th-location-opening-in-deer-park-ny/
+    date: '2025'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Yoyo Chicken
+  brand_key: yoyo chicken
+  category: halal fried chicken and smashburgers
+  loci_category: restaurant
+  hq: null
+  nyc_locations_now: 14
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: Active multi-state growth is continuing into 2026 but landing outside the NYC
+    five boroughs (Kingston NY opened Sept 8 2026; Calverton NY opened Apr 2026, its first
+    in eastern Suffolk County); no NYC-specific signed lease/opening found as of Sept 2026
+    beyond the 14 already-open five-borough units (3 Manhattan, 5 Brooklyn, 3 Queens, 2 Bronx,
+    1 Staten Island).
+  ownership: mixed (describes itself as family-owned; yoyochickenfranchise.com actively sells
+    franchises, so newer units are likely franchisee-operated)
+  expansion_role_title: null
+  why_they_grow: A halal-certified fried-chicken-and-smashburger format that already resonates
+    in outer-borough and Long Island immigrant communities is being pushed out via an active
+    franchise-recruitment site rather than staying a single-family operation.
+  evidence:
+  - url: https://yoyochicken.com/page/our-locations
+    date: '2026-09-15'
+  - url: https://hudsonvalleyone.com/2026/09/08/new-fast-casual-chain-yoyo-chicken-opens-on-ulster-avenue-in-kingston/
+    date: '2026-09-08'
+  - url: https://riverheadlocal.com/2026/04/09/yoyo-chicken-celebrates-grand-opening-in-calverton-friday/
+    date: '2026-04-09'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: NaiSnow
+  brand_key: naisnow
+  category: tea and bakery
+  loci_category: cafe_bakery
+  hq: Shenzhen, China
+  nyc_locations_now: 4
+  nyc_locations_12m_ago: 0
+  net_new_12m: 4
+  pipeline: No further NYC signed leases found beyond the 4 confirmed-open stores (Flushing,
+    Long Island City, Upper West Side, Lower East Side); a NY-registered entity "NAISNOW BK
+    INC." suggests a Brooklyn location may be planned, unconfirmed as open. Parent chain is
+    simultaneously opening in California (Cupertino, San Gabriel).
+  ownership: corporate (Naisnow Holdings Limited, a Shenzhen-based teahouse chain with ~1,926
+    locations worldwide per a Sept 2024 count; first-ever US market entry via company-linked
+    entities -- a March 2026 US franchise disclosure document shows 0 franchised US units
+    yet, so the US rollout is not being franchised out domestically so far)
+  expansion_role_title: null
+  why_they_grow: An already-massive, well-capitalized Chinese milk-tea chain is using NYC
+    as its first-ever US market entry, opening company-linked stores in quick succession across
+    boroughs rather than waiting to build a domestic franchise network first.
+  evidence:
+  - url: https://qns.com/2025/10/naisnow-grand-opening-flushing/
+    date: 2025-10
+  - url: https://www.ilovetheupperwestside.com/naisnow-popular-chinese-tea-and-bakery-chain-opens-on-the-upper-west-side/
+    date: '2026'
+  - url: https://franchiseoverview.com/company/naisnow
+    date: 2026-03
+  - url: https://www.nycompanyregistry.com/companies/naisnow-bk-inc/
+    date: '2026'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Cookies N' Cream
+  brand_key: cookies n cream
+  category: chef-inspired fresh-baked dessert concept (cookies, ice cream, cookie-ice-cream
+    creations)
+  loci_category: cafe_bakery
+  hq: Bronxville, NY (Westchester County)
+  nyc_locations_now: 6
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: Franchisor states plans to expand "throughout the Tri-State area" via franchise
+    consultancy Franchise Growth Solutions; a White Plains location is listed "coming soon"
+    but that is Westchester, not NYC. No additional NYC-specific signed leases found beyond
+    the 6 confirmed-open stores (task brief expected 8 with 1 not-yet-open filing; only 6
+    could be placed inside the five boroughs -- the rest of the footprint is Westchester/Nassau).
+  ownership: franchise (founder Joe Edwards; individual units franchised to independent local
+    operators, e.g. the Middle Village, Queens location is run by franchisees Frank Barbone
+    and Sal Fescina)
+  expansion_role_title: null
+  why_they_grow: Franchising a Westchester-born dessert concept out to independent local operators
+    lets the brand add outer-borough NYC storefronts without the parent company funding the
+    buildouts itself.
+  evidence:
+  - url: https://eatcookiesandcream.com/locations/
+    date: '2026-09-15'
+  - url: https://www.restaurantmagazine.com/cookies-n-cream-expands-franchise-effort-to-queens-new-york/
+    date: '2024-04-29'
+  - url: https://www.yelp.com/biz/cookies-n-cream-brooklyn-2
+    date: 2026-07
+  - url: https://www.visitwestchesterny.com/listing/cookies-n-cream/1176/
+    date: '2026'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Eataly Caffè
+  brand_key: eataly caffe
+  category: grab-and-go Italian coffee bar (espresso, pastries, gelato, pizza alla pala)
+  loci_category: cafe_bakery
+  hq: New York, NY (Eataly USA operations; global parent Eataly founded in Turin, Italy)
+  nyc_locations_now: 3
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: Upper West Side location listed as "Coming Soon" (no address yet) directly on
+    eataly.com/us_en/eataly-caffe as of 2026-09-15 -- not yet open despite a July 2026 What
+    Now NY headline implying it had already launched.
+  ownership: corporate (wholly-owned standalone concept of Eataly USA, not franchised)
+  expansion_role_title: null
+  why_they_grow: Eataly is spinning its espresso-and-pastry counter into its own smaller-footprint
+    standalone brand (Eataly Caffe, with its own app and catering line, launched 2025) so
+    it can plant Italian-coffee-bar units across Manhattan without needing the real-estate
+    footprint of a full Eataly marketplace store.
+  evidence:
+  - url: https://www.eataly.com/us_en/eataly-caffe
+    date: '2026-09-15'
+  - url: https://whatnow.com/new-york/restaurants/eataly-caffe-continues-nyc-expansion-with-upper-west-side-location
+    date: '2026-07-22'
+  - url: https://www.6sqft.com/eataly-opens-new-grab-and-go-market-in-hudson-yards
+    date: '2025-06-11'
+  - url: https://www.rockefellercenter.com/magazine/food-drinks/eataly-caffe-new-york
+    date: '2025-05-15'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Slap Burger
+  brand_key: slap burger
+  category: halal smash burgers, hot chicken, shakes
+  loci_category: restaurant
+  hq: Paterson, NJ
+  nyc_locations_now: 4
+  nyc_locations_12m_ago: null
+  net_new_12m: 2
+  pipeline: Company's own site states "four additional branches set to open in New York" beyond
+    the 4 confirmed-open NYC stores, without specific addresses or dates yet.
+  ownership: mixed (founder/family-run -- two brothers, founded 2023 in Paterson, NJ -- but
+    the company's own site actively promotes franchise opportunities for the NY expansion,
+    so current and future units are a corporate/franchise mix, not purely founder-operated)
+  expansion_role_title: null
+  why_they_grow: A young, family-run NJ halal smash-burger chain is riding demand from NYC's
+    halal-burger scene, expanding across the Bronx, Brooklyn and Queens within its first three
+    years and now recruiting franchisees to accelerate further rather than staying corporate-only.
+  evidence:
+  - url: https://slapburgerus.com/about-us/
+    date: '2026-09-15'
+  - url: https://www.averagesocialite.com/nyc-events/2026/7/17/slap-burger-astoria-grand-opening-nyc
+    date: '2026-07-17'
+  - url: https://nycforfree.co/events/slap-burger-bronx-grand-opening
+    date: '2025-11-01'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Goop Kitchen
+  brand_key: goop kitchen
+  category: chef-driven, delivery-first prepared meals (ghost-kitchen model transitioning
+    to storefronts)
+  loci_category: restaurant
+  hq: Santa Monica, CA (Gwyneth Paltrow's goop; national chain launched 2021)
+  nyc_locations_now: 4
+  nyc_locations_12m_ago: 0
+  net_new_12m: 4
+  pipeline: Company has stated a plan to reach 7 total NYC locations as part of a goal of
+    25 total US locations by end of 2026; 3 more NYC sites not yet announced by address.
+  ownership: corporate (goop / Gwyneth Paltrow-founded, legally separate from the Goop lifestyle
+    brand; company-operated, not franchised -- took a $15M strategic investment from Travis
+    Kalanick's CloudKitchens in 2024 at a $90M valuation, a venture-style raise rather than
+    a full PE buyout)
+  expansion_role_title: Co-CEO (Donald Moore; no dedicated real-estate/site-selection title
+    found)
+  why_they_grow: A celebrity-branded, delivery-only ghost-kitchen model let the concept scale
+    into NYC without full-service buildouts, and it is now layering a walk-in storefront format
+    (first one opened on the UES in Aug 2026) on top of that base to capture in-person demand.
+  evidence:
+  - url: https://www.fastcompany.com/91529612/goop-kitchen-is-opening-7-nyc-locations-but-you-might-never-step-inside-one
+    date: 2026-09
+  - url: https://www.timeout.com/newyork/news/goop-kitchen-now-has-a-storefront-on-where-else-the-uesheres-how-its-different-from-the-other-nyc-locations-073126
+    date: '2026-07-31'
+  - url: https://www.timeout.com/newyork/news/gwyneth-paltrows-delivery-and-pick-up-service-goop-kitchen-expanded-to-williamsburg-060226
+    date: '2026-06-02'
+  - url: https://www.forbes.com/sites/goop-kitchen-expands-from-california
+    date: '2026-04-20'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Skinny Louie
+  brand_key: skinny louie
+  category: smash burgers and shakes
+  loci_category: restaurant
+  hq: Miami, FL
+  nyc_locations_now: 5
+  nyc_locations_12m_ago: 1
+  net_new_12m: 4
+  pipeline: A Park Slope, Brooklyn location is listed on the company's own site as "SMASHING
+    SOON" (not yet open).
+  ownership: founder-led (Co-CEOs Gonzalo Rubino & Matias Palloni; Miami-founded 2023; simultaneously
+    expanding South Florida and NYC)
+  expansion_role_title: null
+  why_they_grow: A Miami-born smash-burger brand is replicating its small-footprint, late-night-friendly
+    format across dense Manhattan corridors (NoMad, West Village, UES, East Village, Penn
+    District) as its first major out-of-state expansion, with each opening individually covered
+    in trade press.
+  evidence:
+  - url: https://www.skinnylouie.com/louiespots
+    date: '2026-09-15'
+  - url: https://www.qsrmagazine.com/growth/skinny-louie-upper-east-side
+    date: '2026-05-08'
+  - url: https://www.eastsidefeed.com/skinny-louie-penn-district-opening
+    date: '2026-08-14'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Carnegie Diner & Cafe
+  brand_key: carnegie diner and cafe
+  category: American diner (all-day breakfast, plant-based menu)
+  loci_category: restaurant
+  hq: New York, NY
+  nyc_locations_now: 6
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: 'One confirmed not-yet-open filing: Tribeca, 200 Chambers St, an 8,400 sqft space
+    shared with sister concept Delos Greek Restaurant, targeted for summer 2026 (task brief
+    expected 3 not-yet-open filings; only this one could be confirmed).'
+  ownership: corporate (single-owner restaurant group; founder/owner Stathis Antonakopoulos,
+    Carnegie Hospitality; no evidence of franchising)
+  expansion_role_title: null
+  why_they_grow: A proven, high-volume tourist-and-Midtown diner format (24-layer cake, bottomless
+    coffee, plant-based options) is being replicated by its owner into nearby high-foot-traffic
+    hotel and Theater-District-adjacent addresses rather than diversifying into new neighborhoods.
+  evidence:
+  - url: https://carnegiediner.com/store-locator
+    date: '2026-09-15'
+  - url: https://tribecacitizen.com/2025/11/10/carnegie-diner-coming-to-200-chambers
+    date: '2025-11-10'
+  - url: https://whatnow.com/new-york/restaurants/carnegie-diner-cafe-owner-opening-new-concept-in-midtown
+    date: '2026'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Toby's Estate Coffee
+  brand_key: tobys estate coffee
+  category: specialty coffee roaster and cafe
+  loci_category: cafe_bakery
+  hq: Sydney, Australia (Toby's Estate Coffee Roasters)
+  nyc_locations_now: 2
+  nyc_locations_12m_ago: 1
+  net_new_12m: 1
+  pipeline: Company's own site says "keep an eye out for our new cafe launching soon"; secondary
+    sources (Tungsten Property/NYREJ) report a SoHo flagship (Lafayette & Broome St) targeted
+    for ~June 2026 and a possible 295 Fifth Ave site, but neither is confirmed open. A Midtown
+    East counter inside Urbanspace Vanderbilt is mentioned on Tripadvisor/joe.coffee but could
+    not be independently confirmed as this brand's current operation.
+  ownership: corporate (the global Toby's Estate brand was acquired in 2022 by UCC Holdings
+    Co., a Japanese coffee conglomerate, via its purchase of Suntory Coffee Australia's brands;
+    note this US re-entrant is NOT the same operating entity as the 2010s Brooklyn "Toby's
+    Estate," which rebranded to Partners Coffee in April 2019)
+  expansion_role_title: null
+  why_they_grow: A conglomerate-owned global coffee brand is re-entering NYC with flagship-style
+    cafes in high-visibility downtown corridors, years after its original NYC operation exited
+    the brand name entirely.
+  evidence:
+  - url: https://tobysestate.com
+    date: '2026-09-15'
+  - url: https://tribecacitizen.com/2026/01/26/tobys-estate-opens-next-week
+    date: '2026-01-26'
+  - url: https://tribecacitizen.com/2026/02/06/new-kid-on-the-block-tobys-estate-coffee-roasters
+    date: '2026-02-06'
+  - url: https://www.dailycoffeenews.com/2019/04/05/tobys-estate-brooklyn-rebrands-partners-coffee/
+    date: '2019-04-05'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Earthbar
+  brand_key: earthbar
+  category: juice & smoothie cafe
+  loci_category: cafe_bakery
+  hq: Los Angeles, CA
+  nyc_locations_now: null
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: No NYC-specific pipeline announced as of 2026-09-15; company's own city list (LA,
+    NYC, SF, San Diego, Brooklyn, Manhattan, West Hollywood, Berkeley, LAX, Newport Beach)
+    is unchanged. Where growth exists it tracks new Equinox club openings adding an Earthbar
+    kiosk, not independent NYC leasing.
+  ownership: corporate (Earthbar LLC; no franchise program found; described in trade press
+    as 'an LA institution')
+  expansion_role_title: null
+  why_they_grow: A tiny, high-margin smoothie-kiosk format lets it piggyback on Equinox's
+    own real estate (plus a couple of standalone mall/street counters) rather than negotiate
+    its own street-level leases, so its footprint tracks Equinox's and a few landlords' decisions
+    more than any leasing strategy of its own.
+  evidence:
+  - url: https://www.bfplny.com/food-drink/earthbar/
+    date: 2026-09
+    note: Confirms Earthbar operates inside Equinox Brookfield Place (Battery Park City).
+  - url: https://www.theshopsatcolumbuscircle.com/shopping/earthbar/
+    date: 2026-09
+    note: Confirms Earthbar inside Equinox Columbus Circle, 10 Columbus Cir.
+  - url: https://www.yelp.com/biz/earthbar-new-york-16
+    date: 2026-04
+    note: Standalone-format Earthbar at 54 Murray Street (TriBeCa) -- not inside a gym, so
+      the chain is not purely a gym-kiosk operator.
+  - url: https://www.xmap.ai/brand-location-intelligence-reports/number-of-earthbar-locations-in-the-united-states-of-america
+    date: undated (accessed 2026-09-15)
+    note: Third-party location aggregator claims 47 US locations total, operating only in
+      CA (32) and NY (15) -- an order of magnitude below detect's 28-in-NYC-alone figure,
+      suggesting the detect count is inflated (DOHMH permit duplication, or conflation with
+      unrelated 'Earth Bar'-named venues) rather than real 18-in-12-months growth.
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Kikka Sushi
+  brand_key: kikka sushi
+  category: supermarket sushi bar
+  loci_category: restaurant
+  hq: Inglewood, CA
+  nyc_locations_now: null
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: No NYC-specific pipeline found; the company publishes no locations page with addresses.
+    Any NYC growth tracks new host-supermarket openings (Whole Foods, other grocers) adding
+    a Kikka counter, not a Kikka real-estate decision.
+  ownership: franchise (self-described 'leading sushi franchise company operating full-service
+    sushi bars in supermarkets, corporate dining, universities, and stadiums'; supplies Whole
+    Foods and Ralphs nationally)
+  expansion_role_title: null
+  why_they_grow: As a wholesale sushi-counter operator rather than a restaurant landlord,
+    its NYC store count is a function of how many supermarkets choose to add a Kikka-run sushi
+    bar, not of any site-selection decision Kikka itself makes -- so a 'new' DOHMH filing
+    here likely tracks a host store's own permit cycle rather than a genuine new opening.
+  evidence:
+  - url: https://www.zoominfo.com/c/kikka-sushi/355674871
+    date: '2026-09-15'
+    note: Confirms HQ at 431 Isis Ave, Inglewood, CA; founded 1986 by Tonny Soesanto as a
+      sushi supplier for LA-area markets; now serves 20+ states via supermarkets, universities,
+      hospitals.
+  - url: https://www.yelp.com/biz/kikka-sushi-new-york
+    date: 2026-02
+    note: Confirms a NYC storefront at 450 W 33rd St -- at least one standalone/host-adjacent
+      NYC unit exists, corroborating a real (not purely name-collision) NYC presence.
+  - url: https://www.wholefoodsmarket.com/products/brands/kikka-sushi
+    date: '2026-09-15'
+    note: Kikka Sushi products/platters sold via Whole Foods Market nationally, consistent
+      with the supermarket host-store model.
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Shah's Halal Food
+  brand_key: shahs halal food
+  category: halal fast casual
+  loci_category: restaurant
+  hq: New York, NY
+  nyc_locations_now: null
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: Actively franchising nationwide with $0 franchise fee, 0% royalty, 0% marketing
+    fee (per company franchise page); no specific additional NYC address announced beyond
+    ongoing rollout (first Manhattan store at 4927 Broadway/Inwood; newest Brooklyn store
+    at 1611 Broadway). Also adding 3 MetLife Stadium concessions (NJ) and a Silver Spring,
+    MD store.
+  ownership: franchise (family-owned corporate parent; founded 2005 with one food cart in
+    Richmond Hill, Queens; now 130+ locations in US, UK, Canada, Sweden per company site)
+  expansion_role_title: Franchise Director (Dr. Khalida Mashriqi, per Mapchise case study)
+  why_they_grow: A zero-franchise-fee, zero-royalty model, paired with a single hero product
+    (Chicken-and-Rice platter) that scales from cart to storefront with minimal build-out,
+    removes the two biggest frictions to franchisee adoption, letting it scale from one Queens
+    cart in 2005 to 130+ locations largely on other people's capital.
+  evidence:
+  - url: https://www.shahshalalfood.com/about
+    date: '2026-09-15'
+    note: 'Company site: ''Established in 2005 with one food cart in Richmond Hill, Queens...
+      over 130 plus locations'' internationally (US, UK, Canada, Sweden); does not break out
+      an NYC-only count.'
+  - url: https://mapchise.com/case-study/shahs-halal-food
+    date: '2026-09-15'
+    note: Case study naming Dr. Khalida Mashriqi as Franchise Director; traces growth 60 locations
+      (within a year) to 100+ using site-selection software.
+  - url: https://www.shahshalalfood.com/broadway-brooklyn-ny
+    date: '2026-09-15'
+    note: Confirms an active, recently-opened Brooklyn store at 1611 Broadway.
+  - url: https://njbiz.com/shahs-halal-food-metlife-stadium-opening/
+    date: '2026'
+    note: Shah's becomes an official MetLife Stadium concessionaire (3 locations, East Rutherford
+      NJ) -- expansion beyond core NYC storefronts.
+  - url: https://multiculturalcookingnetwork.net/2023/02/04/shahs-halal-food
+    date: '2023-02-04'
+    note: About 36 locations (NY, PA, CT, MD, NJ, VA, DE) at this point -- shows the trajectory
+      from ~36 (2023) toward 130+ (2026).
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Wonder
+  brand_key: wonder
+  category: multi-restaurant food hall / delivery
+  loci_category: restaurant
+  hq: New York, NY
+  nyc_locations_now: null
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: Continuing to add locations roughly weekly across the wider NY metro (23 -> 33
+    -> 45 -> 60+ systemwide from 2024 to Sept 2025, plus 'four more Long Island locations'
+    opened Jan 2026, per Patch/LIBN/Facebook coverage); company has stated a goal of ~90 locations
+    across the NY metro area. Most of this reported growth is in NJ, Westchester and Long
+    Island suburbs rather than the five boroughs -- only 2 confirmed addresses (Upper West
+    Side, Chelsea) are inside NYC proper as of 2026-09-15.
+  ownership: corporate (VC-backed, not PE; founder- and CEO-led by Marc Lore; ~$7B private
+    valuation per QSR.pro/Axios; acquired Grubhub in 2023-24 to build out delivery/logistics)
+  expansion_role_title: null
+  why_they_grow: Marc Lore is using Wonder's multibillion-dollar war chest and the Grubhub
+    acquisition to buy speed -- opening or converting a food hall roughly once a week across
+    the NY metro -- rather than growing organically restaurant by restaurant.
+  evidence:
+  - url: https://patch.com/new-york/harrison/wonder-open-third-new-kind-food-hall-location-westchester
+    date: '2025'
+    note: '''Wonder currently operates 23 locations throughout the New York City metro area,
+      New Jersey, Pennsylvania and Rhode Island... plans to have 35 locations by the end of
+      the year.'''
+  - url: https://libn.com/2025/09/25/wonder-westbury-food-hall-opening
+    date: '2025-09-25'
+    note: '''Wonder currently operates more than 60 locations across New York, New Jersey,
+      Rhode Island, Pennsylvania, Connecticut, Delaware, Virginia and Washington, D.C.'''
+  - url: https://www.facebook.com/LongIslandRealEstateDeals/posts/wonder-opens-four-more-long-island-locations-david-winzelberg-january-23-2026won/1290976583051606
+    date: '2026-01-23'
+    note: Wonder opens four more Long Island locations -- confirms continued, recent, real-estate-driven
+      growth into 2026.
+  - url: https://eathealthy365.com/every-current-wonder-food-hall-location-for-2026
+    date: '2026-02-12'
+    note: 'Confirms two NYC-proper addresses: 205 W 95th St (Upper West Side) and 200 W 23rd
+      St (Chelsea); this specific blog''s list is otherwise stale/incomplete relative to the
+      systemwide counts above.'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Gristedes
+  brand_key: gristedes
+  category: supermarket
+  loci_category: grocery
+  hq: New York, NY
+  nyc_locations_now: 17
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: No new-store pipeline found. The operative news of the past 15 months is the OWNER
+    THREATENING TO CLOSE OR SELL the chain (John Catsimatidis, June 2025) over NYC political
+    and cost pressures tied to the 2025 mayoral race -- the opposite of an expansion signal.
+  ownership: corporate (Red Apple Group; John Catsimatidis, majority owner and CEO; acquired
+    D'Agostino's in 2016, +10 locations, under the 'New York Food Group' umbrella)
+  expansion_role_title: null
+  why_they_grow: 'This is not a growth chain: Catsimatidis has spent the past year publicly
+    threatening to leave or sell Gristedes over NYC political and cost pressures, so any ''new''
+    or ''not-yet-open'' DOHMH filings detected here almost certainly reflect ownership/permit
+    churn on existing stores rather than genuine new openings.'
+  evidence:
+  - url: https://www.supermarketnews.com/legislation-regulatory-news/gristedes-grocery-owner-threatens-to-leave-new-york-city
+    date: '2025-06-25'
+    note: '''In addition to the 17-store Gristedes grocery chain...'' -- confirms the 17-store
+      NYC count per the company''s own website as of this date; owner threatens to close/sell/relocate
+      HQ over city politics.'
+  - url: https://www.yahoo.com/news/billionaire-john-catsimatidis-threatens-close-234748699.html
+    date: '2025-06-25'
+    note: '''Gristedes supermarket chain... currently operates 17 stores in the Big Apple,
+      according to its website.'''
+  - url: https://en.wikipedia.org/wiki/Gristedes
+    date: '2026-09-15'
+    note: 'Infobox lists ''Number of locations: 31'' (likely stale/undated); founded 1888;
+      parent Red Apple Group; area served Manhattan and Brooklyn -- the discrepancy with the
+      17-store press figure is itself evidence the count is not being actively maintained,
+      consistent with a non-growth chain.'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Jimmy John's
+  brand_key: jimmy johns
+  category: sandwich shop
+  loci_category: restaurant
+  hq: Champaign, IL
+  nyc_locations_now: 12
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: Ongoing NYC franchise rollout since the July 2022 Brooklyn debut; no specific
+    additional signed NYC lease found beyond the currently-open units.
+  ownership: franchise (individually franchised units; parent Jimmy John's Franchisor SPV,
+    LLC is owned by Inspire Brands, which is majority-owned by PE firm Roark Capital)
+  expansion_role_title: null
+  why_they_grow: Its ultimate parent, Roark Capital's Inspire Brands, is deliberately backfilling
+    NYC -- a market Jimmy John's avoided until 2022 -- because the five boroughs are now one
+    of the last major U.S. metros where the brand has meaningfully more room to franchise
+    than store count.
+  evidence:
+  - url: https://stories.inspirebrands.com/jimmy-johns-opening-first-new-york-city-location
+    date: 2022-07
+    note: 'First-ever NYC store: 504 Myrtle Avenue, Brooklyn (near Pratt Institute); franchise
+      managing member Norman Yu quoted: ''this new Brooklyn Jimmy John''s is a first step
+      in bringing our Freaky Fast sandwiches to all New Yorkers.'''
+  - url: https://locations.jimmyjohns.com/us/ny/new-york
+    date: '2026-09-15'
+    note: 'Own store locator: 6 Manhattan locations (157 W 33rd St, 316 W 34th St, 102 Fulton
+      St, 151 E 125th St, 302 5th Ave, 55 W 14th St).'
+  - url: https://locations.jimmyjohns.com/us/ny/brooklyn
+    date: '2026-09-15'
+    note: 'Own store locator: 3 Brooklyn locations.'
+  - url: https://locations.jimmyjohns.com/us/ny/bronx
+    date: '2026-09-15'
+    note: 'Own store locator: 1 Bronx location.'
+  - url: https://locations.jimmyjohns.com/us/ny/jamaica
+    date: '2026-09-15'
+    note: 'Own store locator: 1 location in Jamaica, Queens.'
+  - url: https://locations.jimmyjohns.com/us/ny/bayside
+    date: '2026-09-15'
+    note: 'Own store locator: 1 location in Bayside, Queens. Total across these pages = 12
+      NYC (five-borough) units, all opened since the 2022 debut.'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: PureGym
+  brand_key: puregym
+  category: budget 24/7 gym
+  loci_category: fitness
+  hq: Leeds, UK
+  nyc_locations_now: null
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: 'The Blink Fitness -> PureGym conversion is an ongoing REBRAND schedule, not new
+    construction: 3 pilot NYC/NJ locations (Manhattan-54th St, Canarsie Brooklyn, Woodside
+    Queens) were upgraded and rebranded Dec 8, 2025, with ''the remaining locations to rebrand
+    in the coming months'' per SGB Media. PureGym''s own NY locator (puregym.com/us/gyms/ny)
+    shows the conversion already covers well over 20 confirmed five-borough gyms (Manhattan,
+    Queens, Brooklyn), still expanding as of 2026-09.'
+  ownership: pe_backed (Leonard Green & Partners, KKR, and PureGym management own PureGym
+    Ltd; entered the NYC/NJ market via a $121M cash acquisition of Blink Fitness, completed
+    Sept 2024, covering 67 former Blink gyms in NY/NJ/PA)
+  expansion_role_title: null
+  why_they_grow: Its NYC 'growth' is a single $121M acquisition (Blink Fitness, Sept 2024)
+    being converted gym-by-gym into the PureGym brand and pricing model, not a leasing campaign
+    -- so the count of new PureGym signs is really a rebrand clock, not a real-estate one,
+    and detect's floor of 17 likely UNDERcounts the true footprint rather than overcounting
+    it.
+  evidence:
+  - url: https://sgbonline.com/blink-fitness-to-convert-to-puregym
+    date: '2025-12-05'
+    note: '''In September 2024, PureGym Limited announced the completion of its $121 million
+      cash acquisition of Blink Fitness. At the time, Blink Fitness had 67 gyms operating
+      in New York and New Jersey.'' 3 pilot NY/NJ locations rebranded Dec 8, 2025; remainder
+      to follow ''in the coming months.'''
+  - url: https://www.healthclubmanagement.co.uk/health-club-management-news/PureGym-unveils-its-first-rebranded-Blink-Fitness-sites-in-the-US/361771
+    date: '2025-12-08'
+    note: '''Fifty-six former Blink Fitness gyms in New York and New Jersey have been upgraded
+      and rebranded as PureGym and are now open for business.'''
+  - url: https://www.puregym.com/us/gyms/ny
+    date: '2026-09-15'
+    note: Own NY locator lists 20+ confirmed gyms across Manhattan (116th, 125th/Harlem, 54th,
+      Bryant Park, Chelsea, Noho, W. 92nd, Washington Heights, East Village...), Queens (Astoria/Ditmars,
+      Jackson Heights, Jamaica, Middle Village, Ozone Park, Queens Village, Ridgewood, Springfield
+      Gardens, Corona...) and Brooklyn (Bushwick, Canarsie, Clinton Hill, Coney Island, Crown
+      Heights, Flatbush, Gates, Junction...), still marked 'Coming Soon' for at least one
+      more.
+  - url: https://well-nation.co.uk/blog/2025/04/29/puregym-reveals-record-revenue-growth-and-plans-uk-and-us-expansion
+    date: '2025-04-29'
+    note: Confirms PE ownership (Leonard Green & Partners, KKR) and CEO Clive Chesser's statement
+      that the Blink Fitness acquisition gives PureGym 'critical mass' in the US to pursue
+      further growth via owned sites or franchise partners.
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Cotti Coffee
+  brand_key: cotti coffee
+  category: Chinese coffee chain
+  loci_category: cafe_bakery
+  hq: Fuzhou, China
+  nyc_locations_now: null
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: 'Recent/upcoming NYC openings reported in local press: a 14th Street (Manhattan)
+    location (EVGrieve, June 2026) and a Penn Station-area location (NY Post, announced for
+    Feb 23 2026); continues adding storefronts in Chinese-immigrant neighborhoods (Sunset
+    Park, Bensonhurst, Chinatown) as well as Chelsea and Williamsburg.'
+  ownership: mixed (franchise-heavy globally -- founded by ex-Luckin Coffee executives Lu
+    Zhengyao and Jenny Qian, Oct 2022; U.S. market entered via wholly-owned U.S. subsidiaries
+    -- Cotti USA Inc., Cotti Partners LLC -- ahead of local franchising; privately held, no
+    public financials)
+  expansion_role_title: null
+  why_they_grow: Backed by the founders of Luckin Coffee's original mobile-order/discount
+    playbook, Cotti is targeting NYC's roughly 700,000-strong ethnic Chinese population and
+    Chinatown-adjacent neighborhoods first, using that beachhead the same way it used low-tier
+    Chinese cities to reach 18,000+ stores in 28 countries in under 4 years.
+  evidence:
+  - url: https://ny.eater.com/dining-out-in-ny/409847/chinese-coffee-boba-tea-shops-manhattan-chinatown-openings
+    date: 2026-09
+    note: '''In May 2025, Cotti Coffee opened its first NYC storefront in Sunset Park... has
+      since opened more storefronts in Bensonhurst, Chinatown, Chelsea, and Williamsburg.''
+      Brand now among the 3 biggest coffee chains globally with 18,000 stores in 28 countries.'
+  - url: https://dailycoffeenews.com/2026/06/08/chinas-cotti-coffee-has-been-quietly-growing-throughout-the-u-s
+    date: '2026-06-08'
+    note: Traces Cotti's history (founded Fuzhou, Oct 2022 by ex-Luckin execs Lu Zhengyao/Jenny
+      Qian); ~18,000 stores globally by early 2026; lists U.S. entities including Cotti USA
+      Inc., Cotti Partners LLC; confirms NYC as an active U.S. market.
+  - url: https://evgrieve.com/2026/06/cotti-coffee-coming-to-14th-street.html
+    date: 2026-06
+    note: New 14th Street (Manhattan) location reported, 'the latest NYC location for the
+      China-based multinational company, which has more than 14,000 stores in 28 countries.'
+  - url: https://nypost.com/2026/02/24/lifestyle/how-luckin-cotti-and-other-chinese-coffee-chains-are-taking-over-amid-inflation
+    date: '2026-02-24'
+    note: '''Cotti is slated to open a spot at Penn Station on Feb. 23'' -- confirms an active,
+      dated NYC opening in the trailing-12-month window.'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Just Salad
+  brand_key: just salad
+  category: fast-casual salad restaurant
+  loci_category: restaurant
+  hq: New York, NY
+  nyc_locations_now: 49
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: First drive-thru debuted early 2025 with 'at least four more' planned per Nation's
+    Restaurant News (Jan 2026); systemwide count grew from 100 locations (2025) to 125 as
+    of July 1, 2026 (per Wikipedia, citing NY Knicks player Jalen Brunson's equity stake announcement)
+    -- no single additional NYC address confirmed as of 2026-09-15.
+  ownership: 'corporate (per Wikipedia: ''all but two'' of 100 locations were company-owned
+    as of 2025 -- NOT primarily franchised despite the growth rate; founder/CEO Nick Kenner)'
+  expansion_role_title: null
+  why_they_grow: Two decades of company-owned (not franchised) unit economics let Just Salad
+    compound quietly -- doubling from 47 to 100 locations between 2021 and 2025 and then to
+    125 within another year -- without needing a franchise-development team to do it.
+  evidence:
+  - url: https://www.xmap.ai/brand-location-intelligence-reports/number-of-just-salad-locations-in-the-united-states-of-america
+    date: '2025-11-18'
+    note: '''103 Just Salad locations in the United States... New York, with 49 sites, accounting
+      for roughly 47.6% of the total'' -- this NY-STATE figure (not strictly NYC-only) is
+      used as the nyc_locations_now proxy since no more recent NYC-specific breakout was found.'
+  - url: https://en.wikipedia.org/wiki/Just_Salad
+    date: '2026-09-15'
+    note: '''From 47 outlets in 2021, the company doubled its number of restaurants over the
+      next four years. By 2025, Just Salad had 100 locations in seven states, all but two
+      of which were company-owned. As of July 1, 2026, the company had 125 locations'' --
+      confirms real, accelerating, mostly-corporate growth consistent with detect''s 9-new-in-12m
+      NYC signal.'
+  - url: https://www.nrn.com/regional-chains/just-salad-expects-to-be-one-of-the-largest-chains-in-the-u-s-
+    date: '2026-01-21'
+    note: 'Founder Nick Kenner: company has grown to ''more than 100 locations'' and expects
+      to become one of the largest fast-casual chains in the U.S.; first drive-thru launched
+      early 2025 with more planned for 2026.'
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Baya Bar
+  brand_key: baya bar
+  category: acai & smoothie bar
+  loci_category: cafe_bakery
+  hq: New York, NY
+  nyc_locations_now: 27
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: National franchise pipeline (75-80+ locations open/under contract targeted for
+    2026) is heavily weighted toward NEW markets (Delray Beach FL, New Jersey, North Carolina,
+    Houston TX, second Milwaukee unit) rather than additional NYC units; own locations page
+    lists no NYC 'coming soon' sites as of 2026-09-15.
+  ownership: 'mixed (corporate + franchise; founder Bill Loesch opened the first 4 units corporate
+    starting Dec 2016, then began franchising; per 1851franchise.com, June 2025: 31 total
+    locations, 3 corporate / 28 franchise)'
+  expansion_role_title: null
+  why_they_grow: A compact-footprint, low-capex acai/smoothie format let the founder franchise
+    aggressively once the New York flagship model proved out, and national growth is now outrunning
+    NYC's own unit count.
+  evidence:
+  - url: https://bayabar.com/locations/
+    date: '2026-09-15'
+    note: 'Own store locator: ~10-11 Brooklyn, ~9-10 Manhattan, 3 Queens, 4 Staten Island
+      = 27 NYC units (5 boroughs; Long Island units excluded as non-NYC); plus units in FL,
+      LA, MA, MS, PA, UT, WI and ''coming soon'' in FL/NJ/NC/TX/WI.'
+  - url: https://fesmag.com/topics/project-profiles/chain-profile/21162-baya-bar-brings-a-new-york-mindset-to-acai
+    date: 2023-05
+    note: Founded Dec 28 2016 by Bill Loesch in NYC; 25 locations 'almost all in New York
+      City' as of May 2023, targeting 50 by end of 2023; Loesch personally directs site selection.
+  - url: https://1851franchise.com/franchise-deep-dive-baya-bar-costs-fees-profit-and-data-2721741-2721741
+    date: '2025-06-17'
+    note: 31 total locations (3 corporate, 28 franchise); recently expanded into LA, UT, WI,
+      MA, FL, MS.
+  - url: https://www.entrepreneur.com/franchises/directory/baya-bar/335991
+    date: '2025'
+    note: 41 locations open plus ~3 dozen under development; targeting 75-80 by end of 2026
+      -- confirms real, accelerating multi-unit franchise growth, not a name collision.
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null
+- brand: Equis Pica Pollo
+  brand_key: equis pica pollo
+  category: Dominican rotisserie chicken (pica pollo)
+  loci_category: restaurant
+  hq: Bronx, NY
+  nyc_locations_now: null
+  nyc_locations_12m_ago: null
+  net_new_12m: null
+  pipeline: 'Real single branded operator, not a generic-name collapse of unrelated shops
+    -- it markets as ''El primer Pica Pollo Dominicano,'' runs its own ordering domains (equispicapollo.com,
+    equispicapollony.com) and a large (~199K-follower) Instagram account, with confirmed units
+    in the Bronx (739 Riverdale Ave, 2056 Morris Ave) and Brooklyn (3395 Fulton St). BUT its
+    own regional-expansion press directly contradicts detect''s 14-NYC-locations figure: a
+    June 2026 Jamaica Plain News article about a new Centre Street, Boston opening states
+    this will be ''the chain''s seventh location overall'' -- 2 in Boston, the remaining 5
+    split across New York and New Jersey combined. A chain describing itself in dated press
+    as having 5 NY+NJ locations total cannot simultaneously have 14 in NYC alone; this is
+    strong evidence that Loci''s detect count for this brand is inflated, most likely by conflating
+    this real small chain with unrelated pica pollo restaurants (a generic Dominican dish/category
+    name, not a distinctive brand word) under the same normalized key. Treat detect''s 14/8-new
+    as substantially overstated pending a real store-locator page (none could be reached to
+    confirm).'
+  ownership: corporate (independent single brand; no evidence of franchising or PE backing
+    found)
+  expansion_role_title: null
+  why_they_grow: A social-media-driven, single-hero-product Bronx/Brooklyn brand is using
+    its large Instagram following to open a handful of out-of-NYC outposts (Newark, Boston)
+    rather than scaling deeply within the five boroughs, which is why its real NYC unit count
+    is almost certainly far below Loci's 14-location detect figure.
+  evidence:
+  - url: https://jamaicaplainnews.com/2026/06/01/the-best-fried-chicken-ever-is-coming-to-centre-street/689497
+    date: '2026-06-01'
+    note: '''This will be the chain''s seventh location overall'' -- 2 in Boston (the new
+      Centre Street site and one on Blue Hill Avenue), remaining 5 in New York and New Jersey
+      combined. Directly contradicts detect''s 14-NYC-locations figure.'
+  - url: https://equispicapollo.com
+    date: '2026-09-15'
+    note: Company's own ordering domain confirms it is one real branded operator, not a name
+      collision, but no address/store-count list could be extracted via fetch.
+  - url: https://www.yelp.com/biz/equis-pica-pollo-brooklyn
+    date: 2026-06
+    note: Confirms Brooklyn (Fulton St) location.
+  confidence: reported
+  first_added: '2026-09-15'
+  last_verified: null

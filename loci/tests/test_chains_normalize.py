@@ -123,3 +123,21 @@ def test_raising_canes_long_and_short_trade_names_share_a_brand_key():
     keys = {brand_key(n) for n in
             ("Raising Cane's Chicken Fingers", "Raising Cane's", "Raising Canes")}
     assert keys == {"raising canes"}
+
+
+def test_short_and_full_trade_names_collapse_to_the_locator_spelling():
+    """Five splits from the 2026-09-15 candidates preview: each brand filed
+    under both its short and its full trade name and detected as two chains.
+    The canonical key is the spelling the company's own locator uses."""
+    assert brand_key("Blank Street") == brand_key("Blank Street Coffee") == "blank street coffee"
+    assert brand_key("Chip City") == brand_key("Chip City Cookies") == "chip city cookies"
+    assert brand_key("Dos Toros") == brand_key("Dos Toros Taqueria") == "dos toros taqueria"
+    assert brand_key("Guacado Mexican Grill") == brand_key("Guacado") == "guacado"
+    assert brand_key("Teriyaki One Japanese Grill") == brand_key("Teriyaki One") == "teriyaki one"
+
+
+def test_moka_and_co_keeps_its_name_after_the_ampersand_and_suffix_rules():
+    """"Moka & Co" would otherwise normalize to the conjunction "moka and"
+    (&->and, then "Co" stripped as a legal suffix)."""
+    assert brand_key("Moka & Co") == "moka and co"
+    assert brand_key("Moka and Co") == "moka and co"

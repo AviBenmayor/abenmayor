@@ -111,6 +111,20 @@ ALIASES: dict[str, str] = {
     # form, so the 2026-09-13 snapshot showed the curated brand at 14 detected
     # while 17 more sat under the long key, unlisted. Same chain.
     "raising canes chicken fingers": "raising canes",
+    # Short-vs-full trade-name splits surfaced by the 2026-09-15 candidates
+    # preview (each pair filed under both spellings; the watchlist row keys on
+    # the spelling the company uses on its own locator, so that one is
+    # canonical). Blank Street, Chip City, Dos Toros keep the full name;
+    # Guacado and Teriyaki One keep the short one.
+    "blank street": "blank street coffee",
+    "chip city": "chip city cookies",
+    "dos toros": "dos toros taqueria",
+    "guacado mexican grill": "guacado",
+    "teriyaki one japanese grill": "teriyaki one",
+    # "Moka & Co" (Yemeni coffee, 10 NYC units) collapses to the bare key
+    # "moka and": the &->and rule fires and then "Co" is stripped as a legal
+    # suffix. Pin the full name so the key is a brand, not a conjunction.
+    "moka and": "moka and co",
 }
 
 _SEPARATOR = re.compile(r"\s+[-–—|@]\s+|\s+\bat\b\s+(?=\w)")
