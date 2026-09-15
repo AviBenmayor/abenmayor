@@ -354,11 +354,11 @@ claim stands on.
 - **Current answer:** Open. Not part of the 2026-09-14/15 dedup ruling — recorded as a residual worth a look, not decided.
 
 ### D28 — Should a system-wide zero-ridership day (2026-02-23) stay in the per-weekday divisor?
-- **Status:** open
+- **Status:** answered
 - **Answered by:** (not ticketed) — CHECKPOINT D102
 - **Why it matters:** Citi Bike phase 1's completeness check (D102, commit ac914da) found 2026-02-23 reads a true system-wide zero across every station (a storm), distinct from a truncated file — the code currently keeps it in the per-weekday divisor as an interior outage day rather than excluding it, which understates every weekday-mean measure built from that month by one day's worth of real (zero) activity.
 - **Fails if:** n/a — data-treatment/method question; but silently keeping or silently dropping it without a stated rule would make the choice invisible to anyone reading a downstream weekday-mean number.
-- **Current answer:** Open — owner call.
+- **Current answer:** Answered 2026-09-15 (owner, D108 addendum): stays in the divisor.
 
 ### Tier X · Explanatory — conditional structure, no temporal claim
 
@@ -957,11 +957,11 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Current answer:** Open; until ruled, the placebo line on `od-validate` is descriptive only.
 
 ### D44 — 74 of 124 Citi Bike origin NTAs lose supplied_share to the 0.2 outside-universe threshold: is 0.2 right, should the universe admit QN/BX lot addresses for the denominator only, or should the share report with its outside share and no NULL cut at all?
-- **Status:** open
+- **Status:** answered
 - **Tag:** *model / rigor*
 - **Session:** 2026-09-15, abenmayor-db
 - **Why it matters:** The measurable universe is 79 MN+BK NTAs with ≥500 lot-frame addresses; Queens/Bronx destinations are outside by D78's MN+BK screen scope (D108). The owner's no-eligibility-gate ruling (D75) argues for reporting with the outside share rather than NULLing.
-- **Current answer:** —
+- **Current answer:** Answered 2026-09-15 (owner, D108 addendum): report all origins, outside share always shown; no NULL cut. Commit 82db230.
 
 ### D45 — Should the `.sql.draft` pattern be the standing rule for D25's uncommitted-migration hazard?
 - **Status:** open
