@@ -25,9 +25,9 @@
 # a VIEW: it moves when dedup is re-run or an anchor is loaded, and a baseline
 # fitted on a different supply set is not comparable to a ratio computed on
 # this one. tests/test_supply_ratio.py fails when the two drift.
-supply_hash: 467cd5969200
+supply_hash: d993b3802c6a
 supply_set: principled
-asof: '2026-09-14'
+asof: '2026-09-15'
 radius_m: 400.0
 boroughs:
 - MN
