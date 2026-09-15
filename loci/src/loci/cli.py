@@ -5887,19 +5887,42 @@ def ground_truth_plan(
 def ground_truth_record(
     observations: str = typer.Argument(..., help="JSONL, one record per anchor."),
     run_id: str = typer.Option(None, "--run-id", help="Tie the rows to a run."),
+    replace_run: str = typer.Option(None, "--replace-run", help=(
+        "Re-ingest path: delete every analysis.address_observation row "
+        "carrying this run_id, THEN ingest this file under that SAME "
+        "run_id, recomputing every name match. This is how to re-ingest "
+        "after a MATCHING-RULE change (e.g. the 2026-09-15 40m->400m match "
+        "radius fix) -- observation_id does not change when only the rule "
+        "changes, so a plain re-run leaves the OLD matched_poi_id / "
+        "match_distance_m in place. Without this flag, re-running the same "
+        "file is today's ordinary idempotent insert: existing rows are "
+        "left untouched.")),
 ) -> None:
     """Ingest an observation JSONL. Idempotent: re-running the same file
-    changes nothing (observation_id is sha1(rec_id|observed_at|name))."""
+    changes nothing (observation_id is sha1(rec_id|observed_at|name)) unless
+    --replace-run is given."""
     from loci.model import ground_truth as gt
 
     con = _gt_connect(read_only=False)
-    res = gt.record(con, gt.load_jsonl(observations), run_id=run_id)
+    res = gt.record(con, gt.load_jsonl(observations), run_id=run_id,
+                     replace_run=replace_run)
     console.print(f"[green]ok[/] {res.n_records} anchors, {res.n_rows} observation "
                   f"rows ({res.n_vacant_rows} nothing-observed), {res.n_matched} "
                   f"matched to analysis.poi_presence, {res.n_evidence} closure-evidence "
-                  f"rows written; run_id {res.run_id}")
+                  f"rows written; run_id {res.run_id}"
+                  + (f" (replaced prior rows for run_id {replace_run})" if replace_run
+                     else ""))
     console.print("[yellow]'vacant' and 'unknown' write NO evidence row: seeing "
                   "nothing is not seeing a closure (D79).[/]")
+
+
+def _gt_cell(value, default: str = "—") -> str:
+    """Render one table cell defensively. `gt.summary()` already turns a SQL
+    NULL into a real `None` (see `ground_truth._records_nan_to_none`), but
+    rich's Table.add_row still needs a `str` for every argument -- a bare
+    `None` or a pandas/duckdb scalar (int64, Timestamp, ...) raises
+    NotRenderableError just like the bare-NaN bug this guards against."""
+    return default if value is None else str(value)
 
 
 @gt_app.command("report")
@@ -5928,11 +5951,11 @@ def ground_truth_report() -> None:
                    ("matched", "right"), ("same-cat open", "right"), ("imagery", "left")):
         t.add_column(col, justify=j)
     for r in s["by_rec"]:
-        t.add_row(r["rec_id"], r["category"], r["gap_verdict"],
+        t.add_row(_gt_cell(r["rec_id"]), _gt_cell(r["category"]), _gt_cell(r["gap_verdict"]),
                   str(int(r["n_storefronts"])), str(int(r["n_open"])),
                   str(int(r["n_closed"])), str(int(r["n_vacant"])),
                   str(int(r["n_matched"])), str(int(r["n_same_category_open"])),
-                  r["imagery"] or "—")
+                  _gt_cell(r["imagery"]))
     console.print(t)
 
     if s["misses"]:
@@ -5941,8 +5964,9 @@ def ground_truth_report() -> None:
         for col in ("category", "observed storefront", "guess", "status"):
             m.add_column(col)
         for r in s["misses"]:
-            m.add_row(r["rec_id"], r["category"], r["storefront_name"],
-                      r["category_guess"], r["status"])
+            m.add_row(_gt_cell(r["rec_id"]), _gt_cell(r["category"]),
+                      _gt_cell(r["storefront_name"]), _gt_cell(r["category_guess"]),
+                      _gt_cell(r["status"]))
         console.print(m)
         console.print("[red]Each row above is an open business of the recommended "
                       "category standing at an anchor the screen called empty — a "

@@ -132,14 +132,23 @@ CREATE INDEX IF NOT EXISTS address_observation_link
 
 -- ------------------------------------- analysis.address_observation_miss
 -- THE LOAD-BEARING OUTPUT. An OPEN storefront, of the RECOMMENDED category,
--- that analysis.poi_presence does not hold within 40 m of the anchor: a
--- MEASURED false positive of the gap screen, at one of the fifteen places
--- this project actually staked a claim on. D90 had to estimate this quantity
--- by design-weighted sampling; here it is observed.
+-- that analysis.poi_presence does not hold within 400 m of the anchor -- the
+-- SAME catchment radius the gap score itself uses: a MEASURED false positive
+-- of the gap screen, at one of the fifteen places this project actually
+-- staked a claim on. D90 had to estimate this quantity by design-weighted
+-- sampling; here it is observed.
 --
--- 40 m, not the 400 m catchment radius used everywhere else: the question is
--- "is this the same doorway", not "is this within walking distance", and a
--- geocode a building-width off should still match. The literal below is
+-- D105 2026-09-15: this was originally 40 m ("is this the same doorway, not
+-- is this within walking distance"). But the protocol's FIRST read is a
+-- category-nearby search centered on the anchor (nearby_url), whose results
+-- legitimately range across the whole 400 m catchment the gap score uses --
+-- under the 40 m rule, a real, same-name POI 120 m from the anchor read as a
+-- "miss," which is wrong: it is the business the observer was looking at
+-- (the first real `ground-truth record` run landed 63 near-total-false rows
+-- here under the old radius). A same-name match anywhere in the catchment is
+-- now treated as the same business. "At the anchor" (<= 40 m) is still
+-- answerable downstream from the stored `match_distance_m` column; this view
+-- does not need a second radius to answer it. The literal below is
 -- model/ground_truth.MATCH_RADIUS_M and tests/test_ground_truth.py pins them
 -- together.
 --
@@ -168,7 +177,7 @@ WHERE o.status = 'open'
         AND p.lon IS NOT NULL AND p.lat IS NOT NULL
         AND ST_Distance_Sphere(
                 ST_FlipCoordinates(ST_Point(p.lon, p.lat)),
-                ST_FlipCoordinates(ST_Point(o.anchor_lon, o.anchor_lat))) <= 40.0
+                ST_FlipCoordinates(ST_Point(o.anchor_lon, o.anchor_lat))) <= 400.0
   );
 
 -- ---------------------------------------------------------------------------

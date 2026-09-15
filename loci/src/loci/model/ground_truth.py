@@ -65,6 +65,18 @@ evidence rows are idempotent already, by sql/033's own
 `evidence_id = sha1(poi_id|source|url)` rule. A SECOND observation session on
 the same anchor is a different `observed_at` and therefore new rows -- which is
 right: it is a second observation, not a correction of the first.
+
+`record()`'s `replace_run` parameter (and `loci ground-truth record
+--replace-run`) is the ESCAPE from that idempotence, for when the MATCHING
+RULE changes rather than the observed facts -- exactly what happened
+2026-09-15 (MATCH_RADIUS_M 40 m -> 400 m). `observation_id` does not change
+when only the rule changes, so a plain re-run leaves the OLD `matched_poi_id`
+/ `match_distance_m` sitting in place under an unchanged primary key.
+`--replace-run <run_id>` deletes every row carrying that run_id first, then
+ingests the same file under the same run_id, recomputing every match. No
+evidence-side cleanup is needed: `poi_closure_evidence` is idempotent on its
+own key, and a storefront that newly matches on re-ingest producing a NEW
+evidence row is the intended effect, not a defect.
 """
 from __future__ import annotations
 
@@ -92,10 +104,21 @@ SQL_036 = locidb.SQL_DIR / "036_address_observation.sql"
 #: Match radius for "is this observed storefront a POI we already hold". The
 #: SAME number the `analysis.address_observation_miss` view uses -- sql/036
 #: writes it literally and tests/test_ground_truth.py pins the two together.
-#: 40 m, not the 400 m catchment radius used everywhere else: this is not
-#: "within walking distance of the anchor", it is "this is the same doorway",
-#: and a geocode that is a building-width off should still match.
-MATCH_RADIUS_M = 40.0
+#:
+#: 400 m -- the SAME catchment radius the gap score itself uses, not a
+#: "same doorway" radius. Originally this was 40 m, reasoning "this is not
+#: walking distance, it's the same building" -- but the protocol's FIRST read
+#: is a category-nearby search (`nearby_url`) centered on the anchor, whose
+#: results can legitimately lie anywhere in the 400 m catchment the gap score
+#: reaches. Under the 40 m rule a same-name POI 120 m from the anchor -- found
+#: by the very search the protocol tells the observer to run first -- read as
+#: a "miss," when it is plainly the business the observer was looking at
+#: (D105 2026-09-15, after the first real `ground-truth record` run landed 63
+#: near-total-false rows in the miss view). A same-name match anywhere inside
+#: the catchment is treated as the same business. `match_distance_m` is still
+#: recorded on every matched row, so "at the anchor" (<= 40 m, the old radius)
+#: stays answerable downstream from that column without a second constant.
+MATCH_RADIUS_M = 400.0
 
 #: `domain_class` marking an evidence row as a human's reading of the Google
 #: Maps UI. See the module docstring for why this is not a `source` value.
@@ -477,10 +500,14 @@ def _anchor(con, rec_id: str) -> dict:
 
 def _match(con, name_key: str, lon: float, lat: float):
     """The nearest `analysis.poi_presence` location with the SAME name_key
-    within `MATCH_RADIUS_M`, ANY category. Any category on purpose: an
-    observed hardware store that the warehouse holds under `convenience` is a
-    category error, not a missing POI, and conflating the two would let a
-    mis-typed POI be reported as supply the model never had."""
+    within `MATCH_RADIUS_M` (the 400 m catchment radius -- see the constant's
+    docstring), ANY category. Any category on purpose: an observed hardware
+    store that the warehouse holds under `convenience` is a category error,
+    not a missing POI, and conflating the two would let a mis-typed POI be
+    reported as supply the model never had. `match_distance_m` is returned
+    (and stored on every row by `record()`) so a caller can still ask "was
+    this AT the anchor" (<= 40 m) even though the match itself is no longer
+    restricted to that radius."""
     if not name_key:
         return None, None
     d = _dist_sql("p.lon", "p.lat")
@@ -509,7 +536,8 @@ def _validate(rec: dict, sf: dict) -> None:
                          f"a loci category; one of {sorted(CATEGORIES)}")
 
 
-def record(con, observations: Iterable[dict], run_id: str | None = None) -> RecordResult:
+def record(con, observations: Iterable[dict], run_id: str | None = None,
+           replace_run: str | None = None) -> RecordResult:
     """Ingest observation records (see the module docstring for the shape) and
     write `analysis.address_observation`, plus a `maps_ui` closure-evidence row
     for every MATCHED storefront the observer read a positive status off.
@@ -517,7 +545,18 @@ def record(con, observations: Iterable[dict], run_id: str | None = None) -> Reco
     Validation is UP FRONT and fatal: a bad status or a category_guess that is
     not a loci category stops the whole file rather than landing a partial
     ingest that the CHECK constraints would reject halfway through.
+
+    `replace_run`: delete every `analysis.address_observation` row carrying
+    this run_id, THEN ingest under that SAME run_id (overriding `run_id` if
+    both are given). This is the re-ingest path after a MATCHING-RULE change
+    -- see the module docstring's IDEMPOTENCE section for why a plain re-run
+    is not enough. Without it, ingesting the same file again is today's
+    ordinary idempotent behavior: existing rows are left untouched.
     """
+    if replace_run is not None:
+        con.execute("DELETE FROM analysis.address_observation WHERE run_id = ?",
+                    [replace_run])
+        run_id = replace_run
     run_id = run_id or uuid.uuid4().hex
     res = RecordResult(run_id=run_id)
     now = dt.datetime.now()
@@ -599,12 +638,27 @@ def record(con, observations: Iterable[dict], run_id: str | None = None) -> Reco
 
 # ---------------------------------------------------------------- summary
 
+def _records_nan_to_none(records: list[dict]) -> list[dict]:
+    """`DataFrame.to_dict("records")` renders a SQL NULL as `float('nan')`
+    even in a VARCHAR/TIMESTAMP column, because DuckDB's `.fetchdf()` goes
+    through numpy. `NaN or default` then returns `NaN` (a nonzero float is
+    truthy), not `default` -- and rich's Table refuses to render a bare float,
+    raising `NotRenderableError`. Every cell is normalized to a real `None`
+    here, once, so no caller (the CLI included) has to remember pandas'
+    NULL-is-NaN quirk or gets caught by it for a column added later."""
+    import pandas as pd
+    return [{k: (None if pd.isna(v) else v) for k, v in row.items()}
+            for row in records]
+
+
 def summary(con) -> dict:
     """Per-rec_id counts, plus every row of the miss view.
 
     The misses are the output. The counts are only there so a reader can see
     how many anchors have been checked at all before reading a miss rate off
-    a denominator that is still three.
+    a denominator that is still three. Every returned cell has already been
+    passed through `_records_nan_to_none` -- a missing value here is `None`,
+    never a pandas `NaN`.
     """
     require_schema(con)
     by_rec = con.execute("""
@@ -630,4 +684,4 @@ def summary(con) -> dict:
         FROM analysis.address_observation_miss
         ORDER BY rec_id, storefront_name
     """).fetchdf().to_dict("records")
-    return {"by_rec": by_rec, "misses": misses}
+    return {"by_rec": _records_nan_to_none(by_rec), "misses": _records_nan_to_none(misses)}

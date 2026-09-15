@@ -15,12 +15,24 @@ The load-bearing tests here are the ones a reader cannot check by eye:
     An observed open storefront of the recommended category that the
     warehouse does not hold is a measured false positive of the screen; one
     it DOES hold is not, and the view must not confuse them.
+  * `test_a_same_name_poi_120m_away_matches_and_is_not_a_miss` and
+    `test_a_same_name_poi_450m_away_does_not_match_and_is_a_miss` -- D105
+    2026-09-15's fix. The protocol's first read is a category-nearby search
+    ranging across the whole 400 m catchment, so a same-name POI 120 m from
+    the anchor is the SAME business and must not read as a miss; one 450 m
+    away is genuinely outside the catchment and must.
   * `test_category_check_matches_the_categories_module` and
     `test_the_view_radius_matches_the_module_constant` -- drift checks. The
-    CHECK list and the 40 m radius are written literally in sql/036; these
+    CHECK list and the match radius are written literally in sql/036; these
     pin them to `loci.categories.CATEGORIES` and
-    `ground_truth.MATCH_RADIUS_M`, so widening one without the other fails
-    the suite instead of silently disagreeing at runtime.
+    `ground_truth.MATCH_RADIUS_M` (400 m, the catchment radius -- see that
+    constant's docstring), so widening one without the other fails the suite
+    instead of silently disagreeing at runtime.
+  * `test_summary_returns_none_not_nan_for_missing_imagery` and
+    `test_cli_report_renders_a_rec_with_null_imagery_without_error` -- the
+    NotRenderableError regression: pandas turns a SQL NULL into `float('nan')`
+    even in a text column, and `NaN or default` returns `NaN` (a nonzero
+    float is truthy), which rich's Table refuses to render.
 
 No network anywhere: a browser session produces the JSONL, this module only
 ingests it.
@@ -41,11 +53,18 @@ ISSUED = dt.date(2026, 9, 11)
 OBSERVED = "2026-09-15T14:30:00"
 ANCHOR_LON, ANCHOR_LAT = -73.9885, 40.676
 
-#: ~0.0001 degrees of latitude is ~11 m -- inside the 40 m match radius.
-#: ~0.0010 is ~111 m, comfortably outside it. Both are asserted, not assumed,
-#: in `test_the_match_radius_is_a_real_distance`.
+#: ~0.0001 degrees of latitude is ~11 m -- "at the anchor" by the OLD 40 m
+#: radius and comfortably inside the current 400 m one.
+#: ~0.0011 is ~122 m -- inside the 400 m catchment radius (MATCH_RADIUS_M)
+#: but outside the old 40 m "same doorway" radius: THE case D105's fix is
+#: about, a same-name POI the nearby_url search would surface that the OLD
+#: rule reported as a miss.
+#: ~0.0041 is ~455 m -- outside the 400 m catchment entirely.
+#: All three are asserted, not assumed, in
+#: `test_the_match_radius_is_a_real_distance`.
 NEAR_LAT = ANCHOR_LAT + 0.0001
-FAR_LAT = ANCHOR_LAT + 0.0010
+CATCHMENT_LAT = ANCHOR_LAT + 0.0011
+FAR_LAT = ANCHOR_LAT + 0.0041
 
 
 # --------------------------------------------------------------- fixtures
@@ -100,11 +119,12 @@ def _presence(con, *, key="loc1", category="laundry", name="Sudsy Wash",
     """, [key, category, gt.name_key(name), name, lon, lat, poi_id])
 
 
-def _obs(rec_id, storefronts, *, gap_verdict="confirmed_gap", observed_at=OBSERVED):
+def _obs(rec_id, storefronts, *, gap_verdict="confirmed_gap", observed_at=OBSERVED,
+         streetview_capture_date="2025-06"):
     return {"rec_id": rec_id, "observed_at": observed_at, "observer": "abenmayor",
             "maps_url": gt.maps_url(ANCHOR_LAT, ANCHOR_LON),
             "streetview_url": gt.streetview_url(ANCHOR_LAT, ANCHOR_LON),
-            "streetview_capture_date": "2025-06", "screenshot_path": None,
+            "streetview_capture_date": streetview_capture_date, "screenshot_path": None,
             "storefronts": storefronts, "gap_verdict": gap_verdict, "notes": None}
 
 
@@ -389,6 +409,39 @@ def test_the_miss_view_excludes_other_categories_and_closed_storefronts(con):
                        ).fetchone()[0] == 0
 
 
+def test_a_same_name_poi_120m_away_matches_and_is_not_a_miss(con):
+    """THE FIX D105 exists for. The protocol's first read is the
+    category-nearby search (`nearby_url`), which legitimately surfaces
+    results anywhere in the 400 m catchment. A same-name POI ~120 m from the
+    anchor -- inside the catchment, outside the OLD 40 m 'same doorway'
+    radius -- must match, and a matched storefront can never be a miss: the
+    warehouse DOES hold this business."""
+    rec_id = _rec(con, category="laundry")
+    _presence(con, key="catchment", poi_id="p-catchment", lat=CATCHMENT_LAT)
+    gt.record(con, [_obs(rec_id, [_sf()], gap_verdict="inconclusive")])
+    poi, dist = con.execute("SELECT matched_poi_id, match_distance_m "
+                            "FROM analysis.address_observation").fetchone()
+    assert poi == "p-catchment"
+    assert 40.0 < dist < gt.MATCH_RADIUS_M
+    assert con.execute("SELECT count(*) FROM analysis.address_observation_miss"
+                       ).fetchone()[0] == 0
+
+
+def test_a_same_name_poi_450m_away_does_not_match_and_is_a_miss(con):
+    """Outside the 400 m catchment a same-name POI is genuinely a different
+    business as far as this channel can tell -- the storefront reads as
+    unmatched and, being open and of the recommended category, lands in the
+    miss view."""
+    rec_id = _rec(con, category="laundry")
+    _presence(con, key="far", poi_id="p-far", lat=FAR_LAT)
+    gt.record(con, [_obs(rec_id, [_sf()], gap_verdict="supply_missed")])
+    assert con.execute("SELECT matched_poi_id FROM analysis.address_observation"
+                       ).fetchone()[0] is None
+    rows = con.execute("SELECT rec_id, storefront_name "
+                       "FROM analysis.address_observation_miss").fetchall()
+    assert rows == [(rec_id, "Sudsy Wash")]
+
+
 def test_summary_counts_every_anchor_that_was_checked(con):
     rec_id = _rec(con)
     gt.record(con, [_obs(rec_id, [_sf(name="Bubbles Laundromat")])])
@@ -397,6 +450,90 @@ def test_summary_counts_every_anchor_that_was_checked(con):
     assert row["rec_id"] == rec_id
     assert (row["n_storefronts"], row["n_open"], row["n_vacant"]) == (1, 1, 0)
     assert [m["storefront_name"] for m in s["misses"]] == ["Bubbles Laundromat"]
+
+
+def test_summary_returns_none_not_nan_for_missing_imagery(con):
+    """`gt.summary()` must hand back a real `None` for a missing
+    streetview_capture_date, never pandas' `float('nan')` -- `NaN or default`
+    returns `NaN` itself (a nonzero float is truthy), which is exactly the
+    value that later raised `NotRenderableError` in `loci ground-truth
+    report`."""
+    rec_id = _rec(con)
+    gt.record(con, [_obs(rec_id, [_sf()], streetview_capture_date=None)])
+    [row] = gt.summary(con)["by_rec"]
+    assert row["imagery"] is None
+
+
+# =================================================== 3b. re-ingest (replace)
+
+def test_replace_run_leaves_the_row_count_unchanged_on_a_repeat_ingest(con):
+    """The exact scenario `--replace-run` exists for: after the 40m->400m
+    matching-rule fix, the SAME observation file needs to be re-ingested so
+    its matched_poi_id/match_distance_m are recomputed under the new rule.
+    Ingesting it twice with `replace_run` must leave the row count (and the
+    run_id) exactly where it started."""
+    rec_id = _rec(con)
+    _presence(con)
+    obs = [_obs(rec_id, [_sf()])]
+    first = gt.record(con, obs, run_id="r1")
+    assert first.run_id == "r1"
+    n_before = con.execute(
+        "SELECT count(*) FROM analysis.address_observation").fetchone()[0]
+
+    second = gt.record(con, obs, replace_run="r1")
+    assert second.run_id == "r1"
+    n_after = con.execute(
+        "SELECT count(*) FROM analysis.address_observation").fetchone()[0]
+    assert n_before == n_after == 1
+    assert con.execute("SELECT DISTINCT run_id FROM analysis.address_observation"
+                       ).fetchall() == [("r1",)]
+
+
+def test_replace_run_actually_deletes_rows_the_new_file_no_longer_carries(con):
+    """A plain re-run (no flag) can only add or overwrite rows sharing a PK --
+    it can never remove one the corrected file dropped, because
+    `observation_id` does not change when only the matching rule changes.
+    `--replace-run` must: an observation from run r1's first ingest that is
+    absent from the corrected file must not survive a replace."""
+    rec_id = _rec(con)
+    gt.record(con, [_obs(rec_id, [_sf(name="Ghost Laundromat"),
+                                  _sf(name="Real Wash")])], run_id="r1")
+    assert con.execute("SELECT count(*) FROM analysis.address_observation"
+                       ).fetchone()[0] == 2
+
+    gt.record(con, [_obs(rec_id, [_sf(name="Real Wash")])], replace_run="r1")
+    rows = con.execute("SELECT storefront_name FROM analysis.address_observation"
+                       ).fetchall()
+    assert rows == [("Real Wash",)]
+
+
+def test_replace_run_ignores_an_explicit_run_id_and_uses_replace_run_instead(con):
+    rec_id = _rec(con)
+    res = gt.record(con, [_obs(rec_id, [_sf()])], run_id="ignored",
+                    replace_run="r1")
+    assert res.run_id == "r1"
+    assert con.execute("SELECT run_id FROM analysis.address_observation"
+                       ).fetchone()[0] == "r1"
+
+
+# ============================================================== 3c. the CLI
+
+def test_cli_report_renders_a_rec_with_null_imagery_without_error(con, monkeypatch):
+    """Reproduces the NotRenderableError bug end to end: a rec whose
+    observation carries no streetview_capture_date must still render
+    through `loci ground-truth report` via typer's CliRunner, proving rich
+    does not choke on the missing-imagery cell."""
+    from typer.testing import CliRunner
+
+    from loci import cli
+
+    rec_id = _rec(con)
+    gt.record(con, [_obs(rec_id, [_sf()], streetview_capture_date=None)])
+
+    monkeypatch.setattr(cli.locidb, "connect", lambda *a, **k: con)
+    result = CliRunner().invoke(cli.app, ["ground-truth", "report"])
+    assert result.exit_code == 0, result.output
+    assert "—" in result.output          # the missing-imagery cell, not a crash
 
 
 # ====================================================== 4. schema and drift
