@@ -719,7 +719,7 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Unblocks:** E1 · Ingest and Grid
 - **Current answer:** — (Convention is EPSG:4326 in the database; metric work reprojects explicitly. Where does the CRS get re-attached on the way out?)
 
-### Recent session decisions (D29–D50)
+### Recent session decisions (D29–D51)
 
 Logged directly by recent sessions (2026-09-14/15) rather than filed under a
 tier above; IDs continue the Tier D (Descriptive) sequence. Kept together here
@@ -847,12 +847,13 @@ decisions pending an owner ruling, not descriptive-tier research questions.
 - **Current answer:** —
 
 ### D49 — Premium services: what business types fall in, and how could a price signal be obtained?
-- **Status:** open
+- **Status:** in-progress
 - **Tag:** *data / sourcing*
 - **Answered by:** — (no ticket yet; candidate answer above)
 - **Session:** 2026-09-15, abenmayor-cc
 - **Why it matters:** The owner asked what data Loci holds on "premium services" and how to get price. Inventory (read-only, 2026-09-15): no POI table carries a price tier, rating, or review count; `webmap/data/character.json` is land-use character (D-independent), not retail tier; the premium track is Axis 3 (CONTEXT §11, D22/D28, `model/premium.py`) and covers types outside the 15 slugs (wine bars, bathhouses, spas/med-spas, boutique fitness, climbing, padel, pet grooming, florists, dry cleaning). Fine-grained source categories survive only in `staging.poi.attrs` (Overture `primary_category`; Foursquare `labels`) and nothing downstream reads them; they cleanly split fitness (gym/yoga/pilates/cycle/climbing), nails_beauty (nail salon/beauty salon/spa/day spa/waxing/lash), hair_barber (salon/barber), cafe_bakery (coffee shop/bakery/bagel/donut), partially clinic; restaurant has cuisine only. Price probes (47 budgeted Text Search calls, ~$1.65 at Enterprise, ledger 8,992 → 9,039; USD not written to `analysis.spend_ledger` because its `kind` CHECK admits only report/verify — record this gap): probe 1 (32 calls, 2 per category, `priceLevel` only) returned price for 5/32, bars and cafés only, services zero; probe 2 (15 food/bar calls, `priceLevel` + `priceRange`) returned price for 12/15, the two fields co-occurring perfectly (`priceRange` = `{startPrice, endPrice}` in USD units, open-ended top e.g. "$100+"), the three blanks being one Permanently-closed match and two wrong-business matches. Probe 1's restaurant zero was a two-POI sample with bad matches, not a coverage fact. Name match of the top hit was 18/32 and 7/15, so any price ingest needs a name-and-distance acceptance rule first. `priceLevel`, `priceRange`, `rating`, `userRatingCount` are all Enterprise SKU ($35/1,000 vs Pro $32/1,000 that the closure check uses; Google bills the highest SKU touched, so +9.4% per call). Interceptor reads the same "$$" labels from Maps results for free, but only at supervised-session scale (≈1,000 POIs per 30-min segment under the D36 cap) and with the same food-only coverage; systematic city-wide collection through the browser would be scraping in substance, outside the D36 standing. No channel gives service prices (salon/gym/clinic pricing lives on booking sites); for services, business sub-type is the only proxy. Owner 2026-09-15: assessment only for now, no pilot.
 - **Candidate answer (not ruled):** (1) surface `staging.poi.attrs` sub-types into `poi_presence` as `subcategory` so premium sub-types are a filter, not a new source; (2) if ratings become useful for Axis 3, run closure checks at Enterprise and capture `priceRange`/`priceLevel`/`rating`/`userRatingCount` in one pass behind a match rule, food categories only; (3) widen `spend_ledger.kind` to admit `probe`; (4) no price budget line on its own.
+- **Partial ruling (owner 2026-09-15):** free price-label capture in the ground-truth protocol approved and shipped (b871dbb; food-only in practice, supervised scale only). Still open: surfacing `staging.poi.attrs` sub-types as a premium filter, whether to pay the Enterprise SKU for price/rating on closure checks, widening `spend_ledger.kind`.
 - **Current answer:** —
 
 ### D50 — Three reporting quibbles in the D111 growth test.
@@ -861,6 +862,14 @@ decisions pending an owner ruling, not descriptive-tier research questions.
 - **Tag:** *model / reporting*
 - **Session:** 2026-09-15, abenmayor-db
 - **Why it matters:** (a) `bike_growth_verdict` assumes the run is the primary vintage; when `--asof` is the confirmatory one the P7 line should say so instead of "the confirmatory vintage has not been run". (b) The P9 lagged-growth pre-trend requires a lag column the CLI does not build (`build_panel` has `bike_growth_lag_asof`; the retrodiction run has no flag for it) — moot for a null result but mandatory before any positive result could ship. (c) The run stamps the baseline table's supply hash (d993b3802c6a) rather than the live one (ba944e18c57b); provenance should read `live_supply_hash`. Fix all three in one small ticket before the growth test is ever re-run.
+- **Current answer:** —
+
+### D51 — Should the canonical order be a `loci rebaseline` CLI command?
+- **Status:** open
+- **Answered by:** — (not ticketed)
+- **Tag:** *infra / method*
+- **Session:** 2026-09-15, abenmayor-cc
+- **Why it matters:** Session 28 (2026-09-15, D112) ran the D106 canonical order as a scratch zsh script with per-step timing, stop-on-failure and resume-from-step. It caught one designed non-zero exit — `age-fit fit` returns 1 when it refuses the pharmacy curve (D69/D71) — that a naive runner treats as fatal, and it recorded per-step seconds nobody had written down for eleven of the steps. A `loci rebaseline [--from STEP] [--dry-run]` command would make the order a machine-checked artefact (a drift test against the order documented in CHECKPOINT), treat the designed refusals as designed, write the per-step timings into the run's own log for the decision entry, include the post-address-gaps re-sweeps (od-measures, growth-measures) that peers otherwise forget, and give peers one process to announce and one lock to wait on. Open; needs a ticket under E2.
 - **Current answer:** —
 
 ---
