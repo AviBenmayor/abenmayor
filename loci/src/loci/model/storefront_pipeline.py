@@ -261,8 +261,22 @@ def unmapped_hints(con, path: pathlib.Path | None = None) -> dict[str, list[str]
 # the roll-up
 # ---------------------------------------------------------------------------
 def ensure_schema(con) -> None:
-    """Apply sql/020_storefront_pipeline.sql. Idempotent."""
+    """Apply sql/020_storefront_pipeline.sql, then sql/027. Idempotent.
+
+    020 re-creates the VIEW analysis.poi_first_seen in its 020 form (the
+    gov_filing fix, no closure columns). Applied alone it silently strips
+    `closed_on` / `closed_src` / `is_closed` off the ledger view, which the
+    closure gate (poi_supply_status, sql/029) reads -- so every canonical
+    re-run that ended with `storefront-pipeline openings` broke `supply_hash`
+    and two live tests (2026-09-15). 027 carries the view's current shape;
+    re-applying it is free (CREATE OR REPLACE VIEW), same pattern as
+    poi_presence.ensure_schema. Any module that applies a single migration
+    file must re-apply the newest definition of every view that file touches.
+    """
     con.execute(SQL_020.read_text())
+    sql_027 = SQL_020.parent / "027_poi_closure.sql"
+    if sql_027.exists():
+        con.execute(sql_027.read_text())
 
 
 def stage_rank_sql() -> str:
