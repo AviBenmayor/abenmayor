@@ -1770,6 +1770,7 @@ Decided: after the fourth hash drift of the day (D105: 467cd5969200 → d993b380
 0-bis) **Install Interceptor and run the first ground-truth session on the four address anchors + Gowanus centroid (GTM-183);** decide address-level subjects (QUESTIONS D35, answered — rows to be added via `loci recommendations add`).
 
 0-ter) **abenmayor-cc: settle which ratio supply_ratio_at_issue records and log the outcome under D105.**
+0-quater) **address-legality build is the canonical order's long pole (GTM-169, D106):** 3,449 s in the 2026-09-15 re-baseline against 345 s for the next longest step; the open-POI join in model/address_legality.open_poi_match_sql needs an index on poi_supply_status(lat, lon) or a vectorised spatial join before the next re-run (abenmayor-29).
 
 1) GTM-172: act on the 2026-09-15 investor re-review (docs/reviews/investor-review-2026-09-15.md); exercise the full-memo path on a grade-C-or-better anchor, since all three current anchors grade D and produced no-trade notes.
 
