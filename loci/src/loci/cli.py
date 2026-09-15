@@ -7156,6 +7156,514 @@ def _supply_col(supply_set: str) -> str:
     from loci.score.supply import supply_predicate
     return supply_predicate(supply_set)
 
+
+# ===========================================================================
+# Citi Bike (phase 1, owner-approved 2026-09-14). Appended at the END of this
+# file on purpose: two other sessions hold uncommitted blocks above, and
+# appending is the only edit that cannot collide with them.
+# ===========================================================================
+
+citibike_app = typer.Typer(add_completion=False, help=(
+    "Citi Bike trip data: the first TWO-DIRECTIONAL movement series in the "
+    "warehouse.\n\n"
+    "Subway entries (D76) publish only the morning tap-IN and read zero for 65% "
+    "of Brooklyn addresses. A bike trip publishes a start AND an end, and the "
+    "dock network reaches Bay Ridge, Greenpoint and Red Hook. `ends` are dated "
+    "by the ARRIVAL time, which is what makes bike_ends_400m the first "
+    "arrival-side measure here.\n\n"
+    "CARD CONTEXT ONLY, on the D76 footing: nothing built from this enters "
+    "gap_score, supply_ratio_vs_base or any recommendation grade. Dock "
+    "placement is an operator's capital plan and is correlated with income, so "
+    "a zero is a statement about the network, never about the sidewalk."))
+app.add_typer(citibike_app, name="citibike")
+
+
+def _cb_connect(db: "Path | None" = None, read_only: bool = False,
+                retries: int = 60, wait_s: float = 30.0):
+    """Open the warehouse, waiting out another builder's write lock.
+
+    Several sessions rebuild analysis.address concurrently in this project, and
+    a DuckDB file has ONE writer. Failing instantly on a lock would turn a
+    30-minute ingest into a coin flip, so this retries with a stated wait
+    instead of racing.
+
+    The budget is DELIBERATELY LONG (30 minutes by default): the thing most
+    likely to hold the lock here is a full screen rebuild, which takes tens of
+    minutes, and a 3-minute budget would mean every ingest launched during one
+    fails. Waiting is cheap; a half-ingested panel is not.
+    """
+    import time as _time
+
+    last = None
+    for attempt in range(retries):
+        try:
+            return locidb.connect(db, read_only=read_only)
+        except Exception as exc:  # noqa: BLE001 - duckdb raises IOException
+            if "lock" not in str(exc).lower():
+                raise
+            last = exc
+            console.print(f"[dim]database locked by another session; retrying in "
+                          f"{wait_s:.0f}s ({attempt + 1}/{retries})…[/]")
+            _time.sleep(wait_s)
+    raise typer.BadParameter(
+        f"the warehouse stayed locked for {retries} attempts ({last}). Another "
+        f"builder is holding the write lock; re-run when it finishes.")
+
+
+def _cb_month(spec: str) -> "tuple[int, int]":
+    try:
+        y, m = spec.replace("/", "-").split("-")[:2]
+        return int(y), int(m)
+    except Exception:  # noqa: BLE001
+        raise typer.BadParameter(f"month must be YYYY-MM, got {spec!r}") from None
+
+
+@citibike_app.command("ingest")
+def citibike_ingest(
+    start: str = typer.Option("2023-01", "--start", help="First month, YYYY-MM."),
+    end: str = typer.Option(None, "--end",
+                            help="Last month, YYYY-MM. Default: the latest month "
+                                 "the BUCKET publishes (not today's date -- a "
+                                 "month's file lands days into the next one)."),
+    resume: bool = typer.Option(True, "--resume/--no-resume",
+                                help="Skip months already in the table. This is "
+                                     "what makes an interrupted 25 GB run cheap "
+                                     "to restart."),
+    refresh: bool = typer.Option(False, "--refresh",
+                                 help="Re-fetch the bucket listing."),
+    keep_csv: bool = typer.Option(False, "--keep-csv",
+                                  help="Leave the extracted CSVs on disk (debug; "
+                                       "~4 GB per month)."),
+    db: Path = typer.Option(None, "--db", help="Warehouse path (default: data/loci.duckdb)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Read and check; write nothing."),
+) -> None:
+    """Download, extract and aggregate Citi Bike trips into staging.
+
+        staging.citibike_station_month   one row per dock per month per
+                                         day_type per daypart
+        staging.citibike_station         the dock roster, with first/last month
+
+    ONE MONTH IS THE UNIT OF WORK AND OF IDEMPOTENCE. Its CSVs are extracted,
+    aggregated, written and deleted before the next month is touched, so peak
+    disk is one month (~4 GB) rather than the ~25 GB the window would be, and a
+    re-run of March cannot rewrite April.
+
+    FAIL LOUD. A month missing a calendar date raises (the divisor comes from
+    the CALENDAR, so a half-published month would otherwise be divided by a full
+    one); a month under the trip floor raises; a pre-2021 header raises with its
+    reason rather than being mapped onto the modern station-id space; a dock
+    outside the New York bounding box raises (a Jersey City file leaked in).
+    """
+    from loci.sources.cities.nyc import citibike as cb
+
+    con = _cb_connect(db, read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+    try:
+        def _tick(a: dict) -> None:
+            if "skipped" in a:
+                console.print(f"[dim]{a['month']}  skipped ({a['skipped']})[/]")
+                return
+            console.print(
+                f"[green]{a['month']}[/]  {a['rows_in_file']:,} trips · "
+                f"{a['stations']:,} docks · {a['cells']:,} cells · "
+                f"{a['starts']:,} starts / {a['ends']:,} ends · "
+                f"{a['days_by_type']['weekday']} weekdays · "
+                f"{a['dockless_starts']:,} dockless starts, "
+                f"{a['end_events_after_month_end']:,} arrivals past month end")
+
+        report = cb.ingest(con, _cb_month(start),
+                           _cb_month(end) if end else None,
+                           refresh=refresh, dry_run=dry_run,
+                           keep_csv=keep_csv, skip_existing=resume,
+                           on_month=_tick)
+        console.print(
+            f"\nwindow [bold]{report['start']}..{report['end']}[/] · "
+            f"{report['months']} months planned · "
+            f"{report['months_ingested']} ingested · "
+            f"{report['bytes'] / 1e9:.1f} GB of zips · "
+            f"{report['trips_in_files']:,} trips read")
+        console.print(
+            f"excluded: {report['dockless_starts']:,} dockless starts / "
+            f"{report['dockless_ends']:,} dockless ends (no dock to attribute) · "
+            f"{report['end_events_after_month_end']:,} arrivals past the file's "
+            f"month end (the month is the unit of idempotence -- see the module "
+            f"docstring)")
+        if dry_run:
+            console.print("[dim]--dry-run:[/] nothing written.")
+            raise typer.Exit(0)
+        console.print(f"[green]ok[/] {report['rows_written']:,} rows -> "
+                      f"staging.citibike_station_month · "
+                      f"{report['stations']:,} docks -> staging.citibike_station")
+
+        t = Table(title="validation — staging.citibike_station_month")
+        cols = ("month", "cells", "stations", "starts", "ends", "start_end_gap_pct",
+                "distinct_cells", "weekdays")
+        for c in cols:
+            t.add_column(c, justify="left" if c == "month" else "right")
+        df = con.execute(cb.VALIDATION_SQL).fetchdf()
+        for r in df.tail(14).to_dict("records"):
+            t.add_row(str(r["month"])[:7] if r["month"] is not None else "ALL",
+                      f"{int(r['cells']):,}", f"{int(r['stations']):,}",
+                      f"{int(r['starts']):,}", f"{int(r['ends']):,}",
+                      f"{r['start_end_gap_pct']:+.2f}%"
+                      if r["start_end_gap_pct"] is not None else "-",
+                      str(int(r["distinct_cells"])), str(int(r["weekdays"] or 0)))
+        console.print(t)
+        console.print(
+            "[dim]start_end_gap_pct is starts minus ends over starts. Every trip "
+            "is one start and one end inside the system, so the gap is only the "
+            "dockless rides and the month-boundary spill; a large gap means a "
+            "dropped part file or a station-id problem.[/]")
+    finally:
+        con.close()
+
+
+@citibike_app.command("stats")
+def citibike_stats(
+    db: Path = typer.Option(None, "--db", help="Warehouse path."),
+    compare: str = typer.Option("2023-01,2025-08", "--compare",
+                                help="Two months, YYYY-MM,YYYY-MM, for the "
+                                     "dock-count change."),
+) -> None:
+    """What the panel actually contains. READ-ONLY."""
+    from loci.sources.cities.nyc import citibike as cb   # noqa: F401  (vocabulary)
+
+    con = _cb_connect(db, read_only=True)
+    try:
+        tot = con.execute("""
+            SELECT count(DISTINCT month) AS months, min(month) AS first_month,
+                   max(month) AS last_month, count(DISTINCT station_id) AS stations,
+                   sum(starts) AS starts, sum(ends) AS ends,
+                   sum(member_starts) AS member_starts,
+                   sum(casual_starts) AS casual_starts
+            FROM staging.citibike_station_month""").fetchone()
+        if not tot or tot[0] == 0:
+            console.print("[red]staging.citibike_station_month is empty[/] — run "
+                          "`loci citibike ingest`.")
+            raise typer.Exit(1)
+        months, first, last, stations, starts, ends, mem, cas = tot
+        span = (last.year - first.year) * 12 + (last.month - first.month) + 1
+        console.print(
+            f"[bold]{months}[/] months {first:%Y-%m}..{last:%Y-%m} "
+            f"({'CONTIGUOUS' if months == span else f'[red]{span - months} MISSING[/]'}) · "
+            f"[bold]{stations:,}[/] distinct docks · "
+            f"[bold]{starts:,}[/] starts / {ends:,} ends")
+        console.print(
+            f"member {mem:,} ({100 * mem / max(mem + cas, 1):.1f}%) · "
+            f"casual {cas:,} ({100 * cas / max(mem + cas, 1):.1f}%) "
+            f"[dim](of starts; a member holds a subscription and a casual rider a "
+            f"single ride or day pass — NOT resident vs visitor)[/]")
+
+        t = Table(title="seasonality — trips per average WEEKDAY by month "
+                        "(starts + ends, holidays excluded)")
+        for c, j in (("month", "left"), ("docks", "right"), ("weekdays", "right"),
+                     ("starts/wd", "right"), ("ends/wd", "right"),
+                     ("casual %", "right"), ("evening+wknd end %", "right")):
+            t.add_column(c, justify=j)
+        rows = con.execute("""
+            WITH d AS (SELECT month, any_value(days_in_cell) AS days
+                       FROM staging.citibike_station_month
+                       WHERE day_type = 'weekday' GROUP BY 1)
+            SELECT m.month, count(DISTINCT m.station_id) AS docks, d.days,
+                   sum(m.starts) FILTER (m.day_type = 'weekday') / d.days AS s_wd,
+                   sum(m.ends)   FILTER (m.day_type = 'weekday') / d.days AS e_wd,
+                   100.0 * sum(m.casual_starts) / nullif(sum(m.starts), 0) AS cas,
+                   100.0 * sum(m.ends) FILTER (m.daypart = 'evening'
+                        OR m.day_type IN ('saturday', 'sunday'))
+                        / nullif(sum(m.ends), 0) AS ev
+            FROM staging.citibike_station_month m JOIN d USING (month)
+            GROUP BY m.month, d.days ORDER BY m.month""").fetchdf()
+        for r in rows.to_dict("records"):
+            t.add_row(f"{r['month']:%Y-%m}", f"{int(r['docks']):,}",
+                      str(int(r["days"])), f"{r['s_wd']:,.0f}", f"{r['e_wd']:,.0f}",
+                      f"{r['cas']:.1f}%", f"{r['ev']:.1f}%")
+        console.print(t)
+
+        try:
+            a, b = [x.strip() for x in compare.split(",")]
+        except ValueError:
+            raise typer.BadParameter("--compare wants YYYY-MM,YYYY-MM") from None
+        cmp_rows = con.execute("""
+            SELECT strftime(month, '%Y-%m') AS m,
+                   count(DISTINCT station_id) AS docks, sum(starts) AS starts
+            FROM staging.citibike_station_month
+            WHERE strftime(month, '%Y-%m') IN (?, ?) GROUP BY 1 ORDER BY 1""",
+            [a, b]).fetchdf()
+        if len(cmp_rows) == 2:
+            lo, hi = cmp_rows.to_dict("records")
+            console.print(
+                f"\n[bold]dock count[/] {lo['m']} {int(lo['docks']):,} → "
+                f"{hi['m']} {int(hi['docks']):,} "
+                f"([green]+{int(hi['docks'] - lo['docks']):,}[/], "
+                f"{100 * (hi['docks'] - lo['docks']) / max(lo['docks'], 1):+.1f}%); "
+                f"starts {int(lo['starts']):,} → {int(hi['starts']):,} "
+                f"({100 * (hi['starts'] - lo['starts']) / max(lo['starts'], 1):+.1f}%)")
+            console.print(
+                "[dim]a dock counted in a month is a dock with at least one trip "
+                "that month, so this is the ACTIVE network, not the installed one.[/]")
+        else:
+            console.print(f"[yellow]--compare[/] {a} and/or {b} are not in the panel.")
+    finally:
+        con.close()
+
+
+@citibike_app.command("address-measures")
+def citibike_address_measures(
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL."),
+    radius_m: float = typer.Option(400.0, "--radius-m",
+                                   help="Catchment radius in NETWORK metres."),
+    window_months: int = typer.Option(12, "--window-months",
+                                      help="How many of the panel's latest months "
+                                           "to pool. 12 covers a full seasonal "
+                                           "cycle; Citi Bike's seasonality is far "
+                                           "larger than the subway's."),
+    re_sweep: bool = typer.Option(False, "--re-sweep",
+                                  help="Force the Dijkstra sweep even when "
+                                       "analysis.address_bike_station already "
+                                       "covers the scope. Needed after a new walk "
+                                       "graph, a changed radius, and after "
+                                       "`loci address-gaps` (which destroys the rows)."),
+    db: Path = typer.Option(None, "--db", help="Warehouse path (use a snapshot copy "
+                                               "to prove a run without taking the "
+                                               "live write lock)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """Walkable Citi Bike activity at address grain (LOT frame).
+
+        analysis.address_bike_station     the persisted reachable dock set
+        analysis.address.bike_starts_400m / bike_ends_400m
+        analysis.address.bike_evening_ends_share_400m
+        analysis.address.bike_casual_share_400m
+
+    Same walk graph, same Dijkstra, same 400 m NETWORK radius as
+    `loci transit-profile` -- `catchment_pairs` is imported from it, not
+    re-implemented. The only difference is that the target points are docks.
+
+    ZERO IS A VALUE (owner rule 2026-09-13, no eligibility gate): every lot
+    address in scope gets a level, and 0 means "no dock within a five-minute
+    walk" -- a statement about the operator's network, never about the sidewalk.
+    The two SHARES are NULL where their denominator is zero, because a share of
+    no arrivals does not exist and a 0 would assert a pure commuter dock at a
+    place with no dock at all.
+
+    THE SWEEP RUNS ONCE. `analysis.address_bike_station` persists
+    (address_id, station_id, dist_m) so a different window or a distance-decay
+    kernel is a JOIN, not another hour of Dijkstra.
+
+    Run AFTER `loci address-gaps`; re-run with --re-sweep after any address
+    rebuild (`bike_run_at IS NULL` is the flag).
+    """
+    from loci.model import address_bike as ab
+
+    boros = _parse_boroughs(boroughs)
+    con = _cb_connect(db, read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+    try:
+        reach = None if re_sweep else ab.load_reachable(con, boros)
+        if reach is not None:
+            console.print(f"[dim]reusing analysis.address_bike_station: "
+                          f"{len(reach):,} (address, dock) pairs — no Dijkstra.[/]")
+        else:
+            console.print("[dim]no persisted reachable set for this scope; sweeping "
+                          "the walk graph (the slow path, tens of minutes)…[/]")
+
+        meas, reach, report = ab.build_address_bike(
+            con, boros, radius_m=radius_m, window_months=window_months,
+            reachable=reach, dry_run=dry_run)
+
+        p = report["panel"]
+        console.print(
+            f"window [bold]{report['window']}[/] · {p['months']} months · "
+            f"{p['weekday_days']} non-holiday weekdays · {p['stations']:,} docks · "
+            f"{p['weekday_starts']:,} weekday starts / {p['weekday_ends']:,} ends")
+        console.print(
+            f"{report['addresses_with_a_station']:,} lot addresses have >=1 dock "
+            f"within {report['radius_m']:.0f} m network "
+            f"({report['pairs']:,} pairs, source: {report['source']}); every other "
+            f"in-scope address is 0.0 — a measurement, not a gap")
+        if report.get("docks_not_in_the_reachable_set"):
+            console.print(
+                f"[yellow]{report['docks_not_in_the_reachable_set']} docks[/] are in "
+                f"the window but not in the persisted reachable set — installed "
+                f"since the last sweep. They carry "
+                f"{100 * report['share_of_weekday_starts_unswept']:.2f}% of the "
+                f"window's weekday starts and every address near them UNDER-counts "
+                f"by that much. Re-run with [bold]--re-sweep[/] to fix.")
+
+        t = Table(title=f"walkable Citi Bike activity — {','.join(boros)} "
+                        f"@ {report['radius_m']:.0f} m network "
+                        f"(addresses with >=1 dock only)")
+        for c, j in (("measure", "left"), ("n", "right"), ("p50", "right"),
+                     ("p90", "right"), ("max", "right")):
+            t.add_column(c, justify=j)
+        for col in ("bike_starts_400m", "bike_ends_400m",
+                    "bike_evening_ends_share_400m", "bike_casual_share_400m"):
+            v = meas[col].dropna()
+            dp = 3 if col.endswith("share_400m") else 1
+            t.add_row(col, f"{len(v):,}", f"{v.median():,.{dp}f}",
+                      f"{v.quantile(0.9):,.{dp}f}", f"{v.max():,.{dp}f}")
+        console.print(t)
+
+        if dry_run:
+            console.print("[dim]--dry-run:[/] nothing written.")
+            raise typer.Exit(0)
+        w = report["_written"]
+        console.print(f"[green]ok[/] {w['address_bike_station_rows']:,} rows -> "
+                      f"analysis.address_bike_station · "
+                      f"{w['addresses_with_a_station']:,} addresses measured · "
+                      f"{w['addresses_zeroed']:,} in-scope addresses read 0")
+
+        v = Table(title="validation — analysis.address (lot frame)")
+        for c in ("borough", "lot_addresses", "measured", "with_a_dock",
+                  "coverage_pct", "zero_starts", "impossible_nonzero",
+                  "impossible_share", "p50_starts", "p90_starts", "p50_ends",
+                  "p50_evening_share", "p50_casual_share"):
+            v.add_column(c, justify="left" if c == "borough" else "right")
+        for r in con.execute(ab.VALIDATION_SQL).fetchdf().to_dict("records"):
+            v.add_row(str(r["borough"] or "ALL"),
+                      *[("-" if r[c] is None else f"{r[c]:,}")
+                        for c in ("lot_addresses", "measured", "with_a_dock",
+                                  "coverage_pct", "zero_starts",
+                                  "impossible_nonzero", "impossible_share",
+                                  "p50_starts", "p90_starts", "p50_ends",
+                                  "p50_evening_share", "p50_casual_share")])
+        console.print(v)
+        console.print("[dim]impossible_nonzero and impossible_share must both be 0: "
+                      "an address with no reachable dock cannot have a positive "
+                      "level or a defined share.[/]")
+    finally:
+        con.close()
+
+
+@citibike_app.command("export")
+def citibike_export(
+    out: Path = typer.Option(None, "--out",
+                             help="Output directory (default: webmap/data)."),
+    window_months: int = typer.Option(12, "--window-months"),
+    db: Path = typer.Option(None, "--db", help="Warehouse path."),
+) -> None:
+    """Write `webmap/data/bike.json` — docks sized by weekday starts.
+
+    A STANDALONE FILE. It does not touch `viz/webmap_export.py`,
+    `webmap/index.html` or `webmap/server.js`, which other threads own; wiring
+    the layer in later is a fetch plus a toggle. Until then the file is inert.
+    """
+    from loci.viz import bike_export as bx
+
+    con = _cb_connect(db, read_only=True)
+    try:
+        rep = bx.export(con, out_dir=out, window_months=window_months)
+    finally:
+        con.close()
+    console.print(f"[green]ok[/] {rep['stations']:,} docks · window "
+                  f"{rep['window']} · {rep['bytes'] / 1024:.0f} KB -> {rep['path']}")
+    console.print("[dim]the payload carries its own caveats block; render it "
+                  "UNTRUNCATED wherever the layer is switched on — 2,300 dots "
+                  "sized by volume is exactly where 'no dot' gets read as 'no "
+                  "activity', and a dock is where the operator put one.[/]")
+
+
+@app.command(name="validate-bike")
+def validate_bike(
+    radius_m: float = typer.Option(400.0, "--radius-m", help="Catchment radius, NETWORK metres."),
+    months: int = typer.Option(3, "--months", help="Ridership months to average."),
+    window_months: int = typer.Option(12, "--window-months", help="Bike months to pool."),
+    with_transit: bool = typer.Option(True, "--with-transit/--no-transit",
+                                      help="Also sweep transit/jobs/homes for "
+                                           "comparison (adds a graph load)."),
+    out: Path = typer.Option(None, "--out", help="Write the per-point table to this CSV."),
+    db: Path = typer.Option(None, "--db", help="Warehouse path."),
+) -> None:
+    """External check: do walkable BIKE flows rank real sidewalk volume?
+
+    At each NYC DOT Bi-Annual Pedestrian Count screenline (the 100 ON-STREET
+    points; `loc` 101-114 are bridge midpoints and are excluded), recompute
+    Citi Bike starts + ends per average weekday within the radius, per daypart,
+    and report Spearman rho against the observed count -- beside
+    `transit_entries_400m` and `homes_400m` on the same points.
+
+    THE OFF-DIAGONAL IS THE TEST. D76 got rho +0.79 overall for transit and
+    then found the AM count was ranked BETTER by pm_peak than by am_peak, which
+    demoted the measure to card context. The same comparison runs here: if the
+    AM count is ranked as well by the evening bike flow as by the morning one,
+    the daypart split carries no time-of-day information.
+
+    READ-ONLY. Writes nothing to the warehouse; no score reads the result.
+    """
+    from loci.validation import bike_counts as bc
+
+    con = _cb_connect(db, read_only=True)
+    try:
+        console.print("[dim]reading DOT counts + sweeping the walk graph…[/]")
+        df, report = bc.run_validation(con, radius_m=radius_m, months=months,
+                                       window_months=window_months,
+                                       with_transit=with_transit)
+    finally:
+        con.close()
+
+    console.print(f"round [bold]{report['round']}[/] · {report['on_street_points']} "
+                  f"on-street points ({report['dropped_bridge_points']} bridge "
+                  f"points excluded) · bike window {report['window']} · "
+                  f"{report['stations']:,} docks · radius {report['radius_m']:.0f} m")
+
+    t = Table(title="Spearman rho vs DOT observed whole-round count (AM+MD+PM)")
+    for c, j in (("measure", "left"), ("rho (all)", "right"), ("N", "right"),
+                 ("rho (Brooklyn)", "right"), ("N", "right")):
+        t.add_column(c, justify=j)
+    for k, v in report["correlations"].items():
+        t.add_row(k, f"{v['spearman_rho']:+.3f}", str(v["n"]),
+                  f"{v['spearman_rho_bk']:+.3f}", str(v["n_bk"]))
+    console.print(t)
+
+    t2 = Table(title="Per-window: each DOT count window vs the BIKE daypart that "
+                     "contains it")
+    for c, j in (("DOT window", "left"), ("hours", "left"), ("daypart", "left"),
+                 ("bike rho", "right"), ("N", "right"), ("bike rho (BK)", "right"),
+                 ("N", "right"), ("transit rho", "right"),
+                 ("best off-diagonal", "left")):
+        t2.add_column(c, justify=j)
+    for win, v in report["by_window"].items():
+        off = {k: r for k, r in v["off_diagonal"].items() if k != v["daypart"]}
+        best = max(off, key=lambda k: off[k]) if off else "-"
+        t2.add_row(win.upper(),
+                   f"{v['dot_window_hours'][0]:02d}-{v['dot_window_hours'][1]:02d}",
+                   v["daypart"], f"{v['spearman_rho']:+.3f}", str(v["n"]),
+                   f"{v['spearman_rho_bk']:+.3f}", str(v["n_bk"]),
+                   f"{v.get('transit_rho', float('nan')):+.3f}",
+                   f"{best} {off.get(best, float('nan')):+.3f}")
+    console.print(t2)
+    console.print("[dim]if the AM count is ranked as well by the evening daypart as "
+                  "by am_peak, the split carries no time-of-day information and the "
+                  "number is a 'busy corridor' flag with extra steps — the finding "
+                  "that demoted transit in D76.[/]")
+
+    c = Table(title="coverage — share of LOT addresses within the radius of a dock "
+                    "vs a subway entrance")
+    for col in ("borough", "lot_addresses", "with_a_dock", "dock_pct",
+                "with_an_entrance", "entrance_pct", "dock_only"):
+        c.add_column(col, justify="left" if col == "borough" else "right")
+    for r in report["coverage"].to_dict("records"):
+        c.add_row(str(r["borough"] or "ALL"),
+                  *[("-" if r[k] is None else f"{r[k]:,}")
+                    for k in ("lot_addresses", "with_a_dock", "dock_pct",
+                              "with_an_entrance", "entrance_pct", "dock_only")])
+    console.print(c)
+    console.print(f"[yellow]{report['points_with_zero_bike']} of {report['points']}[/] "
+                  f"count points have bike = 0 — a tie block, which is where a rank "
+                  f"correlation hides")
+    console.print("[dim]DOT counts WEEKDAYS, so the saturday and sunday cells have "
+                  "no counterpart and are explicitly UNVALIDATED. And note that DOT "
+                  "points and Citi Bike docks are BOTH sited on busy commercial "
+                  "corridors by two organisations optimising for related things: a "
+                  "correlation between them is partly a correlation between two "
+                  "siting policies.[/]")
+    if out:
+        df.to_csv(out, index=False)
+        console.print(f"[green]ok[/] per-point table -> {out}")
+
+
 # ===========================================================================
 # loci poi-keys -- migrating the first-seen ledger across a key-recipe change
 # ===========================================================================

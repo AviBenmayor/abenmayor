@@ -1474,6 +1474,104 @@ sources:
       DOT counts WEEKDAYS, so the saturday and sunday dayparts have no
       counterpart here and are explicitly UNVALIDATED.
 
+  - id: citibike_tripdata
+    name: Citi Bike System Data (trip files)
+    tier: city
+    city: nyc
+    # `control`, not `validation`, for the same reason nyc_dot_pedestrian_counts
+    # is: the whole panel is INGESTED (staging.citibike_station_month) and read
+    # as context beside the screen, not merely fetched to check a correlation.
+    # The schema takes exactly ONE role, so the validation use
+    # (`loci validate-bike`) is recorded in the notes instead.
+    role: control
+    status: verified
+    portability:
+      class: national
+      feeds: [demand, validation]
+      confidence: med
+      degrades_to: >
+        The only two-directional movement series in the registry is lost: demand keeps
+        subway ENTRIES, which publish the morning tap-in and never the evening arrival,
+        and which read zero for 65% of Brooklyn addresses -- so `bike_ends_400m`, the
+        only arrival-side measure Loci has, cannot be built and the destination-versus-
+        commuter reading of a corner goes back to being an assumption.
+      note: >
+        Classed `national` because the SCHEMA, not the operator, is the portable thing:
+        every Lyft-run US system (Divvy Chicago, Bay Wheels SF, Capital Bikeshare DC,
+        Bluebikes Boston, Citi Bike NYC) publishes the same thirteen columns in the
+        same monthly-zip convention, so the parser and every derived measure port with
+        a changed bucket URL. Confidence is `med` and not `high` because that covers
+        roughly a dozen cities and no more: a non-Lyft system (Indego, a BCycle city)
+        publishes a different schema or no trip file at all, and a city with no
+        bikeshare has no equivalent at any price. Dock placement is also an operator's
+        capital plan, so coverage in a second city is whatever that operator built.
+    url: https://s3.amazonaws.com/tripdata/index.html
+    dataset_id: citibike-tripdata
+    access: https://s3.amazonaws.com/tripdata/   # public bucket, no key, no auth
+    format: zipped csv (monthly from 2024-01; annual archives 2013-2023)
+    geography: point (dock)
+    temporal: {start: 2013-06, end: current, grain: per-trip (ingested monthly)}
+    license: >
+      NYCBS Data Use Policy. Analysis and DERIVED MEASURES are permitted; the raw
+      dataset is NOT redistributed (the zips stay in data/raw/, which is gitignored,
+      and nothing exported carries trip-level rows -- webmap/data/bike.json is dock
+      aggregates only). Attribution required.
+    cost: {amount: 0, unit: total}
+    bias: >
+      NOT A PEDESTRIAN COUNT, and this is the most important thing to say about
+      anything built from it. It counts people who chose a bike, held a
+      membership or a card, and found a free dock. DOCK PLACEMENT is the
+      dominant term in any comparison between neighbourhoods -- an area with no
+      docks reads zero because the operator has not built there, not because
+      nobody walks there -- and placement is correlated with income, so the
+      coverage gradient runs the same way as the undercount CONTEXT 7.1
+      describes. Dock CAPACITY censors the count at exactly the busiest
+      station-hours (a full dock turns an arrival into an arrival somewhere
+      else); rebalancing trucks move bikes and are not trips, so the
+      starts/ends asymmetry at a commuter dock is partly operational. The fleet
+      changed mid-panel (72% of 2026-04 trips were electric), which lengthened
+      trips and pushed the network outward, so a 2023-vs-2026 comparison at one
+      dock mixes a demand change with a fleet change -- which is why the
+      address measures use the LATEST TWELVE MONTHS, not the whole panel.
+      `member_casual` is NOT resident/visitor: a member is anyone with a
+      subscription and a casual rider anyone on a single ride or a day pass.
+    notes: >
+      Ingested by sources/cities/nyc/citibike.py (`loci citibike ingest`) into
+      staging.citibike_station_month -- LONG form, one row per (dock x month x
+      day_type x daypart) -- plus staging.citibike_station, the dock roster with
+      first/last active month. Consumed by model/address_bike.py
+      (`loci citibike address-measures`) into analysis.address_bike_station (the
+      persisted reachable dock set, the bike twin of analysis.address_entrance)
+      and four UPDATE-only columns on analysis.address: bike_starts_400m,
+      bike_ends_400m, bike_evening_ends_share_400m, bike_casual_share_400m.
+      THE SCHEMA CUTOFF IS 2021-02 and pre-2021 is REFUSED, not mapped: the
+      legacy files' station ids are small integers on a different scheme from
+      the modern '5905.14' ids and no published crosswalk maps them, so joining
+      the two panels would either split one dock into two stations (inventing a
+      dock that opened in 2021-02 and a gap before it) or fuse two distinct
+      docks. `JC-*` keys are the Jersey City/Hoboken system and are never
+      fetched; the NY files were verified to contain no dock west of the Hudson
+      and every ingest re-checks it against a bounding box rather than trusting
+      the file name. Day types (weekday/saturday/sunday, federal holidays
+      excluded entirely) and dayparts (early 00-06, am_peak 06-10, midday
+      10-15, pm_peak 15-19, evening 19-24) are IMPORTED from mta_ridership, not
+      restated -- the SQL CASE is rendered from that tuple -- so a bike cell, a
+      subway cell and a DOT count window line up without interpolation. ENDS
+      are dated by the ARRIVAL time, which is what makes this the first
+      arrival-side measure in the warehouse. `days_in_cell` is the CALENDAR
+      count of non-holiday dates of that day type in the month, never the
+      observed count, so a dock that saw no Tuesday rides does not thereby earn
+      a higher daily average; an incomplete month RAISES rather than being
+      divided by a full one. THE VALIDATION USE (`loci validate-bike`) is the
+      external check against nyc_dot_pedestrian_counts: each DOT count window
+      against the bike daypart that contains it, all points and Brooklyn-only,
+      with the OFF-DIAGONAL reported beside it -- the test that demoted transit
+      to card-context in D76 -- plus the share of addresses with any dock
+      within 400 m, which is the honest statement of where the measure exists.
+      CARD CONTEXT ONLY, on the same footing as transit_entries_400m under D76:
+      nothing built from this enters gap_score, supply_ratio_vs_base or any
+      recommendation grade.
+
   - id: nyc_dot_traffic_cameras
     name: NYC DOT traffic cameras (NYCTMC public feed)
     tier: city

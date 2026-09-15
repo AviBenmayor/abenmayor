@@ -13,14 +13,14 @@ Owner ask, 2026-09-14: *"what are the critical inputs necessary to be able to ex
 | Class | n | What it means for a second city |
 |---|---|---|
 | **universal** | 7 | Works on day one, anywhere on earth. Nothing to procure. |
-| **national (US federal)** | 9 | Works on day one in any US city. Carries its own portable bias. |
+| **national (US federal)** | 10 | Works on day one in any US city. Carries its own portable bias. |
 | **state** | 6 | Re-plumbed per state. Publication quality varies enormously; expect some states to publish nothing usable. |
 | **city open data (different schema)** | 15 | An equivalent exists but the schema is different. This is the real cost of a second city: an adapter per source. |
 | **city-unique (no equivalent exists)** | 6 | No equivalent exists. The stage degrades, permanently — see §4. |
 
-**43 sources classed.** 16 of them (37%) need no per-city work at all.
+**44 sources classed.** 17 of them (39%) need no per-city work at all.
 
-**16 of the 43 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
+**17 of the 44 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
 
 ---
 
@@ -82,6 +82,7 @@ development pipeline.
 | Source | Class | Without it |
 |---|---|---|
 | Census American Community Survey, 5-year estimates | national (US federal) | No income, tenure, age or household size: the supply baseline loses its controls, so a thin count can no longer be separated from a poor one, and demand_now is ungraded. |
+| Citi Bike System Data (trip files) | national (US federal) *(med conf.)* | The only two-directional movement series in the registry is lost: demand keeps subway ENTRIES, which publish the morning tap-in and never the evening arrival, and which read zero for 65% of Brooklyn addresses -- so `bike_ends_400m`, the only arrival-side measure Loci has, cannot be built and the destination-versus- commuter reading of a corner goes back to being an assumption. |
 | HUD aggregated USPS vacancy data | national (US federal) | No independent residential vacancy series, so the residential half of vacancy rests on ACS 5-year smoothing alone. |
 | IRS SOI county-to-county migration | national (US federal) | Nothing. Five units citywide is too coarse for any stage; recorded so the exclusion stays deliberate. |
 | LEHD LODES Workplace Area Characteristics (LODES8) | national (US federal) | jobs_400m disappears: the daytime half of demand is gone and the character model loses one of its three witnesses for corporate vs retail. |
@@ -169,6 +170,7 @@ establishment counts, DOT sidewalk counts, the D88 retrodiction.
 | Strava Metro (street-segment activity counts) | universal | Loses a crowd-sourced movement second opinion. Never load-bearing -- it is cycling- and fitness-selected, and access is gated on an application. |
 | Census County Business Patterns (CBP), national -- counties, metros and ZIPs | national (US federal) | The carrying-capacity comparison loses its only external frame: NYC's establishments-per-resident can still be measured but not placed against any other metro, so "is this rate high" has no answer and no second city can be chosen on evidence. |
 | Census ZIP Code Business Patterns (ZBP), via the County Business Patterns (CBP) API | national (US federal) | No external establishment-count benchmark, so anchor coverage ratios (the 0.85 / 0.90 numbers that justified the childcare and pharmacy anchors) cannot be computed. |
+| Citi Bike System Data (trip files) | national (US federal) *(med conf.)* | The only two-directional movement series in the registry is lost: demand keeps subway ENTRIES, which publish the morning tap-in and never the evening arrival, and which read zero for 65% of Brooklyn addresses -- so `bike_ends_400m`, the only arrival-side measure Loci has, cannot be built and the destination-versus- commuter reading of a corner goes back to being an assumption. |
 | HUD aggregated USPS vacancy data | national (US federal) | No independent residential vacancy series, so the residential half of vacancy rests on ACS 5-year smoothing alone. |
 | DOHMH New York City Restaurant Inspection Results | city open data (different schema) | Restaurant, cafe and bar lose their near-census anchor: those three categories revert to aggregator coverage and the CONTEXT 7.1 undercount becomes unmeasurable. |
 | NYC DOT Bi-Annual Pedestrian Counts | city open data (different schema) *(med conf.)* | The access proxies (transit_entries_400m, jobs_400m, homes_400m) lose their only external check, so the D76 rank correlation cannot be computed and the proxy stays an assumption. |
@@ -526,6 +528,7 @@ second-city plan starts from the doubt rather than rediscovering it.
 |---|---|---|---|
 | MTA Subway Entrances and Exits 2024 | city open data (different schema) | low | GTFS pathways.txt can carry entrances and a growing minority of agencies publish them, but coverage is patchy and unverified outside NYC. |
 | NYS Medicaid Enrolled Provider Listing — retail pharmacies | state | low | NOT reliably portable. This roster works as a pharmacy census only because New York's NYRx carve-out (2023-04-01) routes every Medicaid member's pharmacy benefit through fee-for-service. In a managed-care state the same file is a fraction of the pharmacies. Treat the CLASS as state and the METHOD as NY- specific. |
+| Citi Bike System Data (trip files) | national (US federal) | med | Classed `national` because the SCHEMA, not the operator, is the portable thing: every Lyft-run US system (Divvy Chicago, Bay Wheels SF, Capital Bikeshare DC, Bluebikes Boston, Citi Bike NYC) publishes the same thirteen columns in the same monthly-zip convention, so the parser and every derived measure port with a changed bucket URL. Confidence is `med` and not `high` because that covers roughly a dozen cities and no more: a non-Lyft system (Indego, a BCycle city) publishes a different schema or no trip file at all, and a city with no bikeshare has no equivalent at any price. Dock placement is also an operator's capital plan, so coverage in a second city is whatever that operator built. |
 | NYC DCP Housing Database — Project-Level Files | city open data (different schema) | med | Every city publishes permits; almost none publish a QA'd, geocoded, NET-UNIT- RECODED project file. Elsewhere the net-unit recode has to be rebuilt from raw permits, which is where unit double-counting enters. |
 | NYC DCWP Inspections (Retail Laundry / Dry Cleaners) | city open data (different schema) | med | Most cities license laundromats inside a general business-licence file rather than inspecting them; the equivalent exists but is a licence roster, not an inspection feed, so opening dates come through weaker. |
 | NYC DCWP License Applications | city open data (different schema) | med | An APPLICATIONS feed (as distinct from the issued-licence roster) is the rarer half of the pair. Where a city publishes only issued licences the stage still works, but the lead time collapses from months to zero. |
