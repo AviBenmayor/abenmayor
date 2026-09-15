@@ -898,3 +898,16 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Session:** 2026-09-14, abenmayor-29
 - **Why it matters:** Two independent instances of this class of bug in D101/D103 suggest the fix belongs at the init_schema/ensure_schema level, not per-caller.
 - **Current answer:** —
+
+### D35 — Ground-truth subjects: all 15 open ledger recs are one point (Gowanus bbox centroid). Add address-level recs for the four 2026-09-14 report addresses via `loci recommendations add` so the instrument checks real storefronts? Owner call.
+- **Status:** answered
+- **Tag:** *validation / data*
+- **Session:** 2026-09-14, abenmayor-cc
+- **Why it matters:** The ledger's 15 open rows all key to `anchor_address_id NULL` at one shared anchor (the 2026-09-11 Gowanus bbox centroid), so a ground-truth session against them is one look producing 15 category verdicts, not 15 independent address checks. The four docs/recommendations/*-2026-09-14.md reports (376 Graham Ave, 4 East 8th St, 379 Broome St, the Gowanus BBL) are real, address-level subjects the instrument could check instead.
+- **Current answer:** Owner 2026-09-14: add the four address reports as subjects (376 Graham Ave, 4 East 8th St, 379 Broome St, the Gowanus BBL) as address-level ledger rows via `loci recommendations add`; the Gowanus centroid stays as the fifth look. Rows being added by a parallel agent.
+
+### D36 — Standing of the supervised Google Maps browser session under Google's terms: same footing as the BizQuest session (fe59eb2), human-paced, owner present, ~15 anchors per session. Confirm the owner is comfortable and whether a per-session cap should be enforced in the protocol.
+- **Status:** open
+- **Tag:** *infra / policy*
+- **Session:** 2026-09-14, abenmayor-cc
+- **Current answer:** —

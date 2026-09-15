@@ -259,6 +259,7 @@ no longer a blocker — all 58 issues are pushed.
 | `anthropic` SDK | **Installed in pyproject** | version ≥ 0.28, but `ANTHROPIC_API_KEY` is unset in `loci/.env`; `loci report` falls back to ClaudeCliProse plan-billed when key is absent. |
 | NYC GeoSearch | **Reachable, keyless** | `geo/geosearch.py` verified working; no auth required. |
 | `claude` CLI | **Present on PATH** | `/opt/homebrew/bin/claude` (verify: `which claude`); used by ClaudeCliProse fallback when `ANTHROPIC_API_KEY` unset. |
+| Interceptor (browser-driving CLI) | **Missing** | Owner installs Interceptor-Browser-1.0.1.pkg (github.com/Hacker-Valley-Media/Interceptor/releases) and the Chrome Web Store extension; `interceptor status` must read browser-only (D105, GTM-183). |
 
 ---
 
@@ -1722,9 +1723,34 @@ Ran in parallel with the session-7 work; it did not touch the model, the map, or
 - Restructured from six root directories to three (D10).
 - **Not done:** tickets not yet pushed to Linear.
 
+**D105 — Ground-truth instrument: Interceptor-driven browser sessions against the owner's real logged-in Chrome, first use = verifying the recommendation ledger's 15 open anchors against what is physically at each address.** *(2026-09-14, session 27, abenmayor-cc; ticket GTM-183)*
+
+Owner chose Interceptor (agent-driven CLI over the owner's real logged-in Chrome, github.com/Hacker-Valley-Media/Interceptor) as the tool for Loci's first ground-truth checks on ranked addresses. Owner chose the 15 ledger anchors as the subjects and "existing evidence table + one new observation table" as the evidence home.
+
+Owner 2026-09-14: first session checks the four 2026-09-14 report addresses plus the Gowanus centroid; rows being added by a parallel agent (QUESTIONS D35).
+
+Built: sql/036 (`analysis.address_observation`, `analysis.address_observation_miss`), `src/loci/model/ground_truth.py`, a `loci ground-truth` cli.py sub-app, `tests/test_ground_truth.py` (20 tests), `docs/ground-truth-protocol.md`. Grains: `address_observation` = one observed storefront per anchor per session, with a NULL-name 'vacant' row written when nothing is observed so absence is recorded, not inferred; the miss view = open, same-category, no `poi_presence` match by `name_key` within 40 m, with empty `name_key`s excluded so the tokenizer's blind spot is not reported as the model's. Match is any-category within 40 m; the miss view is deliberately same-category and narrower, so a mis-typed POI reads as a category error, not as missing supply.
+
+Rules: human-supervised, human-paced session only — same footing as the BizQuest precedent (commit fe59eb2), never unattended. D79 preserved: a vacant/unknown observation writes no evidence row; 'closed' is written only from an explicit Maps label; a human reading "Open" off a Maps card may write 'open', unlike `web_rules.py`, which never emits open because a search hit not saying closed is not evidence of trading. `address_observation` is NOT wired into the screen, forecast, or grades — an instrument that scores the screen must not feed it.
+
+Why path (b) on the evidence source: DuckDB 1.5.5 rejects `DROP`/`ADD CONSTRAINT` on a `CHECK` (probed, `NotImplementedException`), and `db.init_schema` applies every `*.sql` on disk (GTM-179/182), so widening the shared evidence table's `CHECK` by a copy-swap would execute inside peer sessions mid-write. Evidence rows instead use `source='web'`, `domain_class='maps_ui'` — `domain_class` already carries source kind and `poi_evidence.basis()` renders it with zero changes.
+
+Finding: all 15 open ledger recs share one anchor (the 2026-09-11 Gowanus bbox centroid, `anchor_address_id NULL`), so a session against them is one look producing 15 category verdicts, not 15 address checks — recorded in QUESTIONS D35, now answered (owner: add the four report addresses as subjects).
+
+Tests: 80 passed across test_ground_truth/test_poi_evidence/test_recommendation; 227 passed across the init_schema neighbours. Interceptor NOT installed; no warehouse write made this session.
+
+Why: the ledger's monthly outcome check (D89) matches only against Foursquare first-seen and storefront filings, so nothing today can contradict a recommendation with what is physically at the anchor. The load-bearing output is `analysis.address_observation_miss`: an open storefront of the recommended category that the supply model does not hold is a direct hit on P3 (coverage-gap validity). A confirmed gap at the anchor does not by itself confirm the 400 m catchment gap; the protocol lists that and four other threats.
+
+### 2026-09-14 — Session 27 (abenmayor-cc): Interceptor evaluated for Loci, ground-truth instrument built (D105)
+- Interceptor (github.com/Hacker-Valley-Media/Interceptor) evaluated as the browser-driving CLI for Loci's ground-truth checks; owner ruled it in, with the 15 ledger anchors as first subjects, later narrowed by the owner to the four 2026-09-14 report addresses plus the Gowanus centroid (QUESTIONS D35).
+- Built sql/036, `src/loci/model/ground_truth.py`, `loci ground-truth` cli.py sub-app, `tests/test_ground_truth.py` (20 tests), `docs/ground-truth-protocol.md`. D105, ticket GTM-183.
+- Next action: owner installs Interceptor and runs the first ground-truth session on the four address anchors plus the Gowanus centroid.
+
 ---
 
 ## Next actions
+
+0) **Install Interceptor and run the first ground-truth session on the four address anchors + Gowanus centroid (GTM-183);** decide address-level subjects (QUESTIONS D35, answered — rows to be added via `loci recommendations add`).
 
 1) GTM-172: apply the investor review's six generator changes (one falsification block from one field; grade gate below C emits a no-trade note; restore revenue band + rent ceiling and add an underwriting paragraph against the D18 ECON minimum; name vacant storefronts, SLA/DOB pipeline and chains instead of counting them; geo-scope web comps to the lot's corridor and ban low-quality sources; legality as a planner's verdict with special districts, floodplain, LPC, SLA 500-ft), then re-run the three reports AFTER abenmayor-84's revenue apply and re-review (AC-23).
 
