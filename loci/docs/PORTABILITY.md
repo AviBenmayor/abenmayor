@@ -546,6 +546,45 @@ second-city plan starts from the doubt rather than rediscovering it.
 
 ---
 
+## 8. The one adapter that has actually been run: Citi Bike → Divvy
+
+Everything above §7 is a survey. This section is the single place where a second city's
+data has actually been READ, and it is here to bound the claim rather than to widen it.
+`loci citibike divvy-probe --month 2025-06` (GTM-168 track P, D111) put one Chicago
+month through the same reader that builds New York's bike panel:
+`src/loci/sources/cities/lyft_bikeshare.py` holds a `SYSTEMS` dict — bucket URL, month-
+key and legacy-key regexes, bounding box, dock-id pattern, sibling-system prefix, twin-
+fusion suffix, dockless-end policy and every threshold — and
+`sources/cities/nyc/citibike.py` is now one entry in it (`nyc_citibike`), byte-identical
+in the SQL it emits.
+
+**What PORTABLE means here: the trip-file reader and the station-month grain travel.**
+Divvy's 2025-06 file (678,904 trips) landed as 13,600 `station × month × day_type ×
+daypart` rows over 1,397 docks, on the same five dayparts and the same calendar divisor,
+with every excluded trip named: 507,039 counted, 150,904 starting off-dock, 20,794 on
+Juneteenth, 167 outside the month — an identity with the file's own row count, not a
+reconciliation.
+
+**What it does NOT mean: Loci does not run in Chicago.** There is no address frame there
+(no PLUTO, §4), no walk graph built, no supply set, no anchor sources — so nothing in
+that table becomes an address measure, nothing feeds the growth feature, and NOTHING
+here supports any claim about Chicago retail. A station-month table is the end of the
+line for a second city, and it is a table about bicycles. The day-one grade for Chicago
+in §6 is unchanged by this probe.
+
+**What the probe taught that the survey could not.** Two per-system facts only appear
+when a file is actually read. (1) Divvy permits a trip to end off-dock: 23.1% of 2025-06
+ends carry no station id, against New York's rounding error. Those rides leave the
+station grain because there is no dock to attribute them to, and the share is REPORTED —
+the threshold that would refuse a month is a `System` field, because New York's sub-1%
+intuition applied to Chicago would refuse every good month. (2) Divvy ships CRLF and
+Citi Bike ships LF; phase 1's header rewrite dropped the carriage return, which made
+DuckDB's sniffer read zero columns out of a 136 MB file. A line ending is the kind of
+thing a portability audit cannot predict and a probe finds in a minute.
+
+
+---
+
 **One caveat no check can enforce.** Every distance in Loci is a WALK distance on an OSM
 graph, and the whole screen is calibrated on Manhattan and Brooklyn — dense, walking-
 dominant, chosen for that reason in D48. The 800 m threshold, the saturating DNCI

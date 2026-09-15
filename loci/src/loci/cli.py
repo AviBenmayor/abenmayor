@@ -6003,11 +6003,39 @@ def retrodiction_run(
                                      help="Draws in the within-category placebo null."),
     strict_dated: bool = typer.Option(True, "--strict-dated/--no-strict-dated",
                                       help="Also run with D79's undated rows dropped."),
+    bike_growth: bool = typer.Option(False, "--bike-growth/--no-bike-growth",
+                                     help="Also run the D111 Citi Bike "
+                                          "activity-growth feature test (GTM-168). "
+                                          "Needs analysis.address_bike_growth at "
+                                          "--asof; the pre-registered gates P0-P12 "
+                                          "are constants, not flags."),
+    asof: str = typer.Option(None, "--asof",
+                             help="Vintage t0 as YYYY-MM (default: the window "
+                                  "start). 2023-01 is the primary vintage, "
+                                  "2025-01 the confirmatory one (P7)."),
+    member_only: bool = typer.Option(True, "--member-only/--all-rider",
+                                     help="Which bike_growth series to read. "
+                                          "member-only is the pre-registered "
+                                          "primary; all-rider is a robustness "
+                                          "column in the P10 family."),
+    truncate_outcome: bool = typer.Option(
+        True, "--truncate-outcome/--no-truncate-outcome",
+        help="P7: cut the outcome window where dated-opening ascertainment "
+             "falls off (D80's 221-259 day filing lead), so the tail months are "
+             "not counted as months where nothing happened."),
+    truncate_at: str = typer.Option(None, "--truncate-at",
+                                    help="Override the ascertainment rule with an "
+                                         "explicit last outcome month, YYYY-MM."),
+    confirmatory_out: str = typer.Option(
+        None, "--confirmatory-out",
+        help="Directory holding the OTHER vintage's run. Given it, P7's "
+             "cross-vintage comparison and the ship verdict are computed here. "
+             "Run 2025-01 first, then 2023-01 pointing at it."),
     out: str = typer.Option(None, "--out", help="Output directory "
                             "(default data/retrodiction)."),
 ) -> None:
     """Build the cohort, audit the closure instruments, gate the survival model,
-    fit the entry model.
+    fit the entry model, and optionally the D111 bike-growth feature test.
 
     Read-only on the warehouse and safe to run beside a session rebuilding
     `analysis.address_category`; the lock is retried, never forced.
@@ -6015,7 +6043,10 @@ def retrodiction_run(
     from loci.validation import retrodiction as rd
 
     rep = rd.run(window=window, radius_m=radius_m, sample_n=sample_n,
-                 permutations=permutations, out=out, strict_dated=strict_dated)
+                 permutations=permutations, out=out, strict_dated=strict_dated,
+                 bike_growth=bike_growth, asof=asof, member_only=member_only,
+                 truncate_outcome=truncate_outcome, truncate_at=truncate_at,
+                 confirmatory_out=confirmatory_out)
     e = rep["entry"]
     nos = e.get("auc_no_score", e["permutation_null"]["mean"])
     console.print(f"[green]ok[/] cohort {rep['cohort_n']:,}; "
@@ -6026,6 +6057,19 @@ def retrodiction_run(
                   f"model without the score (lift "
                   f"{e['auc_full'] - nos:+.4f}) — the homes-only figure "
                   f"{e['auc_homes_only']:.3f} is not the fair comparator")
+    g = rep.get("bike_growth") or {}
+    if g.get("fitted"):
+        v = g.get("verdict") or {}
+        console.print(f"[green]bike growth[/] delta-AUC {g['delta_P0']:+.4f} "
+                      f"vs floor {g['floor_P3']:+.4f} "
+                      f"({g['floor_basis_P3']}), CD-clustered 95% CI "
+                      f"[{g['bootstrap_cd_P4']['ci'][0]:+.4f}, "
+                      f"{g['bootstrap_cd_P4']['ci'][1]:+.4f}] — "
+                      f"{'SHIP' if v.get('ship') else 'CONTEXT ONLY'}")
+    elif bike_growth:
+        console.print(f"[red]bike growth NOT FITTED[/] — {g.get('reason', 'unknown')}")
+    console.print(f"[dim]runtime {rep['params']['runtime_s']}s · supply hash "
+                  f"{rep['params'].get('supply_hash')}[/]")
     console.print("[yellow]`loci retrodiction report` renders the full result.[/]")
 
 
@@ -6129,6 +6173,8 @@ def retrodiction_report(
                       f"[{r['own_gap_ci'][0]:+.2f}, {r['own_gap_ci'][1]:+.2f}]",
                       f"{r['auc']:.3f}", f"{r['auc_homes_only']:.3f}")
         console.print(t)
+
+    rd.report_bike_growth(rep, console)
 
     console.print("\n[yellow]Entry is not survival. This says where capital WENT, "
                   "never whether it was right to go there. A positive sign on the t0 "
@@ -8958,3 +9004,543 @@ def citibike_od_validate(
         raise typer.Exit(0 if d["passes"] else 1)
     finally:
         con.close()
+
+
+# ===========================================================================
+# Citi Bike phase 3 -- activity GROWTH (GTM-168, decision D111, owner rulings
+# R1/R2/R4 2026-09-15). Appended at the END of this file for the reason the two
+# blocks above were: other sessions hold uncommitted hunks higher up, and
+# appending is the only edit that cannot collide with them.
+# ===========================================================================
+
+def _growth_require_table(con) -> None:
+    """Refuse to run before sql/038 has been renamed out of `.draft`.
+
+    Exactly the guard `_od_require_table` puts on 037, for exactly the same
+    reason: `db.init_schema` applies every src/loci/sql/*.sql on EVERY write
+    connection, so an undrafted migration goes live on a peer session's next
+    write and moves the shared supply hash (D105/D106, GTM-179). The rename is
+    the lead's call, announced first. Until then this says so rather than
+    raising a bare "Catalog Error: Table with name address_bike_growth does not
+    exist".
+    """
+    got = con.execute(
+        "SELECT count(*) FROM information_schema.tables "
+        "WHERE table_schema = 'analysis' AND table_name = 'address_bike_growth'"
+    ).fetchone()[0]
+    if not got:
+        raise typer.BadParameter(
+            "analysis.address_bike_growth does not exist. The migration is still "
+            "src/loci/sql/038_bike_growth.sql.draft — the .draft suffix keeps it "
+            "out of db.init_schema's glob so it cannot go live on a peer "
+            "session's write and move the shared supply hash. Rename it to "
+            "038_bike_growth.sql (announce the migration to the other sessions "
+            "first) and re-run.")
+
+
+def _growth_cell(col: str, value, blank: str = "-") -> str:
+    """One cell of the growth tables.
+
+    The ROLLUP rows come back with NULL grouping keys, which pandas hands over as
+    NaT and NaN -- and `f"{NaT:%Y-%m}"` raises rather than printing something.
+    `value != value` is the one test that catches both. `blank` is "ALL" in the
+    ROLLUP table, where a NULL key IS the total row, and "-" everywhere else,
+    where a NULL is an absent statistic and must not read as a total.
+    """
+    if value is None or value != value:
+        return blank
+    if col in ("asof_month", "window_first", "window_last"):
+        return f"{value:%Y-%m}"
+    if col == "member_only":
+        # bool from a plain GROUP BY, float 1.0/0.0 once a ROLLUP has mixed NULLs
+        # into the column. Spelled out either way: "TRUE" is not a series name.
+        return "member" if float(value) else "all-rider"
+    return f"{value:,}" if isinstance(value, (int, float)) else str(value)
+
+
+def _growth_asof(specs: list[str] | None) -> list:
+    """--asof is REPEATABLE: two vintages are the point (owner ruling R1)."""
+    import datetime as _dt
+
+    if not specs:
+        raise typer.BadParameter(
+            "--asof is required and takes YYYY-MM. There is no default: a growth "
+            "vintage is only meaningful against the t0 it will be joined at, and "
+            "silently defaulting to the latest month would build a feature no "
+            "retrodiction window can use. Owner ruling R1 asks for two: "
+            "--asof 2023-01 --asof 2025-01.")
+    return [_dt.date(*_cb_month(s), 1) for s in specs]
+
+
+@citibike_app.command("growth-measures")
+def citibike_growth_measures(
+    asof: list[str] = typer.Option(None, "--asof",
+                                   help="Vintage month M, YYYY-MM. REPEATABLE — "
+                                        "owner ruling R1 wants 2023-01 (the "
+                                        "COVID-recovery base, the only vintage "
+                                        "comparable with D88's 0.866) and 2025-01 "
+                                        "(clean). If they disagree in sign the "
+                                        "feature fails."),
+    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL."),
+    member_only: bool = typer.Option(True, "--member-only/--all",
+                                     help="--member-only (default) builds the "
+                                          "RULED base series: weekday member "
+                                          "starts + ends. --all builds the "
+                                          "all-rider ROBUSTNESS series into the "
+                                          "same table under member_only = FALSE. "
+                                          "They are different series and must "
+                                          "never be pooled."),
+    re_sweep: bool = typer.Option(False, "--re-sweep",
+                                  help="Rebuild a vintage that is already stored. "
+                                       "Without it an existing (asof_month, "
+                                       "member_only) is left alone, which is what "
+                                       "makes a two-vintage run cheap to restart."),
+    db: Path = typer.Option(None, "--db", help="Warehouse path (use a snapshot copy "
+                                               "to prove a run without taking the "
+                                               "live write lock)."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Compute and print; write nothing."),
+) -> None:
+    """Did the docks within a five-minute walk get busier than the city did?
+
+        analysis.address_bike_growth(address_id, asof_month, member_only, ...)
+
+    Phase 1 says how busy the docks near an address ARE. This says whether they
+    GREW: log(activity over [M-11, M] + 1) - log(activity over [M-23, M-12] + 1),
+    two adjacent twelve-month windows, so the comparison is seasonally adjusted
+    by construction. `bike_growth_12m_rel` subtracts the system's own log ratio
+    over the same dock set and is THE feature; the raw column is dominated by the
+    e-bike rollout and the post-COVID recovery, which are identical for every
+    address.
+
+    THE BALANCED DOCK SET IS THE LOAD-BEARING PART. Only docks alive across BOTH
+    windows count (first_month <= M-23 AND last_month >= M), and an unbalanced
+    dock is excluded from BOTH — a dock born mid-window contributes to NEITHER.
+    Without that rule every address near a new dock reads as booming and the
+    feature is a map of Lyft's capital plan. `docks_added_24m` counts the young
+    ones separately and honestly: it is a CONTROL, never a predictor.
+
+    NULL, NEVER ZERO, where balanced_share < 0.5 or there is no balanced dock —
+    with n_docks_balanced, balanced_share and docks_added_24m still written, so
+    the reason for the NULL is stored beside it.
+
+    REFUSES a vintage whose 24 months the panel does not hold, naming the missing
+    months. Eleven months against twelve is an 8% citywide "decline" that nothing
+    in the output would disclose.
+
+    CONTEXT ONLY (D76) until it clears every gate of the R4 criterion in
+    `loci retrodiction run`. Nothing here enters gap_score, supply_ratio_vs_base,
+    a recommendation grade or the revenue model's λ.
+    """
+    from loci.model import address_bike_growth as bg
+
+    boros = _parse_boroughs(boroughs)
+    months = _growth_asof(asof)
+    con = _cb_connect(db, read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+    try:
+        _growth_require_table(con)
+        for m in months:
+            try:
+                meas, report = bg.build_growth(con, m, boros,
+                                               member_only=member_only,
+                                               re_sweep=re_sweep, dry_run=dry_run)
+            except RuntimeError as exc:
+                console.print(f"[red]asof {m:%Y-%m} refused[/] — {exc}")
+                raise typer.Exit(1) from None
+
+            console.print(
+                f"\n[bold]asof {report['asof_month']}[/] "
+                f"({'member' if member_only else '[yellow]ALL-RIDER robustness[/]'}) · "
+                f"prior {report['prior_window']} vs recent {report['recent_window']} · "
+                f"{report['docks_balanced']:,} of {report['docks_in_roster']:,} docks "
+                f"balanced ({report['balanced_share_of_system_at_m']:.1%} of the "
+                f"system's activity at M) · {report['docks_added_in_window']:,} docks "
+                f"born inside the window and excluded from BOTH")
+            console.print(
+                f"system log-ratio [bold]{report['system_growth']:+.4f}[/] — "
+                f"subtracted from every address, which is what makes "
+                f"bike_growth_12m_rel a cross-sectional number rather than a "
+                f"reading of the e-bike rollout")
+
+            t = Table(title=f"address growth — {','.join(boros)} @ "
+                            f"{report['asof_month']} ({report['window']})")
+            for c, j in (("measure", "left"), ("n", "right"), ("p10", "right"),
+                         ("p50", "right"), ("p90", "right")):
+                t.add_column(c, justify=j)
+            for col in ("balanced_share", "bike_growth_12m", "bike_growth_12m_rel",
+                        "docks_added_24m"):
+                v = meas[col].dropna()
+                if not len(v):
+                    t.add_row(col, "0", "-", "-", "-")
+                    continue
+                t.add_row(col, f"{len(v):,}", f"{v.quantile(0.1):+.3f}",
+                          f"{v.median():+.3f}", f"{v.quantile(0.9):+.3f}")
+            console.print(t)
+            console.print(
+                f"[dim]{report['with_a_value']:,} of {report['rows']:,} in-scope lot "
+                f"addresses carry a value · {report['null_no_balanced_dock']:,} are "
+                f"NULL for having no balanced dock within 400 m · "
+                f"{report['null_below_floor']:,} are NULL for sitting under the "
+                f"{report['balanced_share_floor']:.0%} balanced-share floor. NULL, "
+                f"never 0: a 0 would assert the docks here did not change, which is "
+                f"a claim about a neighbourhood; the truth is a claim about a "
+                f"capital plan.[/]")
+
+            if dry_run:
+                console.print("[dim]--dry-run:[/] nothing written.")
+                continue
+            w = report["_written"]
+            if "skipped" in w:
+                console.print(f"[dim]no write:[/] {w['skipped']}")
+                continue
+            console.print(
+                f"[green]ok[/] {w['rows_written']:,} rows for asof "
+                f"{w['asof_month']} (member_only={w['member_only']}) · "
+                f"{w['rows_with_a_value']:,} carry a value")
+            one = meas.loc[meas["bike_growth_12m"].notna(), "address_id"]
+            if len(one):
+                r = bg.reconcile(con, str(one.iloc[0]), m)
+                console.print(
+                    f"[dim]reconciled {r['address_id']}: {r['n_docks_balanced']} "
+                    f"balanced dock(s), growth {r['bike_growth_12m']:+.4f} "
+                    f"re-derived from the panel with the balance test re-applied "
+                    f"in SQL.[/]")
+
+        if dry_run:
+            raise typer.Exit(0)
+        v = Table(title="validation — analysis.address_bike_growth")
+        cols = (("asof_month", "asof"), ("member_only", "series"),
+                ("borough", "boro"), ("rows", "rows"),
+                ("with_a_value", "valued"), ("no_balanced_dock", "no dock"),
+                ("below_floor", "<floor"), ("part_null", "part NULL"),
+                ("impossible_zero", "impossible 0"),
+                ("p50_balanced_share", "p50 bal"),
+                ("min_balanced_share", "min bal"),
+                ("max_balanced_share", "max bal"),
+                ("p50_growth_rel", "p50 rel"), ("mean_growth_rel", "mean rel"),
+                ("max_docks_added", "max added"))
+        for c, label in cols:
+            v.add_column(label, justify="left" if c in ("asof_month", "member_only",
+                                                        "borough") else "right")
+        for r in con.execute(bg.VALIDATION_SQL).fetchdf().to_dict("records"):
+            v.add_row(*[_growth_cell(c, r[c], blank="ALL") for c, _ in cols])
+        console.print(v)
+        console.print(
+            "[dim]part_null and impossible_zero must both be 0: the four value "
+            "columns are NULL together or not at all, and a censored address "
+            "never reads 0.0. balanced_share must lie in [0, 1]. "
+            "max_docks_added is reported so a reader can see how much network "
+            "expansion the vintage sat on top of — it is a control, and the "
+            "balanced-set rule is what keeps it out of the growth number.[/]")
+    finally:
+        con.close()
+
+
+@citibike_app.command("growth-stats")
+def citibike_growth_stats(
+    db: Path = typer.Option(None, "--db", help="Warehouse path."),
+    asof: str = typer.Option(None, "--asof",
+                             help="One vintage, YYYY-MM. With it, the panel "
+                                  "readiness check for that M is printed even "
+                                  "when no vintage has been built yet."),
+    address: str = typer.Option(None, "--address",
+                                help="Re-derive ONE address's stored vintage from "
+                                     "the staging panel and diff it. Needs --asof."),
+) -> None:
+    """What the growth table holds, and whether the panel can support a vintage.
+
+    READ-ONLY. Takes no write lock; safe to run while an ingest holds one.
+    """
+    import datetime as _dt
+
+    from loci.model import address_bike_growth as bg
+
+    con = _cb_connect(db, read_only=True)
+    try:
+        if asof:
+            m = _dt.date(*_cb_month(asof), 1)
+            gaps = bg.missing_months(con, m)
+            p_first, p_last, r_first, r_last = bg.windows(m)
+            console.print(
+                f"[bold]asof {m:%Y-%m}[/] wants prior {p_first:%Y-%m}..{p_last:%Y-%m} "
+                f"and recent {r_first:%Y-%m}..{r_last:%Y-%m}")
+            if gaps:
+                console.print(
+                    f"[red]{len(gaps)} of 24 months missing[/] from "
+                    f"staging.citibike_station_month: "
+                    f"{', '.join(f'{g:%Y-%m}' for g in gaps[:12])}"
+                    f"{'…' if len(gaps) > 12 else ''} — `loci citibike "
+                    f"growth-measures --asof {m:%Y-%m}` will refuse. Back-ingest "
+                    f"them: `loci citibike ingest --start {gaps[0]:%Y-%m} --end "
+                    f"{gaps[-1]:%Y-%m}`.")
+            else:
+                panel = bg.station_panel(con, m)
+                console.print(
+                    f"[green]all 24 months present[/] · "
+                    f"{int(panel['balanced'].sum()):,} of {len(panel):,} docks are "
+                    f"balanced (alive across both windows) and carry "
+                    f"{panel.loc[panel['balanced'], 'act_at_m'].sum() / max(panel['act_at_m'].sum(), 1):.1%} "
+                    f"of the system's weekday member activity at M · "
+                    f"{int(panel['added_in_window'].sum()):,} docks were born inside "
+                    f"the window and are excluded from BOTH windows · system "
+                    f"log-ratio {bg.system_growth(panel):+.4f}")
+
+        _growth_require_table(con)
+        rows = con.execute(bg.VINTAGE_SQL).fetchdf()
+        if rows.empty:
+            console.print(
+                "[yellow]analysis.address_bike_growth is empty[/] — run "
+                "`loci citibike growth-measures --asof 2023-01 --asof 2025-01`.")
+            raise typer.Exit(0)
+        t = Table(title="stored vintages — analysis.address_bike_growth")
+        # Short labels on purpose: sixteen full column names do not fit an 80
+        # column terminal, and rich elides them to "a…" rather than wrapping.
+        # The windows are a function of asof and the --asof readiness line above
+        # already prints them; the dock medians go in the caption. Twelve columns
+        # is what fits without rich eliding every header to a single letter.
+        cols = (("asof_month", "asof"), ("member_only", "series"),
+                ("addresses", "addrs"), ("with_a_value", "valued"),
+                ("coverage_pct", "cov %"), ("no_balanced_dock", "no dock"),
+                ("below_floor", "<floor"),
+                ("p50_balanced_share", "p50 share"), ("p50_growth", "p50 g"),
+                ("p50_growth_rel", "p50 rel"), ("p10_growth_rel", "p10 rel"),
+                ("p90_growth_rel", "p90 rel"))
+        for c, label in cols:
+            t.add_column(label, justify="left" if c.startswith(("asof", "window",
+                                                                "member")) else "right")
+        for r in rows.to_dict("records"):
+            t.add_row(*[_growth_cell(c, r[c]) for c, _ in cols])
+        t.caption = ("median reachable docks per address: "
+                     + " · ".join(
+                         f"{r['asof_month']:%Y-%m} "
+                         f"{'member' if r['member_only'] else 'all-rider'} "
+                         f"{r['p50_docks_balanced']:g} balanced, "
+                         f"{r['p50_docks_added']:g} added in the 24m window "
+                         f"(a CONTROL, never in the feature)"
+                         for r in rows.to_dict("records")))
+        console.print(t)
+        console.print(
+            "[dim]member_only = TRUE is the ruled base series (weekday member "
+            "starts + ends); FALSE is the all-rider robustness series and the two "
+            "must never be pooled. Coverage FALLS at earlier vintages by "
+            "construction: fewer docks clear first_month <= M-23, so more "
+            "addresses sit under the balanced-share floor and read NULL. That is "
+            "honest censoring, but it means two vintages do not cover the same "
+            "addresses and any comparison between them has to say so.[/]")
+
+        signs = rows[rows["member_only"]][["asof_month", "p50_growth_rel"]].dropna()
+        if len(signs) > 1 and len({float(x) > 0 for x in signs["p50_growth_rel"]}) > 1:
+            console.print(
+                "[yellow]the stored vintages disagree in the sign of the median "
+                "bike_growth_12m_rel.[/] That is not itself the R1 failure test — "
+                "that test is on the retrodiction delta-AUC, not on this median — "
+                "but it is the shape of it, and worth looking at before the fit.")
+
+        if address:
+            if not asof:
+                raise typer.BadParameter("--address needs --asof")
+            r = bg.reconcile(con, address, _dt.date(*_cb_month(asof), 1))
+            if r.get("censored"):
+                console.print(
+                    f"[yellow]{address}[/] is CENSORED at {r['asof_month']}: "
+                    f"{r['n_docks_balanced']} balanced dock(s), so the value "
+                    f"columns are NULL. Nothing to reconcile arithmetically — and "
+                    f"NULL, not 0, is the point.")
+            else:
+                console.print(
+                    f"[green]reconciled[/] {address} @ {r['asof_month']}: "
+                    f"{r['n_docks_balanced']} balanced dock(s), activity "
+                    f"{r['activity_prior_12m']:,.0f} -> {r['activity_12m']:,.0f}, "
+                    f"growth {r['bike_growth_12m']:+.4f} — re-derived from the "
+                    f"panel with the balance test re-applied in SQL.")
+    finally:
+        con.close()
+
+
+@citibike_app.command("divvy-probe")
+def citibike_divvy_probe(
+    month: str = typer.Option("2025-06", "--month",
+                              help="The Chicago month to probe, YYYY-MM."),
+    system: str = typer.Option("chicago_divvy", "--system",
+                               help="A key of lyft_bikeshare.SYSTEMS. The probe "
+                                    "is city-agnostic; only the default is "
+                                    "Chicago."),
+    db: str = typer.Option(None, "--db",
+                           help="A SCRATCH DuckDB file to write the station-month "
+                                "rows into. Required unless --dry-run. It must "
+                                "not be the warehouse: this command refuses to "
+                                "open data/loci.duckdb."),
+    table: str = typer.Option("staging.divvy_station_month", "--table",
+                              help="Table written in the scratch database."),
+    dry_run: bool = typer.Option(True, "--dry-run/--write",
+                                 help="Default DRY RUN: fetch, aggregate and "
+                                      "report, writing nothing."),
+    refresh: bool = typer.Option(False, "--refresh",
+                                 help="Re-fetch the bucket listing and the zip."),
+    keep_csv: bool = typer.Option(False, "--keep-csv",
+                                  help="Leave the extracted CSV on disk."),
+    workdir: str = typer.Option(None, "--workdir",
+                                help="Scratch directory for the extracted CSV "
+                                     "and DuckDB spill. Default: the system's "
+                                     "own cache dir."),
+):
+    """The PORTABILITY PROBE (GTM-168, D111): one Chicago month through the same
+    reader, into a SCRATCH database.
+
+    It proves exactly one claim and no more: the phase-1 trip-file reader is
+    parameterised, not New-York-shaped. A Divvy month lands as station x month x
+    day_type x daypart rows with the same dayparts, the same calendar divisor
+    and the same fail-loud guards.
+
+    IT IS NOT A CHICAGO BUILD. There is no address frame, no walk graph, no
+    PLUTO and no supply set outside New York, so nothing here becomes an address
+    measure, a growth feature or any claim about Chicago retail. See
+    docs/PORTABILITY.md.
+
+    THE DOCKLESS SHARE IS REPORTED, NEVER DROPPED SILENTLY. Divvy permits a trip
+    to end off-dock; ~23% of 2025-06 trips do. Those rides have no dock to
+    attribute and leave the station grain, and the share is printed as a first-
+    class number -- New York's sub-1% intuition is simply wrong about this
+    system, which is why the gate is a per-system field and not a constant.
+    """
+    import pathlib as _pl
+
+    from loci.sources.cities import lyft_bikeshare as lyft
+    from loci.sources.cities.nyc import citibike as cb   # the day-type vocabulary
+
+    try:
+        sys_ = lyft.get(system)
+    except lyft.BikeshareError as exc:
+        raise typer.BadParameter(str(exc)) from None
+    y, m = _cb_month(month)
+
+    db_path = None
+    if not dry_run:
+        if not db:
+            raise typer.BadParameter(
+                "--write needs --db PATH: a scratch DuckDB to write into. This "
+                "command never writes to the warehouse.")
+        db_path = _pl.Path(db).expanduser().resolve()
+        if db_path.name == "loci.duckdb" or "data/loci.duckdb" in str(db_path):
+            raise typer.BadParameter(
+                f"{db_path} is the WAREHOUSE. The probe writes station-month rows "
+                f"for a city Loci has no address frame for; they must not land "
+                f"beside New York's. Point --db at a scratch file.")
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+    work = _pl.Path(workdir).expanduser() if workdir else (sys_.cache_dir / "_work")
+    work.mkdir(parents=True, exist_ok=True)
+
+    console.print(f"[bold]{sys_.system_id}[/] {y}-{m:02d} — bucket {sys_.bucket_url}")
+    try:
+        rep = lyft.probe_month(sys_, y, m, db_path=db_path, table=table,
+                               workdir=work, refresh=refresh, keep_csv=keep_csv)
+    except lyft.BikeshareError as exc:
+        console.print(f"[red]refused:[/] {exc}")
+        raise typer.Exit(1) from None
+
+    t = Table(title=f"{sys_.label} {rep['month']} — the file")
+    for c, j in (("check", "left"), ("value", "right"), ("verdict", "left")):
+        t.add_column(c, justify=j)
+    header_ok = rep["header_is_subset_of_lyft_columns"]
+    t.add_row("key", rep["key"], f"{rep['bytes'] / 1e6:,.1f} MB")
+    t.add_row("header ⊆ LYFT_COLUMNS", str(header_ok),
+              "[green]same schema[/]" if header_ok else
+              f"[red]missing {rep['header_missing_columns']}[/]")
+    t.add_row("trips in file", f"{rep['rows_in_file']:,}", "")
+    unpop = rep["member_casual_unpopulated"]
+    t.add_row("member_casual populated", f"{rep['member_trips']:,} member / "
+                                         f"{rep['casual_trips']:,} casual",
+              "[green]0 unclassified[/]" if unpop == 0
+              else f"[red]{unpop:,} unclassified[/]")
+    t.add_row("dates with a trip", f"{rep['start_dates']}",
+              f"{rep['dates_with_no_trip']} with none")
+    t.add_row("out-of-system share", f"{rep['out_of_system_share']:.4%}",
+              f"gate {sys_.max_out_of_system_share:.0%}")
+    gate = rep["dockless_gate"]
+    t.add_row("DOCKLESS ENDS (no station id)",
+              f"{rep['dockless_ends']:,}  ({rep['dockless_end_share']:.1%})",
+              f"{rep['dockless_end_policy']}; gate "
+              f"{'none — reported' if gate is None else f'{gate:.0%}'}")
+    t.add_row("dockless starts", f"{rep['dockless_starts']:,}", "")
+    b = rep["bbox"]
+    t.add_row("dock bounding box",
+              f"lon {b['lon_min']:.3f}..{b['lon_max']:.3f}  "
+              f"lat {b['lat_min']:.3f}..{b['lat_max']:.3f}",
+              f"inside {sys_.label}'s box")
+    console.print(t)
+
+    g = Table(title="the station-month grain")
+    for c, j in (("measure", "left"), ("value", "right")):
+        g.add_column(c, justify=j)
+    g.add_row("station-month cells", f"{rep['cells']:,}")
+    g.add_row("distinct docks", f"{rep['stations']:,}")
+    g.add_row("starts on docks", f"{rep['frame_starts']:,}")
+    g.add_row("ends on docks", f"{rep['frame_ends']:,}")
+    g.add_row("weekday / saturday / sunday divisor",
+              " / ".join(str(rep["days_by_type"][k])
+                         for k in ("weekday", "saturday", "sunday")))
+    g.add_row("rows written", f"{rep['written']:,}" if rep["written"]
+              else "[dim]dry run — nothing written[/]")
+    console.print(g)
+
+    d = Table(title="where every trip in the file went (start side, mutually "
+                    "exclusive)")
+    for c, j in (("disposition", "left"), ("trips", "right"), ("share", "right")):
+        d.add_column(c, justify=j)
+    total = max(rep["disposition_total"], 1)
+    for k, n in sorted(rep["start_disposition"].items(), key=lambda kv: -kv[1]):
+        d.add_row(k, f"{n:,}", f"{n / total:.1%}")
+    d.add_row("[bold]total[/]", f"[bold]{rep['disposition_total']:,}[/]",
+              "[bold]100.0%[/]")
+    d.caption = ("`counted` is `month_sql`'s start-side WHERE, clause for "
+                 "clause, so the column is an identity with the file's row "
+                 "count — nothing leaves the panel unnamed.")
+    console.print(d)
+
+    ok = header_ok and unpop == 0 and rep["disposition_reconciles"]
+    if not rep["disposition_reconciles"]:
+        console.print("[red]the dispositions do not sum to the file's rows[/]")
+    if rep["written"]:
+        v = rep["validation"][0]
+        # The partition identity: fifteen (day_type, daypart) cells, and the
+        # cells' starts and ends re-read from the DATABASE must equal the frame.
+        parts_ok = (v["partition_cells"] == v["day_types"] * v["dayparts"]
+                    == len(cb.DAY_TYPES) * len(cb.DAYPART_NAMES))
+        sums_ok = (int(v["starts"]) == rep["frame_starts"]
+                   and int(v["ends"]) == rep["frame_ends"])
+        classified_ok = int(v["classified_starts"]) == int(v["starts"])
+        div_ok = int(v["divisor_variants"]) == len(cb.DAY_TYPES)
+        p = Table(title=f"read back from {rep['db']} :: {table}")
+        for c, j in (("assertion", "left"), ("value", "right"), ("pass", "left")):
+            p.add_column(c, justify=j)
+        p.add_row("station-month rows > 0", f"{v['cells']:,}",
+                  "[green]yes[/]" if v["cells"] else "[red]NO[/]")
+        p.add_row("day_type × daypart partition",
+                  f"{v['day_types']} × {v['dayparts']} = {v['partition_cells']}",
+                  "[green]complete[/]" if parts_ok else "[red]INCOMPLETE[/]")
+        p.add_row("partition sums to the frame's trips",
+                  f"{int(v['starts']):,} starts / {int(v['ends']):,} ends",
+                  "[green]exact[/]" if sums_ok else "[red]DIFFERS[/]")
+        p.add_row("member + casual = starts", f"{int(v['classified_starts']):,}",
+                  "[green]exact[/]" if classified_ok else "[red]DIFFERS[/]")
+        p.add_row("days_in_cell constant per day_type",
+                  f"{v['divisor_variants']} variants",
+                  "[green]calendar divisor[/]" if div_ok else "[red]OBSERVED[/]")
+        console.print(p)
+        ok = ok and parts_ok and sums_ok and classified_ok and div_ok
+
+    console.print(
+        f"[dim]PORTABLE means the reader and the station-month grain travel. It "
+        f"does NOT mean Loci runs in {sys_.label}: there is no address frame, no "
+        f"walk graph, no PLUTO and no supply set there, so no address measure, "
+        f"no growth feature and no claim about {sys_.label} retail follows from "
+        f"this table. docs/PORTABILITY.md.[/]")
+    console.print(
+        f"[dim]{rep['dockless_ends']:,} trips ({rep['dockless_end_share']:.1%}) "
+        f"end with no station id and are EXCLUDED from the station grain — "
+        f"reported here, never dropped quietly. New York's sub-1% intuition does "
+        f"not transfer, which is why the gate is a per-system field.[/]")
+    console.print("[green]probe passes[/]" if ok else "[red]probe FAILS[/]")
+    raise typer.Exit(0 if ok else 1)

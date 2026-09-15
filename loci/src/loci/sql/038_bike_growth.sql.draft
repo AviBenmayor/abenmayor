@@ -1,0 +1,188 @@
+-- ---------------------------------------------------------------------------
+-- 038_bike_growth.sql -- Citi Bike ACTIVITY GROWTH at address grain: how much
+-- busier (or quieter) the docks within a five-minute walk got over the last
+-- twelve months than over the twelve before them. Citi Bike phase 3 (GTM-168).
+--
+-- Owner rulings, 2026-09-15 (R1/R2/R4), decision D111:
+--   R1  the feature is computed at TWO vintages (t0 = 2023-01 on the
+--       COVID-recovery base, t0 = 2025-01 clean) and fails if they disagree in
+--       sign. That is why this table is keyed on asof_month and not on the
+--       address alone.
+--   R2  it enters the 2026-10 forecast as model 0.2.0 ONLY if it clears every
+--       gate in validation/retrodiction.py. Until then: CONTEXT ONLY (D76).
+--   R4  the ship criterion (+0.005 delta-AUC floor, decile-matched placebo) is
+--       ratified by the statistician before any fit.
+--
+-- .draft SUFFIX, ON PURPOSE. `db.init_schema` applies every src/loci/sql/*.sql
+-- on the next WRITE connection, including uncommitted ones, and several
+-- sessions share this tree (D105/D106, GTM-179). An undrafted file here would
+-- go live on a peer's write and move the shared supply hash. The lead renames
+-- it to 038_bike_growth.sql after announcing the migration; until then
+-- `loci citibike growth-measures` refuses to run and says so
+-- (cli._growth_require_table).
+--
+-- Written by:
+--   analysis.address_bike_growth   model/address_bike_growth.py
+--                                  (`loci citibike growth-measures`)
+-- Read by:
+--   validation/retrodiction.py (build_panel, joined on address_id + t0)
+--   model/forecast.py, IF AND ONLY IF the gates pass -- at the vintage's OWN
+--   t0, never through a trailing window on analysis.address, which would be
+--   look-ahead.
+-- ---------------------------------------------------------------------------
+-- THE D61 / feedback_table_proliferation INVENTORY, BEFORE ADDING ANYTHING
+--
+-- ONE new table, at a grain nothing in the warehouse holds: ADDRESS x
+-- ASOF_MONTH. analysis.address is one row per address and structurally cannot
+-- carry two vintages of the same measure; that is the whole reason two
+-- retrodiction vintages (2023-01 and 2025-01) need a table rather than a
+-- column. staging.citibike_station_month is dock-grain and knows nothing about
+-- an address; analysis.address_bike_station is the address x dock walking
+-- distance and carries no time. Neither can hold this.
+--
+-- ZERO new columns on analysis.address, DELIBERATELY. A bike_growth_12m column
+-- there would be a TRAILING window -- whatever the last run computed -- and a
+-- model fitted at t0 = 2023-01 reading it would be reading 2026 data. That is
+-- look-ahead, and the only structural defence against it is that the number
+-- does not exist anywhere except keyed by the vintage it belongs to.
+-- ---------------------------------------------------------------------------
+-- UNITS AND MEANING, because the column names cannot carry it
+--
+--   asof_month   M, the FIRST DAY of the vintage month, as a DATE. It is the
+--                UNIT OF IDEMPOTENCE together with member_only: the builder
+--                DELETEs (asof_month, member_only) and re-INSERTs it, so
+--                recomputing the 2025-01 vintage can never rewrite 2023-01.
+--
+--   the windows  RECENT = [M-11, M], PRIOR = [M-23, M-12]. Adjacent and
+--                NON-OVERLAPPING, twelve months each, so the comparison is
+--                seasonally adjusted BY CONSTRUCTION: both windows contain one
+--                August and one February, and Citi Bike's August runs ~2.5x its
+--                February. window_first = M-23 and window_last = M are stored so
+--                a reader never has to reconstruct them from asof_month.
+--
+--   activity     WEEKDAY MEMBER starts PLUS ends, summed over the address's
+--                reachable dock set (analysis.address_bike_station, phase 1 --
+--                no new Dijkstra) and over the twelve months of the window.
+--                RAW WINDOW TOTALS, not per-weekday rates: the two windows are
+--                twelve months each, so their calendar weekday counts differ by
+--                at most a day or two and the ratio below absorbs it. Stored
+--                DOUBLE rather than BIGINT because they are NULL, never 0, when
+--                the censoring gate below fails.
+--
+--                MEMBERS, not all riders, is the base series: a casual rider is
+--                anyone on a single ride or a day pass, so the casual count
+--                moves with tourism and with the weather rather than with the
+--                neighbourhood. member_only = FALSE is the all-rider ROBUSTNESS
+--                series and ships as a check, never as the feature.
+--
+--   bike_growth_12m
+--                log(activity_12m + 1) - log(activity_prior_12m + 1).
+--                A LOG RATIO, because dock throughput spans three orders of
+--                magnitude and a level difference would make this a proxy for
+--                "is this a busy dock", which phase 1 already measures. The +1
+--                keeps a silent dock finite; on any dock with real traffic it is
+--                numerically irrelevant.
+--
+--                IT CANNOT RESOLVE A STEP CHANGE INSIDE A YEAR. Accepted: the
+--                outcome it is meant to predict has a filing lead of 221-259
+--                days (D80), so a within-year step would not be usable anyway.
+--
+--   n_docks_balanced / balanced_share / the CENSORING RULE
+--                THE LOAD-BEARING PART. A dock that did not exist for the whole
+--                of BOTH windows would make the ratio measure the network's
+--                expansion instead of the neighbourhood's activity -- a new dock
+--                contributes nothing to the prior window and a full year to the
+--                recent one, so every address near one reads as booming.
+--
+--                So the windows are computed on a BALANCED DOCK SET ONLY:
+--                    staging.citibike_station.first_month <= M-23
+--                AND staging.citibike_station.last_month  >= M
+--                and an unbalanced dock is excluded from BOTH windows, never
+--                from one. A dock born mid-window contributes to NEITHER.
+--
+--                n_docks_balanced is how many of the address's reachable docks
+--                survive that test. balanced_share is what share of the
+--                address's activity AT MONTH M those balanced docks carry --
+--                i.e. how much of the neighbourhood's present-day bike traffic
+--                the feature can actually see.
+--
+--                NULL -- NEVER 0 -- where balanced_share < 0.5 or
+--                n_docks_balanced = 0. A 0 would assert "the docks here did not
+--                get busier", which is a claim about a neighbourhood; the truth
+--                is "most of the bike traffic here is at docks too young to
+--                compare", which is a claim about a capital plan. Same
+--                convention as phase 1's two shares and phase 2's NTA values.
+--                n_docks_balanced, balanced_share and docks_added_24m are
+--                stored EVEN WHEN the feature is NULL: they are the reason for
+--                the NULL, and a NULL whose reason is not recorded is a hole.
+--
+--   bike_growth_12m_rel
+--                bike_growth_12m MINUS the same quantity computed over the
+--                WHOLE balanced dock set of the system. THIS IS THE FEATURE.
+--                The raw column is dominated by the system-wide trend -- the
+--                e-bike rollout, the post-COVID recovery, a fare change -- which
+--                is identical for every address and therefore carries no
+--                cross-sectional information at all. Detrended, what is left is
+--                "this address's docks grew faster than the system did".
+--
+--   docks_added_24m
+--                reachable docks whose first_month falls strictly inside
+--                (M-23, M]. NETWORK EXPANSION, STORED SEPARATELY AND NEVER
+--                FOLDED INTO THE FEATURE, and honestly named. It is the exact
+--                quantity the balanced-set rule exists to keep out of the
+--                growth number, and it belongs in the model as a CONTROL --
+--                never as a predictor of retail, because "Lyft built a dock
+--                here" is the D1 error in a mobility costume.
+--
+--   member_only  TRUE = the ruled base series (weekday member starts + ends).
+--                FALSE = the all-rider robustness series. Two rows may exist for
+--                one (address_id, asof_month); they are different series and
+--                must never be pooled.
+-- ---------------------------------------------------------------------------
+-- CAVEATS THE DATABASE CANNOT ENFORCE
+--
+-- 1. DOCK SITING IS ENDOGENOUS TO RETAIL -- the D1 error. Lyft and DOT build
+--    docks where the trips will be, and trips are where the shops are. A dock
+--    set that grew is partly a corridor that was already getting more retail.
+--    Retail stays on the LEFT-hand side of every regression built on this.
+-- 2. THE E-BIKE ROLLOUT SINCE 2022 IS A SPATIALLY HETEROGENEOUS CONFOUND. 72%
+--    of 2026-04 trips were electric. E-bikes lengthened the median trip, which
+--    moves activity toward the docks at the ends of longer trips -- an uphill
+--    or outer-ring dock can grow for a reason that has nothing to do with its
+--    street.
+-- 3. RIDERS ARE NOT RESIDENTS. Citi Bike mode share is low single digits and
+--    skews young, male and higher-income. This is where CYCLISTS got busier.
+-- 4. GROWTH ON A COVID-RECOVERY BASE MEASURES WHERE RECOVERY WAS FASTEST. The
+--    2023-01 vintage (2022 vs 2021) is exactly that, and it is kept only
+--    because it is the one vintage line-for-line comparable with D88's 0.866.
+--    A neighbourhood that emptied in 2021 and refilled reads as booming.
+-- 5. CAPACITY CENSORS THE TOP, and rebalancing trucks are not trips (phase 1,
+--    caveats 2 and 4). A dock that was already full at both ends of the panel
+--    cannot grow, so the busiest docks are biased toward zero growth.
+-- 6. THE BALANCED SET SHRINKS THE FURTHER BACK THE VINTAGE IS. At an early
+--    asof_month fewer docks clear first_month <= M-23, so more addresses fall
+--    under the balanced_share floor and read NULL. That is honest censoring and
+--    not attrition, but it means the two vintages do not cover the same
+--    addresses and a comparison between them must say so.
+--
+-- VERDICT: CONTEXT ONLY, on the D76 footing, until it clears every gate in the
+-- R4 criterion. Nothing here enters gap_score, supply_ratio_vs_base, a
+-- recommendation grade, or the revenue model's lambda.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS analysis.address_bike_growth (
+    address_id          VARCHAR,
+    borough             VARCHAR,
+    asof_month          DATE,      -- M; with member_only, the idempotence key
+    activity_12m        DOUBLE,    -- [M-11, M]   weekday starts+ends, balanced docks
+    activity_prior_12m  DOUBLE,    -- [M-23, M-12] same
+    bike_growth_12m     DOUBLE,    -- log(activity_12m+1) - log(activity_prior_12m+1)
+    bike_growth_12m_rel DOUBLE,    -- the above MINUS the system's own; THE feature
+    n_docks_balanced    SMALLINT,  -- reachable docks alive across BOTH windows
+    balanced_share      DOUBLE,    -- their share of the address's activity AT M
+    docks_added_24m     SMALLINT,  -- reachable docks born inside (M-23, M]; a CONTROL
+    member_only         BOOLEAN,   -- TRUE = ruled base series; FALSE = robustness
+    window_first        DATE,      -- M-23
+    window_last         DATE,      -- M
+    run_at              TIMESTAMP
+);
