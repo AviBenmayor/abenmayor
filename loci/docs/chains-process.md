@@ -221,6 +221,41 @@ Shipping a `static` guess off one would manufacture the exact misreading
 (a frozen-since-2021 gym reading like a growing one) the field exists to
 prevent.
 
+### Tier 3: `watch` — before a chain is a chain *(not built — D110, GTM-192)*
+
+CANDIDATE starts at five locations or `flag_for`'s "2 new of ≤8", so it meets a brand only
+after it has expanded. `watch` is the tier below: **one or two open MN+BK locations, at
+least one intent signal in the last 12 months, not an excluded class.** It reads
+`analysis.poi_first_seen` rather than `chains.brand_latest`, because `detect.MIN_LOCATIONS`
+is 2 and a single-site operator has no brand row to read; the key is
+`chains.normalize.brand_key`, never `poi_first_seen.name_key` (token-sorted, and not the
+same key as `storefront_filing.business_name_key`). There is no category gate: Bathhouse's
+POI rows split across `nails_beauty` and `restaurant`, so filtering on category would admit
+or drop the owner's own example by chance. **A `watch` row is internal only** — never on the
+lead list or a D19 card until it graduates, because the evidence behind it is one filing or
+one headline. A row graduates when it clears the CANDIDATE predicate, keeping
+`watched_since` so the tier's lead time is measured; it expires after 18 months without a
+new signal, a window chosen against D80's fit-out → first-inspection p75 of 378 days.
+
+Signals: a second-site government filing, a "Brand II"/dba name hint, and a scan of fit-out
+**work descriptions** are derived monthly from the filings pipeline at no new spend;
+expansion-language press needs a new Tavily `query_kind`, funded by raising `MAX_QUERIES`
+60 → 68 rather than re-splitting, so the admitted-brand re-verification cycle — which has
+never once completed — is not slowed to pay for a new tier; capital events stay hand-entered;
+job postings are out.
+
+Two honest limits. First, every feed in `staging.storefront_filing` except DOHMH begins
+**2024-09-13** and `chains.press_hits` holds 45 days; both are live-status snapshots, so
+this tier accrues forward and cannot be back-tested — Bathhouse's January 2024 second
+opening was invisible for exactly that reason. Second, and sharper: the filings are
+food-and-drink. Every row in the measured pool entered at `liquor_application`. **Mink
+Padel** (West Harlem, opened 2025) has no row anywhere in the warehouse; **Padel Haus** has
+three, but only through its café. A premium amenity that sells no drink is invisible to the
+name-key route, and where its landlord files, the filing carries the landlord's name or
+none. The fit-out-description scan exists because of this: the only filing in the warehouse
+that names padel — "Padel State", 73 West St — was found by its work text and by nothing
+else.
+
 ---
 
 ## The first-seen ledger
