@@ -902,6 +902,7 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 ### D35 — Ground-truth subjects: all 15 open ledger recs are one point (Gowanus bbox centroid). Add address-level recs for the four 2026-09-14 report addresses via `loci recommendations add` so the instrument checks real storefronts? Owner call.
 - **Status:** answered
 - **Tag:** *validation / data*
+- **Answered by:** `Ground-truth browser session: verify the ledger anchors with Interceptor and score the miss view`
 - **Session:** 2026-09-14, abenmayor-cc
 - **Why it matters:** The ledger's 15 open rows all key to `anchor_address_id NULL` at one shared anchor (the 2026-09-11 Gowanus bbox centroid), so a ground-truth session against them is one look producing 15 category verdicts, not 15 independent address checks. The four docs/recommendations/*-2026-09-14.md reports (376 Graham Ave, 4 East 8th St, 379 Broome St, the Gowanus BBL) are real, address-level subjects the instrument could check instead.
 - **Current answer:** Owner 2026-09-14: add the four address reports as subjects (376 Graham Ave, 4 East 8th St, 379 Broome St, the Gowanus BBL) as address-level ledger rows via `loci recommendations add`; the Gowanus centroid stays as the fifth look. Rows being added by a parallel agent.
@@ -909,36 +910,42 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 ### D36 — Standing of the supervised Google Maps browser session under Google's terms: same footing as the BizQuest session (fe59eb2), human-paced, owner present, ~15 anchors per session. Confirm the owner is comfortable and whether a per-session cap should be enforced in the protocol.
 - **Status:** answered
 - **Tag:** *infra / policy*
+- **Answered by:** `Ground-truth browser session: verify the ledger anchors with Interceptor and score the miss view`
 - **Session:** 2026-09-14, abenmayor-cc
 - **Current answer:** Owner 2026-09-15: "as long as Google Maps sessions aren't over 30 minutes without a 2 minute break in between, we are good." Rule: no Maps segment longer than 30 minutes; consecutive segments separated by a break of at least 2 minutes with no Maps page loads; owner present; never unattended. Written into docs/ground-truth-protocol.md §1 (commit d7c6fd1). The first session (57 page loads, 19 anchors) ran about 28 minutes, inside the cap.
 
 ### D37 — Benchmarks: which of the surveyed public sources should enter the revenue model — IRS SOI nonfarm sole-proprietorship receipts by NAICS (targets the D40 owner-operated undercount), trade-association per-store anchors (NCPA pharmacy ~$5.4M, NGA grocery $380/sqft independents, NACS convenience ~$2.25M/store, laundromat $410–564k), and ICSC's measured occupancy-cost ratios by tenant category (fitness ~32%, specialty restaurant ~24%, drug store ~6%) to replace benchmarks.yaml's generic occupancy_cost_ratio. Nothing public gives per-storefront revenue.
 - **Status:** open
 - **Tag:** *model / data*
+- **Answered by:** — (no ticket yet; candidate sources listed above)
 - **Session:** 2026-09-15, abenmayor-cc
 - **Current answer:** —
 
 ### D38 — What counts as a ground-truth "miss": a name_key mismatch against a chain alias is not missing supply; a hit beyond 400 m is not in the catchment; propose the rule (reconcile aliases, require storefront distance ≤ 400 m, then hand-review) before any miss count is quoted.
 - **Status:** open
 - **Tag:** *validation / method*
+- **Answered by:** `Ground-truth follow-ups: storefront coordinates in the observation grain, name reconciliation of the 45 miss candidates, deli-aware convenience terms, anchor eligibility check`
 - **Session:** 2026-09-15, abenmayor-cc
 - **Current answer:** —
 
 ### D39 — Convenience search terms: should the protocol query 'deli' and 'bodega' alongside 'convenience store', and should each category carry several Maps terms?
 - **Status:** open
 - **Tag:** *validation / data*
+- **Answered by:** `Ground-truth follow-ups: storefront coordinates in the observation grain, name reconciliation of the 45 miss candidates, deli-aware convenience terms, anchor eligibility check`
 - **Session:** 2026-09-15, abenmayor-cc
 - **Current answer:** —
 
 ### D40 — Anchor eligibility: how did a fenced construction lot (545 Sackett St) pass as a 'commercial' address-level anchor; should address-level recommendations require a Storefront Registry or building-class check?
 - **Status:** open
 - **Tag:** *validation / rigor*
+- **Answered by:** `Ground-truth follow-ups: storefront coordinates in the observation grain, name reconciliation of the 45 miss candidates, deli-aware convenience terms, anchor eligibility check`
 - **Session:** 2026-09-15, abenmayor-cc
 - **Current answer:** —
 
 ### D41 — Instrument writes vs re-baseline windows: should `ground-truth record` be batched to the start of a planned re-baseline instead of running ad hoc, given each closed verdict moves the hash under stamped artefacts?
 - **Status:** open
 - **Tag:** *infra / policy*
+- **Answered by:** — (no ticket yet; rule proposal pending owner ruling)
 - **Session:** 2026-09-15, abenmayor-cc
 - **Current answer:** —
 
@@ -990,3 +997,12 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Session:** 2026-09-15
 - **Why it matters:** The D109 candidate predicate starts at 5 locations or the fast-small flag (2 new of ≤8), so by construction it sees a brand only after it has already expanded. The owner wants the earlier signal: an operator with one or two sites and intent to grow. Candidate intent signals, none built: (a) a second-site government filing (SLA pending application, DOB fit-out, DOHMH pre-permit) under a name key that already has exactly one open location — the filings pipeline (D80) can see this today for restaurant/bar/café/grocery/pharmacy only; (b) press with expansion language ("second location", "raised", "signed a lease") on a one-location name — a Tavily query kind that does not exist yet; (c) a capital event (seed/Series A, PE minority) on a single-site hospitality or wellness operator — hand-entered, Crunchbase free tier; (d) an expansion-role job posting (director of real estate, head of development) at a one- or two-site brand; (e) a trademark filing or a new "Brand Name II LLC"/"Brand Name Holdings" entity at NYS DOS. Bathhouse (Williamsburg → Flatiron, 2 sites) and Mink would each have tripped (a) and (b) before their second opening. Design question: does this become a third tier ("watch: pre-chain", 1–2 locations + ≥1 intent signal) in the D109 process, with its own admission reason, and which of (a)–(e) is cheap enough to run monthly inside the existing 60-query Tavily budget and the filings pipeline?
 - **Current answer:** tier 3 `watch` designed and ticketed as GTM-192, internal-only, signals (a)/(e)/(f) derived in the filings pipeline plus a new Tavily watch query kind with the cap raised to 68; Mink Padel retrospective shows premium categories enter no feed Loci reads, so signal (f) fit-out free-text scan is the only in-warehouse route to them.
+
+### D49 — Premium services: what business types fall in, and how could a price signal be obtained?
+- **Status:** open
+- **Tag:** *data / sourcing*
+- **Answered by:** — (no ticket yet; candidate answer above)
+- **Session:** 2026-09-15, abenmayor-cc
+- **Why it matters:** The owner asked what data Loci holds on "premium services" and how to get price. Inventory (read-only, 2026-09-15): no POI table carries a price tier, rating, or review count; `webmap/data/character.json` is land-use character (D-independent), not retail tier; the premium track is Axis 3 (CONTEXT §11, D22/D28, `model/premium.py`) and covers types outside the 15 slugs (wine bars, bathhouses, spas/med-spas, boutique fitness, climbing, padel, pet grooming, florists, dry cleaning). Fine-grained source categories survive only in `staging.poi.attrs` (Overture `primary_category`; Foursquare `labels`) and nothing downstream reads them; they cleanly split fitness (gym/yoga/pilates/cycle/climbing), nails_beauty (nail salon/beauty salon/spa/day spa/waxing/lash), hair_barber (salon/barber), cafe_bakery (coffee shop/bakery/bagel/donut), partially clinic; restaurant has cuisine only. Price probes (47 budgeted Text Search calls, ~$1.65 at Enterprise, ledger 8,992 → 9,039; USD not written to `analysis.spend_ledger` because its `kind` CHECK admits only report/verify — record this gap): probe 1 (32 calls, 2 per category, `priceLevel` only) returned price for 5/32, bars and cafés only, services zero; probe 2 (15 food/bar calls, `priceLevel` + `priceRange`) returned price for 12/15, the two fields co-occurring perfectly (`priceRange` = `{startPrice, endPrice}` in USD units, open-ended top e.g. "$100+"), the three blanks being one Permanently-closed match and two wrong-business matches. Probe 1's restaurant zero was a two-POI sample with bad matches, not a coverage fact. Name match of the top hit was 18/32 and 7/15, so any price ingest needs a name-and-distance acceptance rule first. `priceLevel`, `priceRange`, `rating`, `userRatingCount` are all Enterprise SKU ($35/1,000 vs Pro $32/1,000 that the closure check uses; Google bills the highest SKU touched, so +9.4% per call). Interceptor reads the same "$$" labels from Maps results for free, but only at supervised-session scale (≈1,000 POIs per 30-min segment under the D36 cap) and with the same food-only coverage; systematic city-wide collection through the browser would be scraping in substance, outside the D36 standing. No channel gives service prices (salon/gym/clinic pricing lives on booking sites); for services, business sub-type is the only proxy. Owner 2026-09-15: assessment only for now, no pilot.
+- **Candidate answer (not ruled):** (1) surface `staging.poi.attrs` sub-types into `poi_presence` as `subcategory` so premium sub-types are a filter, not a new source; (2) if ratings become useful for Axis 3, run closure checks at Enterprise and capture `priceRange`/`priceLevel`/`rating`/`userRatingCount` in one pass behind a match rule, food categories only; (3) widen `spend_ledger.kind` to admit `probe`; (4) no price budget line on its own.
+- **Current answer:** —
