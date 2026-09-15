@@ -1801,8 +1801,8 @@
     },
     {
       "Title": "Citi Bike phase 1: station-month trips since 2019, bike_starts/ends_400m context measures, DOT validation, map layer",
-      "Description": "Owner 2026-09-14 (\"yes absolutely. make sure we dont forget to finish this\"): ingest tripdata (S3 tripdata, monthly; 2021-02 schema with stable station ids; JC files excluded) to station \u00d7 month \u00d7 day_type \u00d7 daypart \u00d7 member/casual. Registry entry cost 0 under the NYCBS data-use licence (derived measures OK, no redistribution of the raw dataset). bike_starts_400m / bike_ends_400m / bike_evening_ends_share_400m / bike_casual_share_400m computed on the address grain via the walk graph like transit \u2014 CONTEXT ONLY until it clears the D76 graduation test. Validate against DOT bi-annual counts per window (expect corridor-only correlation). Map layer beside transit.\n\nCaveats: rider skew, dock siting endogenous to density and retail, seasonality, the COVID break, and e-bike growth since 2022.\n\nOpened 2026-09-14 (CHECKPOINT D93). Pushed to Linear 2026-09-14 as GTM-166.",
-      "Status": "Backlog",
+      "Description": "Owner 2026-09-14 (\"yes absolutely. make sure we dont forget to finish this\"): ingest tripdata (S3 tripdata, monthly; 2021-02 schema with stable station ids; JC files excluded) to station \u00d7 month \u00d7 day_type \u00d7 daypart \u00d7 member/casual. Registry entry cost 0 under the NYCBS data-use licence (derived measures OK, no redistribution of the raw dataset). bike_starts_400m / bike_ends_400m / bike_evening_ends_share_400m / bike_casual_share_400m computed on the address grain via the walk graph like transit \u2014 CONTEXT ONLY until it clears the D76 graduation test. Validate against DOT bi-annual counts per window (expect corridor-only correlation). Map layer beside transit.\n\nCaveats: rider skew, dock siting endogenous to density and retail, seasonality, the COVID break, and e-bike growth since 2022.\n\nOpened 2026-09-14 (CHECKPOINT D93). Pushed to Linear 2026-09-14 as GTM-166.\n\nDone 2026-09-14 (CHECKPOINT D102, commits f7f3d29, ac914da): staging.citibike_station_month, 44-month panel 2023-01\u20262026-08 (1,400,477 rows, 2,611 docks, 151,909,792 starts / 151,566,696 ends, member 81.7%); bike_starts_400m / bike_ends_400m / bike_evening_ends_share_400m / bike_casual_share_400m on all 281,842 MN+BK lot addresses (149,364 within 400 m of a dock); DOT validation \u03c1 +0.684 all / +0.275 Brooklyn \u2014 context only, never a grade (D76 verdict); webmap/data/bike.json (2,491 docks). Phases 2 (GTM-167, OD leakage) and 3 (GTM-168, activity growth + Divvy adapter) still open.",
+      "Status": "Done",
       "Priority": 2,
       "Estimate": 3,
       "Labels": "ingest,validation",
@@ -1828,6 +1828,26 @@
       "Labels": "model,infra",
       "Project": "Loci",
       "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Forecast: re-issue the 2026-09 vintage on the final supply hash after re-run #3, then score/export; adopt the \"final freezes poi_status\" rule",
+      "Description": "CHECKPOINT D96. The 2026-09 vintage 0.1.1+3cd0e269 was fitted on a7c531ebca17 (declared final by the screen re-run #2), after which a single poi_status change (Windclimb, unknown\u2192closed) moved the live hash to 467cd5969200 and forced re-run #3 \u2014 a repeat of the D94/D101 failure mode one layer up, this time on closure evidence rather than dedup.\n\nSteps: `loci forecast issue --month 2026-09 --force` on the final hash, `forecast score`, `forecast-export`, `citibike export`, `export-webmap` after the revenue layer lands. The a7c531ebca17 vintage stays as history (prune-eligible, GTM-163).\n\nWhy: the group rule adopted this window (D96/D101) is that a \"final\" signal freezes poi_status writes too, the same way an in-progress re-run freezes the supply hash \u2014 re-issuing on anything but the truly final hash would ship a forecast fit on evidence already known to be stale.\n\nOpened 2026-09-14 (CHECKPOINT D96). Pushed to Linear 2026-09-14 as GTM-181.",
+      "Status": "Backlog",
+      "Priority": 2,
+      "Estimate": 2,
+      "Labels": "model,rigor",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Ledger key migration follow-ups: 'stale' state in poi_is_open, gov_filing count not conserved on merge, sql/015 comment stale",
+      "Description": "CHECKPOINT D103. Caveats from the first-seen ledger key migration (sql/035, commit 00eeca3) that shipped for the category-precedence dedup: n_months_seen is a max not a history (a merged key's month-count does not reflect the true seen-history across the merged clusters); conflicting closures keep the latest closed_on (a merge between two clusters with different closure verdicts silently drops the earlier one rather than reconciling it); 3,880 gov_filing rows folded to an earlier source_date, earliest wins (gov_filing count is not conserved across the migration); sql/015's comment still says location_key = cluster_id, stale since category joined location_key under D101.\n\nLow priority: none of the four block the migration's own guarantees (fake openings 0, vanished-without-map 0, first_seen moved later 0, verified against the pre-migration copy) \u2014 these are downstream precision gaps, not correctness breaks.\n\nOpened 2026-09-14 (CHECKPOINT D103). Pushed to Linear 2026-09-14 as GTM-182.",
+      "Status": "Backlog",
+      "Priority": 4,
+      "Estimate": 2,
+      "Labels": "ingest",
+      "Project": "Loci",
+      "Milestone": "E1 \u00b7 Ingest and Grid"
     }
   ]
 }

@@ -353,6 +353,13 @@ claim stands on.
 - **Fails if:** n/a — data-quality/method question; but a brand-suffix rule loose enough to separate "Saraghina Bakery" from "Saraghina" without reintroducing the cross-category duplicates D101 was built to fix would need its own precision audit before shipping.
 - **Current answer:** Open. Not part of the 2026-09-14/15 dedup ruling — recorded as a residual worth a look, not decided.
 
+### D28 — Should a system-wide zero-ridership day (2026-02-23) stay in the per-weekday divisor?
+- **Status:** open
+- **Answered by:** (not ticketed) — CHECKPOINT D102
+- **Why it matters:** Citi Bike phase 1's completeness check (D102, commit ac914da) found 2026-02-23 reads a true system-wide zero across every station (a storm), distinct from a truncated file — the code currently keeps it in the per-weekday divisor as an interior outage day rather than excluding it, which understates every weekday-mean measure built from that month by one day's worth of real (zero) activity.
+- **Fails if:** n/a — data-treatment/method question; but silently keeping or silently dropping it without a stated rule would make the choice invisible to anyone reading a downstream weekday-mean number.
+- **Current answer:** Open — owner call.
+
 ### Tier X · Explanatory — conditional structure, no temporal claim
 
 ### X1 — How much DNCI variation is explained by density, income, transit and commercial zoning capacity?
@@ -424,6 +431,13 @@ claim stands on.
 - **Why it matters:** docs/carrying-capacity-2026-09.md (D93) fits the NYC curve on Loci's own POIs, overlapping 400 m walksheds; every calibrated constant in it is NYC-fitted, and D93's portability claim — that the CBP-to-POI ratio, not the raw curve, is what travels — has never been checked against a second city's own CBP data. Chicago, Philadelphia and LA are the nearest metros to NYC by dense population and the candidates for the first check.
 - **Fails if:** a closed-catchment (NTA/CD-partition) refit of the gated forms does not survive at all, in which case there is no NYC parameter stable enough to even ask the portability question of; or, if it does survive, the CBP-only replication in a second city returns a ratio or flattening point far outside the NYC range, in which case the curve is NYC-specific and only the METHOD (gate, fit form, closed-catchment design) travels, not the numbers.
 - **Current answer:** Open, ticketed GTM-164 (ticket b). Blocked on the closed-catchment refit (same ticket) — the open-shed fit cannot itself be handed to a second city as the number to reproduce.
+
+### X11 — Does dock activity add information beyond transit for entry/forecast, or is it collinear once character and homes are in the model?
+- **Status:** open
+- **Answered by:** `Citi Bike phase 3: station activity growth as a retrodiction/forecast feature; Divvy (Chicago) adapter as the portability probe`
+- **Why it matters:** Citi Bike phase 1 (D102, GTM-166) found the Gowanus-vs-East-Village ordering REVERSES between bike and transit (bike starts p50 265 vs 1,286; transit runs the other way) — the first evidence any of Loci's foot-traffic proxies is not just a restatement of the transit signal. If bike activity carries information transit and neighborhood character don't already capture, it belongs in the forecast model as a feature; if it's collinear with character+homes once both are in, it's redundant and should stay context-only like transit (D76).
+- **Fails if:** a challenger forecast-model version with bike_starts/ends_400m added shows no AUC lift, or the same-sign coefficient as transit density, once character and homes_400m are already in the model — in which case dock activity is a restatement, not new information.
+- **Current answer:** Open. Test in the forecast model as a challenger version (GTM-168, Citi Bike phase 3) once the entry-retrodiction panel is re-run.
 
 ### Tier T · Predictive — temporal ordering, no identification claim
 
