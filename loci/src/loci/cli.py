@@ -7549,6 +7549,15 @@ def citibike_ingest(
             f"{report['end_events_after_month_end']:,} arrivals past the file's "
             f"month end (the month is the unit of idempotence -- see the module "
             f"docstring)")
+        if report.get("dates_with_no_trip"):
+            console.print(
+                f"[yellow]{report['dates_with_no_trip']} calendar date(s)[/] carried "
+                f"NO trip system-wide ({', '.join(report['months_with_a_zero_date'])}) "
+                f"— a system outage, e.g. a storm, not a missing file: the file's "
+                f"last date is the month's last date. They STAY in the divisor, "
+                f"because an average weekday that month really did include a day "
+                f"the docks were shut, and dropping days because ridership was low "
+                f"would select on the outcome.")
         if dry_run:
             console.print("[dim]--dry-run:[/] nothing written.")
             raise typer.Exit(0)
