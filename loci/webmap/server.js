@@ -53,6 +53,7 @@ function googleNearby(lat,lng,cat){return new Promise((resolve)=>{
 });}
 
 http.createServer(async(req,res)=>{
+  if(await require('./report_routes').handle(req,res))return;
   const u=new URL(req.url,'http://x'); const p0=u.pathname;
   if(p0==='/api/validate'){
     if(!allow()){res.writeHead(CLICK_BUDGET>0&&clicks<CLICK_BUDGET?429:503);return res.end(JSON.stringify({error:CLICK_BUDGET>0?(clicks>=CLICK_BUDGET?'budget':'rate'):'disabled'}));}

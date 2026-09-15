@@ -508,17 +508,33 @@ def _resolution_sql(n_closed: str, n_open: str, n_poi: str) -> str:
             f" ELSE 'unresolved' END")
 
 
-def colocation_view_sql(coord_dp: int = COORD_DP) -> str:
+def colocation_view_sql(coord_dp: int = COORD_DP, *, evidence: bool = False) -> str:
     """The DDL for analysis.poi_supply_status + analysis.poi_colocation.
 
     GENERATED, for the same reason model/address_gaps.address_gaps_view_sql
     and model/address_character.create_views are generated: the open/closed
     rule must have ONE definition in the codebase, and a CASE expression
     copy-pasted into a .sql file is a second one waiting to drift.
-    sql/029_poi_colocation.sql is the committed RENDERING of this function and
+    sql/029_poi_colocation.sql is the committed RENDERING of this function
+    with `evidence=False` (the default) and
     tests/test_poi_colocation.py::test_sql_file_matches_generator fails if the
     two ever disagree -- so `loci colocation --emit-sql > src/loci/sql/029_...`
     is how the file is regenerated, never a hand edit.
+
+    `evidence=True` (D98, GTM-170) layers `model/poi_evidence.py`'s
+    precedence rule on top of the base predicate: a row in
+    `analysis.poi_closure_evidence` -- a Google Places lookup or a classified
+    web hit, from `loci verify-closures` or a report's on-demand check -- can
+    override `poi_status`/`poi_status_basis` where it is newer than the base
+    verdict's own evidence date (`poi_evidence.poi_status_date_sql`), and
+    unconditionally where the base is 'unknown'. `db.init_schema` applies this
+    rendering AFTER sql/033_poi_closure_evidence.sql creates that table (the
+    021_address_character pattern -- a VIEW's query is bound at CREATE time,
+    so it cannot reference a table that does not exist yet); a warehouse with
+    033 not yet applied never asks for `evidence=True`. `evidence=False` is
+    UNCHANGED byte-for-byte from before this parameter existed -- that is what
+    keeps sql/029 and this function's default output identical, so a caller
+    that never passes `evidence=` sees no behaviour change.
 
     Both objects are VIEWS. Nothing is materialised, so neither can go stale
     relative to staging.poi / analysis.poi_dedup / analysis.poi_presence, and
@@ -526,6 +542,25 @@ def colocation_view_sql(coord_dp: int = COORD_DP) -> str:
     """
     status = poi_is_open("p", "f.closed_on")
     basis = poi_status_basis("p", "f.closed_on")
+    extra_cols = ""
+    evidence_cte = ""
+    evidence_join = ""
+    if evidence:
+        # Local import: model/poi_evidence.py imports THIS module (for the
+        # base predicate's constants), so a module-level import here would be
+        # circular -- the same reason db.init_schema's own hooks import
+        # model/address_gaps and model/address_character locally.
+        from loci.model import poi_evidence as pe
+
+        date_sql = pe.poi_status_date_sql("p", "f.closed_on")
+        raw_status, raw_basis = status, basis
+        status = pe.wrap_status_sql(raw_status, date_sql, ev="e")
+        basis = pe.wrap_basis_sql(raw_status, raw_basis, date_sql, ev="e")
+        evidence_cte = ",\n" + pe.evidence_cte_sql("ev")
+        evidence_join = "\n    LEFT JOIN ev e ON e.poi_id = s.poi_id"
+        extra_cols = (",\n           e.verdict AS evidence_verdict,"
+                      "\n           e.url AS evidence_url,"
+                      "\n           e.evidence_date AS evidence_date")
     key = (f"(s.category || '@' || printf('%.{coord_dp}f,%.{coord_dp}f', "
            f"round(ST_X(s.geom), {coord_dp}), round(ST_Y(s.geom), {coord_dp})))")
     res = _resolution_sql("g.n_closed", "g.n_open", "g.n_poi")
@@ -546,17 +581,17 @@ WITH ledger AS (
     FROM analysis.poi_first_seen
     WHERE poi_id_latest IS NOT NULL
     GROUP BY 1
-),
+){evidence_cte},
 base AS (
     SELECT s.*,
            {key} AS colocation_key,
            f.closed_on  AS ledger_closed_on,
            f.closed_src AS ledger_closed_src,
            {status} AS poi_status,
-           {basis} AS poi_status_basis
+           {basis} AS poi_status_basis{extra_cols}
     FROM analysis.poi_supply s
     JOIN staging.poi p ON p.poi_id = s.poi_id
-    LEFT JOIN ledger f ON f.poi_id = s.poi_id
+    LEFT JOIN ledger f ON f.poi_id = s.poi_id{evidence_join}
 ),
 g AS (
     SELECT colocation_key,

@@ -859,3 +859,42 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Status:** open
 - **Unblocks:** E1 · Ingest and Grid
 - **Current answer:** — (Convention is EPSG:4326 in the database; metric work reprojects explicitly. Where does the CRS get re-attached on the way out?)
+
+### D29 — When closure evidence names a successor at the same address (Windclimb → D's Grab and Go), should Loci mint a POI for the successor?
+- **Status:** open
+- **Tag:** *data / supply*
+- **Session:** 2026-09-14, abenmayor-29
+- **Why it matters:** Today successor_name is recorded on the evidence row only; minting would fabricate a first-seen date (D79 tension) but the map otherwise shows a hole where a business trades.
+- **Current answer:** —
+
+### D30 — spend_ledger provider CHECK is ('places','tavily','anthropic'); plan-billed Claude CLI prose is recorded as provider 'anthropic' with usd 0 and a 'plan-billed' detail. Widen the CHECK in a migration, or keep provider = model vendor and add a billing column?
+- **Status:** open
+- **Tag:** *data / schema*
+- **Session:** 2026-09-14, abenmayor-29
+- **Current answer:** —
+
+### D31 — verify-closures orders candidates by colocation_n then distance to the bbox centre. Should staleness of the last observation (oldest observed_on first) rank above distance, since stale POIs are the likeliest closures?
+- **Status:** open
+- **Tag:** *method*
+- **Session:** 2026-09-14, abenmayor-29
+- **Current answer:** —
+
+### D32 — Freeze protocol for a stamped supply hash: a "final" declaration must go to every active session in one message before the first fit stamps it; any poi_status-changing write after that is a re-stamp event. Where should this live: CHECKPOINT rules, CLAUDE.md, or a `loci freeze` marker table the CLI refuses to write past?
+- **Status:** open
+- **Tag:** *infra / decision*
+- **Session:** 2026-09-14, abenmayor-29
+- **Why it matters:** Prevents supply hash moving under a running screen re-run due to mid-run evidence updates.
+- **Current answer:** —
+
+### D33 — The grandfathering POI test uses a 20 m point radius; PLUTO lot polygons would make it exact (POI inside the lot). Worth the geometry ingest, given the sensitivity table (20 m -> 30 m moves grandfathered 15k -> 34k under the not-closed rule)?
+- **Status:** open
+- **Tag:** *method*
+- **Session:** 2026-09-14, abenmayor-29
+- **Current answer:** —
+
+### D34 — db.init_schema re-renders the co-location view with evidence after sql/033 from poi_presence.colocation_view_sql(evidence=True); a single-file apply of sql/029 alone would regress it to the evidence-less form, the same class of defect as storefront_pipeline.ensure_schema reverting poi_first_seen (fixed f8142e0). Should view definitions be owned by exactly one renderer with a drift test?
+- **Status:** open
+- **Tag:** *infra / data-model*
+- **Session:** 2026-09-14, abenmayor-29
+- **Why it matters:** Two independent instances of this class of bug in D101/D103 suggest the fix belongs at the init_schema/ensure_schema level, not per-caller.
+- **Current answer:** —

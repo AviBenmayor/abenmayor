@@ -62,6 +62,18 @@ def init_schema(con: duckdb.DuckDBPyConnection) -> None:
             # here is the right moment.
             from loci.model.address_character import create_views
             create_views(con)
+        if path.name == "033_poi_closure_evidence.sql":
+            # analysis.poi_supply_status / analysis.poi_colocation (sql/029)
+            # were created BEFORE analysis.poi_closure_evidence existed, and a
+            # DuckDB view's query is bound at CREATE time -- the same
+            # 021_address_character reason as above. Re-render them here with
+            # the evidence precedence rule layered on
+            # (model/poi_presence.colocation_view_sql(evidence=True),
+            # model/poi_evidence.py), now that 033's table exists. sql/029
+            # itself stays the byte-identical evidence=False rendering; only
+            # the LIVE view in a real warehouse carries evidence.
+            from loci.model.poi_presence import colocation_view_sql
+            con.execute(colocation_view_sql(evidence=True))
 
 
 # DuckDB's ST_Distance_Sphere reads POINT(x, y) as (LATITUDE, LONGITUDE); our geometry

@@ -295,6 +295,7 @@ class RecordResult:
     n_duplicate: int          # same card_hash already in the ledger
     rec_ids: tuple = ()
     dry_run: bool = False
+    n_ineligible: int = 0     # D82/seed 2026-09-14: anchor_address_id is legality='ineligible'
 
 
 def _row(*, issued_on, issued_by, area_kind, area_id, area_label, category,
@@ -345,21 +346,88 @@ def _row(*, issued_on, issued_by, area_kind, area_id, area_label, category,
     }
 
 
+def _has_legality_column(con) -> bool:
+    """Whether `analysis.address` has the `legality` column at all (a
+    database predating sql/031, or one on which `loci address-legality
+    build` has never run, does not). Factored out of `_ineligible_anchor_ids`
+    so the READ path (`report_rows` / `list_recommendations`, D97 item 6)
+    can share the exact same fail-open check rather than re-deriving it."""
+    return bool(con.execute(
+        "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'analysis' "
+        "AND table_name = 'address' AND column_name = 'legality'").fetchone()[0])
+
+
+def _ineligible_anchor_ids(con, address_ids: set) -> set:
+    """Which of `address_ids` are legality='ineligible' (D82, seed
+    2026-09-14, AC-6) -- the recommendation ledger and every top-N output
+    must hold zero of them, D75's "never dropped from the universe" applying
+    to the SCREEN, not to what gets recommended as investable.
+
+    FAILS OPEN, same contract `score.supply`'s anchor-coverage measurement
+    uses: if `analysis.address` has no `legality` column yet (a database
+    predating sql/031, or one on which `loci address-legality build` has
+    never run), this returns an empty set rather than raising or blocking
+    every insert -- a missing measurement must never silently delete
+    something it was never asked to delete."""
+    if not address_ids:
+        return set()
+    if not _has_legality_column(con):
+        return set()
+    ids = [a for a in address_ids if a]
+    if not ids:
+        return set()
+    holes = ", ".join("?" for _ in ids)
+    rows = con.execute(
+        f"SELECT address_id FROM analysis.address "
+        f"WHERE address_id IN ({holes}) AND legality = 'ineligible'", ids).fetchall()
+    return {r[0] for r in rows}
+
+
+def _ineligible_filter_sql(con, alias: str = "r") -> str:
+    """A SQL fragment (a leading ' AND (...)' clause, or '') that excludes
+    rows whose `{alias}.anchor_address_id` is legality='ineligible' -- the
+    READ-PATH half of AC-6 (D97 item 6), defense in depth alongside
+    `insert_rows`'s write-time gate above. An anchor's legality can change
+    AFTER a recommendation was written (a rebuild re-zones the lot, or the
+    row predates sql/031 entirely), so `report_rows` / `list_recommendations`
+    must not simply trust what got past the gate at insert time -- they
+    re-check against the CURRENT `analysis.address.legality` on every read.
+    Fails open exactly like `_ineligible_anchor_ids`: '' when the column is
+    absent, so a database with no legality build yet does not have every
+    recommendation silently vanish from its own report."""
+    if not _has_legality_column(con):
+        return ""
+    return (f" AND ({alias}.anchor_address_id IS NULL OR {alias}.anchor_address_id "
+            "NOT IN (SELECT address_id FROM analysis.address WHERE legality = 'ineligible'))")
+
+
 def insert_rows(con, rows: list[dict], *, dry_run: bool = False) -> RecordResult:
-    """INSERT, skipping any card_hash the ledger already holds.
+    """INSERT, skipping any card_hash the ledger already holds AND any row
+    whose `anchor_address_id` is legality='ineligible' (D82, AC-6) -- the
+    ONE choke point every write to `analysis.recommendation` passes through
+    (`recs add`, `recs backfill`), so gating here is enough to make AC-6's
+    "zero ineligible rows in the ledger" hold without also touching
+    `model/recommend.py`'s card-generation path (uncommitted peer work this
+    session was told not to edit).
 
     The skip is the whole idempotency contract and it is a SELECT-then-filter
     rather than an ON CONFLICT so the caller can be told how many were
     duplicates — a `--record` that silently wrote nothing would be
-    indistinguishable from one that silently wrote everything."""
+    indistinguishable from one that silently wrote everything. The legality
+    gate is reported the same way (`n_ineligible`), never silently."""
     ensure_schema(con)
     have = {r[0] for r in con.execute(
         "SELECT card_hash FROM analysis.recommendation").fetchall()}
-    fresh, dupes = [], 0
+    ineligible = _ineligible_anchor_ids(
+        con, {r.get("anchor_address_id") for r in rows})
+    fresh, dupes, blocked = [], 0, 0
     seen = set()
     for r in rows:
         if r["card_hash"] in have or r["card_hash"] in seen:
             dupes += 1
+            continue
+        if r.get("anchor_address_id") in ineligible:
+            blocked += 1
             continue
         seen.add(r["card_hash"])
         fresh.append(r)
@@ -372,7 +440,7 @@ def insert_rows(con, rows: list[dict], *, dry_run: bool = False) -> RecordResult
     return RecordResult(n_offered=len(rows), n_written=len(fresh),
                         n_duplicate=dupes,
                         rec_ids=tuple(r["rec_id"] for r in fresh),
-                        dry_run=dry_run)
+                        dry_run=dry_run, n_ineligible=blocked)
 
 
 def set_status(con, rec_id: str, status: str, *, reason: str | None = None,
@@ -410,17 +478,24 @@ def withdraw(con, rec_id: str, reason: str, *, on: dt.date | None = None,
 
 def list_recommendations(con, *, status: str | None = None,
                          category: str | None = None, limit: int = 0):
+    """The ledger, newest outcome attached -- `loci recommendations list`.
+
+    Joins `analysis.recommendation` for `anchor_address_id` (the latest view
+    does not carry it) SOLELY to apply `_ineligible_filter_sql`'s read-time
+    AC-6 gate (D97 item 6) inside the WHERE clause, so `--limit` counts
+    ELIGIBLE rows, not raw rows filtered down after the fact."""
     require_schema(con)
-    where, params = [], []
+    where, params = ["l.rec_id = l.rec_id"], []  # always-true anchor for AND-joining
     if status:
-        where.append("status = ?")
+        where.append("l.status = ?")
         params.append(status)
     if category:
-        where.append("category = ?")
+        where.append("l.category = ?")
         params.append(category)
-    sql = ("SELECT * FROM analysis.recommendation_latest"
-           + (" WHERE " + " AND ".join(where) if where else "")
-           + " ORDER BY issued_on, category")
+    sql = ("SELECT l.* FROM analysis.recommendation_latest l "
+           "JOIN analysis.recommendation r USING (rec_id) WHERE "
+           + " AND ".join(where) + _ineligible_filter_sql(con, alias="r")
+           + " ORDER BY l.issued_on, l.category")
     if limit:
         sql += f" LIMIT {int(limit)}"
     return con.execute(sql, params).fetchdf()
@@ -917,16 +992,24 @@ def check(con, *, month: str | None = None, radius_m: float | None = None,
 
 def report_rows(con) -> list[dict]:
     """The ledger with status, days open and the latest match — the thing
-    `loci recommendations report` prints."""
+    `loci recommendations report` prints.
+
+    Joins `analysis.recommendation` for `anchor_address_id` SOLELY to apply
+    `_ineligible_filter_sql`'s read-time AC-6 gate (D97 item 6) -- defense in
+    depth alongside `insert_rows`'s write-time gate, because an anchor's
+    legality can change (a rebuild re-zones it) after the row was written."""
     require_schema(con)
-    df = con.execute("""
-        SELECT rec_id, issued_on, area_label, area_id, category, grade,
-               supply_ratio_at_issue, status, status_reason, latest_month,
-               match_kind, days_open, is_censored, opened_on, entry_stage,
-               distance_m, solution_match_score, matched_location_key,
-               matched_pipeline_key, proposed_solution, format_hint
-        FROM analysis.recommendation_latest
-        ORDER BY issued_on, supply_ratio_at_issue NULLS LAST, category
+    filt = _ineligible_filter_sql(con, alias="r")
+    df = con.execute(f"""
+        SELECT l.rec_id, l.issued_on, l.area_label, l.area_id, l.category, l.grade,
+               l.supply_ratio_at_issue, l.status, l.status_reason, l.latest_month,
+               l.match_kind, l.days_open, l.is_censored, l.opened_on, l.entry_stage,
+               l.distance_m, l.solution_match_score, l.matched_location_key,
+               l.matched_pipeline_key, l.proposed_solution, l.format_hint
+        FROM analysis.recommendation_latest l
+        JOIN analysis.recommendation r USING (rec_id)
+        WHERE 1 = 1{filt}
+        ORDER BY l.issued_on, l.supply_ratio_at_issue NULLS LAST, l.category
     """).fetchdf()
     return df.to_dict("records")
 

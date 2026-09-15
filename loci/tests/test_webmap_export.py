@@ -36,12 +36,15 @@ tests instead of passing them.
 """
 from __future__ import annotations
 
+import datetime as dt
 import json
 
 import h3
 import pytest
 
 from loci import db
+from loci.model import poi_evidence as pe
+from loci.model import poi_presence as pp
 from loci.viz import webmap_export as wx
 
 # Three real NYC points, one per borough, so the h3 -> analysis.hex join has
@@ -100,9 +103,15 @@ def con():
     # restaurant detail rides in them -- a fixture missing them would let the
     # detail query break against a green test suite. `tier` is here because
     # analysis.poi_supply selects it.
+    # `observed_on` is here (real relative position, right after `geom`) only
+    # because `model/poi_presence.poi_is_open` -- now reached through
+    # `analysis.poi_supply_status`, D98/GTM-170 -- references `p.observed_on`
+    # unconditionally in its CASE expression; DuckDB has to bind the column at
+    # CREATE VIEW time even though every fixture POI below leaves it NULL.
     c.execute("""CREATE TABLE staging.poi (
         poi_id VARCHAR, source_id VARCHAR, source_record_id VARCHAR,
-        category VARCHAR, tier SMALLINT, name VARCHAR, geom GEOMETRY, attrs JSON)""")
+        category VARCHAR, tier SMALLINT, name VARCHAR, geom GEOMETRY,
+        observed_on DATE, attrs JSON)""")
     c.execute("CREATE TABLE analysis.poi_dedup (poi_id VARCHAR, cluster_id BIGINT, "
               "is_canonical BOOLEAN, category VARCHAR)")
     c.execute("CREATE TABLE analysis.hex (h3_index VARCHAR, borough VARCHAR, nta_code VARCHAR)")
@@ -170,6 +179,18 @@ def con():
     for name in ("003_supply_sets.sql", "006_principled_supply.sql",
                  "013_floor_anchor.sql"):
         c.execute((db.SQL_DIR / name).read_text())
+    # analysis.poi_supply_status (D98/GTM-170 closure gate, sql/029/033) reads
+    # analysis.poi_first_seen for the ledger closure date -- a STUB here, not
+    # the real view, because this fixture never exercises the snapshot ledger
+    # itself, only the closure-EVIDENCE channel `_poi_sql`/`_nta_poi_sql` now
+    # read. 033 (poi_closure_evidence + spend_ledger) applies next, then
+    # colocation_view_sql(evidence=True) builds the gated view on top, exactly
+    # as `db.init_schema` does for a real warehouse (see db.py's own comment
+    # on the 021_address_character-style re-render).
+    c.execute("CREATE TABLE analysis.poi_first_seen "
+              "(poi_id_latest VARCHAR, closed_on DATE, closed_src VARCHAR)")
+    c.execute((db.SQL_DIR / "033_poi_closure_evidence.sql").read_text())
+    c.execute(pp.colocation_view_sql(evidence=True))
     for code, (lon, lat) in PLACES.items():
         c.execute("INSERT INTO analysis.hex VALUES (?, ?, ?)",
                   [h3.latlng_to_cell(lat, lon, wx.H3_RES), wx.BOROUGH_NAMES[code], code + "0001"])
@@ -179,8 +200,8 @@ def con():
 def _add_poi(con, poi_id, source, cluster, boro, canonical=True, cat="laundry",
              name="Suds", record_id=None, attrs=None):
     lon, lat = PLACES[boro]
-    con.execute("INSERT INTO staging.poi VALUES (?, ?, ?, ?, ?, ?, ST_Point(?, ?), ?)",
-                [poi_id, source, record_id, cat, 1, name, lon, lat,
+    con.execute("INSERT INTO staging.poi VALUES (?, ?, ?, ?, ?, ?, ST_Point(?, ?), ?, ?)",
+                [poi_id, source, record_id, cat, 1, name, lon, lat, None,
                  None if attrs is None else json.dumps(attrs)])
     con.execute("INSERT INTO analysis.poi_dedup VALUES (?, ?, ?, ?)",
                 [poi_id, cluster, canonical, cat])
@@ -384,6 +405,33 @@ def test_corroborated_needs_two_distinct_sources(con):
 
     counts = wx.summarize(bundle)["poi"]["laundry"]["MN"]
     assert counts == {"all": 3, "corroborated": 1, "single": 2}
+
+
+def test_closure_evidence_excludes_a_poi_from_the_export(con):
+    """AC-12 (D98, GTM-170): a canonical POI whose newest closure-evidence
+    verdict is 'closed' must not reach the exported POI layer -- `_poi_sql`
+    and `_nta_poi_sql` now read `analysis.poi_supply_status`
+    (score.supply.SUPPLY_VIEW) and exclude `poi_status = 'closed'`, never
+    require `= 'open'` (poi_status is TRI-STATE). A same-borough,
+    same-category sibling with NO evidence row (poi_status stays 'unknown')
+    must still be exported -- this proves the filter discriminates rather
+    than emptying the layer."""
+    _add_poi(con, "still_open", "overture_places", 1, "MN")
+    _add_poi(con, "closed_shop", "overture_places", 2, "MN")
+    pe.insert_evidence(con, pe.EvidenceRow(
+        poi_id="closed_shop", verdict="closed", source="web",
+        source_name="Eater NY", url="https://ny.eater.com/closed-shop",
+        evidence_date=dt.date(2026, 9, 1), dated_by="published",
+        retrieved_at=dt.datetime(2026, 9, 1, 12, 0), query="test query",
+        domain_class="news", run_id="test-run"))
+
+    bundle = wx.collect(con, ["MN"])
+    assert bundle["pois"]["laundry"]["ids"] == ["still_open"]
+    assert "closed_shop" not in bundle["pois"]["laundry"]["ids"]
+
+    nta = wx.collect_nta(con, ["MN"], "principled", None, {}, {}, {})
+    for layer in nta.values():
+        assert "closed_shop" not in layer.get("ids", [])
 
 
 def test_gap_layer_uses_ratio_and_ignores_the_retired_gate(con):

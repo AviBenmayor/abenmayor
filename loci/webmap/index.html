@@ -3,6 +3,9 @@
 <title>The Missing Business — Manhattan & Brooklyn</title>
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<!-- The allocator report (D100, GTM-172) renders the memo's markdown in the
+     side panel; pinned per the CDN-allowlist rule. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -102,6 +105,40 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
 /* .loading sets display:flex, which outranks the UA [hidden] rule — the
    overlay would never go away without this. */
 .loading[hidden]{display:none}
+/* Address search (D99, GTM-171, AC-14/15). A single input at the top of the
+   map, above the banner/validate button (z-index 5) so it is never covered
+   by them. The toast sits just below it and carries the seed's EXACT miss
+   wording, 'not in Loci coverage' — never a degraded card. */
+.searchbox{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:5;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  box-shadow:var(--shadow);padding:2px;width:min(340px,60%)}
+.searchbox input{width:100%;border:0;background:transparent;font:inherit;font-size:13px;
+  color:var(--ink);padding:8px 11px;border-radius:8px;outline:0}
+.searchbox input:focus{background:var(--bg)}
+.toast{position:absolute;top:58px;left:50%;transform:translateX(-50%);z-index:6;
+  background:var(--ink);color:#fff;border-radius:8px;padding:8px 14px;font-size:12.5px;
+  box-shadow:var(--shadow)}
+/* The allocator-report side panel (D100, GTM-172, AC-22). Slides over the
+   map rather than reflowing the sidebar — this is a transient, one-address
+   view, not a permanent part of the layout. */
+.report{position:absolute;top:0;right:0;bottom:0;width:min(380px,94%);
+  background:var(--panel);border-left:1px solid var(--line);box-shadow:var(--shadow);
+  z-index:7;overflow-y:auto;padding:18px}
+.report .repClose{position:absolute;top:10px;right:12px;border:0;background:transparent;
+  font-size:20px;line-height:1;cursor:pointer;color:var(--muted)}
+.report .repClose:hover{color:var(--ink)}
+.report .repHead{font-family:"Archivo";font-weight:800;font-size:15px;margin:0 26px 2px 0}
+.report .repAddr{font-family:"IBM Plex Mono";font-size:11.5px;color:var(--muted);margin-bottom:10px}
+.report .repProg{font-family:"IBM Plex Mono";font-size:11.5px;color:var(--muted);
+  white-space:pre-wrap;line-height:1.5;margin-top:6px}
+.report .repBody{font-size:13px;line-height:1.55;margin-top:10px}
+.report .repBody h2{font-size:13px;text-transform:none;letter-spacing:0;color:var(--ink);
+  margin:16px 0 6px;font-weight:700}
+.report .repBody table{width:100%;border-collapse:collapse;font-size:12px;margin:6px 0}
+.report .repBody td,.report .repBody th{border-bottom:1px solid var(--line);padding:4px 2px;text-align:left}
+.reportBtn{display:block;margin-top:9px;border:1px solid var(--ink);background:var(--ink);
+  color:#fff;font:inherit;font-size:12px;font-weight:600;padding:7px 11px;border-radius:7px;cursor:pointer}
+.reportBtn:hover{opacity:.92}
 /* Supply-set provenance (D52). A map whose gap layer and known-location layer
    came from different supply sets is not a validation surface, so when the
    export says they disagree the page has to say so on its own face — not only
@@ -341,7 +378,11 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
     </div>
     <div class="note">A <b>gap address</b> is any residential address whose walking distance to this business exceeds its reach tier — every address counts, the 12-of-15 walkability gate having been retired on 2026-09-13 (CHECKPOINT&nbsp;D75). Walking distances are measured out to 2,400&nbsp;m and no further; an address flagged <i>beyond 2,400&nbsp;m</i> has nothing of this kind inside that radius and its score is a floor, not a measurement. A <b>known location</b> is one deduplicated business record that the supply set counts. <b>Single-source</b> records are attested by only one dataset — CHECKPOINT&nbsp;D47 found they inflate apparent supply, so a gap that closes only because of a hollow dot is not yet confirmed. <b>Excluded</b> records (D52) are lone aggregator listings in a category whose licence registry is dense enough to have listed them: the gap model does not count them, and neither does the count above. For a category with no registry anchor loaded nothing is excluded — loading the anchor is the fix, not filtering.</div>
   </aside>
-  <div class="mapwrap"><div id="map"></div><div class="banner" id="banner">Loading…</div><button id="valBtn" class="valbtn">✓ Check this view against Google</button><div id="valOut" class="valout" hidden></div><div class="loading" id="loading">Loading…</div></div>
+  <div class="mapwrap"><div id="map"></div><div class="banner" id="banner">Loading…</div><button id="valBtn" class="valbtn">✓ Check this view against Google</button><div id="valOut" class="valout" hidden></div><div class="loading" id="loading">Loading…</div>
+    <div class="searchbox"><input id="addrSearch" type="text" placeholder="Search an address… (e.g. 61 Richardson St)" autocomplete="off"></div>
+    <div class="toast" id="toast" hidden></div>
+    <aside class="report" id="report" hidden></aside>
+  </div>
 </main>
 <script>
 const INK='#1c1a16';
@@ -540,6 +581,10 @@ function gapFC(){
         // reason `sc` is: a MapLibre expression cannot index a parallel
         // array. '' / -1 are the no-data cases and reach the grey fallback.
         ch:charProp(L,i/st), ri:charRiProp(L,i/st),
+        // D82: 1 = ineligible (not commercially zoned, no open POI to
+        // grandfather it). Baked in for the same MapLibre-expression-cannot-
+        // index-a-parallel-array reason as `ch`/`ri` just above.
+        lg:legProp(L,i/st),
         // D92: the model's 12-month opening probability, in permille, for the
         // same reason and with the same contract -- -1 is "the model did not
         // score this address", which the paint draws grey and never draws as
@@ -1381,6 +1426,42 @@ function charProp(L,j){ const c=charAt(L,j); return (c&&c.lab)||''; }
 // A separate slot rather than a negative sentinel inside `ch`, so a legitimate
 // index of 0 can never be mistaken for "not measured".
 function charRiProp(L,j){ const c=charAt(L,j); return (c&&c.ri!=null)?c.ri:-1; }
+// The legality tag and the historic-district/landmark fit-out labels for one
+// address card. UNLIKE charDotHTML this is NOT gated behind a toggle --
+// legality is safety information for an allocator (D75/D82), not an optional
+// layer, so it shows on every card that has a reading, always.
+function legHTML(L,j){
+  const g=legAt(L,j); if(!g||g.val==null) return '';
+  let h='';
+  if(g.val==='ineligible')
+    h+='<div class="warn">not commercially zoned — no open business to grandfather it</div>';
+  else if(g.val==='grandfathered')
+    h+='<div class="pmi">grandfathered — no C1/C2 overlay; a storefront is recorded here (tax roll retail area or a business not known to be closed)</div>';
+  else if(g.val==='unknown')
+    h+='<div class="pmi">zoning unknown — no PLUTO lot for this point</div>';
+  if(g.histdist) h+='<div class="pmi">fit-out: historic district</div>';
+  if(g.landmark) h+='<div class="pmi">fit-out: individual landmark</div>';
+  return h;
+}
+// Per-address commercial LEGALITY (D82, seed 2026-09-14). `gaps/<cat>.json`
+// carries it as `legality`: {legality:[idx|null], histdist:[0/1/null],
+// landmark:[0/1/null], values:['commercial','grandfathered','ineligible']}.
+// Returns null when the export carried no legality block at all (a database
+// predating `loci address-legality build`) -- NOT the same as "commercial";
+// the caller must tell the two apart, same contract charAt uses.
+function legAt(L,j){
+  const b=L&&L.legality;
+  if(!b||!Array.isArray(b.legality)) return null;
+  const i=b.legality[j];
+  const vals=b.values||['commercial','grandfathered','ineligible','unknown'];
+  return {val:(i==null?null:vals[i]), histdist:b.histdist?b.histdist[j]:null,
+          landmark:b.landmark?b.landmark[j]:null};
+}
+// Baked into each feature like `ch`/`ri`: MapLibre expressions cannot index a
+// parallel array. 1 = ineligible (greyed, "not commercially zoned"), 0 =
+// everything else including "no reading" -- D75: a marker NEVER stops being
+// drawn for this, it only stops being greyed.
+function legProp(L,j){ const l=legAt(L,j); return (l&&l.val==='ineligible')?1:0; }
 // Dots follow the AREAS: the same ramp on the same measure, so a dot and the
 // polygon under it are never shaded by two different things.
 function charDotColor(){
@@ -2650,11 +2731,19 @@ map.on('load',async()=>{
   // its ring — so it is distinguishable from a lot dot at a glance and at any
   // zoom, without a second layer or a second colour scale to reconcile. Fill
   // and stroke both switch on `fr`, the frame flag baked into each feature.
+  // D82/seed 2026-09-14: an INELIGIBLE address (not commercially zoned, no
+  // open POI to grandfather it) stays a dot -- D75, nothing is ever hidden --
+  // but greys out to the same neutral `#9b968a` the no-data classes already
+  // use elsewhere on this map, and dims, so an allocator scanning the map
+  // reads it as "not investable here" at a glance, before ever opening the
+  // card. `lg` is baked into the feature (see `legProp`) for the usual
+  // MapLibre-expression-cannot-index-a-parallel-array reason.
   map.addLayer({id:'pt',type:'circle',source:'gap',filter:['!',['has','point_count']],
-    paint:{'circle-color':lc(),'circle-radius':['interpolate',['linear'],['zoom'],13,3,17,6],
+    paint:{'circle-color':['case',['==',['get','lg'],1],'#9b968a',lc()],
+      'circle-radius':['interpolate',['linear'],['zoom'],13,3,17,6],
       'circle-stroke-width':['case',['==',['get','fr'],1],2,1],
       'circle-stroke-color':['case',['==',['get','fr'],1],lc(),'#fff'],
-      'circle-opacity':0.9}});
+      'circle-opacity':['case',['==',['get','lg'],1],0.55,0.9]}});
 
   // Neighborhood character: the only AREA layer here, and deliberately the
   // BOTTOM one — every point on this map has to stay readable on top of it,
@@ -2873,7 +2962,7 @@ map.on('load',async()=>{
   // maxWidth is 320 rather than 285 because the age-fit caveat expands INSIDE
   // this popup and has to arrive whole — see cavHTML.
   map.on('click','pt',e=>{const p=e.features[0].properties;
-    new maplibregl.Popup({closeButton:false,maxWidth:'320px'}).setLngLat(e.lngLat)
+    const popup=new maplibregl.Popup({closeButton:false,maxWidth:'320px'}).setLngLat(e.lngLat)
       .setHTML(`<div class="pnb">${+p.fr===1?'Gap street point':'Gap address'}</div>`+
         (+p.fr===1?`<div class="ppop">no ${label().toLowerCase()} in reach</div>`
                   :`<div class="ppop">${p.u} homes · no ${label().toLowerCase()} in reach</div>`)+
@@ -2883,8 +2972,14 @@ map.on('load',async()=>{
         pipeHTML(pipeAt(CACHE.gaps[biz],+p.j,GAP_PIPE))+
         sfHTML(sfAt(CACHE.gaps[biz],+p.j,GAP_SF))+
         charDotHTML(CACHE.gaps[biz],+p.j)+
+        legHTML(CACHE.gaps[biz],+p.j)+
         fcDotHTML(biz,+p.j)+
-        `<div class="pmi">${+p.fr===1?'street segment':'bbl'} ${p.id}</div>`).addTo(map);});
+        `<div class="pmi">${+p.fr===1?'street segment':'bbl'} ${p.id}</div>`+
+        // D100/GTM-172, AC-22: hidden when this address's legality (just
+        // rendered above by legHTML) is 'ineligible' -- never offered for an
+        // address the recommendation rules would refuse outright.
+        reportButtonHTML(CACHE.gaps[biz],+p.j,p.id)).addTo(map);
+    wireReportButton(popup);});
   map.on('mouseenter','pt',()=>map.getCanvas().style.cursor='pointer');
   map.on('mouseleave','pt',()=>map.getCanvas().style.cursor='');
 
@@ -3587,4 +3682,185 @@ document.getElementById('valBtn').onclick=async()=>{
   }catch(e){out.innerHTML='<span class="hole">Validation failed.</span>';out.hidden=false;}
   btn.disabled=false;btn.textContent='✓ Check this view against Google';
 };
+
+// ---------------------------------------------------------------------------
+// Address search (D99, GTM-171, seed AC-14/15) + the allocator report job
+// (D100, GTM-172, seed AC-22).
+//
+// SEARCH: NYC Planning Labs GeoSearch (free, keyless — same endpoint
+// geo/geosearch.py uses server-side) resolves free text to a point and,
+// where PLUTO has one, a BBL. A BBL resolves to a Loci address_id locally
+// via data/address_index.json (written by `loci export-webmap`,
+// viz/webmap_export.py's `write_address_index`) — no round trip. A hit with
+// no BBL, or a BBL the index has no entry for, falls back to
+// GET /api/snap?lat&lon (report_routes.js), which calls
+// `loci.geo.geosearch.snap` server-side for the <=50 m nearest-address rule.
+// Either miss path raises/returns 'not in Loci coverage' — the seed's exact
+// wording, shown as a toast, and the search NEVER opens a degraded card.
+//
+// REPORT: the address card's 'Generate report' button (hidden when legality
+// reads 'ineligible' — see `reportButtonHTML`) POSTs to /api/report, then
+// polls GET /api/report/:job_id every 2 s and renders the finished
+// markdown with `marked` in the <aside id="report"> panel.
+
+let ADDR_IDX=null;
+async function loadAddrIndex(){
+  if(ADDR_IDX) return ADDR_IDX;
+  try{ const r=await fetch('data/address_index.json');
+    ADDR_IDX=r.ok?await r.json():{};
+  }catch(e){ ADDR_IDX={}; }
+  return ADDR_IDX;
+}
+
+async function geoSearchLookup(text){
+  const url='https://geosearch.planninglabs.nyc/v2/search?text='+encodeURIComponent(text)+'&size=1';
+  const r=await fetch(url);
+  if(!r.ok) return null;
+  const j=await r.json();
+  const feat=(j.features||[])[0];
+  if(!feat) return null;
+  const coords=(feat.geometry||{}).coordinates||[];
+  const [lon,lat]=coords;
+  if(lon==null||lat==null) return null;
+  const props=feat.properties||{};
+  const bbl=props.bbl||((props.addendum||{}).pad||{}).bbl||null;
+  return {lon,lat,bbl:bbl?String(bbl):null,label:props.label||text};
+}
+
+// Server-side fallback for a hit `loadAddrIndex()` can't resolve: no BBL, or
+// a BBL PLUTO carries but the Loci address frame does not (see
+// geo/geosearch.py's own module docstring). Returns null on any miss or
+// error — the caller shows the one toast either way.
+async function snapAddress(hit){
+  try{
+    const r=await fetch(`/api/snap?lat=${hit.lat}&lon=${hit.lon}`);
+    if(!r.ok) return null;
+    const j=await r.json();
+    return j&&j.address_id?j.address_id:null;
+  }catch(e){ return null; }
+}
+
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.hidden=false;
+  clearTimeout(showToast._t);
+  showToast._t=setTimeout(()=>{t.hidden=true;},4500);
+}
+
+// `reportButtonHTML`/`wireReportButton` are the ONE definition of the
+// 'Generate report' button, shared by the 'pt' click handler above and the
+// search-opened card below, so the eligibility gate cannot drift between
+// the two paths.
+function reportButtonHTML(L,j,addressId){
+  const leg=(L&&j>=0)?legAt(L,j):null;
+  if(leg&&leg.val==='ineligible') return '';
+  return `<button class="reportBtn" type="button" data-addr="${esc(addressId)}">Generate report</button>`;
+}
+function wireReportButton(popup){
+  const el=popup.getElement&&popup.getElement();
+  const btn=el&&el.querySelector('.reportBtn');
+  if(!btn) return;
+  btn.addEventListener('click',()=>{ const addr=btn.dataset.addr; popup.remove(); startReportJob(addr); });
+}
+
+// Opens the same kind of card `pt`'s click handler does when the searched
+// address is a gap address for the category on screen (reuses its exact
+// HTML, `legHTML` included); otherwise a minimal card naming the address —
+// it is still IN the Loci universe (D75: every address is), it simply is
+// not a gap for the currently selected business.
+async function openAddressCard(addressId,lon,lat){
+  map.flyTo({center:[lon,lat],zoom:16});
+  const L=CACHE.gaps[biz];
+  const j=(L&&L.ids)?L.ids.indexOf(addressId):-1;
+  let html;
+  if(j>=0){
+    const st=L.stride||4, fr=frameAt(L,j), isStreet=!!(fr&&fr.street), u=L.pts[j*st+3];
+    html=`<div class="pnb">${isStreet?'Gap street point':'Gap address'}</div>`+
+      (isStreet?`<div class="ppop">no ${label().toLowerCase()} in reach</div>`
+               :`<div class="ppop">${u} homes · no ${label().toLowerCase()} in reach</div>`)+
+      frameHTML(L,j)+ censHTML(L,j)+ afHTML(L,j)+
+      pipeHTML(pipeAt(L,j,GAP_PIPE))+ sfHTML(sfAt(L,j,GAP_SF))+
+      charDotHTML(L,j)+ legHTML(L,j)+ fcDotHTML(biz,j)+
+      `<div class="pmi">${isStreet?'street segment':'bbl'} ${esc(addressId)}</div>`;
+  }else{
+    html=`<div class="pnb">Address found</div>`+
+      `<div class="ppop">not a ${label().toLowerCase()} gap on this view</div>`+
+      `<div class="pmi">bbl ${esc(addressId)}</div>`;
+  }
+  html+=reportButtonHTML(L,j,addressId);
+  const popup=new maplibregl.Popup({closeButton:true,maxWidth:'320px'}).setLngLat([lon,lat]).setHTML(html).addTo(map);
+  wireReportButton(popup);
+}
+
+document.getElementById('addrSearch').addEventListener('keydown',async e=>{
+  if(e.key!=='Enter') return;
+  const input=e.target, q=input.value.trim();
+  if(!q) return;
+  input.disabled=true;
+  try{
+    const hit=await geoSearchLookup(q);
+    if(!hit){ showToast('not in Loci coverage'); return; }
+    const idx=await loadAddrIndex();
+    const addressId=(hit.bbl&&idx[hit.bbl])||await snapAddress(hit);
+    if(!addressId){ showToast('not in Loci coverage'); return; }
+    await openAddressCard(addressId,hit.lon,hit.lat);
+  }catch(err){ showToast('not in Loci coverage'); }
+  finally{ input.disabled=false; }
+});
+
+// ---- The report panel: POST the job, poll every 2 s, render on 'done'. ----
+let REPORT_POLL=null;
+function closeReportPanel(){
+  const el=document.getElementById('report');
+  el.hidden=true; el.innerHTML='';
+  if(REPORT_POLL){ clearInterval(REPORT_POLL); REPORT_POLL=null; }
+}
+async function startReportJob(addressId){
+  if(REPORT_POLL){ clearInterval(REPORT_POLL); REPORT_POLL=null; }
+  const el=document.getElementById('report');
+  el.hidden=false;
+  el.innerHTML=`<button class="repClose" type="button" aria-label="Close">×</button>`+
+    `<div class="repHead">Allocator report</div>`+
+    `<div class="repAddr">${esc(addressId)}</div>`+
+    `<div class="repProg" id="repProg">starting…</div>`+
+    `<div class="repBody" id="repBody"></div>`;
+  el.querySelector('.repClose').onclick=closeReportPanel;
+  let jobId;
+  try{
+    const r=await fetch('/api/report',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({address_id:addressId})});
+    if(!r.ok){
+      const j=await r.json().catch(()=>({}));
+      document.getElementById('repProg').textContent=
+        r.status===429?'A report is already running — try again shortly.'
+                       :(j.error||`could not start (status ${r.status})`);
+      return;
+    }
+    ({job_id:jobId}=await r.json());
+  }catch(err){
+    document.getElementById('repProg').textContent='Could not reach the report service.';
+    return;
+  }
+  const poll=async()=>{
+    let j;
+    try{ j=await fetch(`/api/report/${jobId}`).then(r=>r.json()); }
+    catch(err){ return; }
+    const prog=document.getElementById('repProg');
+    if(!prog) return;   // panel was closed
+    if(j.status==='running'){
+      prog.textContent=(j.progress_lines||[]).join('\n')||'running…';
+      return;
+    }
+    if(REPORT_POLL){ clearInterval(REPORT_POLL); REPORT_POLL=null; }
+    if(j.status==='done'){
+      prog.textContent=(j.progress_lines||[]).join('\n');
+      const body=document.getElementById('repBody');
+      if(body) body.innerHTML=(window.marked?marked.parse(j.markdown||''):esc(j.markdown||''));
+    }else{
+      prog.textContent=((j.progress_lines||[]).join('\n')+'\n(failed)').trim();
+    }
+  };
+  REPORT_POLL=setInterval(poll,2000);
+  await poll();   // an immediate first check, rather than waiting a full 2 s
+}
 </script></body></html>

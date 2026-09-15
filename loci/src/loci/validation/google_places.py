@@ -29,6 +29,15 @@ it does NOT hold merely for "Google found nothing" presence checks.
 Search radius: see RADIUS_M below -- derived from reach_tiers.yaml's
 `validation` block (network threshold / measured circuity), not hardcoded
 (QUESTIONS M8, CHECKPOINT D53).
+
+CLOSURE EVIDENCE (D98, GTM-170): `place_status` is a SECOND, UNRELATED
+lookup -- Text Search (New), not Nearby Search -- added alongside
+`nearby_count` rather than folded into it. It answers "is THIS named
+business still open" for one POI (`evidence.verify`'s closure-check loop),
+not "how many places of a category sit in a circle" (`nearby_count`'s
+coverage-validation job); the two never share a field mask, a price, or a
+result-shape. See `place_status`'s own docstring for the match rule and the
+budget it goes through.
 """
 from __future__ import annotations
 
@@ -46,6 +55,29 @@ ENDPOINT = "https://places.googleapis.com/v1/places:searchNearby"
 FIELD_MASK = "places.id,places.location,places.types,places.primaryType"
 MAX_RESULT_COUNT = 20  # Nearby Search (New) hard cap; no pagination exists.
 LEDGER_PATH = pathlib.Path("data/interim/google_calls.json")
+
+# ---- closure evidence (D98, GTM-170) -- Text Search (New), NOT Nearby Search
+TEXT_SEARCH_ENDPOINT = "https://places.googleapis.com/v1/places:searchText"
+#: displayName + businessStatus are on the PRO Data SKU (unlike FIELD_MASK's
+#: Basic-only fields above) -- design-closure-evidence.md §2's own note.
+TEXT_SEARCH_FIELD_MASK = "places.id,places.displayName,places.location,places.businessStatus"
+#: Text Search (New) Pro-SKU price. THE SAME number `evidence.verify.
+#: PLACES_TEXT_SEARCH_USD` restates (that module cannot import this one --
+#: see its own docstring on why the Places client is a Protocol there) and
+#: the allocator report's `report/ledger.py` (D100) will restate again against
+#: the shared `analysis.spend_ledger` table. tests/test_google_places.py pins
+#: the two closure-evidence constants against each other.
+PLACES_TEXT_SEARCH_USD = 0.032
+#: How close a returned place must be to the (lat, lon) asked about to count
+#: as a match -- independent of, and tighter than, nearby_count's
+#: category-search RADIUS_M, because Text Search returns whatever it judges
+#: the best free-text match, not everything within a circle.
+PLACE_STATUS_RADIUS_M = 50
+
+#: Text Search businessStatus -> the closure-evidence verdict. Anything not a
+#: key here (CLOSED_TEMPORARILY, or a missing field) yields verdict=None --
+#: never a closure inferred from a status Google itself calls temporary.
+_BUSINESS_STATUS_VERDICT = {"CLOSED_PERMANENTLY": "closed", "OPERATIONAL": "open"}
 
 # Straight-line search radius, in metres. DERIVED, never hardcoded: the
 # `validation` block of src/loci/reach_tiers.yaml carries the gap screen's
@@ -241,3 +273,66 @@ class GooglePlacesClient:
             at_cap=count >= MAX_RESULT_COUNT,
             places=[(p.get("primaryType"), p.get("types", [])) for p in places],
         )
+
+    # ---- closure evidence (D98, GTM-170) --------------------------------------
+    def place_status(self, name: str, lat: float, lon: float,
+                     radius_m: int = PLACE_STATUS_RADIUS_M) -> "PlaceStatus":
+        """Text Search (New) lookup for ONE named business near (lat, lon) --
+        the closure-evidence channel `evidence.verify.verify()` calls through
+        the `PlaceStatusProtocol` shape, distinct from `nearby_count`'s
+        category-count scan above.
+
+        Returns `PlaceStatus(verdict=None, ...)` -- never raises for "no
+        usable result" -- when: Google returns nothing; the top result's
+        `displayName` does not NAME-KEY MATCH `name` (`poi_presence.
+        name_key_of`, the same normalizer `score.dedup` clusters POIs with);
+        the match is farther than `radius_m`; or `businessStatus` is
+        CLOSED_TEMPORARILY or absent. `CLOSED_PERMANENTLY` -> 'closed',
+        `OPERATIONAL` -> 'open' -- see `_BUSINESS_STATUS_VERDICT`. A caller
+        turns a non-None verdict into an `EvidenceRow` with `dated_by=
+        'retrieval'` (Google publishes no date for this field) and
+        `url='https://www.google.com/maps/place/?q=place_id:<id>'`.
+
+        BUDGET: goes through THIS client's own call-count ledger
+        (`self._charge()`, `LOCI_GOOGLE_CALL_BUDGET`) -- charged BEFORE the
+        request, exactly like `nearby_count`. The separate DOLLAR ledger
+        (`analysis.spend_ledger`) is the CALLER's job: `evidence.verify.
+        verify()` reserves against its own `Budget` and writes that row
+        BEFORE invoking this method (its module docstring's "reserve ->
+        ledger row -> call" sequence) -- this method has no database
+        connection to write one itself.
+        """
+        from loci.evidence.verify import PlaceStatus
+        from loci.model.poi_presence import name_key_of
+        from loci.score.dedup import haversine_m
+
+        if not self.api_key:
+            raise RuntimeError("GOOGLE_PLACES_KEY is not set.")
+        self._charge()   # charge BEFORE the request so a crash can't under-count
+        body = {
+            "textQuery": name,
+            "locationBias": {"circle": {"center": {"latitude": lat, "longitude": lon},
+                                        "radius": radius_m}},
+            "maxResultCount": 1,
+        }
+        resp = self.session.post(
+            TEXT_SEARCH_ENDPOINT, json=body, timeout=30,
+            headers={"X-Goog-Api-Key": self.api_key, "X-Goog-FieldMask": TEXT_SEARCH_FIELD_MASK})
+        resp.raise_for_status()
+        places = resp.json().get("places", [])
+        if not places:
+            return PlaceStatus(verdict=None, place_id=None)
+
+        place = places[0]
+        place_id = place.get("id")
+        display = (place.get("displayName") or {}).get("text") or ""
+        if name_key_of(display) != name_key_of(name):
+            return PlaceStatus(verdict=None, place_id=place_id)
+
+        loc = place.get("location") or {}
+        p_lat, p_lon = loc.get("latitude"), loc.get("longitude")
+        if p_lat is None or p_lon is None or haversine_m(lat, lon, p_lat, p_lon) > radius_m:
+            return PlaceStatus(verdict=None, place_id=place_id)
+
+        verdict = _BUSINESS_STATUS_VERDICT.get(place.get("businessStatus"))
+        return PlaceStatus(verdict=verdict, place_id=place_id)

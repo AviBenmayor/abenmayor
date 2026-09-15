@@ -1,0 +1,213 @@
+# Ouroboros Seed Specification
+# Generated: 2026-09-14
+# Ambiguity Score: 0.18
+# Project: loci (brownfield) — branch loci/eny-investment-and-query-app
+# Immutable: do not edit in place. A reversed decision produces a new generation.
+
+goal: "Make the Loci map honest about commercial legality and business closures, add address search, and generate a cached, budget-capped allocator memo for any in-universe address on demand, delivered in the order zoning -> closure -> search -> report."
+
+constraints:
+  # Standing owner rulings that this work must not breach
+  - "D75 no eligibility gate: no address ever leaves the universe. Legality is a label plus exclusion from graded recommendations and top-N lists; gap markers stay drawn but greyed."
+  - "D79 absence is never evidence: a POI is closed only on positive evidence with provenance. Snapshot disappearance never flips a verdict."
+  - "D82 character enters no grade: zoning, historic-district and landmark fields label cards and filter outputs; they never enter a score."
+  - "Table proliferation rule: PLUTO zoning fields extend the address grain as new columns. No new address-level table."
+  - "Co-location rule (2026-09-14): two or more POIs at one address must be resolved to which is open before either is counted."
+  # Legality rule
+  - "Ineligible = (R district with no C1/C2 overlay OR park/open-space land use OR institutional owner type) AND no open commercial POI at the address. An open commercial POI at the address makes it 'grandfathered' and eligible."
+  - "Historic district and individual landmark are card labels only (fit-out cost warning). They never cause exclusion."
+  # Closure rule
+  - "Accepted closure evidence: Google Places business_status CLOSED_PERMANENTLY; first-party or news web evidence. Each evidence row stores verdict, url, source name, evidence date, retrieval time, query."
+  - "Precedence between conflicting evidence: newest evidence date wins, regardless of source type."
+  - "Web/Places closure checks run (a) on demand for every 'unknown' POI in a report's supply set, inside that report's cap, and (b) via a budgeted batch command. Never citywide unbudgeted."
+  - "The webmap export must read the closure-gated supply view."
+  # Search rule
+  - "Geocoder is NYC Planning Labs GeoSearch (free, keyless). Results snap to the nearest Loci address row. Out-of-universe addresses are refused with a clear message; no degraded report."
+  # Report rule
+  - "Reader is a capital allocator. Four mandatory sections: (1) category call + confidence with falsification test; (2) supply with open/closed/unknown status and basis; (3) demand + catchment economics; (4) legality, web-sourced rents/leases, risk, exit."
+  - "Sources: Loci warehouse + Google Places + web search. Prose: one Claude API call against a fixed outline. No owner edit step before the file is shareable."
+  - "Hard spend cap per address (default $1.00) enforced in code before any paid call; 30-day cache keyed by address; --dry-run prints planned calls and estimated cost and spends nothing. Claude call cost counts toward the cap."
+  - "Async delivery: map card button starts a background job, panel shows progress, finished memo renders in a side panel and is saved as markdown under docs/recommendations/. Same job runnable as a CLI subcommand."
+  # Repo conventions
+  - "src/ layout; loose scripts become CLI subcommands; SQL is package data under src/loci/sql/ with the next migration numbers (031+); tests under loci/tests/; docs under loci/docs/."
+  - "Do not modify uncommitted peer work (poi_presence.py, supply.py, forecast.py, sql/029, sql/030) beyond wiring; coordinate before touching cli.py hunks."
+
+acceptance_criteria:
+  # --- Deliverable 1: legality ---
+  - id: AC-1
+    description: "analysis.address carries zonedist1, overlay1, overlay2, landuse, ownertype, histdist, landmark from PLUTO, populated for >=99% of addresses with a BBL."
+    verification: "SQL count of nulls over addresses with non-null bbl; drift check vs data/raw/pluto.csv row sample."
+  - id: AC-2
+    description: "A derived legality column with values commercial | grandfathered | ineligible and a legality_basis text implements the constraint rule exactly."
+    verification: "Unit tests on the SQL/predicate with synthetic rows for each branch."
+  - id: AC-3
+    description: "An R-no-overlay address with an open commercial POI is 'grandfathered' and eligible."
+    verification: "Test fixture; assert legality == 'grandfathered'."
+  - id: AC-4
+    description: "Real BBLs: a Washington Square North rowhouse and MacDougal Alley are 'ineligible'; 4 East 8th Street (C1-7) is 'commercial'; 51 Washington Square South (NYU) is 'ineligible' via ownertype."
+    verification: "Integration test against the warehouse on those BBLs."
+  - id: AC-5
+    description: "Gap JSON export carries legality; the webmap renders ineligible markers greyed with a 'not commercially zoned' tag and shows histdist/landmark on the card."
+    verification: "Inspect exported gaps/convenience.json for the field; browser check of the Washington Square block via Chrome tools."
+  - id: AC-6
+    description: "The recommendation ledger and every top-N output contain zero ineligible addresses."
+    verification: "Test that queries analysis.recommendation and the recs report path; assert count == 0."
+  - id: AC-7
+    description: "histdist and landmark affect no grade, score, or legality verdict."
+    verification: "Test toggles the fields on a fixture row and asserts identical outputs."
+  # --- Deliverable 2: closure evidence ---
+  - id: AC-8
+    description: "A web_evidence source exists in the POI status model with the provenance columns from the constraints; poi_status_basis reports it."
+    verification: "Migration applied; test inserts an evidence row and asserts status == 'closed' with the url in the basis."
+  - id: AC-9
+    description: "Newest evidence date wins between conflicting sources."
+    verification: "Test: web evidence closed on 2026-05-01 vs inspection open on 2026-07-01 -> 'open'; reversed dates -> 'closed'."
+  - id: AC-10
+    description: "Google Places CLOSED_PERMANENTLY is ingested as closure evidence with provenance, via the existing budget-capped proxy path."
+    verification: "Test with a mocked Places response; assert evidence row and verdict."
+  - id: AC-11
+    description: "`loci verify-closures --budget <usd> [--bbox|--area] [--dry-run]` checks 'unknown' POIs and cannot exceed its budget."
+    verification: "Test with mocked paid clients: budget of N cents stops before the (N+1)th cent; --dry-run makes zero calls."
+  - id: AC-12
+    description: "The webmap export reads the closure-gated supply view."
+    verification: "Test: a fixture POI with status 'closed' is absent from the exported POI layer."
+  - id: AC-13
+    description: "Windclimb (overture cluster 166604, 74 Richardson St) has status 'closed' with the first-party web citation as basis and is absent from the export."
+    verification: "Run verify-closures on the Richardson St block; query analysis.poi_supply_status; grep export."
+  # --- Deliverable 3: address search ---
+  - id: AC-14
+    description: "A search box on the webmap queries NYC GeoSearch, snaps to the nearest Loci address within 50 m, centers the map, and opens that address card."
+    verification: "Browser test: type '61 Richardson St'; assert the card for the snapped address opens."
+  - id: AC-15
+    description: "An address outside the Loci universe returns the message 'not in Loci coverage' and offers no report."
+    verification: "Browser test with a Staten Island or non-NYC address."
+  # --- Deliverable 4: report ---
+  - id: AC-16
+    description: "`loci report <address> [--dry-run] [--no-cache]` writes docs/recommendations/<slug>-<date>.md containing the four mandatory sections under fixed headings."
+    verification: "Run on 376 Graham Ave; structural test asserts the four headings exist and are non-empty."
+  - id: AC-17
+    description: "The supply section lists every POI in the catchment with status and basis, and 'unknown' POIs were checked on demand within the cap."
+    verification: "Test with mocked clients: count of checks == count of unknown POIs, or fewer only when the cap was hit, with the cap hit logged."
+  - id: AC-18
+    description: "A spend ledger records every paid call (report id, provider, usd, timestamp); the per-report cap aborts before the call that would exceed it."
+    verification: "Test with mocked pricing: assert ledger sum <= cap and the abort is logged."
+  - id: AC-19
+    description: "A second run for the same address within 30 days makes zero paid calls; --no-cache forces a fresh run."
+    verification: "Test with call-counting mocks."
+  - id: AC-20
+    description: "--dry-run prints the planned calls with estimated cost and makes no paid calls."
+    verification: "Test with call-counting mocks; assert zero calls and non-empty plan output."
+  - id: AC-21
+    description: "Prose is produced by exactly one Claude API call against a fixed outline; its cost is in the ledger."
+    verification: "Test with a mocked Anthropic client; assert call count == 1 and a ledger row with provider 'anthropic'."
+  - id: AC-22
+    description: "The address card has a 'Generate report' button that starts an async job, shows progress, and renders the finished markdown in a side panel."
+    verification: "Browser test on 376 Graham Ave with mocked paid clients."
+  - id: AC-23
+    description: "The investor agent reviews three generated reports (376 Graham Ave, one Gowanus ledger recommendation, 4 East 8th Street) and returns no blocking finding."
+    verification: "Agent review transcript saved under docs/; zero findings tagged 'blocking'."
+
+ontology_schema:
+  name: "LociSiteIntelligence"
+  description: "An address with its legal, competitive and economic context, the evidence behind each claim, and the memo produced from it."
+  fields:
+    - name: "address"
+      type: "object"
+      description: "Loci address row: address_id, bbl, geometry, existing scores, plus new PLUTO columns zonedist1, overlay1, overlay2, landuse, ownertype, histdist, landmark."
+    - name: "legality"
+      type: "string"
+      description: "commercial | grandfathered | ineligible, with legality_basis text."
+    - name: "poi_status"
+      type: "string"
+      description: "open | closed | unknown per POI, with status_basis naming the winning evidence."
+    - name: "closure_evidence"
+      type: "array"
+      description: "Rows of {poi_id, verdict, source: places|web, url, source_name, evidence_date, retrieved_at, query}."
+    - name: "geocode_result"
+      type: "object"
+      description: "GeoSearch hit {label, lat, lon, bbl?} and the snapped address_id or an out-of-coverage refusal."
+    - name: "report"
+      type: "object"
+      description: "{report_id, address_id, generated_at, sections[4], markdown_path, cache_expires_at, total_usd}."
+    - name: "spend_ledger"
+      type: "array"
+      description: "Rows of {report_id or run_id, provider: places|tavily|anthropic, usd, timestamp}; hard cap enforced against its sum."
+    - name: "gap_marker"
+      type: "object"
+      description: "Exported address gap with category ratio, gap_score, and legality for rendering."
+
+evaluation_principles:
+  - name: "legality_correctness"
+    description: "Every legality verdict matches PLUTO plus the open-POI rule; no working storefront is marked ineligible, no rowhouse or campus is marked commercial."
+    weight: 0.25
+  - name: "closure_provenance"
+    description: "No verdict flips without a stored evidence row; D79 holds; precedence is by date."
+    weight: 0.20
+  - name: "budget_safety"
+    description: "No code path can spend past a cap; caches and dry-runs are proven by call-counting tests."
+    weight: 0.20
+  - name: "allocator_usefulness"
+    description: "A report states the trade, the risk, and the exit in terms a capital allocator would act on, and the investor agent finds nothing embarrassing."
+    weight: 0.20
+  - name: "convention_compliance"
+    description: "src/ layout, CLI subcommands not scripts, SQL as package data, address grain extended not duplicated, peer work untouched."
+    weight: 0.15
+
+exit_conditions:
+  - name: "all_criteria_pass"
+    description: "Every AC-1..AC-23 verified; CHECKPOINT decision log and session log updated; tickets closed."
+    criteria: "Test suite green plus the three browser checks plus the investor review transcript."
+  - name: "environment_blocked"
+    description: "A required key (Anthropic, Tavily) or the GeoSearch endpoint is unavailable and cannot be provisioned by the agent."
+    criteria: "Stop, record the blocker with its unblocking action in CHECKPOINT, deliver everything not depending on it."
+  - name: "budget_exhausted"
+    description: "Real-money verification runs would exceed the session's agreed spend."
+    criteria: "Ledger sum reaches the session cap; remaining verification proceeds with mocks only."
+  - name: "owner_veto"
+    description: "The owner reverses a decision recorded in this seed."
+    criteria: "New CHECKPOINT decision superseding one above; seed is re-generated as the next generation, never edited in place."
+
+brownfield_context:
+  project_type: "brownfield"
+  context_references:
+    - path: "loci/docs/CHECKPOINT.md"
+      role: "primary"
+      summary: "Decision log D75, D79, D82, D88-D96; next actions 0j/0k; how to resume."
+    - path: "loci/src/loci/model/poi_presence.py"
+      role: "primary"
+      summary: "Uncommitted tri-state poi_status()/poi_is_open() with per-source evidence rules; the closure evidence source extends this."
+    - path: "loci/src/loci/score/supply.py"
+      role: "primary"
+      summary: "Uncommitted GATE_CLOSED and canonical_poi_sql; the export must consume this."
+    - path: "loci/src/loci/viz/webmap_export.py"
+      role: "primary"
+      summary: "Exports gaps/<category>.json and the POI layer; currently reads the ungated analysis.poi_supply."
+    - path: "loci/webmap/index.html + loci/webmap/server.js"
+      role: "primary"
+      summary: "MapLibre 4.7.1 page and bare Node server with the budget-capped /api/validate Google Places proxy (GOOGLE_PLACES_KEY, LOCI_GOOGLE_CALL_BUDGET)."
+    - path: "loci/src/loci/model/address_character.py"
+      role: "reference"
+      summary: "Existing PLUTO-at-address reads (_commercial_lot_sql) to reuse for the new columns."
+    - path: "loci/src/loci/grid/pluto.py"
+      role: "reference"
+      summary: "PLUTO ingestion via Socrata 64uk-42ks; raw CSV at data/raw/pluto.csv."
+    - path: "loci/docs/recommendations/graham-ave-376-neighborhood-2026-09-14.md"
+      role: "reference"
+      summary: "Hand-written El Punto page; the tone and section depth the generated memo should meet."
+  existing_patterns:
+    - "Numbered SQL migrations under src/loci/sql/ (next: 031)."
+    - "CLI subcommands in src/loci/cli.py with report-style commands (recs report, forecast report)."
+    - "Budget caps enforced in code with --dry-run paths (server.js proxy is the precedent)."
+    - "Tri-state verdicts with a basis string (poi_status_basis)."
+  existing_dependencies:
+    - "DuckDB warehouse at data/loci.duckdb"
+    - "MapLibre GL JS 4.7.1 (CDN)"
+    - "Google Places key in .env"
+    - "Anthropic SDK (to add), Tavily key/CLI (to add: tvly not installed)"
+
+metadata:
+  version: "1.0"
+  ambiguity_score: 0.18
+  interview_rounds: 4
+  project_type: "brownfield"
+  generated: "2026-09-14"

@@ -206,7 +206,7 @@ import pathlib
 from loci.categories import CATEGORIES
 from loci.reach import load_reach
 from loci.score.access import DIST_LIMIT
-from loci.score.supply import DEFAULT_SUPPLY_SET, SUPPLY_SETS, supply_predicate
+from loci.score.supply import DEFAULT_SUPPLY_SET, SUPPLY_SETS, SUPPLY_VIEW, supply_predicate
 
 ALLCATS: list[str] = list(CATEGORIES)
 
@@ -441,12 +441,21 @@ def _poi_sql(boroughs: list[str], dcats: list[str],
     list. `list_sort(list(DISTINCT ...))` gives a stable source ordering so a
     re-export of unchanged data is byte-identical.
 
-    Rows come from `analysis.poi_supply` (which already filters
-    `is_canonical`), and the named supply set rides along as `in_set` rather
-    than being applied as a WHERE clause: the excluded points are drawn as
-    their own class, so the export needs them. `supply_predicate` is the same
-    function model/address_gaps.py uses, so the map and the model cannot drift
-    apart over what "a business exists here" means.
+    Rows come from `SUPPLY_VIEW` (`analysis.poi_supply_status`, D98/GTM-170 --
+    `analysis.poi_supply` plus the closure-evidence-gated `poi_status`/
+    `poi_status_basis` columns; it already filters `is_canonical`, exactly as
+    `analysis.poi_supply` did), and the named supply set rides along as
+    `in_set` rather than being applied as a WHERE clause: the excluded points
+    are drawn as their own class, so the export needs them. `supply_predicate`
+    is the same function model/address_gaps.py uses, so the map and the model
+    cannot drift apart over what "a business exists here" means.
+
+    An EVIDENCED closure (`poi_status = 'closed'`) is excluded outright --
+    never `= 'open'`, because `poi_status` is TRI-STATE and 'unknown' (most of
+    the universe; Overture/OSM/Foursquare's open cache/USDA SNAP publish no
+    status at all) must still be drawn (score/supply.py's GATE_CLOSED
+    caveat). `poi_status`/`poi_status_basis` ride along in the SELECT so a
+    caller can see WHY a still-drawn point reads open/unknown.
 
     The two detail CTEs are restricted to `dcats` on purpose: every Overture
     row has a `primary_category`, so an unrestricted cuisine fallback would
@@ -519,8 +528,9 @@ def _poi_sql(boroughs: list[str], dcats: list[str],
                dh.camis, dh.cuisine, dh.grade, dh.grade_date, dh.inspected_on,
                dh.active, dh.active_basis,
                f.fb_cuisine, f.fb_source,
-               v.{pred} AS in_set
-        FROM analysis.poi_supply v
+               v.{pred} AS in_set,
+               v.poi_status, v.poi_status_basis
+        FROM {SUPPLY_VIEW} v
         JOIN src s ON s.cluster_id = v.cluster_id
         LEFT JOIN dohmh dh ON dh.cluster_id = v.cluster_id
         LEFT JOIN fb f ON f.cluster_id = v.cluster_id
@@ -528,6 +538,7 @@ def _poi_sql(boroughs: list[str], dcats: list[str],
           ON h.h3_index = h3_latlng_to_cell_string(ST_Y(v.geom), ST_X(v.geom), {H3_RES})
         WHERE h.borough IN ({placeholders})
           AND v.category IN ({", ".join("?" for _ in ALLCATS)})
+          AND v.poi_status <> 'closed'
         ORDER BY v.category, v.poi_id
     """
     return sql, list(dcats) + list(dcats) + names + ALLCATS
@@ -691,7 +702,12 @@ def pack_pois(rows, boroughs: list[str], sources: list[str],
                                             "basis", "camis")}
     for (poi_id, cat, name, lon, lat, boro_name, srcs, camis, cuisine, grade,
          grade_date, inspected_on, active, active_basis, fb_cuisine, fb_source,
-         in_set) in rows:
+         in_set, _poi_status, _poi_status_basis) in rows:
+        # poi_status/poi_status_basis (D98/GTM-170) ride along in `_poi_sql`'s
+        # SELECT for provenance and for the exclusion WHERE clause upstream --
+        # a row reaching here has already survived `poi_status <> 'closed'`,
+        # so the packed layer itself carries no new column yet (AC-14's search
+        # card is the first consumer that will need it).
         layer = out.get(cat)
         if layer is None or lon is None or lat is None:
             continue
@@ -927,7 +943,8 @@ class _AgeFit:
 
 def pack_gaps(rows, boroughs: list[str], cat: str,
               vacant_detail: dict[str, tuple] | None = None,
-              character_detail: dict[str, tuple] | None = None) -> dict:
+              character_detail: dict[str, tuple] | None = None,
+              legality_detail: dict[str, tuple] | None = None) -> dict:
     """rows -> one layer dict. `pts` stride 12: lon, lat, borough index,
     capped units, then the four pipeline slots (`pipe_slots`) and the four
     storefront slots (`sf_slots`). `ratio` is dropped from the payload
@@ -955,6 +972,7 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
     vacants = _Vacants(vacant_detail)
     fit = _AgeFit()
     character = _Character(character_detail)
+    legality = _Legality(legality_detail)
     npipe, nshop = len(PIPELINE_GAP_COLUMNS), len(STOREFRONT_GAP_COLUMNS)
     tail = 8 + npipe + nshop        # where the ranking block starts in a row
     cens_at = tail + 6              # ...and where the D75 censoring pair starts
@@ -984,6 +1002,7 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
         frontages.append(_num(frontage, 0))
         streets.append(street)
         character.add(address_id)
+        legality.add(address_id)
         ids.append(address_id)
     return {"category": cat, "label": CATEGORIES[cat].label, "stride": 12,
             "pts": pts, "ids": ids, "n": len(ids),
@@ -996,7 +1015,8 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
             "censoring": {"cat": cens_cat, "lead": cens_lead, "capM": GAP_CAP_M},
             "frame": {"street": frames, "frontageM": frontages, "streetName": streets,
                       "n_street": sum(frames), "caveat": STREET_FRAME_CAVEAT},
-            "character": character.pack()}
+            "character": character.pack(),
+            "legality": legality.pack()}
 
 
 def _code_for(borough_name: str | None) -> str | None:
@@ -1657,8 +1677,23 @@ try:                                             # pragma: no cover - import gua
 except Exception:                                # pragma: no cover
     character_model = None
 
+try:                                             # pragma: no cover - import guard
+    from loci.model import address_legality as legality_model
+except Exception:                                # pragma: no cover
+    legality_model = None
+
 CHARACTER_ADDRESS_VIEW = ("analysis", "address_character")
 CHARACTER_NTA_VIEW = ("analysis", "nta_character")
+
+#: D82/seed 2026-09-14: legality is a card label and a recommendation filter,
+#: never a score. LEGALITY_VIEW is the cheap passthrough
+#: `analysis.address_legality` (sql/031); LEGALITY_VALUES mirrors
+#: `address_legality.LEGALITY_VALUES` so the export still has an order even
+#: when the model import guard above trips (same fallback contract
+#: CHARACTER_LABELS_FALLBACK uses just below).
+LEGALITY_VIEW = ("analysis", "address_legality")
+LEGALITY_VALUES = (legality_model.LEGALITY_VALUES if legality_model
+                   else ("commercial", "grandfathered", "ineligible"))
 
 #: Fallback legend order, used ONLY when the model is not importable. The live
 #: order is `character_labels()`, which reads the model's own LABEL_ORDER.
@@ -2049,6 +2084,95 @@ class _Character:
                 "labels": list(character_labels())}
 
 
+# --------------------------------------------------------------- legality (D82)
+
+def has_legality(con) -> bool:
+    """True when `analysis.address_legality` exists AND carries at least one
+    populated row. A database predating sql/031, or one on which
+    `loci address-legality build` has not run yet, exports an EMPTY legality
+    block and the UI leaves every marker un-greyed -- the same
+    degrade-gracefully contract `has_character` / `has_alcohol` /
+    `has_pipeline` already follow; AC-5 must never fail closed into hiding
+    gap markers, only into not labelling them."""
+    schema, table = LEGALITY_VIEW
+    exists = con.execute(
+        "SELECT count(*) FROM information_schema.tables "
+        "WHERE table_schema = ? AND table_name = ?", [schema, table]).fetchone()[0]
+    if not exists:
+        return False
+    n = con.execute(
+        f"SELECT count(*) FROM {'.'.join(LEGALITY_VIEW)} "
+        "WHERE legality IS NOT NULL").fetchone()[0]
+    return bool(n)
+
+
+def _legality_detail_sql(boroughs: list[str]) -> tuple[str, list]:
+    """`(address_id, legality, histdist, landmark)` for the exported
+    boroughs. histdist/landmark come from `analysis.address` directly (they
+    are card labels, D82 -- not part of the legality verdict at all, see
+    `address_legality.legality_case_sql`'s own test that neither is read by
+    any branch of the predicate) -- reading them here is a SEPARATE join, not
+    evidence they influence `legality`.
+
+    Read ONCE for all sixteen gap files, the same "read once, reuse across
+    every category" contract `collect_character_detail` and
+    `collect_vacant_detail` already follow."""
+    ph = ", ".join("?" for _ in boroughs)
+    return (f"""
+        SELECT l.address_id, l.legality, a.histdist, a.landmark
+        FROM {'.'.join(LEGALITY_VIEW)} l
+        JOIN analysis.address a ON a.address_id = l.address_id
+        WHERE a.borough IN ({ph}) AND l.legality IS NOT NULL
+    """, list(boroughs))
+
+
+def collect_legality_detail(con, boroughs: list[str]) -> dict[str, tuple]:
+    """`{address_id: (legality index, histdist bool, landmark bool)}`, or
+    `{}` when `has_legality` is false. Same never-raises, membership-is-the-
+    test contract as `collect_character_detail`: an address absent from this
+    dict has no legality reading, and the UI must draw that as "no data",
+    never as a silent 'commercial'."""
+    if not has_legality(con):
+        return {}
+    sql, params = _legality_detail_sql(boroughs)
+    idx = {v: i for i, v in enumerate(LEGALITY_VALUES)}
+    out: dict[str, tuple] = {}
+    for address_id, legality, histdist, landmark in con.execute(sql, params).fetchall():
+        i = idx.get(legality)
+        if i is None:
+            continue          # a value this map export does not know: no data
+        out[address_id] = (i, bool(histdist), bool(landmark))
+    return out
+
+
+class _Legality:
+    """The per-address legality reading for one gap layer, as PARALLEL
+    ARRAYS -- same rationale as `_Character` / `_AgeFit`: "no data" is a
+    third state a numeric stride slot cannot represent, and these ride
+    outside `pts` so no existing stride or offset moves.
+
+    `legality` indexes `values` (commercial | grandfathered | ineligible);
+    `histdist` / `landmark` are 1/0/null card-label flags, independent of
+    `legality` -- D82: they never move the verdict, they only add a fit-out
+    caveat to the card."""
+
+    def __init__(self, detail: dict[str, tuple] | None = None) -> None:
+        self.detail = detail or {}
+        self.legality: list = []
+        self.histdist: list = []
+        self.landmark: list = []
+
+    def add(self, address_id) -> None:
+        leg, hd, lm = self.detail.get(address_id, (None, None, None))
+        self.legality.append(leg)
+        self.histdist.append(None if hd is None else int(bool(hd)))
+        self.landmark.append(None if lm is None else int(bool(lm)))
+
+    def pack(self) -> dict:
+        return {"legality": self.legality, "histdist": self.histdist,
+                "landmark": self.landmark, "values": list(LEGALITY_VALUES)}
+
+
 def _nta_character_sql(boroughs: list[str], ramp: bool = True) -> tuple[str, list]:
     """One row per NTA out of `analysis.nta_character`, restricted to the
     exported boroughs. Column NAMES come from the four dicts above, so a rename
@@ -2415,6 +2539,10 @@ def _nta_poi_sql(boroughs: list[str],
     only whether the record is corroborated (2+ distinct sources, D47) and
     whether the supply set kept it (D52). This layer is context for a gap, not
     the restaurant inspector, and the extra columns would triple the file.
+
+    Reads `SUPPLY_VIEW` and excludes an EVIDENCED closure (`poi_status =
+    'closed'`), same as `_poi_sql` -- see that docstring for why never
+    `= 'open'`.
     """
     pred = supply_predicate(supply_set)
     names = [BOROUGH_NAMES[b] for b in boroughs]
@@ -2432,14 +2560,16 @@ def _nta_poi_sql(boroughs: list[str],
                round(ST_X(v.geom), {COORD_DP}) AS lon,
                round(ST_Y(v.geom), {COORD_DP}) AS lat,
                s.n_src >= 2 AS corroborated,
-               v.{pred} AS in_set
-        FROM analysis.poi_supply v
+               v.{pred} AS in_set,
+               v.poi_status, v.poi_status_basis
+        FROM {SUPPLY_VIEW} v
         JOIN src s ON s.cluster_id = v.cluster_id
         JOIN analysis.hex h
           ON h.h3_index = h3_latlng_to_cell_string(ST_Y(v.geom), ST_X(v.geom), {H3_RES})
         WHERE h.borough IN ({ph})
           AND h.nta_code IS NOT NULL
           AND v.category IN ({", ".join("?" for _ in ALLCATS)})
+          AND v.poi_status <> 'closed'
         ORDER BY h.nta_code, v.category, v.poi_id
     """
     return sql, names + ALLCATS
@@ -2516,7 +2646,7 @@ def pack_nta(gap_rows, poi_rows, supply_set: str = DEFAULT_SUPPLY_SET,
         b = layer["bounds"]
         layer["bounds"] = [min(b[0], lon), min(b[1], lat), max(b[2], lon), max(b[3], lat)]
 
-    for code, cat, name, lon, lat, corroborated, in_set in poi_rows:
+    for code, cat, name, lon, lat, corroborated, in_set, _poi_status, _poi_status_basis in poi_rows:
         layer = out.get(code)
         if layer is None or lon is None or lat is None or cat not in CATEGORIES:
             continue
@@ -3824,12 +3954,16 @@ def collect(con, boroughs: list[str], supply_set: str = DEFAULT_SUPPLY_SET,
     # column of nulls the UI draws as "no data".
     characters = collect_character_detail(con, boroughs)
     character = collect_character(con, boroughs)
+    # Same one-read-for-all-sixteen-files contract, for D82 legality (AC-5):
+    # `{}` when `loci address-legality build` has not run, which packs as a
+    # column of nulls -- markers stay drawn (D75), just unlabelled.
+    legalities = collect_legality_detail(con, boroughs)
     gap_layers = {}
     for cat in ALLCATS:
         sql, params = _gap_sql(cat, boroughs, pipe_cols, shop_cols, age_cols, age_src,
                                cens_cols, frame_cols)
         gap_layers[cat] = pack_gaps(con.execute(sql, params).fetchall(), boroughs,
-                                    cat, vacants, characters)
+                                    cat, vacants, characters, legalities)
 
     # Navigation bounds, derived from the addresses themselves rather than a
     # separate boundary file -- a neighborhood the export cannot show is a
@@ -4255,3 +4389,42 @@ def write(bundle: dict, out_dir: pathlib.Path) -> dict[str, int]:
     }
     _dump("meta.json", meta)
     return written
+
+
+def write_address_index(con, boroughs: list[str], out_dir: pathlib.Path) -> int:
+    """`webmap/data/address_index.json` -- `{bbl: address_id}` for every
+    LOT-FRAME address in `boroughs` (D99, GTM-171, seed AC-14).
+
+    The browser search box resolves a GeoSearch hit's BBL to a Loci
+    `address_id` locally, without a round trip, by the same bbl-first rule
+    `loci.geo.geosearch.snap()` uses server-side (design-allocator-report.md
+    S4/S5) -- so a hit this file cannot resolve still gets the fallback
+    `/api/snap?lat&lon` route, never a wrong address.
+
+    LOT-FRAME ONLY: street-midpoint rows (D84, `frame = 'street'`) have no
+    BBL to key on -- PLUTO's lot ownership means nothing at a street
+    midpoint -- so they are absent from this file by construction, not
+    filtered out after the fact. `bbl IS NOT NULL` is belt and braces for the
+    same reason.
+
+    Plain (uncompressed) JSON, like every other file `write()` produces --
+    `webmap/server.js` already gzips any static file over 2 KB on the way
+    out (module docstring, "the server gzips it"), so a second,
+    pre-compressed copy would just be a second file to keep in sync.
+    """
+    rows = con.execute(
+        f"""
+        SELECT bbl, address_id
+        FROM analysis.address
+        WHERE borough IN ({', '.join('?' for _ in boroughs)})
+          AND COALESCE(frame, 'lot') = 'lot'
+          AND bbl IS NOT NULL
+        """,
+        list(boroughs),
+    ).fetchall()
+    index = {bbl: address_id for bbl, address_id in rows}
+    out_dir = pathlib.Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(index, separators=(",", ":"))
+    (out_dir / "address_index.json").write_text(text)
+    return len(text.encode())

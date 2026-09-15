@@ -1580,6 +1580,9 @@ def export_webmap_cmd(
         raise typer.Exit(0)
 
     written = wx.write(bundle, out_dir)
+    # bbl -> address_id for the webmap search box (D99, AC-14) -- lot-frame
+    # rows only; see write_address_index()'s own docstring.
+    written["address_index.json"] = wx.write_address_index(con, boros, out_dir)
     biggest = sorted(written.items(), key=lambda kv: -kv[1])[:3]
     console.print(f"[green]ok[/] wrote {len(written)} files -> {out_dir} "
                   f"({sum(written.values())/1e6:.1f} MB total)")
@@ -4717,6 +4720,111 @@ def address_character_stats(
 
 
 # ===========================================================================
+# address-legality -- commercial LEGALITY at address grain (D82, seed 2026-09-14)
+# ===========================================================================
+address_legality_app = typer.Typer(add_completion=False, help=(
+    "Commercial legality at address grain: is a storefront here allowed, or "
+    "only tolerated?\n\n"
+    "`build` joins MapPLUTO's zonedist1/overlay1/overlay2/landuse/ownertype/"
+    "histdist/landmark onto analysis.address by BBL (read straight off the "
+    "CSV, never into Python memory) and stamps legality_run_at. `stats` "
+    "prints the null rate and the legality distribution off the derived view "
+    "analysis.address_legality (commercial | grandfathered | ineligible).\n\n"
+    "RE-APPLY AFTER `loci address-gaps`, same contract as address-character: "
+    "the DELETE-then-INSERT rebuild nulls these seven columns out.\n\n"
+    "Zoning is a LABEL and a FILTER ON RECOMMENDATION OUTPUTS ONLY (D82). It "
+    "enters no score, no grade, no gap_score, no supply_ratio."))
+app.add_typer(address_legality_app, name="address-legality")
+
+
+@address_legality_app.command("build")
+def address_legality_build(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report only; write nothing."),
+) -> None:
+    """Populate the seven PLUTO columns on analysis.address by BBL join, then
+    print the null rate and the legality distribution.
+
+        loci address-legality build
+    """
+    from loci.model import address_legality as al
+
+    con = _connect_retrying(read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+    report = al.build_legality_columns(con, dry_run=dry_run)
+    console.print(f"[dim]MapPLUTO CSV: {report['pluto_csv']}[/]")
+    console.print(f"addresses with a bbl: [bold]{report['with_bbl']:,}[/] · "
+                  f"missing zonedist1: {report['null_zonedist1']:,} "
+                  f"({report['null_rate'] * 100:.2f}%)")
+    if report["null_rate"] > 0.01:
+        console.print("[yellow]warning:[/] null rate over addresses with a bbl "
+                      "exceeds the 1% budget (AC-1).")
+    if dry_run:
+        console.print("[dim]--dry-run:[/] nothing written.")
+        raise typer.Exit(0)
+
+    dist = al.legality_distribution(con)
+    tab = Table(title="analysis.address_legality — legality distribution")
+    tab.add_column("legality", justify="left")
+    tab.add_column("addresses", justify="right")
+    for k in al.LEGALITY_VALUES:
+        tab.add_row(k, f"{dist.get(k, 0):,}")
+    console.print(tab)
+    console.print("[green]ok[/] analysis.address seven PLUTO columns refreshed; "
+                  "analysis.address_legality reflects the current poi_supply_status.")
+
+
+@address_legality_app.command("stats")
+def address_legality_stats() -> None:
+    """Print the legality distribution and the top ineligible bases, read-only.
+
+        loci address-legality stats
+    """
+    from loci.model import address_legality as al
+    from loci.model.recommend import connect_read_only
+
+    con = connect_read_only()
+    # D97 item 7: a green suite (or a quiet CLI run) must never hide an
+    # unapplied build layer. If analysis.address holds rows but every one has
+    # a NULL legality, the sql/031 columns exist but `address-legality build`
+    # has simply never populated them (or ran before a rule change) -- fail
+    # loud rather than print a distribution that is all zeros.
+    total_addr, populated = con.execute(
+        "SELECT count(*), count(*) FILTER (WHERE legality IS NOT NULL) "
+        "FROM analysis.address").fetchone()
+    if total_addr and not populated:
+        console.print(
+            "[red]error:[/] analysis.address.legality is entirely NULL — "
+            "`loci address-legality build` has not been run against this "
+            "warehouse (or it predates a rule change). Re-apply with:\n"
+            "    loci address-legality build")
+        raise typer.Exit(1)
+
+    dist = al.legality_distribution(con)
+    tab = Table(title="analysis.address_legality — legality distribution")
+    tab.add_column("legality", justify="left")
+    tab.add_column("addresses", justify="right")
+    total = sum(dist.values()) or 1
+    for k in al.LEGALITY_VALUES:
+        tab.add_row(k, f"{dist.get(k, 0):,} ({dist.get(k, 0) / total * 100:.1f}%)")
+    console.print(tab)
+
+    basis = con.execute(
+        "SELECT legality_basis, count(*) AS n FROM analysis.address_legality "
+        "WHERE legality = 'ineligible' GROUP BY 1 ORDER BY n DESC LIMIT 10"
+    ).fetchall()
+    if basis:
+        t2 = Table(title="top ineligible bases")
+        t2.add_column("legality_basis", justify="left")
+        t2.add_column("n", justify="right")
+        for b, n in basis:
+            t2.add_row(b, f"{n:,}")
+        console.print(t2)
+    console.print("[dim]D82: legality is a card label and a recommendation filter only. "
+                  "histdist / landmark never affect it.[/]")
+
+
+# ===========================================================================
 # sidewalk-count -- counting people in public traffic-camera frames (D85)
 # ===========================================================================
 sidewalk_app = typer.Typer(add_completion=False, help=(
@@ -5536,6 +5644,11 @@ def recs_add(
     res = rl.insert_rows(con, [row], dry_run=dry_run)
     if res.n_written:
         console.print(f"[green]{'would add' if dry_run else 'added'}[/] {row['rec_id']}")
+    elif res.n_ineligible:
+        console.print(f"[red]refused[/] {row['rec_id']}: anchor address "
+                      f"{address_id!r} is legality='ineligible' (D82) — not "
+                      "commercially zoned and no open business grandfathers it. "
+                      "See `loci address-legality stats`.")
     else:
         console.print(f"[yellow]already in the ledger[/] (card_hash {row['card_hash']})")
 
@@ -7920,4 +8033,200 @@ def poi_keys_guard(
             f"ledger keys from {stats['newest_month']} absent from the dedup "
             f"({100 * stats['absent_pct']:.3f}%, threshold "
             f"{100 * stats['threshold']:.2f}%); {stats['n_new']:,} keys are new.")
+    raise typer.Exit(0)
+
+
+@app.command("report")
+def report_cmd(
+    address: str = typer.Argument(
+        ..., help="A Loci address_id, or free text geocoded via NYC Planning "
+                  "Labs GeoSearch and snapped to the address frame."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Print the planned paid calls and estimated "
+                                 "cost; spend nothing."),
+    no_cache: bool = typer.Option(
+        False, "--no-cache", help="Skip the 30-day cache read (still writes "
+                                  "a fresh cache entry when it runs)."),
+    closure_checks: bool = typer.Option(
+        True, "--closure-checks/--no-closure-checks",
+        help="Plan and make on-demand Places/web closure checks for unknown "
+            "POIs in the catchment (default: on). --no-closure-checks makes "
+            "zero closure-check calls and writes zero closure-evidence rows; "
+            "the Supply section still lists every POI's current status and "
+            "basis, and the rents/leases/news searches and prose call still run."),
+    cap: float = typer.Option(1.0, "--cap", help="Hard spend cap in USD."),
+    out: str = typer.Option(
+        None, "--out", help="Write the markdown here instead of "
+                            "docs/recommendations/<slug>-<date>.md."),
+    db: str = typer.Option(None, "--db", help="Warehouse path."),
+) -> None:
+    """Generate (or fetch from cache) the allocator memo for one address
+    (D100, GTM-172, seed AC-14..AC-22).
+
+    `address` is either an existing Loci `address_id` or free text resolved
+    through `loci.geo.geosearch.resolve` (GeoSearch, then a BBL or <=50 m
+    snap to the address frame) -- an address GeoSearch cannot place, or that
+    snaps to nothing in coverage, is refused with 'not in Loci coverage'
+    (exit 2), never a degraded report (seed "Search rule").
+    """
+    from loci.geo.geosearch import NotInCoverage, resolve
+    from loci.report.run import generate
+
+    con = locidb.connect(db, read_only=dry_run)
+    try:
+        address_id = resolve(con, address)
+    except NotInCoverage as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(2) from exc
+
+    result = generate(con, address_id, cap_usd=cap, dry_run=dry_run,
+                      no_cache=no_cache, out=out, closure_checks=closure_checks)
+
+    if dry_run:
+        if result.plan:
+            t = Table(title="loci report --dry-run — planned calls")
+            t.add_column("provider"); t.add_column("detail")
+            t.add_column("usd", justify="right")
+            for call in result.plan:
+                t.add_row(call.provider, call.detail or "", f"${call.usd:.3f}")
+            console.print(t)
+        console.print(f"[green]ok[/] dry run — estimated ${result.total_usd:.3f}, "
+                      f"zero paid calls, run_id={result.run_id}")
+        raise typer.Exit(0)
+
+    console.print(f"[green]ok[/] {result.path}  ${result.total_usd:.3f}  "
+                  f"run_id={result.run_id}"
+                  + ("  (cached)" if result.cached else ""))
+    raise typer.Exit(0)
+
+
+# ===========================================================================
+# loci verify-closures -- budget-capped closure checks for 'unknown' POIs
+# (D98, GTM-170, AC-11). Core logic (Budget / select_unknown / verify) lives
+# in evidence/verify.py and is tested there directly with fakes; this wrapper
+# only parses args, resolves a bbox, builds the two PAID clients LAZILY (never
+# for --dry-run -- see verify()'s own docstring: "budget, con and the two
+# clients are not touched at all in that branch"), and prints the result.
+# Appended at the END of this file on purpose: other sessions hold
+# uncommitted blocks above (poi-keys, citibike, `report` just above this one)
+# and appending is the only edit that cannot collide with theirs.
+# ===========================================================================
+
+@app.command(name="verify-closures")
+def verify_closures_cmd(
+    budget: float = typer.Option(
+        ..., "--budget", help="Hard USD cap for this run. evidence.verify."
+                              "Budget.reserve() refuses the call that would cross it -- "
+                              "never rounds or averages past the cap."),
+    bbox: str = typer.Option(
+        None, "--bbox", help="minlon,minlat,maxlon,maxlat. Exactly one of "
+                             "--bbox/--area is required: select_unknown() never runs "
+                             "citywide unbudgeted (design constraint)."),
+    area: str = typer.Option(
+        None, "--area", help="Neighborhood name, ILIKE-matched against "
+                             "analysis.address_gaps.neighborhood; its envelope becomes "
+                             "the bbox."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Print the candidate plan and its estimated cost. "
+                                 "Makes ZERO paid calls, ZERO writes, and constructs "
+                                 "neither GooglePlacesClient nor TavilyWebSearch."),
+    limit: int = typer.Option(
+        None, "--limit", help="Cap the number of candidate POIs selected, largest "
+                              "co-located group first."),
+    recheck_days: int = typer.Option(
+        30, "--recheck-days", help="Skip a POI whose newest closure evidence was "
+                                   "retrieved within this many days."),
+    supply_set: str = typer.Option(
+        "principled", "--supply-set", help="all | principled | corroborated"),
+    poi: list[str] = typer.Option(
+        None, "--poi", help="Restrict candidates to this poi_id. Repeatable. "
+                            "Composes with --bbox/--area (still required)."),
+    name: str = typer.Option(
+        None, "--name", help="Restrict candidates to POIs whose name contains this "
+                             "substring, case-insensitive."),
+    db: str = typer.Option(None, "--db", help="Warehouse path."),
+) -> None:
+    """Budget-capped closure checks for canonical POIs still reading
+    poi_status = 'unknown', inside a bbox or a named neighborhood (D98,
+    GTM-170).
+
+    Places first, web fallback, per POI -- see evidence/verify.py's module
+    docstring for the reserve -> ledger row -> call -> evidence-row sequence
+    and why a run that hits `--budget` stops cleanly mid-POI rather than
+    half-spending on one. `--dry-run` runs the SAME selection query and
+    prints the SAME plan a real run would spend against, so the two can never
+    silently disagree about what a run would do. `--poi`/`--name` narrow the
+    candidate set for a targeted re-check without giving up the bbox/area
+    requirement.
+    """
+    from loci.evidence.verify import Budget, area_bbox, select_unknown, verify
+
+    if bool(bbox) == bool(area):
+        console.print("[red]FAIL[/] pass exactly one of --bbox or --area.")
+        raise typer.Exit(1)
+
+    con = locidb.connect(db, read_only=dry_run)
+    try:
+        if bbox:
+            parts = [p.strip() for p in bbox.split(",")]
+            if len(parts) != 4:
+                console.print("[red]FAIL[/] --bbox needs 4 comma-separated numbers: "
+                              "minlon,minlat,maxlon,maxlat.")
+                raise typer.Exit(1)
+            try:
+                box = tuple(float(p) for p in parts)
+            except ValueError as exc:
+                console.print(f"[red]FAIL[/] --bbox values must be numbers: {exc}")
+                raise typer.Exit(1) from exc
+        else:
+            try:
+                box = area_bbox(con, area)
+            except ValueError as exc:
+                console.print(f"[red]FAIL[/] {exc}")
+                raise typer.Exit(1) from exc
+
+        cands = select_unknown(con, bbox=box, supply_set=supply_set,
+                               recheck_days=recheck_days, limit=limit,
+                               poi_ids=list(poi) if poi else None, name=name)
+        bgt = Budget(usd=budget)
+
+        if dry_run:
+            result = verify(con, cands, budget=bgt, places=None, web=None, dry_run=True)
+            t = Table(title=f"verify-closures --dry-run — {len(cands)} candidate POIs "
+                            f"in {'--bbox' if bbox else f'--area {area!r}'}")
+            t.add_column("poi_id"); t.add_column("name"); t.add_column("category")
+            t.add_column("co-located", justify="right")
+            for c in cands:
+                t.add_row(c.poi_id, c.name, c.category, str(c.colocation_n))
+            console.print(t)
+            console.print(
+                f"[bold]plan[/]  {len(result.plan)} planned calls (places first, web "
+                f"fallback per POI) — estimated ${result.estimated_usd:.3f} against a "
+                f"${budget:.2f} cap. ZERO calls made, ZERO rows written — dry-run "
+                "constructed neither paid client.")
+            raise typer.Exit(0)
+
+        # LAZY, and ONLY here: a dry-run must never construct either paid client.
+        from loci.evidence.web_search import TavilyWebSearch
+        from loci.validation.google_places import GooglePlacesClient
+
+        places = GooglePlacesClient()
+        web = TavilyWebSearch()
+        result = verify(con, cands, budget=bgt, places=places, web=web, dry_run=False)
+    finally:
+        con.close()
+
+    t = Table(title=f"verify-closures  run_id={result.run_id}")
+    t.add_column("metric"); t.add_column("n", justify="right")
+    t.add_row("candidates selected", f"{len(cands):,}")
+    t.add_row("checked", f"{result.checked:,}")
+    t.add_row("places calls", f"{result.places_calls:,}")
+    t.add_row("web calls", f"{result.web_calls:,}")
+    t.add_row("closed", f"[red]{result.closed}[/]" if result.closed else "0")
+    t.add_row("opened", f"{result.opened:,}")
+    t.add_row("still unknown", f"{result.still_unknown:,}")
+    t.add_row("budget hit", "[yellow]yes[/]" if result.budget_hit else "no")
+    console.print(t)
+    console.print(f"[bold]spend[/]  ${result.spent_usd:.3f} of ${budget:.2f} cap "
+                  f"(run_id={result.run_id})")
     raise typer.Exit(0)
