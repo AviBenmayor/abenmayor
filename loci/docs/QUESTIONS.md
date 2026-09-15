@@ -138,11 +138,11 @@ claim stands on.
 - **Current answer:** Ruled 2026-09-14 (owner, "yes to all 4," see CHECKPOINT D90): drop sports_club and marina from fitness's GOOGLE_TYPES. Implementation in progress (GTM-173); once landed, fitness's true-coverage-hole rate must be re-measured on the fixed type map rather than quoting the 35.6% figure.
 
 ### M15 — Should cross-category name+distance dedup run before per-category dedup?
-- **Status:** in-progress
-- **Answered by:** `Cross-category name+distance dedup before per-category dedup (Lion's Milk / GTM-153 proper)`
+- **Status:** answered
+- **Answered by:** `Co-located POIs: tri-state poi_is_open predicate, analysis.poi_colocation view, closure gate on the supply set (owner rule 2026-09-14)`, `Cross-category name+distance dedup before per-category dedup (Lion's Milk / GTM-153 proper)`
 - **Why it matters:** extends M4 — per-category dedup cannot catch a single storefront filed under two different categories by two sources (Lion's Milk: DOHMH restaurant vs Overture cafe_bakery, 11 m apart, both reading open — flagged inline in D91 as GTM-153), so every count-based measure downstream (supply ratio, gap score, the D90 coverage validation, the D91/D93 revenue and carrying-capacity models) can double-count a business that crosses a category boundary.
 - **Fails if:** n/a — data-quality fix, not a claim to validate; but a similarity threshold loose enough to merge genuinely mixed-use sites (a bakery-café that legitimately sells restaurant-grade meals) would wrongly collapse real supply.
-- **Current answer:** Ruled 2026-09-14 (owner, "yes to all 4," see CHECKPOINT D90): run cross-category dedup before per-category dedup, GTM-153 proper. Implementation and the resulting supply re-fit/re-run are in progress and will be recorded in a later CHECKPOINT entry (D94 territory).
+- **Current answer:** Ruled 2026-09-14 (owner, "yes to all 4," see CHECKPOINT D90) and shipped 2026-09-15 (CHECKPOINT D101, commit 13f0fec): one global cross-source union-find; different-category pairs merge iff their distinctive name cores match and trade words aren't disjoint within 40 m (CATEGORY_PRECEDENCE=finer_food, DOHMH "restaurant" yields to a finer aggregator category). 12,928 merges, clusters 227,548 → 219,133 (−3.7%); audited precision 0.970 [0.915, 0.990] on a fresh 100-pair sample (recall ~0.84, precision bought deliberately). Lion's Milk is now one cluster; ledger keys re-minted by abenmayor-88's migration (sql/035).
 
 ### Tier D · Descriptive — what is where
 
@@ -331,6 +331,27 @@ claim stands on.
 - **Why it matters:** the co-location closure gate (commit a67f03e) flags 2,527 groups / 7,597 POIs as unresolved rather than collapsing them; collapsing would remove 4,270 more POIs from the supply set. The default is OFF (count as-is), which is conservative for supply counts but leaves a known duplication risk uncorrected wherever a group really is one business under two records.
 - **Fails if:** n/a — data-quality/method question; but leaving this open indefinitely means every supply-based count downstream carries an unquantified, undecided bias in one direction.
 - **Current answer:** Open. This is the one item the 2026-09-14 "yes to all 4" ruling (CHECKPOINT D90) did NOT cover — it stays open pending a separate owner ruling.
+
+### D25 — Should `db.init_schema` apply only HEAD-tracked migrations, not every `*.sql` on disk?
+- **Status:** open
+- **Answered by:** `init_schema must apply only HEAD-tracked migrations (uncommitted *.sql went live across sessions)`
+- **Why it matters:** found during the D101 dedup screen re-run #2: `init_schema` applies every `*.sql` file it finds on disk, in sorted order, INCLUDING files that are not yet committed — so a peer session's uncommitted migration goes live on any OTHER session's next write connection, not just the peer's own. This is invisible to every hash check this project uses at re-run checkpoints, because those check the supply set's rows, not the schema a query runs against.
+- **Fails if:** n/a — infra/method question; but any fix that still lets an uncommitted file affect a connection it did not originate from reproduces the same defect under a different name.
+- **Current answer:** Open. abenmayor-88 (the ledger owner) will bring the actual guard design as an owner decision; ticketed (GTM-179) for the fix once that shape is settled.
+
+### D26 — Is cafe_bakery's newly-anchored principled set (registry-backed under category-precedence B) right, or should café keep aggregator members?
+- **Status:** open
+- **Answered by:** (not ticketed) — CHECKPOINT D101
+- **Why it matters:** D101's CATEGORY_PRECEDENCE=finer_food ruling relabels enough restaurant→cafe_bakery rows (1,981) that cafe_bakery now clears the anchor-qualification bar (DOHMH members present, coverage 1.507) for the first time — so its principled/gated supply set (8,932 of 19,150 canonical cafes) is now registry-backed the way restaurant, grocery and the other anchored categories are. This is a genuine consequence of the category-precedence ruling, not something anyone decided on its own terms: nobody asked whether café SHOULD be anchor-gated, or whether its Overture/Foursquare-only members (the other 10,218) are being wrongly excluded from supply just because they lack a DOHMH row.
+- **Fails if:** n/a — data-model/method question; but gating café to its DOHMH-corroborated subset when the un-gated aggregator members are otherwise legitimate cafes would understate café supply the same way any anchor-fallback failing closed does (D30 precedent).
+- **Current answer:** Open. Flagged as a consequence of the D101 ruling worth a look, not decided by it.
+
+### D27 — Should the ~390 residual wrong merges from the D101 dedup rule (the one-brand-two-storefronts pattern) be accepted, or fixed with a brand-suffix rule?
+- **Status:** open
+- **Answered by:** (not ticketed) — CHECKPOINT D101
+- **Why it matters:** the shipped D101 dedup rule audited at 0.970 [0.915, 0.990] precision on a fresh 100-pair sample, meaning roughly 390 of its 12,928 merges are estimated wrong. The residual failure mode named during the audit is one brand operating two nearby, genuinely separate storefronts under names that share a core (e.g. "Saraghina Bakery" vs "Saraghina") — the name-core-equality rule cannot distinguish a second location of the same brand from one business double-counted across sources, because both present as "the same distinctive name within 40 m."
+- **Fails if:** n/a — data-quality/method question; but a brand-suffix rule loose enough to separate "Saraghina Bakery" from "Saraghina" without reintroducing the cross-category duplicates D101 was built to fix would need its own precision audit before shipping.
+- **Current answer:** Open. Not part of the 2026-09-14/15 dedup ruling — recorded as a residual worth a look, not decided.
 
 ### Tier X · Explanatory — conditional structure, no temporal claim
 
