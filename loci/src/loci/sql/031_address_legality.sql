@@ -20,7 +20,8 @@
 --       model/address_legality.py's module docstring for the measurement
 --       that forced this (an exact-coordinate POI match found 62 of 44,002
 --       open commercial POIs; the real distance-based match that works costs
---       ~90 s over MN+BK, too expensive to re-run on every read).
+--       ~1 s over MN+BK since the grid-bucketed join of 2026-09-15 (GTM-169);
+--       it was a 178 s nested loop before, and either way it is a stored pass, not a view).
 --
 -- Same shape as address_character's twelve floor-area/jobs columns: STORED
 -- because they are either read from a file or expensive to compute, and

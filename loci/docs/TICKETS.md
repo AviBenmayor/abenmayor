@@ -845,6 +845,8 @@ Commercial legality is a LABEL, never a gate. analysis.address gains PLUTO colum
 
 Opened 2026-09-14 (CHECKPOINT D97, D104). Pushed to Linear 2026-09-14 as GTM-169.
 
+Done 2026-09-15 (CHECKPOINT D112, commit c36cd18 + the D112 docs commit): the open-POI match's nested-loop join (6.8e10 pair evaluations; DuckDB costed the poi_supply_status view at ~1 row) replaced by a 0.001° grid-bucketed equi-join with a MATERIALIZED POI CTE and the original pad + haversine predicates — byte-identical rows (EXCEPT ALL both ways 0/0 on 57,106 match rows), 178 s → 1.0 s SELECT, `address-legality build` 3,449 s → 3 s inside the canonical order; five pinning tests. Canonical order re-run on ba944e18c57b in ~23 min; baseline-hash drift test green.
+
 ### Sidewalk-count sampling as a launchd job, not a session scheduler
 `Medium` · `2 pts` · `infra,ingest`
 

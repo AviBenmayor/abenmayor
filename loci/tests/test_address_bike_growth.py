@@ -48,7 +48,7 @@ import pytest
 from loci.model import address_bike_growth as bg
 
 DRAFT = (pathlib.Path(bg.__file__).resolve().parents[1]
-         / "sql" / "038_bike_growth.sql.draft")
+         / "sql" / "038_bike_growth.sql")   # landed 2026-09-15 (D111); developed as .sql.draft
 
 #: The vintage every test uses. Windows: prior 2024-09..2025-08, recent
 #: 2025-09..2026-08.
@@ -230,14 +230,15 @@ def test_the_draft_declares_exactly_the_ruled_columns(warehouse):
     assert cols == bg.GROWTH_COLUMNS
 
 
-def test_the_draft_keeps_its_suffix_and_carries_the_caveat_header():
-    # The .draft suffix is what keeps db.init_schema's *.sql glob from applying
-    # this on a PEER session's write connection and moving the shared supply
-    # hash (D105/D106). Renaming it is the lead's call, announced first.
-    assert DRAFT.name.endswith(".sql.draft")
-    assert not DRAFT.with_suffix("").exists(), (
-        "038_bike_growth.sql exists: the migration has been undrafted, which "
-        "goes live on the next write connection any session opens.")
+def test_the_migration_is_live_and_carries_the_caveat_header():
+    # 038 was developed as 038_bike_growth.sql.draft — the suffix kept
+    # db.init_schema's *.sql glob from applying it on a PEER session's write
+    # connection (D105/D106) — and was renamed by the lead after announcing
+    # to the peers (D111, 2026-09-15). A lingering .draft twin would mean two
+    # divergent copies of one migration.
+    assert DRAFT.name.endswith(".sql"), "038 must be the live migration"
+    assert not DRAFT.with_suffix(".sql.draft").exists(), (
+        "a .draft twin of 038 lingers next to the live migration")
     text = DRAFT.read_text().lower()
     for phrase in ("endogenous to retail", "e-bike", "riders are not residents",
                    "covid-recovery", "context only"):

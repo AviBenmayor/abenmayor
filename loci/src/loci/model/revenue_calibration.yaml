@@ -86,13 +86,13 @@ capacity_psf_per_year:
     p50: 175
     p75: 300
 spec_hash: 9bda94515a2e
-asof: '2026-09-15T08:29:25'
+asof: '2026-09-15T17:47:32'
 sweep:
   boroughs:
   - MN
   - BK
   supply_set: principled
-  supply_hash: d993b3802c6a
+  supply_hash: ba944e18c57b
   ring_edges_m:
   - 0.0
   - 100.0
@@ -117,8 +117,8 @@ sweep:
   establishments_in_scope: 53035
   establishments_total: 113510
   query_nodes: 46685
-  sweep_seconds: 159.9
-  run_at: '2026-09-15T08:27:27'
+  sweep_seconds: 39.1
+  run_at: '2026-09-15T17:46:18'
 ec_vintages:
   default: 2022
   pharmacy: 2017
