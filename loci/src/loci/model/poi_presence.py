@@ -981,6 +981,15 @@ def snapshot(con, *, month: str | None = None, dry_run: bool = False,
     month = month or current_month(today)
     validate_month(month)
     ensure_schema(con)
+    # THE KEY-DRIFT GUARD (sql/035_poi_key_map.sql). Imported HERE and not at
+    # module level because the migration module imports this one. It refuses
+    # the snapshot when the dedup's key set has moved away from the ledger's
+    # without an applied analysis.poi_key_map: a re-minted key is
+    # indistinguishable from a new storefront, and first_seen_month is
+    # write-once, so writing one is permanent. `force` bypasses it, exactly as
+    # it bypasses the out-of-order-month refusal below.
+    from loci.model.poi_key_migration import guard_snapshot
+    guard_snapshot(con, month=month, force=force)
 
     newest = con.execute(
         "SELECT max(last_seen_month) FROM analysis.poi_presence").fetchone()[0]

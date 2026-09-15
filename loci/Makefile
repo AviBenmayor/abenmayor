@@ -60,6 +60,17 @@ chains-refresh: ## Monthly: filing pipeline, first-seen ledger, detect chains, e
 	# Order against poi-snapshot does not matter -- this step reads only
 	# staging.storefront_filing.
 	uv run loci storefront-pipeline build
+	# THE KEY-DRIFT GUARD, immediately before the snapshot inside `chains
+	# refresh`, so the monthly job fails HERE rather than halfway through a
+	# write. analysis.poi_presence.location_key is a content hash that
+	# INCLUDES THE CATEGORY, so any change to the category rule re-mints keys
+	# -- and a re-minted key is indistinguishable from a new storefront to a
+	# ledger whose first_seen_month is write-once. `poi-snapshot` calls this
+	# guard itself; running it here as well means the failure is legible in
+	# the cron log instead of buried in step 1/4. When it refuses:
+	#   loci dedup -> loci poi-keys plan -> loci poi-keys apply -> retry.
+	# See sql/035_poi_key_map.sql.
+	uv run loci poi-keys guard
 	# `loci chains refresh` runs `loci poi-snapshot` as step 1/4, BEFORE detect:
 	# detect reads analysis.poi_first_seen and raises without it, and a month's
 	# observation cannot be recovered once the month has passed. Keeping it

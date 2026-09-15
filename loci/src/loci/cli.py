@@ -236,7 +236,16 @@ def check_presence() -> None:
             f"{stats['coverage_pct']:.2f}% of {stats['clusters']:,} deduped "
             f"locations covered in {stats['newest_month']}; kinds="
             + ", ".join(f"{k}={v:,}" for k, v in sorted(stats["kinds"].items())))
-    raise typer.Exit(1 if errors else 0)
+    # The key-migration surface (sql/035): rows re-keyed, merged, unmapped, and
+    # the one integrity check coverage_check cannot make -- a ledger row still
+    # carrying a key an APPLIED map moved away from means the apply half-landed.
+    from loci.model.poi_key_migration import format_migration
+    line, km_errors = format_migration(con)
+    if line:
+        console.print(f"[green]ok[/] {line}" if not km_errors else f"[yellow]{line}[/]")
+    for e in km_errors:
+        console.print(f"[red]FAIL[/] {e}")
+    raise typer.Exit(1 if errors or km_errors else 0)
 
 
 @app.command(name="check-questions")
@@ -7146,3 +7155,261 @@ def colocation(
 def _supply_col(supply_set: str) -> str:
     from loci.score.supply import supply_predicate
     return supply_predicate(supply_set)
+
+# ===========================================================================
+# loci poi-keys -- migrating the first-seen ledger across a key-recipe change
+# ===========================================================================
+poi_keys_app = typer.Typer(add_completion=False, help=(
+    "Carry analysis.poi_presence across a change to the location_key recipe.\n\n"
+    "`location_key` is a CONTENT HASH THAT INCLUDES THE CATEGORY "
+    "(model/poi_presence.mint_key), so any change to the category rule re-mints "
+    "keys -- and a re-minted key is indistinguishable from a NEW STOREFRONT to "
+    "the ledger. The owner's category-precedence ruling 'B' (2026-09-14, a finer "
+    "food category wins) moves ~4,363 keys and drops ~15,700; snapshotting that "
+    "with no migration writes 4,363 fake openings and 15,700 fake "
+    "disappearances, PERMANENTLY, because first_seen_month is write-once "
+    "(sql/018).\n\n"
+    "THE SEQUENCE, and it is not optional:\n"
+    "  loci dedup  ->  loci poi-keys plan  ->  loci poi-keys apply\n"
+    "              ->  loci poi-snapshot   ->  loci check-presence\n\n"
+    "`loci poi-snapshot` calls the guard itself and REFUSES to run when the key "
+    "sets have drifted without an applied map. Read sql/035_poi_key_map.sql."))
+app.add_typer(poi_keys_app, name="poi-keys")
+
+
+def _poi_keys_con(db: str | None, read_only: bool = False):
+    """Resolve the warehouse the SAME way for read and write paths.
+
+    LOCI_DB IS RESOLVED HERE, EXPLICITLY, and that is a scar. `db.connect()`
+    honours $LOCI_DB only when it is passed no path at all, while
+    `poi_presence.connect_write()` defaults to `db.DEFAULT_PATH` and therefore
+    IGNORES $LOCI_DB entirely. So `LOCI_DB=/tmp/scratch.duckdb loci poi-keys
+    apply` silently migrated the LIVE warehouse instead of the scratch copy --
+    the read-only `guard` obeyed the variable and the writer did not, which is
+    the worst possible split. Prefer `--db`; this makes $LOCI_DB work too."""
+    import os as _os
+
+    from loci.model import poi_presence as pp
+
+    target = db or _os.environ.get("LOCI_DB") or str(locidb.DEFAULT_PATH)
+    if read_only:
+        from loci.model.recommend import connect_read_only
+        return connect_read_only(target)
+    return pp.connect_write(target)
+
+
+@poi_keys_app.command("plan")
+def poi_keys_plan(
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Compute and print; write no map rows."),
+    db: str = typer.Option(None, "--db", help="Warehouse path (default data/loci.duckdb). "
+                                              "Use a scratch copy to rehearse."),
+    show: int = typer.Option(12, "--show", help="Category transitions to list."),
+) -> None:
+    """Diff the CURRENT dedup's minted keys against the ledger and write the map.
+
+    Reads `analysis.poi_dedup` + `staging.poi` (the same query `poi-snapshot`
+    uses, deliberately -- two definitions of "the locations the ledger is
+    about" is how a migration plans against a different universe than the
+    snapshot writes), mints the key each cluster WOULD get, and classifies
+    every ledger key the new dedup no longer mints:
+
+      relabel_poi  one old key -> one FREE new key, found via the ledger
+                   row's canonical/member poi_id in analysis.poi_dedup. The
+                   dedup's own assertion of identity; the strongest route.
+      relabel_loc  the same, found via name + 4 dp coordinate because the
+                   ledger row had no live poi_id. Good enough to relabel.
+      merged       two or more contributing ledger rows -> one new key, all on
+                   the poi route. THE TARGET MAY ALREADY BE HELD by a surviving
+                   ledger row, and usually is (4,538 of 8,134 groups on the
+                   live B-rule plan) -- that row is folded IN, not overwritten.
+                   The survivor keeps the EARLIEST first_seen and its kind, the
+                   LATEST last_seen, max(n_months_seen) (never the sum), min
+                   ledger_started_month, and the union of the closure columns.
+      unmapped   genuinely gone. NEVER DELETED, never rewritten: the row keeps
+                 last_seen_month at the previous month, exactly as an ordinary
+                 disappearance does. The map row is the audit that we looked.
+      collision  a CONTENT-route candidate refused -- its target is already
+                 held, contested, or its content matched more than one new
+                 cluster. A name + 4 dp cell match is evidence of a
+                 relabelling, never evidence that two storefronts are one
+                 business, so nothing is done.
+
+    On a warehouse whose dedup has not changed this reports zero candidates.
+    That no-op IS the useful result: it says the ledger and the dedup agree."""
+    from loci.model import poi_key_migration as km
+
+    con = _poi_keys_con(db)
+    try:
+        res = km.plan(con, dry_run=dry_run)
+    except (ValueError, RuntimeError) as exc:
+        console.print(f"[red]FAIL[/] {exc}")
+        raise typer.Exit(1) from exc
+    finally:
+        pass
+
+    t = Table(title="poi-keys plan" + (" — DRY RUN, nothing written" if dry_run else ""))
+    t.add_column("metric"); t.add_column("n", justify="right")
+    t.add_row("deduped locations (current)", f"{res.n_dedup:,}")
+    t.add_row("ledger rows", f"{res.n_ledger:,}")
+    t.add_row(f"  seen in the newest month", f"{res.n_ledger_current:,}")
+    t.add_row("ledger keys the dedup still mints", f"{res.n_surviving:,}")
+    t.add_row("ledger keys ABSENT from the dedup", f"{res.n_absent:,}"
+              + (f"  ({100 * res.absent_pct:.2f}%)" if res.n_ledger_current else ""))
+    t.add_row("[green]relabel_poi[/] 1:1 via canonical poi_id",
+              f"{res.relabel_poi:,}")
+    t.add_row("[green]relabel_loc[/] 1:1 via name + 4 dp coord",
+              f"{res.relabel_loc:,}")
+    t.add_row("[green]merged[/] groups", f"{res.merged_groups:,}")
+    t.add_row("  old keys folded in", f"{res.merged_old_keys:,}")
+    t.add_row("  ... into a key a ledger row already held",
+              f"{res.merged_into_existing:,}")
+    t.add_row("[yellow]unmapped[/] (gone; left alone)", f"{res.unmapped:,}")
+    t.add_row("[red]collision[/] (refused)", f"{res.collisions:,}")
+    t.add_row("new keys, no old key behind them", f"{res.new_keys:,}")
+    console.print(t)
+
+    if res.by_transition and show:
+        tt = Table(title="category transitions")
+        tt.add_column("old -> new"); tt.add_column("n", justify="right")
+        for k, v in sorted(res.by_transition.items(), key=lambda kv: -kv[1])[:show]:
+            tt.add_row(k, f"{v:,}")
+        console.print(tt)
+
+    if res.by_route:
+        rt = Table(title="match route")
+        rt.add_column("route"); rt.add_column("n", justify="right")
+        for k, v in sorted(res.by_route.items(), key=lambda kv: -kv[1]):
+            rt.add_row(k, f"{v:,}")
+        console.print(rt)
+
+    if not res.mapped and not res.merged_groups:
+        console.print("[green]ok[/] no keys to migrate — the ledger and the "
+                      "current dedup agree. `loci poi-snapshot` is safe to run.")
+    elif dry_run:
+        console.print("[yellow]DRY RUN[/] — re-run without --dry-run to write "
+                      "analysis.poi_key_map, then `loci poi-keys apply`.")
+    else:
+        console.print(f"[green]ok[/] wrote {res.written:,} rows to "
+                      "analysis.poi_key_map. Next: [bold]loci poi-keys apply[/], "
+                      "then [bold]loci poi-snapshot[/].")
+    if res.collisions:
+        console.print("[red]NOTE[/] collisions are recorded and REFUSED, not "
+                      "applied. They need a human: `SELECT * FROM "
+                      "analysis.poi_key_map WHERE reason = 'collision'`.")
+    raise typer.Exit(0)
+
+
+@poi_keys_app.command("apply")
+def poi_keys_apply(
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Report what would move; write nothing."),
+    db: str = typer.Option(None, "--db", help="Warehouse path."),
+) -> None:
+    """Rewrite location_key everywhere it is stored, in ONE transaction.
+
+    Acts on the newest plan that still has unapplied mapped/merged rows, and
+    rewrites: `analysis.poi_presence` (preserving first_seen_month, kind,
+    src_date/field, closed_on/src and n_months_seen), `chains.brand_location`
+    (de-duplicating the (month, brand, key) primary key a merge can break),
+    `analysis.recommendation_outcome.matched_location_key`,
+    `staging.poi_closure` and `analysis.poi_closure_evidence`.
+
+    THE CATEGORY MOVES WITH THE KEY. That is not cosmetic: the snapshot's
+    pass-A match tests the key AND the category, so a row whose key was
+    rewritten but whose category was not would still mint a fresh key next
+    month -- the exact fake opening this exists to prevent.
+
+    Idempotent three ways over: the map row is stamped `applied_at`, a
+    rewritten old key no longer exists to be matched, and a second call finds
+    no pending plan and does nothing."""
+    from loci.model import poi_key_migration as km
+
+    con = _poi_keys_con(db)
+    try:
+        res = km.apply(con, dry_run=dry_run)
+    except (ValueError, RuntimeError) as exc:
+        console.print(f"[red]FAIL[/] {exc}")
+        raise typer.Exit(1) from exc
+
+    if res.noop:
+        console.print("[green]ok[/] nothing to apply — no plan has unapplied "
+                      "mapped/merged rows. (Idempotent: this is what a second "
+                      "`apply` looks like.)")
+        raise typer.Exit(0)
+
+    t = Table(title="poi-keys apply"
+                    + (" — DRY RUN, nothing written" if res.dry_run else ""))
+    t.add_column("metric"); t.add_column("n", justify="right")
+    t.add_row("plan", str(res.planned_at))
+    t.add_row("ledger rows re-keyed (1:1)", f"{res.n_rows_migrated:,}")
+    t.add_row("  via canonical poi_id", f"{res.n_relabel_poi:,}")
+    t.add_row("  via name + 4 dp coordinate", f"{res.n_relabel_loc:,}")
+    t.add_row("merge groups", f"{res.n_merged_groups:,}")
+    t.add_row("  into a key a ledger row already held",
+              f"{res.n_merged_into_existing:,}")
+    t.add_row("  rows folded away by merges", f"{res.n_merged_absorbed:,}")
+    t.add_row("unmapped (recorded, untouched)", f"{res.n_unmapped:,}")
+    t.add_row("collisions (recorded, refused)", f"{res.n_collisions:,}")
+    t.add_row("ledger rows before", f"{res.ledger_before:,}")
+    t.add_row("ledger rows after", f"{res.ledger_after:,}")
+    for table, info in sorted(res.dependents.items()):
+        t.add_row(f"  {table}", ", ".join(f"{k}={v}" for k, v in info.items()))
+    console.print(t)
+    if not res.dry_run:
+        console.print("[green]ok[/] next: [bold]loci poi-snapshot[/] then "
+                      "[bold]loci check-presence[/].")
+    raise typer.Exit(0)
+
+
+@poi_keys_app.command("guard")
+def poi_keys_guard(
+    month: str = typer.Option(None, "--month", help="Month to look for a map in; "
+                                                    "default the current month."),
+    threshold: float = typer.Option(None, "--threshold",
+                                    help="Absent-key fraction that trips the guard "
+                                         "(default 0.005)."),
+    db: str = typer.Option(None, "--db", help="Warehouse path."),
+) -> None:
+    """Refuse (exit 1) if the dedup's key set has drifted from the ledger's.
+
+    `loci poi-snapshot` calls this itself, so running it separately is belt and
+    braces for the monthly job — `make chains-refresh` runs it immediately
+    before the snapshot so the job fails on the guard rather than halfway
+    through a write.
+
+    It compares the keys the CURRENT dedup would mint against the ledger rows
+    seen in the newest snapshot month (not the whole ledger, which accumulates
+    genuinely-departed rows forever and would trip this permanently). Over
+    0.5% absent and it refuses, unless every mapped/merged row planned in the
+    month has been applied.
+
+    HONEST ABOUT ITS OWN REACH: it measures exact-hash misses only. The
+    snapshot's name+40 m link pass rescues some of them, so a trip OVERSTATES
+    the damage — it is a demand that a human look at `loci poi-keys plan`, not
+    a proof of corruption. It cannot see the reverse mistake at all (a key that
+    stayed but whose meaning changed)."""
+    from loci.model import poi_key_migration as km
+
+    con = _poi_keys_con(db, read_only=True)
+    kw = {"month": month}
+    if threshold is not None:
+        kw["threshold"] = threshold
+    try:
+        stats = km.guard_snapshot(con, **kw)
+    except km.KeyDriftError as exc:
+        console.print(f"[red]REFUSE[/] {exc}")
+        raise typer.Exit(1) from exc
+    except RuntimeError as exc:
+        console.print(f"[red]FAIL[/] {exc}")
+        raise typer.Exit(1) from exc
+
+    if stats.get("bypass"):
+        console.print(f"[green]ok[/] guard passed (bypass: {stats['bypass']})")
+    else:
+        console.print(
+            f"[green]ok[/] {stats['n_absent']:,} of {stats['n_ledger_current']:,} "
+            f"ledger keys from {stats['newest_month']} absent from the dedup "
+            f"({100 * stats['absent_pct']:.3f}%, threshold "
+            f"{100 * stats['threshold']:.2f}%); {stats['n_new']:,} keys are new.")
+    raise typer.Exit(0)

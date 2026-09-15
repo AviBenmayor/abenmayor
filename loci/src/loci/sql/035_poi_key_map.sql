@@ -1,0 +1,196 @@
+-- ---------------------------------------------------------------------------
+-- 035_poi_key_map.sql -- the LOCATION-KEY MIGRATION LEDGER.
+--
+-- WHY THIS TABLE EXISTS, in one sentence: `analysis.poi_presence.location_key`
+-- is a CONTENT HASH THAT INCLUDES THE CATEGORY, so any change to the category
+-- rule re-mints keys, and a re-minted key is INDISTINGUISHABLE FROM A NEW
+-- STOREFRONT to every consumer of the first-seen ledger.
+--
+-- ---------------------------------------------------------------------------
+-- THE FAILURE THIS PREVENTS
+-- ---------------------------------------------------------------------------
+-- `model/poi_presence.mint_key` hashes
+--
+--     category | normalized-name tokens | lon,lat rounded to 4 dp  [ | poi_id ]
+--
+-- The owner's category-precedence ruling "B" (2026-09-14) makes a FINER food
+-- category win over a coarser one: a cluster carried by a DOHMH restaurant
+-- record AND an aggregator `cafe_bakery` / `bar` record is now categorised
+-- `cafe_bakery` / `bar` rather than `restaurant`. The business did not move,
+-- did not rename and did not open -- but its key changes, because `category`
+-- is the first field in the hash payload.
+--
+-- MEASURED on the peer's dry run of the B rule (dedup at 13f0fec, 2026-09-14):
+-- 12,011 clusters gone, 3,596 minted, net -8,415 (227,548 -> 219,133). The
+-- relabel directions are restaurant->bar 4,209, restaurant->cafe_bakery 1,981,
+-- hair->nails 2,365, grocery->convenience 459. Run `loci poi-snapshot` against
+-- that dedup with no migration and the ledger records, permanently:
+--
+--   * 3,596 rows minted with first_seen_kind = 'observed' in the snapshot
+--     month -- i.e. up to 3,596 FAKE OPENINGS, in the one kind the ledger
+--     exists to report honestly (sql/018: "the first month in which 'new' means
+--     anything at all is 2026-10"); and
+--   * 12,011 ledger rows whose `last_seen_month` freezes at the previous month
+--     -- 12,011 FAKE DISAPPEARANCES, which sql/018 caveat 3 correctly refuses
+--     to call closures but which every churn and survival query will read as
+--     storefronts that stopped being observed.
+--
+-- 3,514 of the 3,596 keep the SAME canonical member and only change category;
+-- 82 genuinely change canonical member, ~67 of which did not move. Of the
+-- 12,011, most are absorbed duplicates of a cross-category merge, and 8,415
+-- of those land on a surviving key -- which is why 'merged' is allowed to
+-- target an OCCUPIED key (see below).
+--
+-- `first_seen_month` is WRITE ONCE, NEVER UPDATED (sql/018). There is no
+-- second chance: once the fake opening is written, the true first-seen of that
+-- storefront is gone from the warehouse. Hence a MIGRATION rather than a
+-- repair, and hence the guard in `poi_key_migration.guard_snapshot`, which
+-- refuses the snapshot rather than trusting an operator to remember.
+--
+-- ---------------------------------------------------------------------------
+-- WHAT A ROW MEANS -- the five `reason` values, and the ROUTE that earns each
+-- ---------------------------------------------------------------------------
+-- Every candidate is found by one of two ROUTES, and the route decides what
+-- the match is ALLOWED to do. That constraint is the whole safety argument.
+--
+--   the poi_id route   the ledger row's `poi_id_latest` is a member (canonical
+--                      or not) of a cluster in the new dedup. This is the
+--                      DEDUP'S OWN ASSERTION that this POI belongs to that
+--                      location, so it may relabel OR merge.
+--   the content route  no live poi_id -- the ledger NULLs `poi_id_latest` on
+--                      every row behind the newest month, and a retired feed
+--                      can drop a poi entirely -- but the hash payload MINUS
+--                      the category (same normalised name, same 4 dp cell)
+--                      matches exactly one new cluster. Enough to RELABEL.
+--                      NEVER enough to MERGE: a name-and-cell match carries no
+--                      evidence that two storefronts are one business.
+--
+--   'relabel_poi'  ONE old key -> ONE free new key, found on the poi route.
+--                  The strongest and most common case: same canonical member,
+--                  category relabelled. (B rule: 3,514 of 3,596 minted keys.)
+--
+--   'relabel_loc'  ONE old key -> ONE free new key, found on the content
+--                  route. The canonical member changed but the location did
+--                  not. (B rule: ~67 of the 82 canonical-member changes.)
+--                  The residue is left 'unmapped' on purpose -- the snapshot's
+--                  own pass B (name + 40 m, against unclaimed ledger rows)
+--                  links most of them back, so this plan is the belt and that
+--                  link is the braces.
+--
+--   'merged'       TWO OR MORE contributing ledger rows -> ONE new key, all of
+--                  them on the poi route. THE TARGET KEY MAY ALREADY BE HELD
+--                  BY A SURVIVING LEDGER ROW, and usually is: 8,415 of the B
+--                  rule's 12,011 absorbed clusters land on a key that does not
+--                  move. Refusing those -- the naive conservative choice --
+--                  would strand 8,415 histories and report them as
+--                  disappearances, which is the damage this table exists to
+--                  prevent. The sitting row is folded IN, never overwritten.
+--
+--                  The survivor keeps the EARLIEST `first_seen_month` and its
+--                  kind/src_date/src_field, the LATEST `last_seen_month`,
+--                  `max(n_months_seen)` -- never the sum, which would
+--                  double-count months both rows were seen -- `min`
+--                  `ledger_started_month`, and the union of the closure
+--                  columns (caveat 3).
+--
+--   'unmapped'     the old key is absent from the new dedup and NEITHER route
+--                  found it anything. GENUINELY GONE. THE ROW IS NEVER DELETED
+--                  AND NEVER REWRITTEN: it keeps its `last_seen_month` at the
+--                  previous month, exactly as an ordinary disappearance does
+--                  (sql/018 caveat 3: a disappearance is not a closure). The
+--                  row here is the AUDIT that we looked and found nothing,
+--                  which is what distinguishes it from a key we simply failed
+--                  to migrate. `new_key` IS NULL.
+--
+--   'collision'    a CONTENT-route candidate was REFUSED, because its target
+--                  is already held by a surviving ledger row, or because
+--                  another candidate wants the same target, or because its
+--                  content matched more than one new cluster. Never applied.
+--                  Recorded so it is visible, and left for a human.
+--
+-- Keys that are genuinely NEW (a minted key with no old key behind it) are
+-- COUNTED by `plan` and deliberately NOT written here: on the first run that
+-- would be every one of ~227k locations, and a new storefront needs no
+-- migration -- `poi-snapshot` mints it correctly on its own.
+--
+-- ---------------------------------------------------------------------------
+-- EVERY TABLE KEYED ON THE LEDGER KEY (inventoried 2026-09-14, D61 rule)
+-- ---------------------------------------------------------------------------
+--   analysis.poi_presence.location_key            PRIMARY KEY  (the ledger)
+--   chains.brand_location.location_key            part of PK; a merge can
+--                                                 COLLIDE on (month, brand,
+--                                                 key) and is de-duplicated on
+--                                                 rewrite, not left to error
+--   analysis.recommendation_outcome.matched_location_key
+--   staging.poi_closure.location_key              minted by mint_key at load;
+--                                                 re-derivable, rewritten so
+--                                                 the join keeps working until
+--                                                 the next closure refresh
+--   analysis.poi_closure_evidence.location_key    informational only (sql/033)
+--
+-- Views over these (analysis.poi_first_seen, analysis.recommendation_latest)
+-- follow automatically. `analysis.poi_supply_status.colocation_key` is a
+-- DIFFERENT key (category + 5 dp coordinate, sql/029) and is NOT touched.
+-- ---------------------------------------------------------------------------
+
+CREATE SCHEMA IF NOT EXISTS analysis;
+
+CREATE TABLE IF NOT EXISTS analysis.poi_key_map (
+    old_key      VARCHAR NOT NULL,   -- the key analysis.poi_presence held
+    new_key      VARCHAR,            -- the key the current dedup mints;
+                                     --   NULL for reason = 'unmapped'
+    reason       VARCHAR NOT NULL,   -- mapped | merged | unmapped | collision
+    old_category VARCHAR,            -- the ledger row's category
+    new_category VARCHAR,            -- the dedup cluster's category
+    poi_id       VARCHAR,            -- canonical staging.poi id of the new
+                                     --   cluster; the nameless key folds it in
+    planned_at   TIMESTAMP NOT NULL, -- when `loci poi-keys plan` computed it
+    applied_at   TIMESTAMP,          -- NULL until `loci poi-keys apply` ran.
+                                     --   'unmapped' / 'collision' rows are
+                                     --   stamped too: they were CONSIDERED.
+    PRIMARY KEY (old_key, planned_at)
+);
+
+-- Reverse lookup (did anything migrate INTO this key?) and the guard's
+-- "is there a map for this month" probe.
+CREATE INDEX IF NOT EXISTS poi_key_map_new ON analysis.poi_key_map (new_key);
+CREATE INDEX IF NOT EXISTS poi_key_map_planned ON analysis.poi_key_map (planned_at);
+
+-- ---------------------------------------------------------------------------
+-- CAVEATS THE DATABASE CANNOT ENFORCE
+-- ---------------------------------------------------------------------------
+-- 1. A MAP IS ONLY AS GOOD AS THE DEDUP IT WAS PLANNED AGAINST. `plan` reads
+--    the dedup as it stands; if the dedup is rebuilt again between plan and
+--    apply, the map is stale and `apply` will simply match fewer old keys
+--    (it never invents one). Re-run `plan` after every dedup rebuild. The
+--    exact sequence is: dedup -> poi-keys plan -> poi-keys apply ->
+--    poi-snapshot -> check-presence.
+--
+-- 2. A 1:1 MAP IS NOT PROOF OF IDENTITY, only of identical hash content minus
+--    the category. Two genuinely different storefronts with the same
+--    normalized name inside one 4 dp cell (~11 m x 8.5 m) that ALSO changed
+--    category in the same rule change would map as one. That is the same
+--    residual risk `mint_key` already carries, not a new one -- and it is why
+--    a candidate whose target key is already occupied is recorded as
+--    'collision' and refused rather than merged.
+--
+-- 3. UNION OF CLOSURES TAKES THE LATEST PUBLISHED `closed_on`. When two merged
+--    rows both carry a closure the later date wins, on the grounds that it is
+--    the more recent thing a source actually published (D79: only a published
+--    value is evidence). If they disagree, BOTH old keys are still in this
+--    table, so the discarded one is recoverable. A merge where one row is
+--    closed and the other is not adopts the closure -- the dedup is asserting
+--    these were always one business, so a closure of either is a closure of it.
+--
+-- 4. `n_months_seen` AFTER A MERGE IS A MAXIMUM, NOT A HISTORY. Two rows seen
+--    in overlapping months cannot be re-derived into a true month count from
+--    the ledger's aggregates; the max is the tightest honest lower bound.
+--    sql/018 caveat 2 already warns that the span minus this number is not
+--    purely "months with a gap".
+--
+-- 5. THIS TABLE IS APPEND-ONLY AND KEYED BY (old_key, planned_at), so a second
+--    plan in the same month lands beside the first rather than overwriting it.
+--    `apply` only ever acts on the NEWEST plan whose rows are unapplied, and
+--    an already-applied row is skipped -- that, plus the fact that a rewritten
+--    old key no longer exists to be matched, is what makes `apply` idempotent.
+-- ---------------------------------------------------------------------------
