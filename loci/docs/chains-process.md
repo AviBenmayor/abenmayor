@@ -111,14 +111,19 @@ year of snapshots, and that is the whole reason for the cron job.
 Burrito) landing on the watchlist with no process behind them.* Full case:
 `docs/CHECKPOINT.md` D1XX.
 
-### Two tiers, and which one wins
+### Two tiers, and which one wins (D113, 2026-09-15)
 
-On top of the three layers above, the list now has a machine half and a
-human half. **CANDIDATE** is mechanical, lives in `chains.brand_snapshot` —
-nobody hand-picked these rows, they cleared a predicate. **ADMITTED** is the
-YAML, hand-vetted, and **outranks both CANDIDATE and detection**, same as
-the watchlist already outranks Press. A rejected CANDIDATE stays rejected
-until it earns a re-review (below).
+The list is now half-mechanical, half-human: **AUTO-ADMITTED** rows are
+written to `watchlist.yaml` monthly by `loci chains auto-admit` (they cleared
+the D109 predicate + exclusions). **HAND-ADMITTED** rows are hand-vetted in
+the YAML. **Hand-admitted outranks auto-admitted**, which outranks CANDIDATE
+detection. A rejected row (written with `loci chains reject <key> --reason`)
+stays rejected until its detect count at the next snapshot doubles or a capital
+event lands, so rejection is durable but not permanent. Auto-admitted rows sort
+below hand-vetted rows under a section "Auto-admitted this snapshot (nobody has
+looked yet)" — noise reaches the page until the exclusion rule set matures, but
+the owner's stated preference is a machine that over-includes and a human who
+prunes, over a queue nobody drains.
 
 ### The candidate predicate
 
@@ -183,26 +188,21 @@ row is a real lead that simply joins to no card.
 | NYS SLA pending, DOB NOW filings (free) | `signed_leases` for food/drink |
 | RetailStat, Coresight, Data Axle (paid, not built; RetailStat quote open) | store-level location, national trajectory, cross-category openings/closings |
 
-### The monthly runbook
+### The monthly runbook (D113, 2026-09-15)
 
-**Automatic** — `loci chains candidates` *(not built)*: the ranked diff
-since last month with the reason each row fired, run inside
-`make chains-refresh` after `detect`.
+**Automatic pipeline:**
+1. `loci poi-snapshot` — capture the current POI supply in the ledger
+2. `loci chains detect` — yield the month's snapshot at `chains.brand_snapshot`
+3. `loci chains research` — Tavily depth pass on press/capital events (split 12 discovery / 24 admitted-refresh / 32 auto-candidate triage)
+4. `loci chains auto-admit [--month YYYY-MM] [--dry-run]` — append every clear of the predicate to `watchlist.yaml` as auto-admitted rows; same hour re-run does DELETE+INSERT per month (idempotent)
+5. `loci chains render` — write `docs/CHAINS.md` showing hand-vetted rows first, auto rows in their own section, rejection count in footer
 
-**Human, ~45–60 min.** Read the diff (~10 min); `admit <key> --reason "…"
---role prospect` / `reject --reason "…"` *(not built)* write `tier`,
-`decided_on` and the reason into the YAML in one edit; refresh signals the
-press pass flagged (~20 min). A rejected key **re-surfaces automatically**
-if `locations_total` doubles or a capital event lands, so "rejected at 5"
-never permanently hides a brand at 20.
+**Human intake:**
+- Review the auto-admit diff (printed by step 4 with reasons per row) — accept the whole month or use step below
+- `loci chains admit <key> --reason "..." [--role role] [--confidence score] [--locations count] [--dry-run]` — move a row up to hand-admitted, optionally set `sales_role`, manually override `confidence`, or preset the detect count if external data is fresher
+- `loci chains reject <key> --reason "..." [--locations count] [--dry-run]` — mark a row rejected so it doesn't re-surface until count doubles
 
-**First-run backlog.** On the 2026-09-13 snapshot the unlisted pool at the
-floor ran 2,341, narrowing to 244 sub-5 flagged adds and 697 after excluding
-banks/clinics and requiring 12-month movement — too large for one sitting.
-A 2026-09-15 rebuild (fixed normalizer, post-dedup ledger) shrank the base
-~20%, so treat those three numbers as scale only and re-derive on the first
-real `candidates` run. Owner plan: hand-triage the top 100 by
-`locations_new_12m`; the rest waits for the 2026-10 diff.
+**Mitigation against false positives:** (a) alias pass collapsed ~29 key-splits (Dunkin'/Dunkin Baskin Robbins, Popeyes, Domino's, Little Caesars, Pizza Hut Express, Jersey Mike's, Golden Krust, Chopt, Buffalo Wild Wings Go, Auntie Anne's ×3, Guac Time, Sonic, Panera, Kennedy Fried Chicken ×3, seven already-vetted splits, thirteen supermarket-banner spellings), reducing noise at intake. (b) **Generic-name stoplist** (`src/loci/chains/generic_keys.txt`): 48 seed entries (Coffee Shop, Barber Shop, etc.) plus 13 compound names (Italian Restaurant, Chinese takeout, etc.); one normalized key per line, drift test asserts each is a fixed point of the normalizer. (c) **Exclusion rule set** (`src/loci/chains/exclusions.py`): eight classes with tests per class; exact vs contains matching so "Shell Cafe and Grill" is not a gas station; geocode-defect guard (n_boroughs = 0 with locations > 0). (d) **Supermarket co-op banners** (Key Food, Associated, Fine Fare, Pioneer, Bravo, C-Town, Met Fresh, Foodtown, Food Bazaar, Ideal Food Basket, Food Emporium, Compare Foods, SuperFresh, Food Universe Marketplace) are auto-admitted regardless of count with `sales_role: incumbent` and reason "co-op banner: no single site-selector" — no single buyer. (e) **Clinic exclusion** holds with documented exceptions: seven boutique-wellness rows (LaserAway, Ever/Body, Peachy, Bespoke PT, Lenox Hill Radiology, Callen-Lorde, Quantum PT) and two financial services (Chase, Municipal Credit Union) pinned in `exclusions.ADMITTED_AND_EXCLUDED` — an exclusion gates entry to the queue and never removes an already-admitted row.
 
 ### Quarterly re-verification
 

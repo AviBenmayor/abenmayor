@@ -52,9 +52,13 @@ def render(con, *, doc: dict | None = None, month: str | None = None,
             snap[r["brand_key"]] = r
 
     out: list[str] = [HEADER, "# NYC chains to watch", ""]
+    n_auto = sum(1 for r in rows if wl.is_auto(r) and wl.tier_of(r) != "rejected")
+    n_rejected = sum(1 for r in rows if wl.tier_of(r) == "rejected")
     out.append(f"**Generated** {today.isoformat()} · "
                f"**detect snapshot** {_fmt(month)} · "
-               f"**watchlist** {len(rows)} brands, {len(snap)} detected brands.")
+               f"**watchlist** {len(rows)} brands "
+               f"({len(rows) - n_auto - n_rejected} hand-vetted, {n_auto} auto-admitted, "
+               f"{n_rejected} rejected) · {len(snap)} detected brands.")
     out.append("")
     out.append("Two uses: companies to sell a site-selection product to, and — later — "
                "the \"brand X is opening nearby\" signal on a recommendation card. "
@@ -95,12 +99,36 @@ def _pipeline_counts(con, rows: list[dict]) -> dict[str, dict]:
     return {r["brand_key"]: r for r in frame.to_dict("records")}
 
 
+def _pipe_cell(p) -> str:
+    """"N in BK,MN, from YYYY-MM-DD" -- the count alone is not actionable;
+    where and when is. `first_entry` arrives as a pandas Timestamp whose time
+    half is always midnight and is noise in a document."""
+    if not p:
+        return "—"
+    return f"{p['pipeline_rows']} in {p['boroughs'] or '?'}, from {str(p['first_entry'])[:10]}"
+
+
 def _watchlist_section(rows: list[dict], snap: dict[str, dict],
                        pipe: dict[str, dict] | None = None) -> list[str]:
+    """Hand-vetted rows first, then the machine's, then a count of the rejected.
+
+    THE ORDERING IS THE POINT (owner ruling, 2026-09-15). The monthly job now
+    admits every brand that clears the D109 predicate, so this document mixes
+    rows a person checked with rows nobody has seen. Sorting them together
+    would launder the second kind into the first: a reader scanning the table
+    has no way to tell which is which, and the whole value of the hand-vetted
+    half is that somebody looked. They get their own section, with the reason
+    the machine admitted them printed in a column, so the row can be rejected
+    on what it actually claims."""
     out = ["## Watchlist — ranked by net new locations in 12 months", ""]
     if not rows:
         return out + ["_The watchlist is empty._", ""]
     pipe = pipe or {}
+
+    rejected = [r for r in rows if wl.tier_of(r) == "rejected"]
+    live = [r for r in rows if wl.tier_of(r) != "rejected"]
+    hand = [r for r in live if not wl.is_auto(r)]
+    auto = [r for r in live if wl.is_auto(r)]
 
     def key(r):
         n = r.get("net_new_12m")
@@ -110,27 +138,28 @@ def _watchlist_section(rows: list[dict], snap: dict[str, dict],
             "NYC now (curated) | Detected total | Detected new 12m | "
             "Pipeline (gov filings) | Confidence | Last verified |",
             "|---|---|---|---:|---:|---:|---:|---|---|---|"]
-    for r in sorted(rows, key=key, reverse=True):
+    for r in sorted(hand, key=key, reverse=True):
         bk = r.get("brand_key") or ""
         d = snap.get(bk, {})
-        p = pipe.get(bk)
-        # "N in BK,MN (first entry YYYY-MM-DD)" -- the count alone is not
-        # actionable; where and when is.
-        pipe_cell = "—"
-        if p:
-            # `first_entry` comes back as a pandas Timestamp; the time half is
-            # always midnight and is noise in a document.
-            since = str(p["first_entry"])[:10]
-            pipe_cell = f"{p['pipeline_rows']} in {p['boroughs'] or '?'}, from {since}"
         out.append("| {b} | {c} | {lc} | {nn} | {now} | {dt_} | {dn} | {pl} | "
                    "{conf} | {lv} |".format(
             b=_fmt(r.get("brand")), c=_fmt(r.get("category")),
             lc=_fmt(r.get("loci_category")), nn=_fmt(r.get("net_new_12m")),
             now=_fmt(r.get("nyc_locations_now")),
             dt_=_fmt(d.get("locations_total")), dn=_fmt(d.get("locations_new_12m")),
-            pl=pipe_cell,
+            pl=_pipe_cell(pipe.get(bk)),
             conf=_fmt(r.get("confidence")), lv=_fmt(r.get("last_verified"))))
     out.append("")
+    if rejected:
+        # Counted, never listed: the list is what a reader would act on, and a
+        # rejected brand is precisely the one nobody should act on. The count
+        # is here so "the watchlist is 161 brands" and "the file has 190 rows"
+        # do not read as a discrepancy.
+        out.append(f"_{len(rejected)} rejected row{'s' if len(rejected) != 1 else ''} "
+                   "omitted from the table above and kept in `watchlist.yaml` so the "
+                   "same brands are not re-surfaced every month. A rejection re-opens "
+                   "automatically if the brand's location count doubles._")
+        out.append("")
     out.append("`Pipeline (gov filings)` counts rows in `analysis.storefront_pipeline` "
                "that are filed under this brand's key and are **not yet open** — a "
                "lease signed, a build-out permitted or a licence applied for, with no "
@@ -141,13 +170,15 @@ def _watchlist_section(rows: list[dict], snap: dict[str, dict],
                "withdrawn and permits lapse.")
     out.append("")
 
-    unverified = [r for r in rows if (r.get("confidence") or "unverified") == "unverified"]
+    out += _auto_section(auto, snap, pipe)
+
+    unverified = [r for r in live if (r.get("confidence") or "unverified") == "unverified"]
     if unverified:
-        out.append(f"_{len(unverified)} of {len(rows)} rows are `unverified` — "
+        out.append(f"_{len(unverified)} of {len(live)} rows are `unverified` — "
                    "seeded to exercise the pipeline, not checked. Do not quote them._")
         out.append("")
 
-    detail = [r for r in rows if (r.get("why_they_grow") or "").strip()]
+    detail = [r for r in live if (r.get("why_they_grow") or "").strip()]
     if detail:
         out += ["### Why they grow", ""]
         for r in sorted(detail, key=lambda x: (x.get("brand") or "").lower()):
@@ -162,6 +193,46 @@ def _watchlist_section(rows: list[dict], snap: dict[str, dict],
                 bits.append(f"Site selection sits with: **{role}**.")
             out.append(f"- **{_fmt(r.get('brand'))}** — {' '.join(bits)} {cites}".rstrip())
         out.append("")
+    return out
+
+
+def _auto_section(auto: list[dict], snap: dict[str, dict],
+                  pipe: dict[str, dict]) -> list[str]:
+    """Rows the monthly job admitted on the predicate alone.
+
+    Heading says what they are, because `confidence: auto` in a column is not a
+    warning anybody reads. Sorted by the detected 12-month count, since that is
+    the number that put them here -- curated `net_new_12m` is null on every one
+    of them by construction."""
+    if not auto:
+        return []
+    out = ["## Auto-admitted this snapshot (nobody has looked yet)", "",
+           f"{len(auto)} brand{'s' if len(auto) != 1 else ''} admitted by "
+           "`loci chains auto-admit` because they cleared the D109 candidate "
+           "predicate and no exclusion rule fired. **Nobody has checked any of "
+           "them.** `NYC now` is deliberately empty — the machine has a detect "
+           "count, which is a floor off open data, and writing it into the "
+           "curated column would manufacture a count nobody produced. Reject "
+           "one with `loci chains reject <brand_key> --reason \"...\"`; "
+           "promote one with `loci chains admit`.", ""]
+    out += ["| Brand | loci_category | Detected total | Detected new 12m | "
+            "Pipeline (gov filings) | Sales role | Admitted because | Decided on |",
+            "|---|---|---:|---:|---|---|---|---|"]
+
+    def key(r):
+        bk = r.get("brand_key") or ""
+        d = snap.get(bk, {})
+        return (d.get("locations_new_12m") or 0, d.get("locations_total") or 0)
+
+    for r in sorted(auto, key=key, reverse=True):
+        bk = r.get("brand_key") or ""
+        d = snap.get(bk, {})
+        out.append("| {b} | {lc} | {dt_} | {dn} | {pl} | {role} | {why} | {on} |".format(
+            b=_fmt(r.get("brand")), lc=_fmt(r.get("loci_category")),
+            dt_=_fmt(d.get("locations_total")), dn=_fmt(d.get("locations_new_12m")),
+            pl=_pipe_cell(pipe.get(bk)), role=_fmt(r.get("sales_role")),
+            why=_fmt(r.get("admission_reason")), on=_fmt(r.get("decided_on"))))
+    out.append("")
     return out
 
 

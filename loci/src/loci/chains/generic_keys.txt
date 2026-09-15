@@ -1,0 +1,121 @@
+# ---------------------------------------------------------------------------
+# GENERIC brand_keys -- keys that are a category, not a company.
+#
+# WHY THIS FILE EXISTS. `chains.normalize.brand_key` collapses a raw business
+# name to its brand. When dozens of unrelated storefronts are each filed under
+# a bare common noun -- "CAFE", "THE BAR", "FOOD" -- they all collapse onto the
+# SAME key and detect reports a 60-location chain that does not exist. The
+# 2026-09 candidates preview surfaced exactly that: "Cafe" (60 locations, 4
+# boroughs, 4 sources), "The Bar" (57), "Market Plate" (22), "Food" (8). Every
+# one of them clears the D109 predicate on the numbers and every one of them is
+# an artefact.
+#
+# This is a DATA-QUALITY GUARD, not a taste judgement. It does not say the
+# brand is uninteresting; it says the row is not one brand.
+#
+# HOW TO EXTEND. One key per line, already NORMALIZED -- the string must be
+# exactly what `brand_key()` returns for the name ("The Bar" is written `bar`,
+# because brand_key drops the leading article). Lines starting with `#` and
+# blank lines are ignored. tests/test_chains_exclusions.py asserts every entry
+# is its own normalization, so a hand-typed key that the normalizer would never
+# produce fails the suite instead of silently matching nothing.
+#
+# A SINGLE-TOKEN entry here also powers the "plain English category word" rule:
+# a one-token key whose singular form is listed (so `cafes` as well as `cafe`)
+# is excluded even when the exact plural is not written out below.
+#
+# WHAT DOES NOT BELONG HERE. A real brand whose name happens to be a common
+# noun -- Shake Shack's "Shack", Sweetgreen, Chipotle -- is a brand. The test
+# for an entry is: would TWO UNRELATED businesses in New York plausibly both
+# be filed under this exact string? If not, it is a brand and it stays out.
+# ---------------------------------------------------------------------------
+
+# --- observed in the 2026-09 candidates preview -----------------------------
+cafe
+bar
+food
+market plate
+
+# --- plain English retail category words (single token) ---------------------
+bakery
+bagels
+barber
+bodega
+butcher
+candy
+catering
+cleaners
+coffee
+deli
+diner
+dry cleaners
+eatery
+fitness
+food market
+grocery
+gym
+hardware
+juice bar
+kitchen
+laundromat
+laundry
+liquor
+liquor store
+market
+nails
+pharmacy
+pizza
+pizzeria
+restaurant
+salon
+smoke shop
+spa
+supermarket
+tea
+wine
+wine and liquor
+
+# --- bare geography: a place, not a company ---------------------------------
+new york
+nyc
+brooklyn
+manhattan
+queens
+bronx
+staten island
+
+# --- ambiguous single tokens, stoplisted rather than aliased (owner ruling,
+# 2026-09-15, from the auto-admit dry-run key-splits): "Home", "Hudson",
+# "Club" and "Little Italy" each cover more than one real business/place --
+# a bare category word, an ambiguous brand token (Hudson News vs. Hudson
+# restaurants), a neighborhood name, and a gym-class generic. Aliasing any of
+# them to the one big co-occurring brand (Home Depot, Club Pilates) would
+# merge unrelated storefronts into a fake chain, which is the failure this
+# file exists to prevent -- so they are stoplisted instead. -----------------
+home
+hudson
+little italy
+club
+
+# --- compound generic phrases, two-owner-brand collapses (owner ruling,
+# 2026-09-15, from the auto-admit dry-run): each of these is a category word
+# plus a common modifier ("Best", "Express", "Golden", "New Star", "City",
+# "Gourmet", "Corner") that recurs across unrelated independent storefronts
+# city-wide, not one operator's trade name. -----------------------------------
+barber shop
+pizza express
+coffee shop
+gyro king
+coffee bar
+best nails
+express deli
+corner
+deli grocery
+grocery store
+city cafe
+deli and grocery
+corner cafe
+new star
+gourmet deli
+golden corner
+halal express

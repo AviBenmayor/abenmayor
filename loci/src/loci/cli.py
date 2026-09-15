@@ -3768,32 +3768,291 @@ def chains_render(
     console.print(f"[green]written[/] -> {ren.write(text, out)}")
 
 
+@chains_app.command("candidates")
+def chains_candidates(
+    month: str = typer.Option(None, "--month", help="Snapshot month YYYY-MM; "
+                                                    "default the newest."),
+    limit: int = typer.Option(40, "--limit", help="Rows to print (0 = all)."),
+    json_out: Path = typer.Option(None, "--json", help="Also write the full "
+                                                       "ranked list as JSON."),
+) -> None:
+    """The D109 candidate queue: brands that cleared the predicate, and why.
+
+    READ-ONLY. Ranked by `locations_new_12m` then `locations_total` -- the fast
+    mover above the big one, because a brand adding eight stores on a base of
+    fourteen is a lead and a brand adding eight on a base of fourteen hundred
+    is a market report.
+
+    The COUNTS under the table are as much the output as the table is: "892
+    candidates" is not reviewable, "1,014 met the predicate, 72 excluded (68
+    bank/clinic, 4 fuel), 50 already admitted" is. Every exclusion class prints
+    its count even at zero, so a class that has silently stopped matching -- a
+    pattern the normalizer no longer produces -- is visible as a zero rather
+    than as an absence."""
+    from loci.chains import candidates as cand
+
+    con = _chains_connect(read_only=True)
+    run = cand.run(con, month=month)
+    if run.month is None:
+        console.print("[red]no detect snapshot — run `loci chains detect` first.[/]")
+        raise typer.Exit(1)
+
+    shown = run.rows if not limit else run.rows[:limit]
+    t = Table(title=f"chains candidates {run.month} — {run.n_candidates:,} net "
+                    f"candidates of {run.n_rows:,} detected brands")
+    for col, j in (("brand", "left"), ("loci_category", "left"), ("total", "right"),
+                   ("new 12m", "right"), ("boro", "right"), ("src", "right"),
+                   ("role", "left"), ("why it fired", "left")):
+        t.add_column(col, justify=j)
+    for r in shown:
+        t.add_row(str(r.get("display_name") or r["brand_key"])[:38],
+                  str(r.get("loci_category") or "—"),
+                  f"{int(r['locations_total']):,}",
+                  f"{int(r['locations_new_12m']):,}",
+                  str(int(r["n_boroughs"])), str(int(r["n_sources"])),
+                  str(r.get("sales_role") or ""),
+                  str(r.get("reason") or "")[:80])
+    console.print(t)
+
+    excluded = ", ".join(f"{name} {n}" for name, n in run.excluded_by_class.items())
+    console.print(
+        f"[dim]{run.n_predicate:,} met the numeric predicate "
+        f"(n_sources >= {cand.MIN_SOURCES}, {cand.MIN_LOCATIONS}+ locations OR "
+        f"flagged, movement in 12m) · {run.n_excluded:,} excluded "
+        f"({excluded}) · {run.n_admitted:,} already admitted · "
+        f"{run.n_rejected:,} still rejected · {run.n_resurfaced:,} re-surfaced "
+        f"· {run.n_candidates:,} net candidates.[/]")
+    console.print(
+        "[dim]`new 12m` is a FLOOR over the dated subset, and `press hits` reads a "
+        "45-day queue, not a 12-month archive — a zero in either is as often "
+        "'not measured' as it is 'nothing happened'.[/]")
+    if json_out:
+        import json
+
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps(run.rows, indent=2, default=str))
+        console.print(f"[green]written[/] -> {json_out}")
+
+
+def _resolve_key(doc, key: str):
+    """The row for `key`, or exit with the near matches. A typo is the
+    overwhelmingly likely cause of a miss, and a bare 'not found' makes the
+    user grep a five-thousand-line YAML to discover they wrote `dunkin donuts`."""
+    from loci.chains import watchlist as wl
+
+    row = wl.by_key(doc).get(key)
+    if row is not None:
+        return row
+    console.print(f"[red]no watchlist row with brand_key {key!r}.[/]")
+    near = wl.near_matches(doc, key)
+    if near:
+        console.print("[yellow]did you mean: " + ", ".join(repr(k) for k in near) + "[/]")
+    else:
+        console.print("[yellow]no near matches. `loci chains candidates` lists brands "
+                      "that are not on the list yet; `auto-admit` is what puts them "
+                      "there.[/]")
+    raise typer.Exit(1)
+
+
+def _detect_locations(key: str) -> int | None:
+    """The newest detect count for one brand, or None if it cannot be read.
+
+    Best-effort ON PURPOSE. The number is what the re-surface escape hatch
+    doubles against, so it is worth reaching for; but a locked or missing
+    warehouse must not stop a person recording a decision they have already
+    made. When it comes back None the caller SAYS SO."""
+    try:
+        con = _chains_connect(read_only=True)
+        row = con.execute(
+            "SELECT locations_total FROM chains.brand_latest WHERE brand_key = ?",
+            [key]).fetchone()
+    except Exception:                                   # noqa: BLE001
+        return None
+    return int(row[0]) if row and row[0] is not None else None
+
+
+def _write_watchlist(doc, *, dry_run: bool) -> None:
+    from loci.chains import watchlist as wl
+
+    errors = wl.validate(doc)
+    for e in errors:
+        console.print(f"[red]FAIL[/] {e}")
+    if errors:
+        console.print("[red]watchlist not written — fix the rows above.[/]")
+        raise typer.Exit(1)
+    if dry_run:
+        console.print("[yellow]--dry-run: watchlist not written.[/]")
+        raise typer.Exit(0)
+    console.print(f"[green]written[/] -> {wl.write(doc)}")
+
+
+@chains_app.command("admit")
+def chains_admit(
+    brand_key: str = typer.Argument(..., help="The normalized key, as "
+                                              "`loci chains candidates` prints it."),
+    reason: str = typer.Option(..., "--reason", help="Why this brand is a lead. "
+                                                     "The reasoning, not the task."),
+    role: str = typer.Option(None, "--role", help="prospect | incumbent | contraction"),
+    confidence: str = typer.Option(None, "--confidence",
+                                   help="Override the provenance. Left alone by "
+                                        "default, so promoting an auto row does "
+                                        "not claim anybody counted its stores."),
+    locations: int = typer.Option(None, "--locations",
+                                  help="The count at the decision. Read from the "
+                                       "newest detect snapshot when omitted."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report; write nothing."),
+) -> None:
+    """Admit a brand, or PROMOTE an auto-admitted one to a human decision.
+
+    On a row the monthly job wrote, this flips `decided_by` to `owner` and
+    records the reason: the row stops being "nobody has looked" and moves out
+    of the auto section of docs/CHAINS.md. `confidence` is deliberately NOT
+    touched unless `--confidence` says so -- a person looking at a decision is
+    not a person counting stores, and merging the two is how a row ends up
+    reading `verified` because somebody clicked yes."""
+    from loci.chains import watchlist as wl
+
+    doc = wl.load()
+    _resolve_key(doc, brand_key)
+    n = locations if locations is not None else _detect_locations(brand_key)
+    try:
+        row = wl.decide(doc, brand_key, tier="admitted", reason=reason,
+                        sales_role=role, confidence=confidence,
+                        locations_at_decision=n)
+    except (ValueError, KeyError) as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
+    console.print(f"[green]admitted[/] {row['brand']} ({brand_key}) — "
+                  f"role {row.get('sales_role')}, confidence "
+                  f"{row.get('confidence') or '—'}, "
+                  f"locations_at_decision {row.get('locations_at_decision')}")
+    _write_watchlist(doc, dry_run=dry_run)
+
+
+@chains_app.command("reject")
+def chains_reject(
+    brand_key: str = typer.Argument(..., help="The normalized key."),
+    reason: str = typer.Option(..., "--reason", help="Why it is not a lead."),
+    locations: int = typer.Option(None, "--locations",
+                                  help="The count at the decision; read from the "
+                                       "newest detect snapshot when omitted. THE "
+                                       "ESCAPE HATCH DOUBLES AGAINST IT."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report; write nothing."),
+) -> None:
+    """Reject a brand. The row is KEPT, so it is never re-surfaced blindly.
+
+    A rejection re-opens by itself when the brand's location count has doubled
+    since `locations_at_decision` -- "rejected at 5 stores" must not
+    permanently hide a brand that is now at 20. Without a count at the decision
+    that arm is dormant, and this command says so rather than leaving it to be
+    discovered a year later."""
+    from loci.chains import watchlist as wl
+
+    doc = wl.load()
+    _resolve_key(doc, brand_key)
+    n = locations if locations is not None else _detect_locations(brand_key)
+    try:
+        row = wl.decide(doc, brand_key, tier="rejected", reason=reason,
+                        locations_at_decision=n)
+    except (ValueError, KeyError) as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1) from exc
+    at = row.get("locations_at_decision")
+    console.print(f"[green]rejected[/] {row['brand']} ({brand_key})")
+    if at:
+        console.print(f"[dim]re-surfaces automatically at {2 * int(at)}+ "
+                      f"locations (doubled from {at}).[/]")
+    else:
+        console.print("[yellow]no locations_at_decision — the doubling escape hatch "
+                      "is DORMANT for this row. Pass --locations N to arm it.[/]")
+    _write_watchlist(doc, dry_run=dry_run)
+
+
+@chains_app.command("auto-admit")
+def chains_auto_admit(
+    month: str = typer.Option(None, "--month", help="Snapshot month YYYY-MM."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Print what would be written; write nothing."),
+    limit: int = typer.Option(0, "--limit", help="Cap the number added (0 = all)."),
+) -> None:
+    """Admit every candidate automatically, as `confidence: auto`.
+
+    The owner's 2026-09-15 ruling, and it is a trade the process makes with its
+    eyes open: a queue that needs 45 minutes of review before anything enters
+    the list is a queue that is not read by month three, so the machine admits
+    and the owner REJECTS AFTER THE FACT. What keeps that honest is that an
+    auto row is marked at every level -- `confidence: auto`, `decided_by:
+    auto`, its own section in docs/CHAINS.md headed "nobody has looked yet" --
+    and that `nyc_locations_now` stays NULL, so no machine count is ever
+    mistaken for one a person made.
+
+    Existing rows are never touched, hand-vetted or rejected alike."""
+    from loci.chains import candidates as cand
+    from loci.chains import watchlist as wl
+
+    con = _chains_connect(read_only=True)
+    doc = wl.load()
+    run = cand.run(con, month=month, doc=doc)
+    if run.month is None:
+        console.print("[red]no detect snapshot — run `loci chains detect` first.[/]")
+        raise typer.Exit(1)
+
+    doc, added, skipped = wl.auto_admit(doc, run.rows, month=run.month, limit=limit)
+    t = Table(title=f"chains auto-admit {run.month} — {len(added):,} to add "
+                    f"of {run.n_candidates:,} candidates")
+    for col, j in (("brand", "left"), ("loci_category", "left"), ("role", "left"),
+                   ("admitted because", "left")):
+        t.add_column(col, justify=j)
+    for row in added[:40]:
+        t.add_row(str(row["brand"])[:38], str(row.get("loci_category") or "—"),
+                  str(row.get("sales_role")), str(row.get("admission_reason"))[:90])
+    console.print(t)
+    if len(added) > 40:
+        console.print(f"[dim]… and {len(added) - 40:,} more.[/]")
+    for msg in skipped[:10]:
+        console.print(f"[yellow]skipped[/] {msg}")
+    console.print(f"[bold]{len(added):,} added[/] — watchlist would hold "
+                  f"{len(doc['brands']):,} rows.")
+    if not added:
+        console.print("[dim]nothing to add; watchlist unchanged.[/]")
+        raise typer.Exit(0)
+    _write_watchlist(doc, dry_run=dry_run)
+
+
 @chains_app.command("refresh")
 def chains_refresh(
     month: str = typer.Option(None, "--month", help="Snapshot month YYYY-MM."),
     max_queries: int = typer.Option(None, "--max-queries", help="Tavily budget."),
     skip_research: bool = typer.Option(False, "--skip-research",
                                        help="detect + render only; spend nothing."),
+    no_auto_admit: bool = typer.Option(False, "--no-auto-admit",
+                                       help="Do not admit this month's candidates; "
+                                            "render the list as it stands."),
     dry_run: bool = typer.Option(False, "--dry-run",
                                  help="Every step dry: no snapshot, no queries, no doc."),
 ) -> None:
-    """poi-snapshot -> detect -> research -> render. The monthly job
-    (`make chains-refresh`).
+    """poi-snapshot -> detect -> research -> auto-admit -> render. The monthly
+    job (`make chains-refresh`).
+
+    AUTO-ADMIT RUNS BEFORE RENDER, not after: the document is the artefact a
+    person reads, and admitting the month's candidates after generating it
+    would mean every new row waits a month to become visible -- which is the
+    same delay the auto-admission ruling exists to remove.
 
     Research failure does NOT abort the run: the snapshot is the load-bearing
     artefact and it is already written by then, so a Tavily outage must not
     cost the month its count."""
-    console.rule("[bold]1/4 poi-snapshot (first-seen ledger)")
+    console.rule("[bold]1/5 poi-snapshot (first-seen ledger)")
     # BEFORE detect, always: detect reads the ledger and raises without it, and
     # a month whose ledger row is missing can never be recovered afterwards --
     # the observation is gone once the month is.
     poi_snapshot(month=month, dry_run=dry_run, force=False)
-    console.rule("[bold]2/4 detect")
+    console.rule("[bold]2/5 detect")
     chains_detect(month=month, dry_run=dry_run, limit=25)
     if skip_research:
-        console.rule("[bold]3/4 research — skipped (--skip-research)")
+        console.rule("[bold]3/5 research — skipped (--skip-research)")
     else:
-        console.rule("[bold]3/4 research")
+        console.rule("[bold]3/5 research")
         try:
             chains_research(month=month, max_queries=max_queries, days=None,
                             detected=0, dry_run=dry_run)
@@ -3803,7 +4062,22 @@ def chains_refresh(
                               "the snapshot is already written.[/]")
         except Exception as exc:            # noqa: BLE001
             console.print(f"[yellow]research failed ({exc}) — continuing to render.[/]")
-    console.rule("[bold]4/4 render")
+    if no_auto_admit:
+        console.rule("[bold]4/5 auto-admit — skipped (--no-auto-admit)")
+    else:
+        console.rule("[bold]4/5 auto-admit")
+        try:
+            chains_auto_admit(month=month, dry_run=dry_run, limit=0)
+        except typer.Exit as exc:
+            if exc.exit_code:
+                # A watchlist that will not validate must not take the document
+                # down with it: the previous CHAINS.md plus an unchanged YAML is
+                # a worse month, not a broken pipeline.
+                console.print("[yellow]auto-admit failed — continuing to render "
+                              "with the watchlist unchanged.[/]")
+        except Exception as exc:            # noqa: BLE001
+            console.print(f"[yellow]auto-admit failed ({exc}) — continuing to render.[/]")
+    console.rule("[bold]5/5 render")
     try:
         chains_render(month=month, out=None, dry_run=dry_run)
     except typer.Exit as exc:

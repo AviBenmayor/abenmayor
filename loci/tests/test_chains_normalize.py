@@ -141,3 +141,88 @@ def test_moka_and_co_keeps_its_name_after_the_ampersand_and_suffix_rules():
     (&->and, then "Co" stripped as a legal suffix)."""
     assert brand_key("Moka & Co") == "moka and co"
     assert brand_key("Moka and Co") == "moka and co"
+
+
+# --- key-splits surfaced by the 2026-09-15 auto-admit dry run ---------------
+# (raw pair -> canonical key). Canonical is either the spelling already on the
+# watchlist, or the spelling the company's own locator/website uses (checked
+# one-by-one; see the ALIASES comments for the citation).
+SPLIT_PAIRS = [
+    (("Dunkin' / Baskin Robbins",), "dunkin"),
+    (("Popeyes", "Popeyes Louisiana Kitchen"), "popeyes"),
+    (("Domino's", "Domino's Pizza"), "dominos"),
+    (("Little Caesars", "Little Caesars Pizza"), "little caesars"),
+    (("Pizza Hut", "Pizza Hut Express"), "pizza hut"),
+    (("Jersey Mike's", "Jersey Mike's Subs"), "jersey mikes subs"),
+    (("Golden Krust", "Golden Krust Caribbean Restaurant"),
+     "golden krust caribbean restaurant"),
+    (("Chopt", "Chopt Creative Salad Co."), "chopt"),
+    (("Buffalo Wild Wings", "Buffalo Wild Wings Go"), "buffalo wild wings"),
+    (("Auntie Anne's", "Auntie Anne's Pretzels",
+      "Auntie Anne's / Cinnabon / Carvel"), "auntie annes"),
+    (("Guac Time", "Guac Time Mexican Grill"), "guac time"),
+    (("Sonic", "Sonic Drive-In"), "sonic drive in"),
+    (("Panera", "Panera Bread"), "panera bread"),
+    (("Kennedy Chicken", "Kennedy Chicken & Burger", "Kennedy Chicken & Pizza",
+      "Kennedy Fried Chicken"), "kennedy fried chicken"),
+    (("BonChon Chicken", "Bonchon"), "bonchon"),
+    (("Crumbl", "Crumbl Cookies"), "crumbl cookies"),
+    (("Lidl", "Lidl US"), "lidl us"),
+    (("Pura Vida", "Pura Vida Miami"), "pura vida miami"),
+    (("Toby's Estate", "Toby's Estate Coffee"), "tobys estate coffee"),
+    (("Walgreens", "Walgreens / Duane Reade"), "walgreens duane reade"),
+    (("CVS Photo", "CVS"), "cvs"),
+    # supermarket co-op banner spelling splits
+    (("Key Food", "Key Food Supermarkets", "Key Food Supermarket",
+      "Key Food Stores Co-Op"), "key food"),
+    (("Associated", "Associated Supermarket", "Associated Fresh"),
+     "associated supermarket"),
+    (("Fine Fare", "Fine Fare Supermarket", "Fine Fare Supermarkets"),
+     "fine fare supermarkets"),
+    (("Pioneer", "Pioneer Supermarket", "Pioneer Supermarkets"),
+     "pioneer supermarket"),
+    (("Bravo Supermarket", "Bravo Supermarkets"), "bravo supermarkets"),
+    (("C-Town", "C-Town Supermarket"), "c town"),
+    (("Met Fresh", "Met Fresh Supermarket"), "met fresh supermarket"),
+    (("Food Universe", "Food Universe Marketplace"), "food universe marketplace"),
+]
+
+
+@pytest.mark.parametrize("raws,canonical", SPLIT_PAIRS,
+                         ids=[canonical for _, canonical in SPLIT_PAIRS])
+def test_key_splits_collapse_to_one_canonical_brand_key(raws, canonical):
+    keys = {brand_key(r) for r in raws}
+    assert keys == {canonical}, f"{raws!r} normalized to {keys!r}, not {{{canonical!r}}}"
+
+
+def test_met_food_is_left_apart_from_the_met_fresh_family():
+    """The owner ruling named only the "met fresh*" spellings as one banner;
+    "Met Food" is a distinct, if related, banner and must NOT collapse in."""
+    assert brand_key("Met Food") == "met food"
+    assert brand_key("Met Food") != brand_key("Met Fresh")
+
+
+def test_teppanyaki_one_and_teriyaki_one_stay_distinct():
+    """Same operator, but a different trade name for a different concept --
+    NOT the short/full-name pattern the other trade-name splits collapse on."""
+    assert brand_key("Teppanyaki One Japanese Grill") != brand_key("Teriyaki One")
+
+
+def test_eataly_and_eataly_caffe_stay_distinct():
+    """Different concepts (the marketplace vs. the cafe format), not a filing
+    split of the same chain."""
+    assert brand_key("Eataly") != brand_key("Eataly Caffe")
+
+
+#: Deliberately stoplisted rather than aliased: each of these strings covers
+#: more than one real business/place, so collapsing it onto the one big
+#: co-occurring brand would manufacture a chain that does not exist.
+STOPLISTED_KEYS = ["home", "hudson", "little italy", "club"]
+
+
+@pytest.mark.parametrize("raw", STOPLISTED_KEYS)
+def test_stoplisted_ambiguous_keys_are_not_renamed_by_brand_key(raw):
+    """generic_keys.txt excludes these downstream (see
+    test_chains_exclusions.py); brand_key itself must leave them alone -- it
+    is not brand_key's job to rewrite an ambiguous key onto another brand."""
+    assert brand_key(raw) == raw

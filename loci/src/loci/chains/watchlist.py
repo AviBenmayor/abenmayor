@@ -33,18 +33,51 @@ from loci.chains.normalize import brand_key as normalize_brand
 PATH = pathlib.Path(__file__).resolve().parent / "watchlist.yaml"
 
 #: Every field a brand row may carry, in the order they are written back out.
+#: The DECISION block (tier .. locations_at_decision) was added 2026-09-15 with
+#: the auto-admission ruling; every field in it is optional and a row that
+#: predates it reads as `tier: admitted, decided_by: owner` (see `tier_of` /
+#: `decided_by_of`), which is what the first 161 hand-vetted rows are.
 FIELDS = (
     "brand", "brand_key", "category", "loci_category", "hq",
     "nyc_locations_now", "nyc_locations_12m_ago", "net_new_12m",
     "pipeline", "ownership", "expansion_role_title", "why_they_grow",
-    "evidence", "confidence", "first_added", "last_verified",
+    "evidence", "confidence",
+    "tier", "sales_role", "admission_reason", "rejection_reason",
+    "decided_on", "decided_by", "locations_at_decision",
+    "first_added", "last_verified",
 )
 
 #: The confidence scale is about PROVENANCE, not certainty:
 #:   verified   — a person on this team checked the count. `last_verified` dates it.
 #:   reported   — a cited source says so; nobody here re-counted.
 #:   unverified — a guess, or seeded to exercise the pipeline.
-CONFIDENCE_VALUES = ("verified", "reported", "unverified")
+#:   auto       — a machine applied the D109 rule and NOBODY HAS LOOKED. It sits
+#:                BELOW unverified: an unverified row was at least typed by a
+#:                person who meant to type it. Only `loci chains auto-admit`
+#:                writes it, and `loci chains render` sorts every auto row into
+#:                its own section so the document never mixes the two.
+CONFIDENCE_VALUES = ("verified", "reported", "unverified", "auto")
+
+#: Which half of the list a row is in. A `watch` row (D110, tier 3) is INTERNAL
+#: ONLY — a one-or-two-location operator with an intent signal — and is neither
+#: admitted nor rejected, so it keeps re-surfacing as a candidate until it
+#: graduates, which is the intended behaviour.
+TIER_VALUES = ("admitted", "watch", "rejected")
+DEFAULT_TIER = "admitted"
+
+#: Who the row is for, and where it sorts. See D109's table.
+SALES_ROLE_VALUES = ("prospect", "incumbent", "contraction", "excluded")
+
+#: `auto` means the monthly job wrote it unprompted; `owner` means a person
+#: typed `loci chains admit` / `reject`. A row with no `decided_by` predates
+#: the field and is a hand-curated row, so it reads as `owner`.
+DECIDED_BY_VALUES = ("auto", "owner")
+DEFAULT_DECIDED_BY = "owner"
+
+#: Confidence values that do not require a citation. `reported` and `verified`
+#: are CLAIMS ABOUT A SOURCE and a claim with no evidence is a guess; `auto`
+#: and `unverified` already say in the field that nobody checked.
+CONFIDENCE_WITHOUT_EVIDENCE = ("auto", "unverified")
 
 #: Research payloads label confidence on a CERTAINTY scale (high/med/low). The
 #: two scales do not line up, so the mapping is deliberately lossy in one
@@ -97,6 +130,72 @@ LOCI_CATEGORY_ALIASES = {
     "daycare": "childcare", "salon": "hair_barber", "barber": "hair_barber",
     "nails": "nails_beauty",
 }
+
+
+def _is_date(value: Any) -> bool:
+    """YYYY-MM-DD, as a string or as a real date. PyYAML parses an unquoted
+    2026-09-15 into a `datetime.date`, so both shapes reach this file."""
+    if isinstance(value, dt.date):
+        return True
+    try:
+        dt.date.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def tier_of(row: dict) -> str:
+    """A row with no `tier` is ADMITTED. The 161 rows that predate the field
+    were all hand-vetted onto the list; reading a missing tier as anything else
+    would silently drop the whole existing watchlist out of the document."""
+    return row.get("tier") or DEFAULT_TIER
+
+
+def decided_by_of(row: dict) -> str:
+    """A row with no `decided_by` was written by a person, before the machine
+    could write one at all."""
+    return row.get("decided_by") or DEFAULT_DECIDED_BY
+
+
+def is_auto(row: dict) -> bool:
+    """True for a row the monthly job admitted and nobody has looked at."""
+    return decided_by_of(row) == "auto"
+
+
+def admitted_keys(doc: dict) -> set[str]:
+    """Keys the candidate predicate must not re-surface as new.
+
+    `watch` rows are deliberately NOT here: tier 3 is internal-only and a watch
+    row SHOULD re-appear the month it clears the predicate -- that is exactly
+    what graduation is (D110)."""
+    return {r["brand_key"] for r in doc.get("brands") or []
+            if r.get("brand_key") and tier_of(r) == "admitted"}
+
+
+def rejected_rows(doc: dict) -> dict[str, dict]:
+    """{brand_key: row} for rejected rows, so the escape hatch can read
+    `locations_at_decision` off the row that recorded the decision."""
+    return {r["brand_key"]: r for r in doc.get("brands") or []
+            if r.get("brand_key") and tier_of(r) == "rejected"}
+
+
+def by_key(doc: dict) -> dict[str, dict]:
+    return {r["brand_key"]: r for r in doc.get("brands") or [] if r.get("brand_key")}
+
+
+def near_matches(doc: dict, key: str, n: int = 5) -> list[str]:
+    """Close brand_keys, for the message an unknown key gets. A typo in a key
+    is the overwhelmingly likely cause, and a bare "not found" makes the user
+    grep a 5,000-line YAML to find out they wrote `dunkin donuts`."""
+    import difflib
+
+    keys = sorted(by_key(doc))
+    hits = difflib.get_close_matches(key, keys, n=n, cutoff=0.6)
+    if hits:
+        return hits
+    # difflib is unhelpful for a short prefix ("blank" vs "blank street
+    # coffee"), which is the other way people get a key wrong.
+    return [k for k in keys if key and (k.startswith(key) or key in k)][:n]
 
 
 def _empty(value: Any) -> bool:
@@ -155,6 +254,32 @@ def validate(doc: dict) -> list[str]:
         for ev in row.get("evidence") or []:
             if not isinstance(ev, dict) or "url" not in ev:
                 errors.append(f"{where}: evidence entries need a `url`, got {ev!r}")
+        # An EMPTY evidence list is allowed only where the confidence field
+        # already says nobody checked. `confidence: auto` is the case this was
+        # written for: the monthly job admits rows off a count and has no
+        # citation to give, and forcing it to invent one would be worse.
+        if not (row.get("evidence") or []) and conf \
+                and conf not in CONFIDENCE_WITHOUT_EVIDENCE:
+            errors.append(f"{where}: no `evidence` but confidence is {conf!r} — "
+                          f"only {list(CONFIDENCE_WITHOUT_EVIDENCE)} may cite nothing")
+        tier = row.get("tier")
+        if tier and tier not in TIER_VALUES:
+            errors.append(f"{where}: tier {tier!r} not in {TIER_VALUES}")
+        role = row.get("sales_role")
+        if role and role not in SALES_ROLE_VALUES:
+            errors.append(f"{where}: sales_role {role!r} not in {SALES_ROLE_VALUES}")
+        by = row.get("decided_by")
+        if by and by not in DECIDED_BY_VALUES:
+            errors.append(f"{where}: decided_by {by!r} not in {DECIDED_BY_VALUES}")
+        for datefield in ("decided_on", "first_added", "last_verified"):
+            value = row.get(datefield)
+            if value and not _is_date(value):
+                errors.append(f"{where}: {datefield} {value!r} is not YYYY-MM-DD")
+        n_at = row.get("locations_at_decision")
+        if n_at is not None and not isinstance(n_at, int):
+            # The doubling escape hatch reads this number. A string here would
+            # compare wrong and silently disable the re-surface for that row.
+            errors.append(f"{where}: locations_at_decision {n_at!r} is not an integer")
         unknown = set(row) - set(FIELDS)
         if unknown:
             errors.append(f"{where}: unknown field(s) {sorted(unknown)}")
@@ -260,6 +385,157 @@ def upsert(doc: dict, incoming: list[dict], *, overwrite: bool = False,
     return doc, {"added": added, "updated": updated, "skipped": skipped,
                  "unplaced_keys": sorted(unplaced),
                  "dropped_categories": sorted(dropped_cats)}
+
+
+# ---------------------------------------------------------------------------
+# THE DECISION WRITERS -- `loci chains admit` / `reject` / `auto-admit`
+#
+# Same discipline as `upsert`: these write the DECISION block and nothing else.
+# A decision is not a correction, so admitting a brand must never overwrite the
+# hand-checked count, category or evidence a curator put on the row -- the two
+# kinds of fact have different owners and different lifetimes.
+# ---------------------------------------------------------------------------
+
+def decide(doc: dict, key: str, *, tier: str, reason: str,
+           today: dt.date | None = None, sales_role: str | None = None,
+           confidence: str | None = None,
+           locations_at_decision: int | None = None,
+           decided_by: str = "owner") -> dict:
+    """Record a tier decision on an EXISTING row. Returns the row.
+
+    Raises KeyError for an unknown brand_key -- the caller is expected to turn
+    that into a message listing `near_matches`. Creating the row instead would
+    be the wrong kindness: a brand nobody has seen belongs in the queue through
+    `auto-admit`, where it arrives with its detect counts attached, not typed
+    from memory at a prompt.
+
+    PROMOTION. `admit` on a row the machine wrote flips `decided_by` to
+    `owner` and leaves `confidence` alone unless one is passed: promotion means
+    a person has now looked, which is a fact about the DECISION; whether anyone
+    counted the stores is a separate fact about the NUMBER, and conflating them
+    is how a row ends up reading `verified` because somebody clicked yes.
+
+    REJECTION KEEPS THE ROW. It is not deleted: a deleted rejection is a brand
+    that comes back next month with nothing recorded against it, which is the
+    failure the tier exists to prevent."""
+    if tier not in TIER_VALUES:
+        raise ValueError(f"tier {tier!r} not in {TIER_VALUES}")
+    if sales_role is not None and sales_role not in SALES_ROLE_VALUES:
+        raise ValueError(f"sales_role {sales_role!r} not in {SALES_ROLE_VALUES}")
+    today = today or dt.date.today()
+    row = by_key(doc).get(key)
+    if row is None:
+        raise KeyError(key)
+
+    row["tier"] = tier
+    if tier == "rejected":
+        row["rejection_reason"] = reason
+    else:
+        row["admission_reason"] = reason
+    row["decided_on"] = today.isoformat()
+    row["decided_by"] = decided_by
+    if confidence is not None:
+        if confidence not in CONFIDENCE_VALUES:
+            raise ValueError(f"confidence {confidence!r} not in {CONFIDENCE_VALUES}")
+        row["confidence"] = confidence
+    if sales_role is not None:
+        row["sales_role"] = sales_role
+    elif _empty(row.get("sales_role")) and tier == "admitted":
+        row["sales_role"] = "prospect"
+    if locations_at_decision is not None:
+        row["locations_at_decision"] = int(locations_at_decision)
+    elif row.get("locations_at_decision") is None \
+            and isinstance(row.get("nyc_locations_now"), int):
+        # The escape hatch needs A NUMBER at the moment of the decision. The
+        # curated count is the best one available when no snapshot was read;
+        # with neither, the doubling arm is simply dormant for this row, which
+        # `loci chains reject` says out loud rather than leaving to be found.
+        row["locations_at_decision"] = int(row["nyc_locations_now"])
+    for field in FIELDS:
+        row.setdefault(field, None)
+    doc["updated_on"] = today.isoformat()
+    return row
+
+
+def auto_admit(doc: dict, candidates: list[dict], *, month: str | None = None,
+               today: dt.date | None = None,
+               limit: int = 0) -> tuple[dict, list[dict], list[str]]:
+    """Write one row per candidate the owner has not already decided on.
+
+    The 2026-09-15 owner ruling: the monthly job admits everything that clears
+    the predicate and the owner rejects after the fact. Returns
+    (doc, added rows, skipped messages).
+
+    THE COUNT IS NOT WRITTEN TO `nyc_locations_now`. That field means "a person
+    counted this"; detect's number is a floor off open data and putting it
+    there would manufacture 900 curated counts nobody produced. It goes to
+    `locations_at_decision` (where the escape hatch reads it) and into the
+    prose of `admission_reason` (where a reader sees it with its provenance).
+
+    NEVER TOUCHES AN EXISTING ROW -- not a hand-vetted one, not a rejected one,
+    not one this job wrote last month. An existing key is skipped in silence by
+    the predicate upstream; anything reaching here that already exists is a
+    bug, and is reported rather than merged."""
+    today = today or dt.date.today()
+    existing = by_key(doc)
+    added: list[dict] = []
+    skipped: list[str] = []
+
+    for cand in candidates:
+        if limit and len(added) >= limit:
+            break
+        key = cand.get("brand_key")
+        if not key:
+            skipped.append(f"{cand.get('display_name')!r}: no brand_key")
+            continue
+        if key in existing:
+            skipped.append(f"{key}: already on the watchlist — not touched")
+            continue
+
+        # `brand` MUST normalize back to `brand_key` or validate() fails and
+        # the row would join to nothing. display_name is the modal raw
+        # spelling of a group whose members all normalize to this key, so it
+        # normally does; the fallback keeps a pathological one out of the file
+        # rather than writing an invalid row.
+        display = cand.get("display_name") or key
+        brand = display if normalize_brand(display) == key else key
+        if normalize_brand(brand) != key:
+            skipped.append(f"{key}: no display name normalizes back to the key")
+            continue
+
+        cat = cand.get("loci_category")
+        if cat not in CATEGORIES:
+            cat = None
+        total = int(cand.get("locations_total") or 0)
+        new_12m = int(cand.get("locations_new_12m") or 0)
+        reason = cand.get("reason") or "cleared the D109 candidate predicate"
+        detect_note = f"detect {month}: {total} locations, {new_12m} new 12m" \
+            if month else f"detect: {total} locations, {new_12m} new 12m"
+
+        row = {f: None for f in FIELDS}
+        row.update({
+            "brand": brand,
+            "brand_key": key,
+            "category": None,               # the company's own word; nobody asked it
+            "loci_category": cat,
+            "nyc_locations_now": None,      # null means NOT COUNTED, never zero
+            "evidence": [],                 # allowed only because confidence is `auto`
+            "confidence": "auto",
+            "tier": "admitted",
+            "sales_role": cand.get("sales_role") or "prospect",
+            "admission_reason": f"{reason}; {detect_note}",
+            "decided_on": today.isoformat(),
+            "decided_by": "auto",
+            "locations_at_decision": total,
+            "first_added": today.isoformat(),
+        })
+        doc.setdefault("brands", []).append(row)
+        existing[key] = row
+        added.append(row)
+
+    if added:
+        doc["updated_on"] = today.isoformat()
+    return doc, added, skipped
 
 
 def dump(doc: dict, path: pathlib.Path | None = None, *, header: str | None = None) -> str:

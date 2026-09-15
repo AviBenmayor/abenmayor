@@ -125,6 +125,86 @@ ALIASES: dict[str, str] = {
     # "moka and": the &->and rule fires and then "Co" is stripped as a legal
     # suffix. Pin the full name so the key is a brand, not a conjunction.
     "moka and": "moka and co",
+    # --- key-splits from the 2026-09-15 auto-admit dry run ------------------
+    # Each pair below is one chain filed under two spellings and detected as
+    # two brands. Canonical is the spelling the company's own locator/website
+    # uses (checked one-by-one, cited in each comment), except where the
+    # watchlist already keys on one spelling -- then that one wins so the
+    # curated row and the detected row agree.
+    #
+    # Co-branded / practice-line collapses (same pattern as "dunkin donuts
+    # baskin robbins" above: a second brand named on the sign does not make it
+    # a different chain).
+    "dunkin baskin robbins": "dunkin",             # 109 loc; co-branded Dunkin' store
+    "auntie annes pretzels": "auntie annes",       # 10 loc vs 93; "Pretzels" is a descriptor
+    "auntie annes cinnabon carvel": "auntie annes",  # 5 loc; triple co-branded kiosk
+    # Trade-name splits where the shorter form is the registered trade name
+    # (Wikipedia infobox "Trade name:", checked 2026-09-15) even though the
+    # longer form has more raw filings.
+    "popeyes louisiana kitchen": "popeyes",         # 261 loc vs 235; trade name is "Popeyes"
+    "dominos pizza": "dominos",                     # 193 loc vs 182; rebranded to "Domino's" 2012
+    "little caesars pizza": "little caesars",       # 70 loc vs 40; trade name is "Little Caesars"
+    "chopt creative salad": "chopt",                # 14 loc vs 49; "commonly referred to as Chopt"
+    # Trade-name splits where the LONGER form is the registered trade name.
+    "jersey mikes": "jersey mikes subs",            # 20 loc vs 57; trade name is "Jersey Mike's Subs"
+    "golden krust": "golden krust caribbean restaurant",  # 20 loc vs 59; goldenkrust.com header
+    "sonic": "sonic drive in",                      # 7 loc vs 16; trade name is "Sonic Drive-In"
+    "panera": "panera bread",                       # 3 loc vs 104; panerabread.com header default
+    # A sub-format's name folds into the parent brand, not the reverse --
+    # same call as "dunkin baskin robbins": a format variant is not a new chain.
+    "pizza hut express": "pizza hut",               # 52 loc vs 95; express is a kiosk format
+    "buffalo wild wings go": "buffalo wild wings",  # 22 loc vs 43; Go is a to-go-only format
+    "guac time mexican grill": "guac time",         # 11 loc vs 20; descriptor, not the sign name
+    # Quasi-independent NYC storefronts sharing a name are still one detected
+    # "chain" for this table's purpose -- the count is a NAME, not a common
+    # operator. See docs/chains-process.md if that distinction needs revisiting.
+    "kennedy chicken": "kennedy fried chicken",             # 21 loc
+    "kennedy chicken and burger": "kennedy fried chicken",  # 4 loc
+    "kennedy chicken and pizza": "kennedy fried chicken",   # 9 loc
+    # Splits against a spelling already curated on the watchlist -- alias the
+    # non-watchlist spelling so the detected row and the curated row agree.
+    "bonchon chicken": "bonchon",
+    "crumbl": "crumbl cookies",
+    "lidl": "lidl us",
+    "pura vida": "pura vida miami",
+    "tobys estate": "tobys estate coffee",
+    "walgreens": "walgreens duane reade",
+    "cvs photo": "cvs",
+    # NOT aliased, on purpose:
+    #   "eataly" / "eataly caffe" -- different concepts (marketplace vs. cafe
+    #     format), not a filing split.
+    #   "teppanyaki one" / "teriyaki one" -- same operator, different trade
+    #     name for a different concept; leave apart.
+    #   "whole foods market daily shop" -- a real distinct smaller format;
+    #     leave apart from "whole foods market".
+    # "home", "hudson", "little italy", and "club" are too ambiguous to alias
+    # at all (a generic word, an ambiguous brand token, a neighborhood name, a
+    # generic word) -- stoplisted in generic_keys.txt instead of aliased.
+    # --- supermarket co-op banner spelling splits (owner ruling, 2026-09-15) --
+    # A "co-op banner" is a buying group (Krasdale/Western Beef/Associated
+    # Grocers style) that licenses its name to independently owned
+    # supermarkets: the count is a BANNER over many separate owners, not one
+    # operator's footprint, which is why `candidates.COOP_BANNERS` forces
+    # `sales_role: incumbent` on these regardless of location count rather
+    # than excluding them outright (they are real supply). Each alias below
+    # collapses that banner's filing-spelling variants to its single largest
+    # spelling in the 2026-09 snapshot, so the banner is one row.
+    "key food supermarkets": "key food",              # 22 loc vs 122
+    "key food supermarket": "key food",               # 5 loc vs 122
+    "key food stores co op": "key food",              # 14 loc vs 122
+    "associated": "associated supermarket",           # 9 loc vs 51
+    "associated fresh": "associated supermarket",     # 9 loc vs 51
+    "fine fare": "fine fare supermarkets",            # 36 loc vs 40
+    "fine fare supermarket": "fine fare supermarkets",  # 24 loc vs 40
+    "pioneer": "pioneer supermarket",                 # 5 loc vs 18
+    "pioneer supermarkets": "pioneer supermarket",    # 14 loc vs 18
+    "bravo supermarket": "bravo supermarkets",        # 12 loc vs 48
+    "c town supermarket": "c town",                   # 13 loc vs 33
+    "met fresh": "met fresh supermarket",             # 3 loc vs 7
+    "food universe": "food universe marketplace",     # 16 loc vs 45
+    # "met food" (10 loc) is left apart from "met fresh"/"met fresh
+    # supermarket" -- the owner ruling named only the "met fresh*" spellings
+    # as one banner; "Met Food" is a distinct, if related, banner name.
 }
 
 _SEPARATOR = re.compile(r"\s+[-–—|@]\s+|\s+\bat\b\s+(?=\w)")

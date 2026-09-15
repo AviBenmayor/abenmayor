@@ -385,6 +385,8 @@ Done 2026-09-13 (CHECKPOINT D79). Pushed to Linear 2026-09-13 as GTM-151.
 
 There is no admission process today because there is no artefact to say yes or no to (D109) — the watchlist's 123 rows arrived in one seeded payload on 2026-09-13 and two more (All'Antico Vinaio, Super Burrito) landed the same ad hoc way on 2026-09-15. This command IS the process: it reads chains.brand_snapshot against the candidate predicate (locations_total >= 5 OR detect.flag_for, after aliasing, n_sources >= 2, not excluded, movement in 12m, not already admitted/rejected), diffs against last month, and prints the reason each row fired so the human half of the runbook has something to review rather than a raw table. First real run should re-derive the proposal's 2,341/244/697 backlog figures against the 2026-09-15 detect rebuild (fixed normalizer, post-dedup ledger), since the pre-rebuild numbers are already stale.
 
+Built 2026-09-15 in one pass with the auto-admit write; owner ruled full auto-admission (CHECKPOINT D113).
+
 Opened 2026-09-15 (CHECKPOINT D109). Pushed to Linear 2026-09-15 as GTM-186.
 
 ### `loci chains admit` / `reject`: persist tier + reason into the YAML
@@ -392,12 +394,16 @@ Opened 2026-09-15 (CHECKPOINT D109). Pushed to Linear 2026-09-15 as GTM-186.
 
 Without a persisted rejection, the same two thousand banks and Northwell practice lines get re-reviewed every month and the process is abandoned by month three — this is what makes the monthly 45-60 minute human budget survive past the first session. `admit <brand_key> --reason "..." --role prospect` and `reject <brand_key> --reason "..."` write tier, decided_on and the reason into watchlist.yaml in one edit (mirroring the import fill-only discipline already in chains/watchlist.py). A rejected key must re-surface automatically if locations_total doubles or a capital event lands — the escape hatch that stops 'rejected at 5 stores' from permanently hiding a brand that grew to 20; without it a correct decision made on thin data becomes a permanent blind spot.
 
+Built 2026-09-15 in one pass with the auto-admit write; owner ruled full auto-admission (CHECKPOINT D113).
+
 Opened 2026-09-15 (CHECKPOINT D109). Pushed to Linear 2026-09-15 as GTM-187.
 
 ### Exclusion classes as a named, tested rule set
 `Urgent` · `2 pts` · `ingest,rigor`
 
 MoneyGram was the fastest-growing 'brand' in the city on the first raw detect run — 67 of 69 locations new in 12 months, agent counters inside bodegas, not storefronts — and four of the top thirty were Northwell practice lines whose long site-specific names normalize into one key. If the exclusion is not a list with a reason per class and a test, it is tribal knowledge in one person's head, and the candidate pool it feeds (T1) is corrupted at the source for every downstream consumer, not just the one bad row. Urgent because this is the check that decides whether the candidate pool is valid at all, not a feature on top of it. Classes: banks, health-system practice lines, agent networks (MoneyGram/Western Union), wireless carriers, parking, ATMs, government/postal, fuel-branded convenience — each with its one-line reason in docs/chains-process.md. A test per class asserts a known example (MoneyGram, a Northwell line, a Shell station) is excluded and stays excluded across a normalizer change.
+
+Built 2026-09-15 in one pass with the auto-admit write; owner ruled full auto-admission (CHECKPOINT D113).
 
 Opened 2026-09-15 (CHECKPOINT D109). Pushed to Linear 2026-09-15 as GTM-188.
 
