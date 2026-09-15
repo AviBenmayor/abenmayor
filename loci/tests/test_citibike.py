@@ -594,3 +594,43 @@ def test_reconcile_rebuilds_the_stored_measures_and_catches_drift(warehouse):
         "WHERE address_id = 'a1'")
     with pytest.raises(RuntimeError, match="do not reproduce from the panel"):
         ab.reconcile(warehouse, "a1", first, last)
+
+
+# ------------------------------- truncation versus a system outage (2026-02)
+
+def _complete(**kw):
+    a = {"rows_in_file": 2_000_000, "start_dates": 28,
+         "first_date": dt.date(2026, 2, 1), "last_date": dt.date(2026, 2, 28),
+         "last_date_in_month": dt.date(2026, 2, 28)}
+    a.update(kw)
+    return a
+
+
+def test_an_interior_zero_date_is_an_outage_and_is_allowed():
+    """2026-02-23 is the measured case: the whole system carried nobody, with
+    02-22 at 19k rides and 02-24 at 13k against a ~60k February norm. A storm,
+    not a missing file. The date STAYS in the divisor -- an average weekday that
+    month really did include a day the docks were shut -- and dropping days
+    because ridership was low would select on the outcome."""
+    a = _complete(start_dates=27)
+    cb.assert_month_complete(a, 2026, 2)
+    assert a["dates_with_no_trip"] == 1
+
+
+def test_a_missing_tail_is_truncation_and_is_refused():
+    """The shape test: a truncated export loses a contiguous SUFFIX."""
+    with pytest.raises(cb.CitibikeError, match="TRUNCATED publication"):
+        cb.assert_month_complete(
+            _complete(start_dates=20, last_date_in_month=dt.date(2026, 2, 20)),
+            2026, 2)
+
+
+def test_too_many_zero_dates_is_refused_even_in_the_interior():
+    with pytest.raises(cb.CitibikeError, match="publication problem"):
+        cb.assert_month_complete(_complete(start_dates=25), 2026, 2)
+
+
+def test_a_complete_month_records_zero_missing_dates():
+    a = _complete()
+    cb.assert_month_complete(a, 2026, 2)
+    assert a["dates_with_no_trip"] == 0

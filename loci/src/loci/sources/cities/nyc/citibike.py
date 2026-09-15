@@ -798,6 +798,14 @@ def audit_sql(glob: str, year: int, month: int) -> str:
                                                                AS start_dates,
            min(started_at::DATE)                               AS first_date,
            max(started_at::DATE)                               AS last_date,
+           -- the latest date INSIDE the month that carries a trip. The bare
+           -- max() above can sit outside it (the 2023 archive's January member
+           -- carries December departures), which is exactly the wrong number
+           -- for the suffix test.
+           max(started_at::DATE) FILTER (
+               started_at::DATE BETWEEN DATE '{first.isoformat()}'
+                                    AND DATE '{last.isoformat()}')
+                                                               AS last_date_in_month,
            count(*) FILTER (start_station_id IS NULL OR trim(start_station_id) = '')
                                                                AS dockless_starts,
            count(*) FILTER (end_station_id IS NULL OR trim(end_station_id) = '')
@@ -837,14 +845,52 @@ def audit_sql(glob: str, year: int, month: int) -> str:
     """
 
 
+#: How many INTERIOR dates may carry no trip at all before the month is refused.
+#: A day on which the whole system carried nobody is a real event -- 2026-02-23
+#: is one, a storm, with 2026-02-22 at 19k and 2026-02-24 at 13k against a ~60k
+#: February norm -- but three of them in one month is a publication problem.
+MAX_ZERO_DATES = 2
+
+
+def _as_date(v) -> dt.date:
+    """pandas Timestamp | datetime | date | ISO string -> date."""
+    if isinstance(v, dt.datetime):
+        return v.date()
+    if isinstance(v, dt.date):
+        return v
+    if hasattr(v, "to_pydatetime"):                          # pandas Timestamp
+        return v.to_pydatetime().date()
+    return dt.date.fromisoformat(str(v)[:10])
+
+
 def assert_month_complete(audit: dict, year: int, month: int,
                           min_trips: int | None = None) -> None:
-    """Every calendar date present, and the month not obviously truncated.
+    """The month is whole: not truncated, and not missing a run of dates.
 
-    `min_trips` is a parameter only so a TEST can drive the real aggregation
-    on a hand-built twenty-row month. Production never passes it, and the
-    floor it defaults to is the one thing standing between a truncated
-    publication and a panel quietly divided by a full calendar.
+    TRUNCATION VERSUS AN OUTAGE, AND HOW THEY ARE TOLD APART
+    -----------------------------------------------------------------------
+    Both look like "fewer dates than the calendar has", and they need opposite
+    answers, so the distinction is made on SHAPE rather than on count:
+
+      * a TRUNCATED file loses a contiguous SUFFIX -- the publisher's export
+        stopped early -- so its last date is before the month's last date. That
+        is refused: `days_in_cell` comes from the calendar, and dividing a
+        three-week month by a four-week divisor deflates every dock by a
+        quarter with no error anywhere.
+
+      * an OUTAGE removes an INTERIOR date. 2026-02-23 is the measured case: a
+        winter storm, with the 22nd collapsing to 19k rides and the 24th still
+        at 13k against a ~60k norm. The system genuinely carried nobody. That
+        date is KEPT IN THE DIVISOR, because an average weekday in February
+        2026 really did include a day the system did not run, and removing it
+        would be selecting on the outcome -- a rule that drops days BECAUSE
+        ridership was low biases every average upward and makes months
+        incomparable. Holidays are excluded and weather is not, precisely
+        because the holiday list is a known, enumerable, recurring set fixed in
+        advance, while "it snowed" is a property of the data.
+
+    `min_trips` is a parameter only so a TEST can drive the real aggregation on
+    a hand-built twenty-row month. Production never passes it.
     """
     first, last = month_bounds(year, month)
     expected = (last - first).days + 1
@@ -854,12 +900,29 @@ def assert_month_complete(audit: dict, year: int, month: int,
             f"citibike: {year}-{month:02d} has only {audit['rows_in_file']:,} trips "
             f"(floor {floor:,}). That is a truncated publication, not a "
             f"quiet month; ingesting it would deflate every station's average.")
-    if audit["start_dates"] < expected:
+
+    missing = expected - int(audit["start_dates"])
+    audit["dates_with_no_trip"] = missing
+    if missing <= 0:
+        return
+
+    # The suffix test. `last_date_in_month` is the latest date INSIDE the month
+    # that carries a trip; if it is not the month's own last day, the tail is
+    # gone and this is truncation.
+    tail = audit.get("last_date_in_month")
+    if tail is not None and _as_date(tail) < last:
         raise CitibikeError(
-            f"citibike: {year}-{month:02d} has trips on only {audit['start_dates']} of "
-            f"{expected} calendar dates ({audit['first_date']}..{audit['last_date']}). "
-            f"`days_in_cell` is taken from the CALENDAR, so a missing date would "
-            f"silently divide a partial month by a full one.")
+            f"citibike: {year}-{month:02d} stops at {_as_date(tail)}, before the "
+            f"month ends on {last}. That is a TRUNCATED publication: "
+            f"`days_in_cell` is taken from the calendar, so the missing tail "
+            f"would silently divide a partial month by a full one.")
+    if missing > MAX_ZERO_DATES:
+        raise CitibikeError(
+            f"citibike: {year}-{month:02d} has NO trip at all on {missing} of "
+            f"{expected} calendar dates. One or two is a system outage (a storm); "
+            f"{missing} is a publication problem, and every one of them is "
+            f"currently being divided into the average as a day the docks were "
+            f"open. Establish which before ingesting.")
 
 
 #: A whole Jersey City file read by mistake would be ~100% out-of-system. The
@@ -1132,7 +1195,15 @@ def ingest(con, start: tuple[int, int] = (2023, 1),
               "dockless_starts": sum(x.get("dockless_starts", 0) for x in months),
               "dockless_ends": sum(x.get("dockless_ends", 0) for x in months),
               "end_events_after_month_end":
-                  sum(x.get("end_events_after_month_end", 0) for x in months)}
+                  sum(x.get("end_events_after_month_end", 0) for x in months),
+              # Dates on which the whole system carried nobody -- a storm, not a
+              # missing file (see assert_month_complete). Surfaced because they
+              # ARE in the divisor: an average weekday in that month really did
+              # include a day the docks were shut.
+              "dates_with_no_trip":
+                  sum(x.get("dates_with_no_trip", 0) for x in months),
+              "months_with_a_zero_date": sorted(
+                  x["month"] for x in months if x.get("dates_with_no_trip"))}
     if not dry_run:
         report["stations"] = rebuild_roster(con)
     return report
