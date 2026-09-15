@@ -27,9 +27,42 @@ The manifest comes from:
 loci ground-truth plan --out data/ground_truth/manifest.csv
 ```
 
-Fields per row: `rec_id`, `anchor_address_id`, `address label`, `anchor_lon`,
-`anchor_lat`, `category`, `proposed_solution`, `grade`, `maps_url`,
-`streetview_url`.
+Fields per row: `rec_id`, `anchor_address_id`, `area_kind`, `address_label`,
+`anchor_lon`, `anchor_lat`, `category`, `proposed_solution`, `grade`,
+`nearby_url`, `address_url`, `streetview_url`, `maps_url`.
+
+Four URLs, three of which get opened (verified live 2026-09-15 against 376
+Graham Ave, a bank anchor):
+
+- **`nearby_url`** — a category-nearby search
+  (`/maps/search/<term>/@lat,lon,18z`) centered on the anchor. This is the
+  read that answers the actual question: is there an open storefront of the
+  *recommended category* near here. It returns a results list — name,
+  category, address, and a status label per hit.
+- **`address_url`** — an address search (`/maps/search/<address label>`) that
+  opens the building's own panel: what tenant Maps has on file at this exact
+  address. `null` when the anchor is not an address (`area_kind != 'address'`
+  — a bbox/NTA card has no doorway to look up).
+- **`streetview_url`** — the anchor in Street View, for a visual read and the
+  imagery capture date.
+- **`maps_url`** — a bare coordinate pin. Kept for reference only: opening it
+  directly shows a pin with no business list attached, so it answers nothing
+  on its own and is not part of the read sequence below.
+
+`address_label` (and, from it, `address_url`) is a real, geocodable street
+address whenever `data/raw/pluto.csv` (MapPLUTO, ~330 MB, gitignored) is on
+disk — `plan()` reads it keyed by BBL, which is `anchor_address_id` for a
+lot-frame row, and prefers it over every other source (verified live
+2026-09-15: `376 Graham Avenue, Brooklyn, NY 11211`, `379 Broome Street,
+Manhattan, NY 10013`, `4 East 8 Street, Manhattan, NY 10003`, `545 Sackett
+Street, Brooklyn, NY 11217`). `analysis.address` itself carries no
+house-number/full-address column at all, so a run without the PLUTO extract
+on disk (a fresh clone, CI) falls back to the recommendation's own
+`area_label` — which for a rec issued through the address-resolution flow is
+also a real street address, just not always for older ones — and only then
+to a neighborhood/borough label with no street number. If `address_url` does
+not land on a specific building panel, treat it as inconclusive for that read
+and rely on `nearby_url` + Street View instead — do not force a match.
 
 ## 3. Per-anchor command sequence
 
@@ -41,35 +74,61 @@ touched, and reuse one tab across anchors rather than accumulating new ones:
 --reuse                     # append to every `open` below
 ```
 
-For each `rec_id` in the manifest:
+For each `rec_id` in the manifest, in this order — **nearby, then address,
+then Street View** — because `nearby_url` is the only one of the three that
+answers "is there an open storefront of the recommended category near the
+anchor," which is the question this whole protocol exists to check:
 
 ```bash
-# 1. Open the Maps pin, text only (skip the DOM tree — we just need the panel text)
-interceptor open "<maps_url>" --group loci-ground-truth --reuse --text-only
+# 1. Open the category-nearby search, text only (skip the DOM tree — we just
+#    need the results-list text). This is the FIRST read, not the pin.
+interceptor open "<nearby_url>" --group loci-ground-truth --reuse --text-only
 interceptor wait-stable
+interceptor text --group loci-ground-truth
+# Read the results list: name, category, address, status per hit. Two things
+# to hold in mind while reading it:
+#   - "Sponsored" entries are ads, not businesses at the anchor. Skip them.
+#   - Results extend well beyond the 400 m catchment the gap score is
+#     computed over -- there is no radius cutoff on the list. Judge distance
+#     from each hit's own listed address against the anchor, by eye; do not
+#     assume the top result is the closest one.
+#   - "Permanently closed" appears in the SAME position in the listing as an
+#     open business's status (e.g. "Open · Closes 5 PM") -- read that field
+#     for every hit, it is not a separate flag.
 
-# 2. Check for an explicit closure label, then read the place panel text
+# 2. Open the address search for the anchor's own building (skip when
+#    address_url is null -- a bbox/NTA card has no doorway to look up)
+interceptor open "<address_url>" --group loci-ground-truth --reuse --text-only
+interceptor wait-stable
 interceptor find "Permanently closed" --group loci-ground-truth
 interceptor text --group loci-ground-truth
-
-# 3. If the URL landed on a list of results rather than a single place, use
-#    tree refs to open the first result
+# If the URL landed on a list of results rather than a single building panel,
+# use tree refs to open the first result:
 interceptor tree --group loci-ground-truth
 interceptor act <ref-of-first-result> --group loci-ground-truth
 
-# 4. Open Street View for the same anchor
+# 3. Open Street View for the same anchor
 interceptor open "<streetview_url>" --group loci-ground-truth --reuse --text-only
 interceptor wait-stable
 
-# 5. Screenshot the view (path stays local, no context spent on image bytes)
+# 4. Screenshot the view. --save takes no path -- it writes an auto-named
+#    file into the CURRENT DIRECTORY -- so run this from inside
+#    data/ground_truth/screens/, then rename the result.
+cd data/ground_truth/screens
 interceptor screenshot --save --format webp --target-max-long-edge 1568 --quality 85 \
   --group loci-ground-truth
-# move/rename the saved file to: data/ground_truth/screens/<rec_id>-<n>.webp
+mv <auto-named-file>.webp <rec_id>-<n>.webp
 
-# 6. Read the imagery date off the Street View chrome
+# 5. Read the imagery date off the Street View chrome
 interceptor find "Image capture" --group loci-ground-truth
 # Google renders this as "Image capture: <Month YYYY>" — record as YYYY-MM
 ```
+
+`maps_url` (the bare coordinate pin) is not part of this sequence — opening it
+directly shows a pin with no business list, so it answers nothing that
+`nearby_url` doesn't already answer better. It is still in the manifest, for
+reference and for `analysis.address_observation.maps_url`'s repeatability
+column.
 
 Optional — rotate the Street View camera to see both sides of the street
 before deciding `unknown` vs a confident read. Use the WebGL pan/zoom recipe

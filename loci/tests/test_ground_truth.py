@@ -51,11 +51,18 @@ FAR_LAT = ANCHOR_LAT + 0.0010
 # --------------------------------------------------------------- fixtures
 
 @pytest.fixture()
-def con():
+def con(monkeypatch, tmp_path):
     """A synthetic warehouse carrying the REAL sql/018 + 026 + 033 + 036 DDL
     (via `ground_truth.ensure_schema`, the same path the CLI takes), so a
     schema change upstream breaks these tests instead of quietly invalidating
-    them."""
+    them.
+
+    `ground_truth.PLUTO_CSV` is monkeypatched to a path that never exists, so
+    every test below runs `plan()`'s MapPLUTO lookup as a guaranteed no-op
+    (`_pluto_street_labels` returns `{}`) regardless of whether the dev
+    machine happens to have the real ~330 MB extract on disk -- reproducible
+    behavior, not host-dependent. The dedicated PLUTO tests pass their own
+    `pluto_csv=` fixture file to `plan()`, which overrides this entirely."""
     c = locidb.connect(":memory:")
     c.execute("CREATE SCHEMA IF NOT EXISTS analysis")
     c.execute("CREATE SCHEMA IF NOT EXISTS staging")
@@ -64,15 +71,16 @@ def con():
     c.execute("INSERT INTO analysis.address VALUES "
               "('bk-1', 'BK', 'GRAHAM AVENUE', 'Williamsburg')")
     gt.ensure_schema(c)
+    monkeypatch.setattr(gt, "PLUTO_CSV", tmp_path / "no-pluto-here.csv")
     yield c
     c.close()
 
 
 def _rec(con, *, category="laundry", status="open", address_id="bk-1",
          lon=ANCHOR_LON, lat=ANCHOR_LAT, solution="A 24/7 staffed laundromat",
-         grade="C", reason=None):
-    row = rl._row(issued_on=ISSUED, issued_by="test", area_kind="address",
-                  area_id=address_id or "box", area_label="Test area",
+         grade="C", reason=None, area_kind="address", area_label="Test area"):
+    row = rl._row(issued_on=ISSUED, issued_by="test", area_kind=area_kind,
+                  area_id=address_id or "box", area_label=area_label,
                   anchor_address_id=address_id, anchor_lon=lon, anchor_lat=lat,
                   category=category, proposed_solution=solution, grade=grade,
                   status=status, status_reason=reason)
@@ -106,6 +114,38 @@ def _sf(name="Sudsy Wash", *, category_guess="laundry", status="open",
             "maps_status_label": label, "notes": notes}
 
 
+# ================================================================ 0. URLs
+
+def test_maps_search_term_covers_exactly_categories():
+    """Drift check: a category added to loci.categories.CATEGORIES without a
+    matching Google Maps search term here would ship a manifest row whose
+    nearby_url() call blows up at plan() time -- catch it in the suite
+    instead."""
+    assert set(gt.MAPS_SEARCH_TERM) == set(CATEGORIES)
+
+
+def test_nearby_url_encodes_the_term_and_carries_lat_lon_zoom():
+    url = gt.nearby_url(ANCHOR_LAT, ANCHOR_LON, "cafe_bakery")
+    assert url == (
+        f"https://www.google.com/maps/search/cafe/@{ANCHOR_LAT},{ANCHOR_LON},18z")
+    # A term with a space URL-encodes it (verified live against "medical
+    # clinic" and "grocery store" -- %20, not '+').
+    url2 = gt.nearby_url(ANCHOR_LAT, ANCHOR_LON, "clinic", zoom=16)
+    assert url2 == (
+        "https://www.google.com/maps/search/medical%20clinic/"
+        f"@{ANCHOR_LAT},{ANCHOR_LON},16z")
+    with pytest.raises(ValueError):
+        gt.nearby_url(ANCHOR_LAT, ANCHOR_LON, "not_a_category")
+
+
+def test_address_url_is_none_for_no_label_and_encoded_for_a_real_one():
+    assert gt.address_url(None) is None
+    assert gt.address_url("") is None
+    assert gt.address_url("376 Graham Ave, Brooklyn, NY 11211") == (
+        "https://www.google.com/maps/search/376%20Graham%20Ave%2C%20Brooklyn%2C"
+        "%20NY%2011211")
+
+
 # =============================================================== 1. plan
 
 def test_the_manifest_carries_well_formed_urls(con):
@@ -117,10 +157,81 @@ def test_the_manifest_carries_well_formed_urls(con):
     assert entry["streetview_url"] == (
         "https://www.google.com/maps/@?api=1&map_action=pano"
         f"&viewpoint={ANCHOR_LAT},{ANCHOR_LON}")
-    # The label comes from analysis.address when the anchor is an address.
-    assert entry["address_label"] == "GRAHAM AVENUE — Williamsburg — BK"
+    # No PLUTO extract in this test sandbox (the `con` fixture points
+    # PLUTO_CSV at a path that never exists), so the label falls to priority
+    # 2: the recommendation's own area_label.
+    assert entry["address_label"] == "Test area"
     assert entry["category"] == "laundry"
     assert entry["proposed_solution"] == "A 24/7 staffed laundromat"
+    # nearby_url is the category search, centered on the anchor.
+    assert entry["nearby_url"] == (
+        f"https://www.google.com/maps/search/laundromat/@{ANCHOR_LAT},{ANCHOR_LON},18z")
+    # address_url is a real URL for an address-anchored rec, built from the
+    # same address_label carried in the manifest.
+    assert entry["address_url"] == gt.address_url(entry["address_label"])
+    assert entry["address_url"].startswith("https://www.google.com/maps/search/")
+
+
+def test_address_label_falls_back_to_neighborhood_when_no_pluto_or_area_label(con):
+    """Priority 3: with no PLUTO match and no area_label, the neighborhood/
+    borough label joined off `analysis.address` still gives every anchor
+    SOME label -- never a bare address_id."""
+    rec_id = _rec(con, area_label=None)
+    [entry] = gt.plan(con)
+    assert entry["rec_id"] == rec_id
+    assert entry["address_label"] == "GRAHAM AVENUE — Williamsburg — BK"
+    assert entry["address_url"] == gt.address_url(entry["address_label"])
+
+
+def test_pluto_street_address_is_preferred_over_area_label_and_neighborhood(con, tmp_path):
+    """THE FIX this test pins: `analysis.address` carries no house-number/
+    full-address text column at all (`street_name` is populated only on
+    CSCL street-frame rows and stays NULL on every real, lot-frame
+    gap-screen anchor -- verified 2026-09-15 against the four 2026-09-14
+    recs, `street_name IS NULL` on all of them). The one place a real,
+    geocodable address lives is MapPLUTO, keyed by BBL -- which IS
+    `address_id` on a lot-frame row. `plan()` must prefer it over BOTH the
+    recommendation's own area_label and the neighborhood-only join label."""
+    pluto_csv = tmp_path / "pluto.csv"
+    pluto_csv.write_text(
+        "BBL,address,postcode,borough\n"
+        "bk-1,545 SACKETT STREET,11217,BK\n"
+    )
+    rec_id = _rec(con, area_label="Some other label entirely")
+    [entry] = gt.plan(con, pluto_csv=pluto_csv)
+    assert entry["rec_id"] == rec_id
+    assert entry["address_label"] == "545 Sackett Street, Brooklyn, NY 11217"
+    assert entry["address_url"] == gt.address_url(entry["address_label"])
+    assert entry["address_url"] == (
+        "https://www.google.com/maps/search/"
+        "545%20Sackett%20Street%2C%20Brooklyn%2C%20NY%2011217")
+
+
+def test_pluto_lookup_is_a_quiet_noop_without_the_extract_on_disk(con):
+    """A fresh clone (or CI) has no ~330 MB raw PLUTO extract -- `plan()`
+    must not raise, it must fall through to area_label/neighborhood. This is
+    exactly what the `con` fixture's default monkeypatch already exercises
+    in every other test; this one asserts it directly."""
+    import pathlib as _pl
+    assert not _pl.Path(gt.PLUTO_CSV).exists()
+    rec_id = _rec(con)
+    [entry] = gt.plan(con)
+    assert entry["rec_id"] == rec_id
+    assert entry["address_label"] == "Test area"
+
+
+def test_address_url_is_none_for_a_bbox_anchored_recommendation(con):
+    """A bbox/NTA card has no doorway -- `address_url` must be None even
+    though `analysis.address` never gets a row to look up, distinguishing it
+    from an address anchor whose lookup simply misses."""
+    rec_id = _rec(con, address_id=None, area_kind="bbox")
+    [entry] = gt.plan(con)
+    assert entry["rec_id"] == rec_id
+    assert entry["area_kind"] == "bbox"
+    assert entry["address_url"] is None
+    # nearby_url and streetview_url are unaffected -- they only need a point.
+    assert entry["nearby_url"] is not None
+    assert entry["streetview_url"] is not None
 
 
 def test_only_open_anchored_recommendations_are_planned(con):
@@ -349,3 +460,19 @@ def test_the_manifest_file_carries_the_schema_the_ingest_expects(con, tmp_path):
     assert set(doc["observation_schema"]) >= {"rec_id", "observed_at", "storefronts",
                                               "gap_verdict"}
     assert doc["anchors"][0]["streetview_url"].startswith("https://www.google.com/maps/@")
+
+
+def test_write_manifest_replaces_atomically_with_no_leftover_temp_file(con, tmp_path):
+    """A browser-session agent may be reading the manifest concurrently with
+    a re-plan. `write_manifest` must never leave a reader looking at a
+    half-written file -- write to a temp path in the same directory, then
+    `os.replace()` over the target in one step -- and must not litter the
+    directory with temp files afterward, on the first write or a
+    re-write."""
+    _rec(con)
+    path = tmp_path / "manifest.json"
+    for _ in range(2):                          # first write, then a re-plan
+        gt.write_manifest(gt.plan(con), path)
+        assert path.exists()
+        assert json.loads(path.read_text())["n_anchors"] == 1
+        assert list(tmp_path.glob(".manifest.json.*.tmp")) == []

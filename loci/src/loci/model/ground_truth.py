@@ -71,7 +71,10 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
 import pathlib
+import tempfile
+import urllib.parse
 import uuid
 from dataclasses import dataclass, field
 from typing import Iterable
@@ -79,8 +82,10 @@ from typing import Iterable
 from loci import db as locidb
 from loci.categories import CATEGORIES
 from loci.db import METRES_SQL
+from loci.grid.pluto import PLUTO_CSV
 from loci.model import poi_evidence as pe
 from loci.model import poi_presence as pp
+from loci.model.recommend import BOROUGH_NAMES
 
 SQL_036 = locidb.SQL_DIR / "036_address_observation.sql"
 
@@ -113,10 +118,68 @@ EVIDENCE_STATUSES = ("open", "closed")
 
 # --------------------------------------------------------------- the URLs
 
+#: Google Maps search term per Loci category, for `nearby_url`. Verified live
+#: 2026-09-15 against 376 Graham Ave (bank): `maps_url`'s coordinate-pin form
+#: (`/maps/search/?api=1&query=lat,lon`) opens a bare pin with no business
+#: list, so it cannot answer "is there an open storefront of this category
+#: near the anchor." A category-nearby search
+#: (`/maps/search/<term>/@lat,lon,18z`) does -- it returns a results list
+#: carrying name, category, address, and an open/closed status label. This
+#: dict is the one place that mapping lives; `test_maps_search_term_covers_
+#: exactly_categories` pins it to `loci.categories.CATEGORIES` so a category
+#: added there without a search term here fails the suite instead of shipping
+#: a manifest row with no nearby_url.
+MAPS_SEARCH_TERM: dict[str, str] = {
+    "bank": "bank",
+    "bar": "bar",
+    "cafe_bakery": "cafe",
+    "childcare": "daycare",
+    "clinic": "medical clinic",
+    "convenience": "convenience store",
+    "fitness": "gym",
+    "grocery": "grocery store",
+    "hair_barber": "barber",
+    "hardware": "hardware store",
+    "laundry": "laundromat",
+    "nails_beauty": "nail salon",
+    "pharmacy": "pharmacy",
+    "restaurant": "restaurant",
+    "tailor_repair": "tailor",
+}
+
+
 def maps_url(lat: float, lon: float) -> str:
     """The anchor on Google Maps. Search-by-coordinate, not a place id: we do
-    not know the place yet -- finding out what is there is the whole job."""
+    not know the place yet -- finding out what is there is the whole job.
+
+    Kept for the pin view; verified live 2026-09-15 that this form alone opens
+    a bare coordinate pin with no business list attached, which is why
+    `nearby_url` exists and is read FIRST in the protocol."""
     return f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+
+
+def nearby_url(lat: float, lon: float, category: str, zoom: int = 18) -> str:
+    """Category-nearby search centered on the anchor: the read that actually
+    answers "is there an open storefront of the recommended category near
+    here" -- a results list with name, category, address, and an
+    open/'Permanently closed' status label per hit ('Sponsored' entries are
+    ads and are skipped by the observer, not by this function)."""
+    if category not in MAPS_SEARCH_TERM:
+        raise ValueError(f"unknown category {category!r}; "
+                         f"one of {sorted(MAPS_SEARCH_TERM)}")
+    term = urllib.parse.quote(MAPS_SEARCH_TERM[category])
+    return f"https://www.google.com/maps/search/{term}/@{lat},{lon},{zoom}z"
+
+
+def address_url(label: str | None) -> str | None:
+    """Address-search URL for the manifest's address label -- opens the
+    building panel directly. `None` when there is no address label to search
+    (an NTA/bbox-anchored recommendation; `plan()` already skips anchors with
+    no address_id, but this stays defensive for callers passing area_kind
+    directly)."""
+    if not label:
+        return None
+    return f"https://www.google.com/maps/search/{urllib.parse.quote(label)}"
 
 
 def streetview_url(lat: float, lon: float) -> str:
@@ -177,18 +240,79 @@ def _dist_sql(lon_expr: str, lat_expr: str) -> str:
 
 # ------------------------------------------------------------------- plan
 
-def plan(con, limit: int | None = None, category: str | None = None) -> list[dict]:
+def _pluto_street_labels(con, bbls: list[str],
+                          pluto_csv: pathlib.Path | str) -> dict[str, str]:
+    """A real, addressable "376 Graham Avenue, Brooklyn, NY 11211" per BBL,
+    read straight from MapPLUTO (`data/raw/pluto.csv`) -- NOT from
+    `analysis.address`, which carries no house-number/full-address text
+    column at all (`street_name` is populated only on CSCL STREET-frame rows;
+    every gap-screen anchor is a lot-frame row and it is NULL there --
+    verified 2026-09-15 against the four 2026-09-14 rows, `street_name IS
+    NULL` on all of them). BBL doubles as `analysis.address.address_id` on a
+    lot-frame row (design-allocator-report.md fact 0), so this is a plain
+    key lookup, not a fuzzy join.
+
+    Returns `{}` -- never raises -- when `pluto_csv` is not on disk (a fresh
+    clone or CI box without the ~330 MB raw PLUTO extract) or `bbls` is
+    empty, so a caller with no local PLUTO file still gets a manifest; it
+    just falls back to the recommendation's own `area_label` next.
+    """
+    if not bbls or not pathlib.Path(pluto_csv).exists():
+        return {}
+    ph = ", ".join("?" for _ in bbls)
+    rows = con.execute(f"""
+        SELECT BBL, address, postcode, borough
+        FROM read_csv_auto(?, ALL_VARCHAR=TRUE)
+        WHERE BBL IN ({ph})
+    """, [str(pluto_csv), *bbls]).fetchall()
+    out: dict[str, str] = {}
+    for bbl, address, postcode, boro in rows:
+        if not address:
+            continue
+        boro_name = BOROUGH_NAMES.get((boro or "").strip().upper(), boro)
+        label = f"{address.strip().title()}, {boro_name}, NY"
+        if postcode and postcode.strip():
+            label += f" {postcode.strip()}"
+        out[bbl] = label
+    return out
+
+
+def plan(con, limit: int | None = None, category: str | None = None,
+         pluto_csv: pathlib.Path | str | None = None) -> list[dict]:
     """The manifest a browser session works through: one entry per OPEN
-    recommendation, carrying the two URLs to open and the claim to check.
+    recommendation, carrying the URLs to open (`nearby_url` first -- see
+    docs/ground-truth-protocol.md for why -- then `address_url` when the
+    anchor is a real address, `streetview_url`, and `maps_url` for the bare
+    pin) and the claim to check.
 
     OPEN ONLY, on purpose. A withdrawn recommendation is a claim we retracted
     and a filled one already has its answer; spending a human's attention on
     either buys nothing. An anchorless recommendation (no anchor_lon/lat --
     an NTA-wide card) is skipped too: there is no doorway to stand at.
+
+    `address_label` (and, from it, `address_url`) is built for an
+    area_kind='address' row in this priority order:
+
+      1. MapPLUTO's own street address, keyed by BBL (`_pluto_street_labels`)
+         -- a REAL, geocodable address, when the raw extract is on disk.
+      2. `analysis.recommendation.area_label` -- for a rec issued through the
+         address-resolution flow (`loci report`/GeoSearch), this is ALREADY
+         a full street address (e.g. "379 Broome Street, SoHo-Little Italy");
+         for one issued another way it may be neighborhood-only.
+      3. The neighborhood/borough label joined off `analysis.address` --
+         never a street address (see `_pluto_street_labels`'s docstring),
+         but always something, so no anchor renders label-less.
+
+    `pluto_csv` defaults to the module's `PLUTO_CSV` constant, read at CALL
+    time (not bound as the parameter default) so a test can monkeypatch
+    `ground_truth.PLUTO_CSV` instead of threading a path through every
+    `plan()` call in the suite.
     """
     if category is not None and category not in CATEGORIES:
         raise ValueError(f"unknown category {category!r}; "
                          f"one of {sorted(CATEGORIES)}")
+    if pluto_csv is None:
+        pluto_csv = PLUTO_CSV
     where, params = ["r.status = 'open'",
                      "r.anchor_lon IS NOT NULL", "r.anchor_lat IS NOT NULL"], []
     if category:
@@ -198,34 +322,43 @@ def plan(con, limit: int | None = None, category: str | None = None) -> list[dic
     rows = con.execute(f"""
         SELECT r.rec_id, r.anchor_address_id, r.area_label, r.area_id,
                r.anchor_lon, r.anchor_lat, r.category, r.proposed_solution,
-               r.grade, r.issued_on
+               r.grade, r.issued_on, r.area_kind
         FROM analysis.recommendation r
         WHERE {' AND '.join(where)}
         ORDER BY r.issued_on DESC, r.category, r.rec_id
         {limit_sql}
     """, params).fetchall()
 
-    # The address labels in ONE lookup keyed by the ids we actually have --
-    # `analysis.address` is the largest table in the warehouse and its primary
-    # key is (borough, address_id), so a LEFT JOIN on address_id alone would
-    # scan it whether or not any anchor is an address.
+    # The neighborhood labels in ONE lookup keyed by the ids we actually
+    # have -- `analysis.address` is the largest table in the warehouse and
+    # its primary key is (borough, address_id), so a LEFT JOIN on
+    # address_id alone would scan it whether or not any anchor is an
+    # address. This is priority 3, below.
     ids = sorted({r[1] for r in rows if r[1]})
-    labels: dict[str, str] = {}
+    hood_labels: dict[str, str] = {}
     if ids:
         ph = ", ".join("?" for _ in ids)
         for aid, street, hood, boro in con.execute(
                 f"SELECT address_id, street_name, neighborhood, borough "
                 f"FROM analysis.address WHERE address_id IN ({ph})", ids).fetchall():
             parts = [p for p in (street, hood, boro) if p]
-            labels[aid] = " — ".join(parts) if parts else aid
+            hood_labels[aid] = " — ".join(parts) if parts else aid
+
+    # Priority 1: real MapPLUTO street addresses, same id set, one lookup.
+    pluto_labels = _pluto_street_labels(con, ids, pluto_csv)
 
     out = []
     for (rec_id, aid, area_label, area_id, lon, lat, cat, solution,
-         grade, issued_on) in rows:
+         grade, issued_on, area_kind) in rows:
+        if area_kind == "address":
+            label = pluto_labels.get(aid) or area_label or hood_labels.get(aid) or area_id
+        else:
+            label = hood_labels.get(aid) or area_label or area_id
         out.append({
             "rec_id": rec_id,
             "anchor_address_id": aid,
-            "address_label": labels.get(aid) or area_label or area_id,
+            "area_kind": area_kind,
+            "address_label": label,
             "anchor_lon": lon,
             "anchor_lat": lat,
             "category": cat,
@@ -234,6 +367,8 @@ def plan(con, limit: int | None = None, category: str | None = None) -> list[dic
             "issued_on": issued_on.isoformat() if hasattr(issued_on, "isoformat")
                          else issued_on,
             "maps_url": maps_url(lat, lon),
+            "nearby_url": nearby_url(lat, lon, cat),
+            "address_url": address_url(label if area_kind == "address" else None),
             "streetview_url": streetview_url(lat, lon),
         })
     return out
@@ -242,10 +377,18 @@ def plan(con, limit: int | None = None, category: str | None = None) -> list[dic
 def write_manifest(entries: list[dict], path: pathlib.Path | str) -> pathlib.Path:
     """Manifest JSON for the browser session. Carries `observation_schema` so
     the session writing the JSONL back does not have to be told the shape in
-    prose that can drift from `record()`."""
+    prose that can drift from `record()`.
+
+    Written ATOMICALLY: a temp file in the SAME directory (so the rename is
+    on one filesystem, never cross-device) then `os.replace()` over the
+    final path. A browser-session agent may have the manifest open and
+    re-reading it while this runs re-plans it (a re-run, a new day's
+    anchors); a plain `write_text` would let that reader observe a
+    half-written file. `os.replace` is atomic on both POSIX and Windows and
+    a reader always sees either the old, complete file or the new one."""
     p = pathlib.Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({
+    payload = json.dumps({
         "generated_at": dt.datetime.now().isoformat(timespec="seconds"),
         "n_anchors": len(entries),
         "match_radius_m": MATCH_RADIUS_M,
@@ -265,7 +408,16 @@ def write_manifest(entries: list[dict], path: pathlib.Path | str) -> pathlib.Pat
             "notes": "str|null",
         },
         "anchors": entries,
-    }, indent=2) + "\n")
+    }, indent=2) + "\n"
+    fd, tmp_name = tempfile.mkstemp(dir=str(p.parent), prefix=f".{p.name}.",
+                                    suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(payload)
+        os.replace(tmp_name, p)
+    except BaseException:
+        pathlib.Path(tmp_name).unlink(missing_ok=True)
+        raise
     return p
 
 
