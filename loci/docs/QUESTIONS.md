@@ -951,6 +951,7 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 
 ### D42 — Where does OD leakage enter the revenue model if it ever graduates?
 - **Status:** open
+- **Answered by:** — (no ticket yet)
 - **Tag:** *model / method*
 - **Session:** 2026-09-15, abenmayor-db
 - **Why it matters:** R1 (D108) keeps λ untouched because λ is a six-term identification constant (true leakage, commuter inflow, non-household demand, CEX mapping error, unit-to-household gap, POI-vs-EC count gap) that an OD matrix cannot decompose. The candidate entry point is the Huff denominator (revenue.py eq. 3) as an outside-option term whose weight is the NTA's evening/weekend outflow share. Needs a backtest showing the leave-one-ZIP-out fit improves, and a fold design that does not let dock density (endogenous to retail) leak in.
@@ -958,6 +959,7 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 
 ### D43 — The Citi Bike OD category placebo's null baseline is unfalsifiable as built.
 - **Status:** open
+- **Answered by:** —
 - **Tag:** *validation / method*
 - **Session:** 2026-09-15, abenmayor-db
 - **Why it matters:** With density per 1,000 residential units, only 2 of the measurable NTAs are above median in all 15 categories, so the null is 0.6% and every category "beats" it by +0.211 to +0.824 (D108). What null actually tests whether supplied_share is destination retail density in a costume? Candidates: a permutation null over category labels; the trip-weighted rank of destination density; or requiring category c's supplied_share to exceed the mean of the other 14 categories' supplied_share at the same origins by a margin.
@@ -965,6 +967,7 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 
 ### D44 — 74 of 124 Citi Bike origin NTAs lose supplied_share to the 0.2 outside-universe threshold: is 0.2 right, should the universe admit QN/BX lot addresses for the denominator only, or should the share report with its outside share and no NULL cut at all?
 - **Status:** answered
+- **Answered by:** `Citi Bike phase 2: origin-destination leakage per NTA × category ('where residents of this gap area go') and the card line`
 - **Tag:** *model / rigor*
 - **Session:** 2026-09-15, abenmayor-db
 - **Why it matters:** The measurable universe is 79 MN+BK NTAs with ≥500 lot-frame addresses; Queens/Bronx destinations are outside by D78's MN+BK screen scope (D108). The owner's no-eligibility-gate ruling (D75) argues for reporting with the outside share rather than NULLing.
@@ -972,6 +975,7 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 
 ### D45 — Should the `.sql.draft` pattern be the standing rule for D25's uncommitted-migration hazard?
 - **Status:** open
+- **Answered by:** —
 - **Tag:** *infra / policy*
 - **Session:** 2026-09-15, abenmayor-db
 - **Why it matters:** sql/037_citibike_od.sql was developed as `037_citibike_od.sql.draft` (invisible to `init_schema`'s `*.sql` glob), tests executed the draft text against a temp DuckDB, and the rename was an announced, peer-cleared event (D108). If adopted, the rule belongs in CLAUDE.md's concurrent-sessions section, and `check-tickets` could refuse a tree with both a `.sql` and a `.sql.draft` of one number.
@@ -979,6 +983,7 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 
 ### D46 — What counts as `confidence: verified`: does a store-locator page count suffice, or must a person reconcile the locator against detect before a row is promoted?
 - **Status:** open
+- **Answered by:** — (quarterly re-verification pass, D109; not ticketed until the first pass is scheduled)
 - **Tag:** *validation / method*
 - **Session:** 2026-09-15
 - **Why it matters:** The quarterly re-verification pass (D109) treats a store-locator count as the only path to `verified`, but the proposal never specified whether reading the locator page is itself sufficient or whether the count must be cross-checked against `chains.brand_snapshot` before the row is promoted. As of 2026-09-15, 0 of 123 admitted rows are `verified` and 0 carry a `last_verified` date, so the first quarterly pass needs this settled before it runs, not after.
@@ -986,13 +991,15 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 
 ### D47 — Paid sourcing: request a RetailStat quote now, or stay free until there is revenue?
 - **Status:** open
+- **Answered by:** — (paid-source decision, owner's call; GTM-191 covers the free-source half)
 - **Tag:** *infra / cost*
 - **Session:** 2026-09-15
 - **Why it matters:** RetailStat Location (#23, P2, gap f, $10,000/yr tier floor, no published price) is the one paid source that replaces real hand work outright — it carries brand AND individual store location, standing in for the locator hand-count and `signed_leases`. Coresight and Data Axle are lower priority (Data Axle at $8,000/yr is already in the $23k sprint subset and is the best value of the three, but is national-brand grain and cannot place a store at a borough for Coresight, or covers all fifteen categories but still needs a human curator for trajectory). The decision gates whether GTM-xxx (source expansion) scopes a paid quote request into the same session as T1-T6 or defers it.
 - **Current answer:** —
 
 ### D48 — Pre-chain detection: can Loci flag a one- or two-location operator BEFORE it becomes a chain (owner examples: Bathhouse, Mink)?
-- **Status:** ruled 2026-09-15 (D110)
+- **Status:** answered
+- **Answered by:** — (GTM-192, tier 3 watch; the ticket title contains backticks the citation parser cannot carry, see CHECKPOINT D110)
 - **Tag:** *method / sourcing*
 - **Session:** 2026-09-15
 - **Why it matters:** The D109 candidate predicate starts at 5 locations or the fast-small flag (2 new of ≤8), so by construction it sees a brand only after it has already expanded. The owner wants the earlier signal: an operator with one or two sites and intent to grow. Candidate intent signals, none built: (a) a second-site government filing (SLA pending application, DOB fit-out, DOHMH pre-permit) under a name key that already has exactly one open location — the filings pipeline (D80) can see this today for restaurant/bar/café/grocery/pharmacy only; (b) press with expansion language ("second location", "raised", "signed a lease") on a one-location name — a Tavily query kind that does not exist yet; (c) a capital event (seed/Series A, PE minority) on a single-site hospitality or wellness operator — hand-entered, Crunchbase free tier; (d) an expansion-role job posting (director of real estate, head of development) at a one- or two-site brand; (e) a trademark filing or a new "Brand Name II LLC"/"Brand Name Holdings" entity at NYS DOS. Bathhouse (Williamsburg → Flatiron, 2 sites) and Mink would each have tripped (a) and (b) before their second opening. Design question: does this become a third tier ("watch: pre-chain", 1–2 locations + ≥1 intent signal) in the D109 process, with its own admission reason, and which of (a)–(e) is cheap enough to run monthly inside the existing 60-query Tavily budget and the filings pipeline?
@@ -1005,4 +1012,12 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Session:** 2026-09-15, abenmayor-cc
 - **Why it matters:** The owner asked what data Loci holds on "premium services" and how to get price. Inventory (read-only, 2026-09-15): no POI table carries a price tier, rating, or review count; `webmap/data/character.json` is land-use character (D-independent), not retail tier; the premium track is Axis 3 (CONTEXT §11, D22/D28, `model/premium.py`) and covers types outside the 15 slugs (wine bars, bathhouses, spas/med-spas, boutique fitness, climbing, padel, pet grooming, florists, dry cleaning). Fine-grained source categories survive only in `staging.poi.attrs` (Overture `primary_category`; Foursquare `labels`) and nothing downstream reads them; they cleanly split fitness (gym/yoga/pilates/cycle/climbing), nails_beauty (nail salon/beauty salon/spa/day spa/waxing/lash), hair_barber (salon/barber), cafe_bakery (coffee shop/bakery/bagel/donut), partially clinic; restaurant has cuisine only. Price probes (47 budgeted Text Search calls, ~$1.65 at Enterprise, ledger 8,992 → 9,039; USD not written to `analysis.spend_ledger` because its `kind` CHECK admits only report/verify — record this gap): probe 1 (32 calls, 2 per category, `priceLevel` only) returned price for 5/32, bars and cafés only, services zero; probe 2 (15 food/bar calls, `priceLevel` + `priceRange`) returned price for 12/15, the two fields co-occurring perfectly (`priceRange` = `{startPrice, endPrice}` in USD units, open-ended top e.g. "$100+"), the three blanks being one Permanently-closed match and two wrong-business matches. Probe 1's restaurant zero was a two-POI sample with bad matches, not a coverage fact. Name match of the top hit was 18/32 and 7/15, so any price ingest needs a name-and-distance acceptance rule first. `priceLevel`, `priceRange`, `rating`, `userRatingCount` are all Enterprise SKU ($35/1,000 vs Pro $32/1,000 that the closure check uses; Google bills the highest SKU touched, so +9.4% per call). Interceptor reads the same "$$" labels from Maps results for free, but only at supervised-session scale (≈1,000 POIs per 30-min segment under the D36 cap) and with the same food-only coverage; systematic city-wide collection through the browser would be scraping in substance, outside the D36 standing. No channel gives service prices (salon/gym/clinic pricing lives on booking sites); for services, business sub-type is the only proxy. Owner 2026-09-15: assessment only for now, no pilot.
 - **Candidate answer (not ruled):** (1) surface `staging.poi.attrs` sub-types into `poi_presence` as `subcategory` so premium sub-types are a filter, not a new source; (2) if ratings become useful for Axis 3, run closure checks at Enterprise and capture `priceRange`/`priceLevel`/`rating`/`userRatingCount` in one pass behind a match rule, food categories only; (3) widen `spend_ledger.kind` to admit `probe`; (4) no price budget line on its own.
+- **Current answer:** —
+
+### D50 — Three reporting quibbles in the D111 growth test.
+- **Status:** open
+- **Answered by:** —
+- **Tag:** *model / reporting*
+- **Session:** 2026-09-15, abenmayor-db
+- **Why it matters:** (a) `bike_growth_verdict` assumes the run is the primary vintage; when `--asof` is the confirmatory one the P7 line should say so instead of "the confirmatory vintage has not been run". (b) The P9 lagged-growth pre-trend requires a lag column the CLI does not build (`build_panel` has `bike_growth_lag_asof`; the retrodiction run has no flag for it) — moot for a null result but mandatory before any positive result could ship. (c) The run stamps the baseline table's supply hash (d993b3802c6a) rather than the live one (ba944e18c57b); provenance should read `live_supply_hash`. Fix all three in one small ticket before the growth test is ever re-run.
 - **Current answer:** —

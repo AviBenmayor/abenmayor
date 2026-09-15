@@ -876,6 +876,8 @@ Depends on GTM-166 (Citi Bike phase 1) landing the station-month ingest first.
 
 Opened 2026-09-14 (CHECKPOINT D93). Pushed to Linear 2026-09-14 as GTM-168.
 
+Done 2026-09-15 (CHECKPOINT D111, build commit 692fde8 + the D111 docs commit): analysis.address_bike_growth (12m-over-12m log-ratio of weekday member throughput on a balanced dock set, system-detrended; 87,203 / 116,188 lot addresses carry a value at the 2023-01 / 2025-01 vintages after the 2021-02..2022-12 back-ingest, panel 67 months), pre-registered retrodiction test (statistician P0–P12, placebo before the real fit). Result: Δ-AUC −0.0004 at 2023-01 and +0.0000 at 2025-01 against a +0.005 floor, CD-clustered CIs spanning zero, fold-seed positive 10/20 and 1/20, coefficients indistinguishable from zero and opposite in sign, residual Moran's I unchanged — CONTEXT ONLY, the feature enters no forecast (model stays 0.1.1); failure ships as a finding. Divvy: one real month (2025-06, 678,904 trips, dockless ends 23.1% reported not dropped) lands as station-month rows through the parameterised reader (sources/cities/lyft_bikeshare.py), NYC SQL byte-identical; PORTABILITY.md §8. Citi Bike plan complete (D102, D108, D111). Reporting quibbles → QUESTIONS D50.
+
 ### Forecast: re-issue the 2026-09 vintage on the final supply hash after re-run #3, then score/export; adopt the "final freezes poi_status" rule
 `High` · `2 pts` · `model,rigor`
 

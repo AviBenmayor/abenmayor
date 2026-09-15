@@ -470,3 +470,77 @@ Outputs: `data/retrodiction/cohort.parquet`, `entry_panel.parquet`,
 it is safe beside a session rebuilding `analysis.address_category`. Sampling is
 by `hash(address_id)` and every random draw is seeded (20260914), so a rerun is
 a rerun.
+
+---
+
+## 11. D111 — bike growth
+
+Pre-registration (statistician-ratified, before any fit; GTM-168):
+
+P0 — One primary test, declared now. Pooled 6 categories (category FE), vintage t0 = 2023-01, member-only,
+direct specification, censored-included, NTA-blocked CV. One number decides the ship. Everything else is secondary.
+
+P1 — Baseline is FULL + docks_added_24m, not FULL. Dock siting is endogenous to retail (D1 in a bikeshare costume).
+FULL alone is reported only for line-for-line comparability with D88's 0.8663 / 0.8537.
+
+P2 — Identical rows, identical folds. Run on the intersection where bike_growth_12m_rel is non-NULL; refit the
+baseline on that subsample (never reuse D88's numbers). Derive the NTA→fold map ONCE from the shared row set and
+pass it to both fits (blocked_cv_auc's seed reproduces folds only if the NTA list and order are identical, which
+NULL-filtering breaks). Report rows lost to balanced_share < 0.5 and whether the retained set differs in
+retail_index / log_homes; if > 20% lost, the claim is about the dock-mature inner core, not MN+BK.
+
+P3 — Threshold. Ship iff point Δ-AUC ≥ max(+0.005, p95 of the placebo Δ distribution) AND the two-sided 95%
+cluster-bootstrap CI on Δ has lower limit > +0.002. Two-sided (the one-sided licence is where p-hacking lives).
+
+P4 — Bootstrap. 400 draws, resample clusters, recompute BOTH AUCs on the same resampled rows from fixed
+out-of-fold predictions, CI on Δ. Report NTA-clustered and CD-clustered (36 community districts); the gate binds
+on the CD-clustered (wider) CI. This captures evaluation-sample variability only; P8 covers estimation variability.
+
+P5 — Placebo unit is the NTA, not the address. Primary null = D88's spatially structured placebo applied to growth:
+donate whole NTAs' growth vectors between NTAs matched on borough × median-activity tercile, assigned by within-NTA
+rank. 200 draws. Null computed on Δ, not on the AUC level. The decile-matched address swap is secondary, reported.
+
+P6 — Separating check is a diagnostic, not the feature. The outcome model is sm.Logit — Frisch–Waugh does not
+apply. Primary = growth enters alongside the controls; the lift is the marginal Δ-AUC (P0). Report the auxiliary
+R² of growth on retail_index, log_homes, log_transit, own/other t0 supply, docks_added_24m; R² > 0.80 → say the
+feature carries little independent variation. Residualised variant is a robustness column; a residualised lift
+LARGER than the direct one is a red flag.
+
+P7 — Vintages: 2023-01 primary, 2025-01 confirmatory (not sign agreement). Ship requires 2023-01 clears every gate
+AND 2025-01's Δ is positive with a bootstrap CI on (Δ2023 − Δ2025) containing zero, or 2025-01 independently clears
+the floor. Before fitting 2025-01, plot openings per month and truncate the outcome window where ascertainment
+falls off (likely 2025-12, not 2026-06; D80's 221–259 d filing lead).
+
+P8 — Fold-seed stability. Re-run the paired comparison over 20 fold-assignment seeds. Ship requires median Δ ≥
+floor and Δ > 0 in ≥ 18/20. Report seed-to-seed sd.
+
+P9 — Pre-trend (2025-01 only). Lagged growth (windows ending 2023-12), same paired test. If lagged growth predicts
+2025–26 entry about as well as contemporaneous growth, the feature is a persistent location marker — fails.
+
+P10 — Multiple testing. Family: 6 categories × 2 vintages × {direct, residualised} × {member, all-rider} ×
+{strict-dated y/n}. Only P0 is confirmatory. Every secondary carries Benjamini–Hochberg q = 0.10 across that
+family; per-category Δs without a BH-surviving p print as "not a finding" (D88 precedent).
+
+P11 — Spatial diagnostics. Before fitting: (a) count of DISTINCT reachable-dock-sets among the panel addresses —
+the feature's effective n; (b) Moran's I of the feature (k = 8, 199 perms); (c) across-NTA Moran's I. After
+fitting: Moran's I on OOS residuals FULL+growth vs FULL; if growth does not reduce residual autocorrelation
+(D88 baseline 0.64–0.77) it adds smooth noise, not information.
+
+P12 — Language. Co-movement, never demand. Retail stays the left-hand side. Failure ships as a finding.
+
+Decide from the null distribution BEFORE unblinding: run the NTA-block placebo first, record its Δ p95 and sd
+into CHECKPOINT, THEN fit the real feature. If across-NTA Moran's I of the feature is material, CD blocking
+becomes primary. If the balanced-dock NULLing leaves only the inner core, the honest claim is "evaluated on the
+dock-mature core; no MN+BK-wide test was possible."
+
+**Confirmatory vintage (2025-01):** FULL 0.8755, baseline FULL+docks_added 0.8756, +growth 0.8756: Δ-AUC +0.0000;
+placebo Δ p95 +0.0002 (floor stays the absolute +0.005); CD-clustered CI [−0.0005, +0.0006]; fold-seed Δ positive
+1/20; coefficient −0.42 [−1.29, +0.44].
+
+**Primary vintage (2023-01):** FULL 0.8314, baseline FULL+docks_added 0.8312, +growth 0.8309: Δ-AUC −0.0004;
+placebo Δ p95 +0.0007 (floor stays the absolute +0.005); CD-clustered CI [−0.0020, +0.0013]; fold-seed Δ positive
+10/20; coefficient +0.67 [−0.16, +1.50] — opposite in sign to the confirmatory vintage's −0.42.
+
+**Verdict: CONTEXT ONLY on both vintages** — P3 fails (Δ below the floor, CI lower limit below +0.002), P8 fails
+(10/20 and 1/20 positive seeds), P7 moot. The Citi Bike activity series enters no grade, no supply ratio, no
+forecast (FEATURE_LIST and MODEL_SEMVER unchanged at 0.1.1). See CHECKPOINT D111.
