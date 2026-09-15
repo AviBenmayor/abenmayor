@@ -72,6 +72,7 @@ RADIUS_M: int = validation_radius_m()
 #     biased toward "Google found nothing -> gap survives" (the dangerous
 #     direction).
 #   - fitness gained yoga_studio/sports_club (both 713940, loci's own anchor).
+#     sports_club REVERSED 2026-09-14 by owner ruling -- see the fitness entry.
 #   - restaurant gained fast_food_restaurant/meal_takeaway/bar_and_grill plus
 #     the Table A cuisine-specific `*_restaurant` family (mirrors Overture's
 #     suffix rule); stays well under the 50-type includedPrimaryTypes cap
@@ -88,7 +89,20 @@ RADIUS_M: int = validation_radius_m()
 # for headline claims: Table A has no `shoe_repair` type, and `tailor`
 # (clothing alteration, ~811490/812320) is near-disjoint from the 811430
 # anchor (Footwear & Leather Goods Repair). Kept only because nothing better
-# exists in Table A.
+# exists in Table A. GTM-48 measured what that costs: a 37.5% [31.1-44.4]
+# true-coverage-hole rate, a FLOOR, and the category now carries
+# `headline: false` in categories.yaml (owner ruling 2026-09-14).
+#
+# hair_barber's `beauty_salon` is CONTESTED but deliberately UNCHANGED. The
+# statistician's on-type recount drops it to read hair at 34.5% [28.3-41.3]
+# instead of 44.5% (docs/coverage-validation-2026-09.md §4), on the argument
+# that a broad-primary beauty salon is not hair's 812111/812112 anchor. The
+# owner did NOT rule on it 2026-09-14, and it stays: 812112 (Beauty Salons) IS
+# one of hair_barber's two anchor codes (categories.yaml), so dropping the type
+# would narrow Google below loci's own definition -- the exact bias the D50
+# cafe_bakery fix went the other way to remove. Either way hair grades C, so
+# nothing downstream turns on it; re-open it with an owner ruling, not a
+# silent edit.
 GOOGLE_TYPES: dict[str, list[str]] = {
     "grocery": ["grocery_store", "supermarket"],
     "convenience": ["convenience_store"],
@@ -115,7 +129,20 @@ GOOGLE_TYPES: dict[str, list[str]] = {
                     "juice_shop", "dessert_shop", "tea_house"],
     "bar": ["bar", "pub", "wine_bar", "night_club"],
     "childcare": ["child_care_agency", "preschool"],
-    "fitness": ["gym", "fitness_center", "yoga_studio", "sports_club"],
+    # `sports_club` REMOVED 2026-09-14 (owner ruling; GTM-48,
+    # docs/coverage-validation-2026-09.md §4/§8/§9(3)). Fitness read a 35.6%
+    # [28.9-42.8] true-coverage-hole rate -- the worst of any anchored
+    # category -- and every one of those 64 "holes" was a sports_club or (never
+    # requested, leaked by `includedPrimaryTypes`) marina return, with ZERO
+    # `gym` or `fitness_center` hits. It was a type-map defect, not missing
+    # data: on-type, fitness is 0.6% (1/180). NAICS 713940 covers both, but a
+    # yacht club and a boat basin are not the walk-to gym the screen's fitness
+    # gaps are about, so the validator's type must be the narrower one.
+    # VALIDATOR-ONLY: loci's own fitness category (categories.yaml) is
+    # untouched. `marina` never appeared in this map and is not removable here
+    # -- it arrived on the response side, which is why the grade in
+    # model/recommend.py recounts stored rows against THIS list.
+    "fitness": ["gym", "fitness_center", "yoga_studio"],
     "bank": ["bank"],
     "hardware": ["hardware_store"],
 }

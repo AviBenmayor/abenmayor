@@ -69,6 +69,9 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import functools
+import json
+import math
 import pathlib
 import time
 
@@ -78,8 +81,15 @@ import yaml
 from loci.categories import CATEGORIES
 from loci.db import DEFAULT_PATH
 from loci.db import PKG as PKG_ROOT
+from loci.validation.google_places import GOOGLE_TYPES
 
 RULES_PATH = PKG_ROOT / "model" / "recommend_grades.yaml"
+CATEGORIES_YAML = PKG_ROOT / "categories.yaml"
+
+#: The categories.yaml key that demotes a category from HEADLINE use (owner
+#: ruling 2026-09-14, on the D30 clinic precedent). See
+#: `non_headline_categories` for what the demotion does and does not touch.
+HEADLINE_KEY = "headline"
 
 #: Worst-first ordering. `worst()` is max() under this index, so "D" wins.
 GRADES = ("A", "B", "C", "D")
@@ -309,20 +319,156 @@ def grade_economics(comps: dict, rules: dict, revenue: dict | None = None) -> tu
     return r["thin_grade"], f"{n} comps, but only citywide -- not this market"
 
 
+# ------------------------------------------------- coverage: the G9 ladder
+# Owner ruling 2026-09-14, evidence in docs/coverage-validation-2026-09.md
+# (§4 the per-category table, §9(2) the ruling), gate G9 of
+# docs/CATEGORY-EXPANSION.md. The rule this replaced graded A whenever ANY
+# analysis.coverage_validation row existed for the card's addresses -- a fact
+# about whether the stratified sampler happened to draw this box, not about
+# whether loci can see the category. Nothing about a drawn box makes a
+# tailor_repair gap (37.5% of which are coverage holes) better evidence than a
+# restaurant gap (1.0%), and the old rule graded the two identically.
+#
+# THE MEASUREMENT, exactly as the memo defines it (§2, §4, §10):
+#   frame        analysis.coverage_validation rows with address_id IS NOT NULL
+#                (the D58 address frame). The 2,970 h3_index rows are the
+#                frozen pre-D38 hex frame -- a different unit, geometry and
+#                radius -- and are NEVER pooled with these.
+#   denominator  the MISSING arm: rows the screen still flags missing, i.e.
+#                `analysis.address_category.ratio > 1.0` for that
+#                (address, category). The present arm is the control, not a
+#                denominator for a hole rate.
+#   numerator    the D29-style split: Google returned >= 1 ON-TYPE place AND
+#                loci's canonical layer holds none (n_local_canonical = 0), at
+#                the same point and the same radius.
+#   grade        the Wilson 95% UPPER bound on that share against the two
+#                thresholds in recommend_grades.yaml. The bound, not the point
+#                estimate: a grade is a promise, and the bound is the part of
+#                the interval a promise has to survive.
+#
+# ON-TYPE RECOUNT, and why it matters more than it sounds. `includedPrimaryTypes`
+# is looser than its name: fitness's 64 "holes" were sports_club and marina
+# returns with ZERO gym or fitness_center hits (memo §8), and hair's query
+# returned 945 nail_salon and 163 medical_clinic places nobody asked for. So the
+# numerator is recomputed from the STORED per-row primaryType histogram
+# (`ground_truth_types`) filtered to the CURRENT GOOGLE_TYPES entry -- which is
+# what lets the 2026-09-14 removal of sports_club from fitness regrade fitness
+# C -> A off rows already paid for, with no new Google spend. A row whose
+# histogram is NULL contributes no on-type place; that is the conservative
+# direction here -- it can only make a category look BETTER covered.
+
+Z95 = 1.959963984540054   #: normal quantile for a two-sided 95% interval
+
+#: One query, one frame. The join to analysis.address_category is what supplies
+#: the missing/present arm: the sample was drawn against the screen as it stood,
+#: so the arm is re-read from the screen as it stands now rather than frozen at
+#: sample time. Rows for addresses the screen no longer carries drop out.
+COVERAGE_FRAME_SQL = """
+    SELECT cv.category, cv.n_local_canonical, cv.ground_truth_types, ac.ratio
+    FROM analysis.coverage_validation cv
+    JOIN analysis.address_category ac
+      ON ac.address_id = cv.address_id AND ac.category = cv.category
+    WHERE cv.address_id IS NOT NULL
+"""
+
+
+def wilson_upper(k: int, n: int, z: float = Z95) -> float | None:
+    """Upper bound of the Wilson score interval for k successes in n trials.
+
+    Wilson and not Wald: at k = 0 (convenience) the Wald interval is the single
+    point 0.0, which would promise a perfectly-seen category off 251 rows."""
+    if n <= 0:
+        return None
+    p = k / n
+    denom = 1.0 + z * z / n
+    centre = (p + z * z / (2 * n)) / denom
+    half = (z / denom) * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
+    return min(1.0, centre + half)
+
+
+def on_type_count(types_json, category: str) -> int:
+    """Places Google returned whose primaryType is one loci ASKED for.
+
+    `types_json` is the stored per-call histogram (VARCHAR JSON; NULL on rows
+    written before D50). Absent or unparseable reads as zero on-type places."""
+    wanted = set(GOOGLE_TYPES.get(category) or ())
+    if not wanted or not isinstance(types_json, str):
+        return 0
+    try:
+        hist = json.loads(types_json)
+    except ValueError:
+        return 0
+    return sum(int(v) for k, v in hist.items() if k in wanted)
+
+
+def coverage_hole_rates(con) -> dict[str, dict]:
+    """Per-category true-coverage-hole rate over the whole address frame.
+
+    CITY-WIDE, deliberately, and not restricted to the card's own addresses:
+    the validation sample is a stratified draw over MN+BK (20 rows per category
+    x income decile x arm), so any one box holds ~0 of its rows and an
+    area-restricted rate would grade a category on whether the sampler happened
+    to visit it. The claim a coverage grade makes is about the CATEGORY's
+    visibility in this city, which is exactly what the sample measures.
+
+    Every category in CATEGORIES gets an entry, including the ones with no
+    validation data at all (clinic): a missing measurement has to be visible as
+    one, not absent from the dict.
+    """
+    rows = con.execute(COVERAGE_FRAME_SQL).fetchdf()
+    ratio = pd.to_numeric(rows["ratio"], errors="coerce")
+    missing = rows[ratio > 1.0]                      # the MISSING arm, and only it
+    out: dict[str, dict] = {}
+    for cat in CATEGORIES:
+        sub = missing[missing["category"] == cat]
+        n = len(sub)
+        holes = int(sum(1 for r in sub.itertuples()
+                        if on_type_count(r.ground_truth_types, cat) >= 1
+                        and r.n_local_canonical == 0))
+        out[cat] = {"coverage_n_missing": n, "coverage_n_holes": holes,
+                    "coverage_hole_rate": (holes / n) if n else None,
+                    "coverage_hole_hi95": wilson_upper(holes, n)}
+    return out
+
+
 def grade_coverage(facts: dict, rules: dict) -> tuple[str, str]:
-    """Can the model SEE this category's supply? A category whose anchor does
-    not qualify (D52) is counted out of aggregator data alone, and a thin
-    supply reading there may be a coverage hole wearing a costume."""
+    """Can the model SEE this category's supply? PURE: the rate, the bound and
+    n are measured by `coverage_hole_rates`; this reads the ladder only."""
     r = rules["sections"]["coverage"]
-    if facts.get("validation_rows"):
-        return r["validated_grade"], (f"Google ground-truth validation covers this area "
-                                      f"({facts['validation_rows']} sampled cells)")
-    if facts.get("anchor_qualifies"):
-        return r["anchored_grade"], (f"registry anchor qualifies, coverage "
-                                     f"{float(facts.get('anchor_coverage') or 0):.2f}; "
-                                     f"no Google check for this area")
-    return r["unanchored_grade"], ("no qualifying registry anchor -- OSM/Overture only, "
-                                   "so thin supply may be a coverage hole")
+    n = int(facts.get("coverage_n_missing") or 0)
+    hi = facts.get("coverage_hole_hi95")
+    if not n or hi is None:
+        return r["unvalidated_grade"], (
+            "UNVALIDATED -- no address-frame coverage-validation rows for this "
+            "category, so its gaps have never been checked against ground truth")
+    rate = facts.get("coverage_hole_rate") or 0.0
+    holes = int(facts.get("coverage_n_holes") or 0)
+    band = (f"{holes}/{n} missing-arm rows are coverage holes: {rate:.1%}, "
+            f"Wilson 95% upper bound {hi:.1%}")
+    if hi <= r["hole_rate_hi95_a"]:
+        return "A", f"{band} (<= {r['hole_rate_hi95_a']:.0%})"
+    if hi <= r["hole_rate_hi95_b"]:
+        return "B", (f"{band} (<= {r['hole_rate_hi95_b']:.0%}) -- a thin supply reading "
+                     f"here may be a coverage hole")
+    return "C", (f"{band} (> {r['hole_rate_hi95_b']:.0%}) -- a gap in this category is "
+                 f"not decidable at site level")
+
+
+@functools.cache
+def non_headline_categories(path: pathlib.Path | None = None) -> frozenset[str]:
+    """Categories carrying `headline: false` in categories.yaml.
+
+    Owner ruling 2026-09-14 on the D30 precedent: clinic, tailor_repair and
+    hair_barber, each at a 34-45% chance that a gap of theirs is a hole in the
+    data rather than in the market. A demoted category may not LEAD:
+    `rank_categories` sorts it behind every headline category, so it is never
+    the first card, and `build_card` stamps `headline: False` so the card says
+    why. It is demoted NOWHERE else -- it keeps its gap rows, its supply ratio,
+    its gap_score contribution and its map layer (the signal-vs-filter rule,
+    docs/CATEGORY-EXPANSION.md §4). Cached: the file cannot change mid-run."""
+    doc = yaml.safe_load((path or CATEGORIES_YAML).read_text())
+    return frozenset(slug for slug, entry in (doc.get("categories") or {}).items()
+                     if (entry or {}).get(HEADLINE_KEY) is False)
 
 
 # ---------------------------------------------------------------- verdict
@@ -383,6 +529,10 @@ def build_card(category: str, facts: dict, comps: dict, rules: dict) -> dict:
     return {
         "area": facts.get("area"),
         "category": category,
+        # Owner ruling 2026-09-14: a `headline: false` category may not lead a
+        # recommendation (see `non_headline_categories`). It still gets a full
+        # card -- the demotion is of the CLAIM, not of the measurement.
+        "headline": category not in non_headline_categories(),
         "category_label": CATEGORIES[category].label,
         "tier": CATEGORIES[category].tier,
         "n_addresses": facts.get("n_addresses"),
@@ -435,20 +585,28 @@ def _section_facts(key: str, category: str, m: dict, comps: dict, rules: dict) -
         return d
     if key == "coverage":
         return {k: m.get(k) for k in
-                ("anchor_qualifies", "anchor_coverage", "anchor_sources", "validation_rows")}
+                ("anchor_qualifies", "anchor_coverage", "anchor_sources",
+                 "coverage_n_missing", "coverage_n_holes", "coverage_hole_rate",
+                 "coverage_hole_hi95")}
     return {}
 
 
 def rank_categories(facts: dict, categories: list[str] | None = None) -> list[str]:
     """Categories ordered by supply_ratio_vs_base ASCENDING -- thinnest first.
     A category with no ratio sorts last: absence of a measurement is not a
-    thin measurement."""
+    thin measurement.
+
+    A `headline: false` category (owner ruling 2026-09-14) sorts behind EVERY
+    headline category, whatever its ratio, so it can never be the first card --
+    which is what "may not lead a recommendation" means here. It keeps its
+    place in the run and its own card; only the lead is denied it."""
     cats = categories or list(CATEGORIES)
     per = facts.get("categories") or {}
+    demoted = non_headline_categories()
 
     def key(c):
         r = (per.get(c) or {}).get("ratio_median")
-        return (1, 0.0) if r is None else (0, float(r))
+        return (c in demoted,) + ((1, 0.0) if r is None else (0, float(r)))
     return sorted(cats, key=key)
 
 
@@ -586,11 +744,10 @@ def area_facts(con, area: str, *, bbox=None, nta=None, boroughs=("MN", "BK"),
         "SELECT category, anchor_sources, anchor_coverage, qualifies "
         "FROM analysis.category_anchor").fetchdf().set_index("category")
 
-    validation = con.execute(f"""
-        SELECT cv.category, count(*) AS n
-        FROM analysis.coverage_validation cv
-        WHERE cv.address_id IN (SELECT a.address_id {base})
-        GROUP BY 1""", p).fetchdf().set_index("category")
+    # G9, owner ruling 2026-09-14: the per-category coverage-hole RATE over the
+    # whole MN+BK address frame, not a count of validation rows inside this box.
+    # See `coverage_hole_rates` for why the measurement is city-wide.
+    coverage = coverage_hole_rates(con)
 
     evidence_bbls = {r[0] for r in con.execute(
         "SELECT DISTINCT bbl FROM analysis.address_laundry_evidence").fetchall()}
@@ -672,7 +829,7 @@ def area_facts(con, area: str, *, bbox=None, nta=None, boroughs=("MN", "BK"),
             "anchor_qualifies": None if anch is None else bool(anch["qualifies"]),
             "anchor_coverage": None if anch is None else _f(anch["anchor_coverage"]),
             "anchor_sources": None if anch is None else anch["anchor_sources"],
-            "validation_rows": int(validation.loc[cat, "n"]) if cat in validation.index else 0,
+            **coverage[cat],
             "revenue": _revenue_facts(revenue, cat),
         }
     facts["categories"] = per_cat
@@ -877,7 +1034,24 @@ def render_card(card: dict, rules: dict) -> str:
             lines += [f"- Registry anchor qualifies: **{d['anchor_qualifies']}** "
                       f"(coverage {_n(d['anchor_coverage'], '{:.2f}')}, "
                       f"sources `{d.get('anchor_sources')}`)",
-                      f"- Google validation cells in this area: {_n(d['validation_rows'])}"]
+                      (f"- True-coverage-hole rate (MN+BK address frame, on-type): "
+                       f"**{_n(d['coverage_hole_rate'], '{:.1%}')}** "
+                       f"(Wilson 95% upper bound {_n(d['coverage_hole_hi95'], '{:.1%}')}, "
+                       f"{_n(d['coverage_n_holes'])} of {_n(d['coverage_n_missing'])} "
+                       f"missing-arm rows)")
+                      if d.get("coverage_n_missing") else
+                      ("- True-coverage-hole rate: **never measured** — this category has "
+                       "no address-frame validation rows, so nothing here has been checked "
+                       "against ground truth"),
+                      "- *A hole is: Google returns an on-type business inside the same "
+                      "649 m circle where loci's canonical layer has none. The rate is "
+                      "city-wide by design — the validation sample is stratified over "
+                      "MN+BK, not over this box (docs/coverage-validation-2026-09.md).*"]
+            if not card["headline"]:
+                lines.append("- **Not a headline category** (owner ruling 2026-09-14, D30 "
+                             "precedent): a gap here is not decidable at site level, so "
+                             "this category may not LEAD a recommendation. It stays in the "
+                             "screen as a signal.")
         lines.append("")
 
     if card["blockers"]:

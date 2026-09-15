@@ -120,9 +120,22 @@ sections:
     # C still makes "act" unreachable, so the D74 rule is untouched.
     modelled_grade: C
 
-  # 7. COVERAGE -- can we even see this category's supply? A category with no
-  # qualifying registry anchor (D52) is counted out of aggregator data alone.
+  # 7. COVERAGE -- can we even see this category's supply? NUMERIC since the
+  # owner ruling of 2026-09-14 (G9, docs/CATEGORY-EXPANSION.md; evidence in
+  # docs/coverage-validation-2026-09.md §4/§9(2)). The old rule graded A when
+  # ANY Google row existed for the area, which is a statement about whether the
+  # sampler happened to draw this box -- not about whether the category can be
+  # seen. The ladder below grades the measurement instead: the share of the
+  # screen's MISSING flags that are coverage holes (Google sees an on-type
+  # business, loci's canonical layer has none), read off the WILSON 95% UPPER
+  # BOUND rather than the point estimate, because a grade is a promise and the
+  # bound is the part of the interval a promise has to survive.
+  #
+  # A category with no address-frame validation rows at all (clinic: no Google
+  # primary type isolates its NAICS, D30) grades C "unvalidated" -- never A.
+  # THESE THREE NUMBERS ARE THE ONLY PLACE THE LADDER LIVES; recommend.py reads
+  # them and prints the rate, the bound and n on the card.
   coverage:
-    validated_grade: A         # Google ground-truth rows exist for the area
-    anchored_grade: B          # analysis.category_anchor.qualifies
-    unanchored_grade: C        # OSM/Overture only
+    hole_rate_hi95_a: 0.10     # Wilson hi95 <= 10% -> A
+    hole_rate_hi95_b: 0.25     # <= 25% -> B; above -> C
+    unvalidated_grade: C       # no address-frame rows for this category
