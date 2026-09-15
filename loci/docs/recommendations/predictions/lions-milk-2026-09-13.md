@@ -828,3 +828,5 @@ Two numbers worth separating, because they are easy to confuse:
   has moved 5× is a false precision I am flagging rather than hiding.
 
 - **2026-09-14:** owner-facing page sent to the operator via the owner (four questions: sales, rent, staff, weekday orders + average order). Any figure logged below this line arrived after the predictions were sent. Promised in return: a recommendation for a second El Punto location once both sets of answers are in.
+
+- **2026-09-14, after send:** revenue v0.2 re-fit on the final supply set (hash 467cd5969200; closure gate + cross-category dedup; restaurant ε 0.4) gives the restaurant row at BBL 3023290030 p25/p50/p75 $341,667 / $408,355 / $488,058, rent ceiling $32,668/yr. The page sent carried the earlier v0.2 value ($495k p50); the difference is the dedup removing double-listed permits, not new information about the café. Scoring uses the numbers as sent.
