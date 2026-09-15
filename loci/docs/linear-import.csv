@@ -914,7 +914,9 @@ Steps: `loci forecast issue --month 2026-09 --force` on the final hash, `forecas
 
 Why: the group rule adopted this window (D96/D101) is that a ""final"" signal freezes poi_status writes too, the same way an in-progress re-run freezes the supply hash — re-issuing on anything but the truly final hash would ship a forecast fit on evidence already known to be stale.
 
-Opened 2026-09-14 (CHECKPOINT D96). Pushed to Linear 2026-09-14 as GTM-181.",Backlog,2,2,"model,rigor",Loci,E2 · Access Engine
+Opened 2026-09-14 (CHECKPOINT D96). Pushed to Linear 2026-09-14 as GTM-181.
+
+Done 2026-09-15 (CHECKPOINT D96): vintage 0.1.1+f1cb6628 on supply_hash 467cd5969200; export-webmap 4b6841f.",Done,2,2,"model,rigor",Loci,E2 · Access Engine
 "Ledger key migration follow-ups: 'stale' state in poi_is_open, gov_filing count not conserved on merge, sql/015 comment stale","CHECKPOINT D103. Caveats from the first-seen ledger key migration (sql/035, commit 00eeca3) that shipped for the category-precedence dedup: n_months_seen is a max not a history (a merged key's month-count does not reflect the true seen-history across the merged clusters); conflicting closures keep the latest closed_on (a merge between two clusters with different closure verdicts silently drops the earlier one rather than reconciling it); 3,880 gov_filing rows folded to an earlier source_date, earliest wins (gov_filing count is not conserved across the migration); sql/015's comment still says location_key = cluster_id, stale since category joined location_key under D101.
 
 Low priority: none of the four block the migration's own guarantees (fake openings 0, vanished-without-map 0, first_seen moved later 0, verified against the pre-migration copy) — these are downstream precision gaps, not correctness breaks.

@@ -837,6 +837,8 @@ Why: the group rule adopted this window (D96/D101) is that a "final" signal free
 
 Opened 2026-09-14 (CHECKPOINT D96). Pushed to Linear 2026-09-14 as GTM-181.
 
+Done 2026-09-15 (CHECKPOINT D96): vintage 0.1.1+f1cb6628 on supply_hash 467cd5969200; export-webmap 4b6841f.
+
 
 ---
 
