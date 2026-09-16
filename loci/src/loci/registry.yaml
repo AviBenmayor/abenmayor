@@ -283,6 +283,53 @@ sources:
       georeferenced. Restaurant and retail (beer/liquor store) licenses are
       NOT emitted — DOHMH and SNAP anchor those.
 
+  - id: nys_sla_inactive_licenses
+    name: NYS Liquor Authority Current Inactive Licenses
+    tier: city
+    city: nyc
+    role: panel
+    status: verified
+    portability:
+      class: state
+      feeds: [lifecycle]
+      confidence: med
+      degrades_to: >
+        The bar category loses its only dated ENDINGS. Openings survive (the
+        active file and the pending queue), closures do not, and a survival
+        curve for bars becomes uncomputable rather than merely noisy.
+      note: >
+        Far fewer states publish the inactive companion than publish the active
+        file, so this is the rung most likely to be missing in city number two.
+    url: https://data.ny.gov/Economic-Development/Current-SLA-Inactive-Licenses/6dg3-2z7i
+    dataset_id: 6dg3-2z7i
+    geography: point
+    temporal: {start: 2015, end: 2029, grain: licence-term,
+               note: "Verified live 2026-09-16: 63,012 rows statewide, 29,568 in
+               the five NYC counties, expiration_date spanning 2015..2029. The
+               end of the range is in the FUTURE by construction -- 1,147 NYC
+               rows carry an expiration_date in 2027-2029 and are inactive for
+               some reason other than expiry (surrender, revocation, a premises
+               sold mid-term), which the file does not name. Pulled in FULL,
+               no date predicate."}
+    cost: {amount: 0, unit: total}
+    bias: >
+      This is a CURRENT-inactives file, not an archive. A licence that lapsed
+      and was later reissued at the same premises may leave this file when the
+      new licence issues, so the panel is right-censored in both directions.
+      And expiration_date is when the LICENCE lapsed, not when the BUSINESS
+      closed: read it as an upper bound on the closure date — tight for a
+      lapse, loose for a surrender.
+    notes: >
+      THE HISTORY HALF OF THE SLA PANEL. 9s3h-dpkz is a current-actives
+      snapshot with no history at all, which is why `loci rewind checks` P2
+      found no SLA row for 2016, 2018 or 2019. This file supplies the endings;
+      the two together are an establishment panel with a dated START
+      (original_issue_date) and a dated END (expiration_date). Lands in
+      analysis.licence_interval alongside the DCWP roster rather than in
+      staging.storefront_filing: a closure is not a rung on the opening ladder
+      that filing_stages.STAGES encodes, and adding it there would make
+      `furthest_stage` mean "it closed".
+
   - id: nyc_dohmh_childcare
     name: Active NYC Health Code Regulated Child Care Programs
     tier: city
@@ -487,7 +534,28 @@ sources:
     url: https://www.census.gov/data/developers/data-sets/cbp-zbp/zbp-api.html
     api: https://api.census.gov/data/2023/cbp
     geography: zip
-    temporal: {start: 1994, end: 2023, grain: annual}
+    temporal:
+      start: 1994
+      end: 2023
+      grain: annual
+      note: >
+        Re-verified live 2026-09-16, every year probed individually. 1994-2023
+        is the FULL served span and all of it is now pulled (`loci
+        ingest-zbp-series`), not the single 2023 vintage the adapter used to
+        default to. Two endpoints: api.census.gov/data/{year}/zbp for 1994-2018
+        and .../cbp under `for=zipcode:` for 2019-2023. Both ends are UPSTREAM
+        limits (1993 and 2024 both 404). INGESTED span is 1998-2023, 26 years:
+        1994-1997 are served but SIC-classified, and analysis.zip_establishments
+        .naics means a NAICS code in a project that holds exactly one industry
+        crosswalk (D42), so those four years are recorded as explicitly skipped
+        with that reason rather than mapped by an invented SIC crosswalk -- OUR
+        limit, not Census's. The classification variable, its label variable and
+        the geography name all change by era (SIC / NAICS1997 / NAICS2002 /
+        NAICS2007 / NAICS2012 / NAICS2017; NAICS_TTL for 1998-2011, NO label
+        variable at all for 2012-2018; `for=zipcode:` vs `for=zip code:`), and
+        the emp-size band code for the smallest band changed from 212 ("1 to 4
+        employees") to 210 ("less than 5 employees") in 2017 -- a DEFINITION
+        break, not a data change, folded onto one label so the series joins.
     cost: {amount: 0, unit: total}
     requires_key: CENSUS_API_KEY
     bias: >
@@ -539,7 +607,35 @@ sources:
     url: https://www.census.gov/programs-surveys/cbp.html
     api: https://api.census.gov/data/2023/cbp
     geography: county, metropolitan statistical area, zip
-    temporal: {start: 1986, end: 2023, grain: annual, note: "2023 is the latest published vintage; 2024 404s as of 2026-09-14"}
+    temporal:
+      start: 1986
+      end: 2023
+      grain: annual
+      note: >
+        Re-verified live 2026-09-16 by probing variables.json and geography.json
+        for every year 1985-2024: 1986-2023 return 200, 1985 and 2024 return 404.
+        Both ends are UPSTREAM limits. The whole span is now pulled (`loci
+        ingest-cbp-national`), not the single 2023 vintage the adapter defaulted
+        to, but the three shapes have three different reachable spans and the
+        difference is recorded rather than averaged away.
+        (1) COUNTY TOTALS, all industries: 1986-2023, all 38 years, ~3,200 rows
+        each, verified year by year -- needs no industry crosswalk, so the SIC
+        era is fully covered here.
+        (2) COUNTY BY CATEGORY: 1998-2023, 26 years. 1986-1997 are served but
+        SIC-classified and are NOT pulled per category, because this project
+        holds exactly one industry crosswalk and it is NAICS (D42); that is OUR
+        limit, not Census's. Within 1998-2023 the classification VARIABLE NAME
+        changes by era (NAICS1997 1998-2002, NAICS2002 2003-2007, NAICS2007
+        2008-2011, NAICS2012 2012-2016, NAICS2017 2017-2023) and using the wrong
+        one is a 400, not an empty result. The county-NAME variable changes too
+        (GEO_TTL through 2016, NAME from 2017).
+        (3) NATIONAL ZIP BY CATEGORY: 2018-2023 only -- `zip code` geography is
+        absent from this endpoint's geography.json before 2018. UPSTREAM.
+        Three of the 20 crosswalk codes (the two restaurant codes and the
+        coffee-shop code) were introduced in NAICS 2012 and return HTTP 204 for
+        every year 1998-2011; verified code-by-code, all 20 codes x 26 years.
+        A 204 is landed in a per-year `absent` manifest with its reason and is
+        never written as estab = 0.
     cost: {amount: 0, unit: total}
     requires_key: CENSUS_API_KEY
     bias: >
@@ -592,7 +688,27 @@ sources:
     url: https://lehd.ces.census.gov/data/
     access: https://lehd.ces.census.gov/data/lodes/LODES8/ny/wac/
     geography: census block
-    temporal: {start: 2002, end: 2023, grain: vintage, note: "loaded vintages are 2002, 2013, 2023 only (not annual series)"}
+    temporal:
+      start: 2002
+      end: 2023
+      grain: annual
+      note: >
+        Corrected 2026-09-16. This previously read "loaded vintages are 2002,
+        2013, 2023 only (not annual series)", which described three files
+        somebody had downloaded by hand, not the source. LODES8 publishes EVERY
+        year 2002-2023 for NY -- verified against the live directory listing at
+        lehd.ces.census.gov/data/lodes/LODES8/ny/wac/: 22 files, no gaps, 1.5-2.8
+        MB each, ~55 MB for the whole series. All 22 are fetched by `loci
+        ingest-lodes` (src/loci/sources/universal/lodes_wac.py). 2002 is the
+        first published reference year and 2023 the latest in LODES8; both ends
+        are UPSTREAM limits. CAVEAT THAT TRAVELS WITH EVERY VINTAGE: LODES8
+        reports all years on 2020 census blocks, but only 2020-2023 were OBSERVED
+        there -- 2002-2019 were AREA-RETRO-ALLOCATED onto 2020 blocks from the
+        2000/2010 block geography. That is a BIAS, not noise: the error is a
+        function of where block boundaries moved, boundaries move where
+        population moved, so it correlates with growth and does not average out
+        across blocks or years (CONTEXT.md 7.4b). A 2002-2019 trend from these
+        files is a trend in (jobs x allocation).
     cost: {amount: 0, unit: total}
     bias: >
       Counts JOBS, not establishments. Census noise infusion at block level.
@@ -921,7 +1037,7 @@ sources:
   # lifecycle. Registered 2026-09-13 on the owner's ask: "find when stores go
   # live via what they must declare to the government -- not just for chains."
   # All three land in staging.storefront_filing beside the four already-ingested
-  # feeds (nyc_dob_permit_issuance, nyc_dcwp_licenses, nyc_sla_liquor_licenses,
+  # feeds (nyc_dob_permit_issuance, nyc_dcwp_licenses, nys_sla_liquor_licenses,
   # nyc_dohmh_restaurants), which supply the LATE stages of the same lifecycle.
 
   - id: nyc_sla_pending_licenses
@@ -945,7 +1061,12 @@ sources:
     dataset_id: f8i8-k2gm
     api: https://data.ny.gov/resource/f8i8-k2gm.json
     geography: point (georeference), premises address; NO BBL and NO BIN
-    temporal: {start: 2023-05, end: current, grain: application-dated, ingested_window: 24mo}
+    temporal: {start: 2023-05, end: 2026-09, grain: application-dated,
+               note: "FULL HISTORY as of 2026-09-16: no rolling window, no date
+               predicate. staging.storefront_filing holds 1,554 rows spanning
+               2023-05-15..2026-09-15 -- the feed's entire published extent.
+               The 24-month `ingested_window` removed in wave one (commit
+               70cbd55); owner rule: never limit a data pull."}
     cost: {amount: 0, unit: total}
     fields: [application_id, premises_county, type, class, description, legalname,
              dba, actual_address_of_premises, received_date, status, georeference]
@@ -986,7 +1107,13 @@ sources:
     dataset_id: w9ak-ipjd
     api: https://data.cityofnewyork.us/resource/w9ak-ipjd.json
     geography: point (building), with BBL, BIN and house number + street
-    temporal: {start: 2016-06, end: current, grain: filing-dated, ingested_window: 24mo}
+    temporal: {start: 2017-10, end: 2026-09, grain: filing-dated,
+               note: "FULL HISTORY as of 2026-09-16: 193,838 rows landed in
+               staging.storefront_filing spanning 2017-10-16..2026-09-14. The
+               2016-06 start is the DOB NOW PROGRAMME start; the earliest row
+               the storefront-relevant job-type slice actually publishes is
+               2017-10-16, which is what the warehouse holds. 24-month
+               `ingested_window` removed in wave one (commit 70cbd55)."}
     cost: {amount: 0, unit: total}
     fields: [job_filing_number, job_type, building_type, filing_status, house_no,
              street_name, borough, bin, bbl, latitude, longitude,
@@ -1034,7 +1161,12 @@ sources:
     dataset_id: ptev-4hud
     api: https://data.cityofnewyork.us/resource/ptev-4hud.json
     geography: point, with BBL, BIN and building number + street
-    temporal: {start: 2022, end: current, grain: application-dated, ingested_window: 24mo}
+    temporal: {start: 2023-01, end: 2026-09, grain: application-dated,
+               note: "FULL HISTORY as of 2026-09-16: 65,929 rows in
+               staging.storefront_filing spanning 2023-01-01..2026-09-11. The
+               feed's own published start is 2022, but its earliest retained
+               application row is 2023-01-01. 24-month `ingested_window`
+               removed in wave one (commit 70cbd55)."}
     cost: {amount: 0, unit: total}
     fields: [application_id, license_number, business_name, dba_trade_name,
              business_category, application_type, license_type, submission_date,
@@ -1544,12 +1676,21 @@ sources:
       persisted reachable dock set, the bike twin of analysis.address_entrance)
       and four UPDATE-only columns on analysis.address: bike_starts_400m,
       bike_ends_400m, bike_evening_ends_share_400m, bike_casual_share_400m.
-      THE SCHEMA CUTOFF IS 2021-02 and pre-2021 is REFUSED, not mapped: the
+      THE SCHEMA CUTOFF IS 2021-02 AND PRE-2021 IS NOW READ, IN ITS OWN ID
+      COLUMN (2026-09-16, owner rule "never ever ever limit data pulls"): the
+      default window is 2013-06, the first month the bucket publishes. The
       legacy files' station ids are small integers on a different scheme from
       the modern '5905.14' ids and no published crosswalk maps them, so joining
-      the two panels would either split one dock into two stations (inventing a
-      dock that opened in 2021-02 and a gap before it) or fuse two distinct
-      docks. `JC-*` keys are the Jersey City/Hoboken system and are never
+      the two panels blindly would either split one dock into two stations
+      (inventing a dock that opened in 2021-02 and a gap before it) or fuse two
+      distinct docks. They are therefore kept apart: a legacy month lands with
+      its key in station_id_legacy and station_id NULL (sql/044), and
+      sources/cities/nyc/citibike_crosswalk.py (`loci citibike crosswalk`) fills
+      station_id in only where NAME AND POSITION agree, one-to-one, mutually
+      nearest, under a 150 m ceiling, with a confidence recorded per row.
+      Unmatched legacy docks keep station_id NULL and NO MONTH IS EVER DROPPED.
+      Two of the year archives publish a month TWICE (all of 2013; April 2018
+      three times), which the extractor de-duplicates rather than concatenating. `JC-*` keys are the Jersey City/Hoboken system and are never
       fetched; the NY files were verified to contain no dock west of the Hudson
       and every ingest re-checks it against a bounding box rather than trusting
       the file name. Day types (weekday/saturday/sunday, federal holidays

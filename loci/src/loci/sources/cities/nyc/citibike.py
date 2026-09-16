@@ -64,7 +64,7 @@ dedup-fuses-distinct-storefronts bug in a new costume. So the fusion is applied
 names differ, or whose points are more than `TWIN_MAX_M` apart, raises instead
 of merging.
 
-THE SCHEMA CUTOFF IS 2021-02, AND PRE-2021 IS REFUSED RATHER THAN MAPPED
+THE SCHEMA CUTOFF IS 2021-02, AND PRE-2021 IS NOW READ -- IN ITS OWN ID COLUMN
 ---------------------------------------------------------------------------
 Since 2021-02 the file is the Lyft schema: `ride_id, rideable_type, started_at,
 ended_at, start_station_name, start_station_id, end_station_name,
@@ -74,13 +74,34 @@ station ids like `'5905.14'`.
 The pre-2021 files are the legacy schema (`starttime`, `stoptime`,
 `start station id`, `usertype`, ...) and their station ids are SMALL INTEGERS on
 a completely different scheme -- legacy id `3002` and modern id `'5905.14'` are
-not two spellings of one dock, and no published crosswalk maps them. Mapping the
-columns is easy; fusing the two ID SPACES is the double-count/false-gap bug this
-project keeps getting bitten by, in its purest form: either one station becomes
-two rows in the panel (a fake new dock, a fake gap before it) or two stations
-collapse into one (a fake doubling). So `classify_header` NAMES the legacy
-schema and `refuse_legacy` RAISES with that reason. The ingest window starts at
-2021-02; everything Loci actually needs (2023-01 onward) is inside it.
+not two spellings of one dock, and no published crosswalk maps them.
+
+Phase 1 answered that by REFUSING every pre-2021 month, and the default window
+started 2023-01. Both caps are gone (owner rule 2026-09-16: "never ever ever
+limit data pulls"). WHAT DOES NOT CHANGE is the thing the refusal was protecting:
+the two id spaces are still never fused. A legacy month is aggregated by exactly
+the same SQL -- `lyft_bikeshare.legacy_projection_sql` presents the old columns
+as the Lyft contract -- and then lands with its key in `station_id_legacy` and
+`station_id` NULL (sql/044). `citibike_crosswalk.py` fills `station_id` in
+afterwards, per row, only where NAME AND POSITION agree under a tiered,
+one-to-one, 150 m-ceilinged rule that records a confidence for every row.
+
+If the crosswalk matches under 90% of legacy docks, the legacy months are landed
+ANYWAY with `station_id` NULL. A missing crosswalk row costs a join; a dropped
+month costs the data.
+
+The default ingest window is therefore 2013-06 -- the first month the bucket
+publishes -- to the latest month it publishes.
+
+THE SAME MONTH IS PUBLISHED TWICE IN TWO OF THE YEAR ARCHIVES
+---------------------------------------------------------------------------
+`2013-citibike-tripdata.zip` holds June..December 2013 as BOTH a quoted flat CSV
+at the archive root and an unquoted chunked copy under a month-named folder;
+`2018-citibike-tripdata.zip` holds April 2018 three times. Flattening every
+member onto one directory -- which is what the phase-1 extractor did -- would
+have counted those months twice, with no error anywhere.
+`lyft_bikeshare.dedupe_members` resolves it: shallowest depth wins, and an
+unsuffixed member beats the `_N` chunks beside it.
 
 DAY TYPES AND DAYPARTS ARE THE TRANSIT ONES, IMPORTED NOT RETYPED
 ---------------------------------------------------------------------------
@@ -94,8 +115,12 @@ daypart in one row.
 
 Federal holidays are excluded by DATE, exactly as the transit profile excludes
 them, and belong to NO day type. The list is `mta_ridership.HOLIDAYS` (2025-2027)
-UNIONed with `HOLIDAYS_2021_2024` here; `assert_holidays_cover` refuses a window
-that runs outside the union rather than quietly treating July 4th as a Tuesday.
+UNIONed with `HOLIDAYS_2021_2024` and `HOLIDAYS_2013_2020`; `assert_holidays_cover`
+refuses a window that runs outside the union rather than quietly treating July
+4th as a Tuesday. The 2013-2020 block is what makes the legacy era ingestable at
+all, and it carries NO JUNETEENTH: that became a federal holiday on 2021-06-17,
+and back-dating it would silently delete a real working weekday from seven years
+of divisors.
 
 TIMESTAMPS ARE NAIVE NEW YORK WALL CLOCK
 ---------------------------------------------------------------------------
@@ -233,8 +258,20 @@ TIMEOUT = lyft.TIMEOUT
 RETRIES = lyft.RETRIES
 
 #: The first month published on the Lyft schema. Everything before this is the
-#: legacy schema on a DIFFERENT station-id space and is refused, not mapped.
+#: legacy schema on a DIFFERENT station-id space -- READ since 2026-09-16, into
+#: `station_id_legacy`, and never fused into `station_id`. See the docstring.
 SCHEMA_CUTOFF = SYSTEM.schema_cutoff
+
+#: The first month the bucket publishes at all, and the DEFAULT ingest start.
+#: The 2013 year archive holds 201306..201312 and nothing earlier: the system
+#: opened 2013-05-27 and those five days were never published as their own file.
+LEGACY_START = SYSTEM.legacy_start
+DEFAULT_START = LEGACY_START
+
+#: The truncation floor for a LEGACY month. It cannot be MIN_TRIPS_PER_MONTH:
+#: the smallest real legacy month is 2014-02 at ~169k trips, so the modern 300k
+#: floor would refuse eight genuine winters as "truncated publications".
+MIN_TRIPS_PER_MONTH_LEGACY = SYSTEM.min_trips_per_month_legacy
 
 #: The 2021+ header and the legacy markers: SHARED across Lyft systems, which
 #: is the fact that makes one reader possible at all.
@@ -297,6 +334,17 @@ MAX_OUT_OF_SYSTEM_SHARE = SYSTEM.max_out_of_system_share
 MEM_MEMORY_LIMIT = lyft.MEM_MEMORY_LIMIT
 STATION_MONTH_COLUMNS = lyft.STATION_MONTH_COLUMNS
 
+#: The two columns sql/044 adds, and what the writer actually inserts.
+#: STATION_MONTH_COLUMNS itself is UNCHANGED on purpose: it is the 034 grain and
+#: `tests/test_lyft_systems.py` compares it against the committed module.
+LEGACY_EXTRA_COLUMNS = lyft.LEGACY_EXTRA_COLUMNS
+STATION_MONTH_WRITE_COLUMNS = lyft.STATION_MONTH_WRITE_COLUMNS
+
+
+def era_of(year: int, month: int) -> str:
+    """'lyft' | 'legacy' for one New York month. A property of the FILE."""
+    return SYSTEM.era_of(year, month)
+
 
 # ------------------------------------------------------------------ the bucket
 
@@ -351,7 +399,14 @@ def classify_header(columns) -> str:
 
 
 def refuse_legacy(what: str) -> None:
-    """The one place the pre-2021 refusal is stated."""
+    """The refusal text, kept for the systems that still need it.
+
+    NEW YORK NO LONGER REFUSES ITS LEGACY ERA (owner rule 2026-09-16): the
+    pre-2021 months are read into `station_id_legacy`. This function stays
+    because it is the one place the ID-SPACE argument is written down, it is
+    still what Chicago's unprobed quarterly files hit, and `citibike_od.py` and
+    the tests import it by name. Calling it always raises.
+    """
     lyft.refuse_legacy(SYSTEM, what)
 
 
@@ -452,7 +507,17 @@ def read_csv_sql(glob: str) -> str:
     return lyft.read_csv_sql(glob)
 
 
-def month_sql(glob: str, year: int, month: int) -> str:
+def trips_sql(glob: str, era: str = "lyft") -> str:
+    """The relation the aggregations read, for either era.
+
+    `era='lyft'` is byte-for-byte `read_csv_sql(glob)`; `era='legacy'` is the
+    legacy file PRESENTED AS the Lyft contract, so there is one aggregation and
+    not a second one that can drift. See `lyft_bikeshare.legacy_projection_sql`.
+    """
+    return lyft.trips_sql(glob, era)
+
+
+def month_sql(glob: str, year: int, month: int, era: str = "lyft") -> str:
     """The ONE query that turns a month of trips into station-month cells.
 
     Starts and ends are aggregated SEPARATELY and FULL-OUTER-joined, because a
@@ -462,21 +527,21 @@ def month_sql(glob: str, year: int, month: int) -> str:
     Both sides are restricted to the file's own month (see the module docstring
     on the end-of-month spill) and to non-holiday dates.
     """
-    return lyft.month_sql(SYSTEM, glob, year, month, HOLIDAYS)
+    return lyft.month_sql(SYSTEM, glob, year, month, HOLIDAYS, era)
 
 
-def twin_sql(glob: str) -> str:
+def twin_sql(glob: str, era: str = "lyft") -> str:
     """Raw (unfused) id, modal name and modal position per START dock.
 
     Feeds `assert_underscore_twins_agree`. It must read the id UNTRIMMED of its
     suffix -- the whole point is to compare `5303.06_` with `5303.06`.
     """
-    return lyft.twin_sql(SYSTEM, glob)
+    return lyft.twin_sql(SYSTEM, glob, era)
 
 
-def audit_sql(glob: str, year: int, month: int) -> str:
+def audit_sql(glob: str, year: int, month: int, era: str = "lyft") -> str:
     """The per-month facts the report must state, in one pass over the file."""
-    return lyft.audit_sql(SYSTEM, glob, year, month)
+    return lyft.audit_sql(SYSTEM, glob, year, month, era)
 
 
 def _as_date(v) -> dt.date:
@@ -485,7 +550,8 @@ def _as_date(v) -> dt.date:
 
 
 def assert_month_complete(audit: dict, year: int, month: int,
-                          min_trips: int | None = None) -> None:
+                          min_trips: int | None = None,
+                          era: str | None = None) -> None:
     """The month is whole: not truncated, and not missing a run of dates.
 
     A TRUNCATED file loses a contiguous SUFFIX and is refused (the calendar
@@ -499,7 +565,7 @@ def assert_month_complete(audit: dict, year: int, month: int,
     `min_trips` is a parameter only so a TEST can drive the real aggregation on
     a hand-built twenty-row month. Production never passes it.
     """
-    lyft.assert_month_complete(SYSTEM, audit, year, month, min_trips)
+    lyft.assert_month_complete(SYSTEM, audit, year, month, min_trips, era)
 
 
 def assert_out_of_system_bounded(audit: dict, year: int, month: int) -> None:
@@ -534,26 +600,35 @@ def _mem(tmp_dir: pathlib.Path):
 
 
 def month_frame(csv_glob: str, year: int, month: int, tmp_dir: pathlib.Path,
-                min_trips: int | None = None):
+                min_trips: int | None = None, era: str | None = None):
     """(station-month cell frame, audit dict) for ONE month of CSVs.
 
     Pure with respect to the warehouse: it reads files and returns a frame. The
     three assertions (complete month, plausible size, no Jersey City) run here,
     so nothing that fails them can reach a writer.
     """
-    return lyft.month_frame(SYSTEM, csv_glob, year, month, tmp_dir, min_trips)
+    return lyft.month_frame(SYSTEM, csv_glob, year, month, tmp_dir, min_trips,
+                            era)
 
 
 def write_month(con, df, year: int, month: int, run_at: dt.datetime) -> int:
-    """DELETE-then-INSERT one month. The month is the unit of idempotence."""
+    """DELETE-then-INSERT one month. The month is the unit of idempotence.
+
+    The DELETE is by MONTH and therefore covers both eras: a month belongs to
+    exactly one of them, so re-ingesting 2016-03 can never leave half of it
+    behind, and re-ingesting 2024-03 can never touch a legacy row.
+    """
     first, _ = month_bounds(year, month)
     out = df.copy()
     out["ingested_at"] = run_at
+    for c in LEGACY_EXTRA_COLUMNS:
+        if c not in out.columns:
+            out[c] = None
     con.execute("DELETE FROM staging.citibike_station_month WHERE month = ?",
                 [first])
-    con.register("_cb_month", out[STATION_MONTH_COLUMNS])
+    con.register("_cb_month", out[STATION_MONTH_WRITE_COLUMNS])
     try:
-        cols = ", ".join(STATION_MONTH_COLUMNS)
+        cols = ", ".join(STATION_MONTH_WRITE_COLUMNS)
         # Named column lists, never SELECT * -- D72 records this exact shape
         # silently mis-mapping two type-compatible columns when a new one landed.
         con.execute(f"INSERT INTO staging.citibike_station_month ({cols}) "
@@ -573,6 +648,7 @@ WITH m AS (
            any_value(lon) AS lon, any_value(lat) AS lat,
            sum(starts) + sum(ends) AS trips
     FROM staging.citibike_station_month
+    WHERE era = 'lyft'
     GROUP BY 1, 2
 ), last_seen AS (
     SELECT station_id, max(month) AS last_month FROM m WHERE trips > 0 GROUP BY 1
@@ -591,11 +667,27 @@ GROUP BY m.station_id, l.last_month
 
 
 def rebuild_roster(con) -> int:
-    """staging.citibike_station, derived wholly from the month table.
+    """staging.citibike_station, derived wholly from the LYFT rows of the month
+    table.
 
     Name and position come from the dock's MOST RECENT ACTIVE month (see 034):
     the address measures are a present-day walk distance, so a dock that moved
     must be measured where it is now, not at the average of where it has been.
+
+    `WHERE era = 'lyft'` IS DELIBERATE AND IS NOT TIMIDITY. The legacy era is
+    landed in full, but this roster is the one every built measure reads, and
+    two of them are defined on the 2021+ panel:
+
+      * the address measures (034) pool the LATEST 12 MONTHS, which never
+        touches 2013-2020, so a legacy row can only add noise to the roster's
+        first_month;
+      * `model/address_bike_growth.py` GATES on `first_month <= M-23`. Letting
+        a crosswalked dock's first_month slide to 2013 would silently change
+        which docks are eligible for a measure that is already built and
+        published -- a different population wearing the same column name.
+
+    The legacy roster lives in `staging.citibike_station_legacy` and is read
+    explicitly by whoever wants it (`citibike_crosswalk.rebuild_legacy_roster`).
     """
     for stmt in ROSTER_SQL.strip().split(";\n"):
         if stmt.strip():
@@ -603,7 +695,7 @@ def rebuild_roster(con) -> int:
     return con.execute("SELECT count(*) FROM staging.citibike_station").fetchone()[0]
 
 
-def ingest(con, start: tuple[int, int] = (2023, 1),
+def ingest(con, start: tuple[int, int] = DEFAULT_START,
            end: tuple[int, int] | None = None, *,
            workdir: pathlib.Path | None = None,
            refresh: bool = False, dry_run: bool = False,
@@ -611,12 +703,18 @@ def ingest(con, start: tuple[int, int] = (2023, 1),
            on_month=None) -> dict:
     """Download -> extract -> aggregate -> write, one calendar month at a time.
 
+    THE DEFAULT WINDOW IS THE WHOLE FEED: 2013-06 (the first month the bucket
+    publishes) to the latest month it publishes. The old default of 2023-01 and
+    the 2021-02 refusal were both caps, and the owner's standing rule is that
+    free sources are pulled in full.
+
     One month is the unit of work AND of idempotence: its CSVs are extracted,
     aggregated, written and DELETED before the next month is touched, so peak
-    disk is one month (~4 GB) rather than the ~25 GB the whole window would be.
+    disk is one month (~4 GB uncompressed) rather than the ~90 GB the whole
+    window would be.
 
     `skip_existing` leaves months already present in the table alone, which is
-    what makes an interrupted run resumable without re-reading 20 GB.
+    what makes an interrupted run resumable without re-reading 32 GB.
     """
     import shutil
 
@@ -644,9 +742,10 @@ def ingest(con, start: tuple[int, int] = (2023, 1),
             shutil.rmtree(scratch)
         try:
             files = extract_month(zip_path, y, m, scratch)
-            df, audit = month_frame(str(scratch / "*.csv"), y, m, work)
+            era = e.get("era") or era_of(y, m)
+            df, audit = month_frame(str(scratch / "*.csv"), y, m, work, era=era)
             audit.update({"month": f"{y}-{m:02d}", "key": e["key"],
-                          "csv_members": len(files)})
+                          "era": era, "csv_members": len(files)})
             if not dry_run:
                 rows += write_month(con, df, y, m, run_at)
             months.append(audit)
@@ -671,7 +770,13 @@ def ingest(con, start: tuple[int, int] = (2023, 1),
               "dates_with_no_trip":
                   sum(x.get("dates_with_no_trip", 0) for x in months),
               "months_with_a_zero_date": sorted(
-                  x["month"] for x in months if x.get("dates_with_no_trip"))}
+                  x["month"] for x in months if x.get("dates_with_no_trip")),
+              "legacy_months_ingested":
+                  sum(1 for x in months
+                      if "skipped" not in x and x.get("era") == "legacy"),
+              "lyft_months_ingested":
+                  sum(1 for x in months
+                      if "skipped" not in x and x.get("era") == "lyft")}
     if not dry_run:
         report["stations"] = rebuild_roster(con)
     return report
@@ -714,11 +819,16 @@ __all__ = [
     "CACHE_DIR",
     "DAYPART_NAMES",
     "DAY_TYPES",
+    "DEFAULT_START",
     "HOLIDAYS",
+    "LEGACY_EXTRA_COLUMNS",
+    "LEGACY_START",
+    "MIN_TRIPS_PER_MONTH_LEGACY",
     "NY_STATION_ID",
     "SCHEMA_CUTOFF",
     "SOURCE_ID",
     "STATION_MONTH_COLUMNS",
+    "STATION_MONTH_WRITE_COLUMNS",
     "VALIDATION_SQL",
     "CitibikeError",
     "assert_holidays_cover",
@@ -733,6 +843,7 @@ __all__ = [
     "daypart_case_sql",
     "days_by_type",
     "download",
+    "era_of",
     "extract_month",
     "ingest",
     "is_ny_station_sql",
@@ -745,6 +856,7 @@ __all__ = [
     "rebuild_roster",
     "refuse_legacy",
     "station_id_sql",
+    "trips_sql",
     "twin_sql",
     "write_month",
 ]

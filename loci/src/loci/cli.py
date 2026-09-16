@@ -33,11 +33,11 @@
                                                         D84: scores the lot AND street
                                                         frames in one run.)
     loci address-demand [--borough MNBK|MN|BK|ALL] [--dry-run]  (D49 annotation, GTM-110)
-    loci address-access [--boroughs MN,BK] [--months 3] [--complex-point] [--dry-run]
+    loci address-access [--boroughs MN,BK] [--months N] [--complex-point] [--dry-run]
                                                        (transit_entries_400m + jobs_400m
                                                         beside homes_400m; UPDATE-only,
                                                         never a filter on the screen)
-    loci transit-profile [--boroughs MN,BK] [--months 3] [--re-sweep] [--dry-run]
+    loci transit-profile [--boroughs MN,BK] [--months N] [--re-sweep] [--dry-run]
                                                        (subway entries per day type x
                                                         daypart at address grain; reuses
                                                         analysis.address_entrance so a
@@ -2139,7 +2139,9 @@ def pipeline_activity(
 
 @app.command(name="ingest-storefronts")
 def ingest_storefronts(
-    boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL (D48 default MN,BK)."),
+    boroughs: str = typer.Option("ALL", help="Comma-separated borough codes, or ALL. "
+                                 "Ingest is city-wide by default; the D48 MN+BK "
+                                 "SCREEN lives in `loci storefronts`, not here."),
     refresh: bool = typer.Option(False, "--refresh",
                                  help="Re-download the CSV even if data/raw/ already has it."),
     dry_run: bool = typer.Option(False, "--dry-run",
@@ -2790,9 +2792,8 @@ def address_access(
     boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL."),
     radius_m: float = typer.Option(400.0, "--radius-m",
                                    help="Catchment radius in NETWORK metres (default 400 = the 5-min tier)."),
-    months: int = typer.Option(3, "--months",
-                               help="How many of the ridership feed's latest FULL months "
-                                    "to average (3 = one quarter, 12 = a trailing year)."),
+    months: int = typer.Option(None, "--months",
+                               help="Ridership months to average. DEFAULT: EVERY month the feed publishes (2025-01 onward) -- the old 3-month rolling window was a cap, not a finding. Pass an integer for the N latest FULL months when a seasonal slice is the question."),
     complex_point: bool = typer.Option(False, "--complex-point",
                                        help="Snap each complex's entries to its own published "
                                             "point instead of splitting them over entrances. "
@@ -2906,9 +2907,8 @@ def transit_profile(
     boroughs: str = typer.Option("MN,BK", help="Comma-separated borough codes, or ALL."),
     radius_m: float = typer.Option(400.0, "--radius-m",
                                    help="Catchment radius in NETWORK metres (default 400)."),
-    months: int = typer.Option(3, "--months",
-                               help="How many of the ridership feed's latest FULL months "
-                                    "to average."),
+    months: int = typer.Option(None, "--months",
+                               help="Ridership months to average. DEFAULT: EVERY month the feed publishes (2025-01 onward) -- the old 3-month rolling window was a cap, not a finding. Pass an integer for the N latest FULL months when a seasonal slice is the question."),
     complex_point: bool = typer.Option(False, "--complex-point",
                                        help="Snap each complex to its published point "
                                             "instead of splitting over entrances."),
@@ -3029,7 +3029,7 @@ def transit_profile(
 @app.command(name="validate-pedestrian")
 def validate_pedestrian(
     radius_m: float = typer.Option(400.0, "--radius-m", help="Catchment radius, NETWORK metres."),
-    months: int = typer.Option(3, "--months", help="Ridership months to average."),
+    months: int = typer.Option(None, "--months", help="Ridership months to average. DEFAULT: EVERY month the feed publishes (2025-01 onward) -- the old 3-month rolling window was a cap, not a finding. Pass an integer for the N latest FULL months when a seasonal slice is the question."),
     out: Path = typer.Option(None, "--out", help="Write the per-point table to this CSV."),
 ) -> None:
     """External check: do the walkable-demand measures RANK real footfall?
@@ -8038,7 +8038,13 @@ def _cb_month(spec: str) -> "tuple[int, int]":
 
 @citibike_app.command("ingest")
 def citibike_ingest(
-    start: str = typer.Option("2023-01", "--start", help="First month, YYYY-MM."),
+    start: str = typer.Option("2013-06", "--start",
+                              help="First month, YYYY-MM. DEFAULT 2013-06, the "
+                                   "first month the bucket publishes. Months "
+                                   "before 2021-02 are on the LEGACY schema and "
+                                   "land with station_id_legacy populated and "
+                                   "station_id NULL until `loci citibike "
+                                   "crosswalk` is run."),
     end: str = typer.Option(None, "--end",
                             help="Last month, YYYY-MM. Default: the latest month "
                                  "the BUCKET publishes (not today's date -- a "
@@ -8066,11 +8072,19 @@ def citibike_ingest(
     disk is one month (~4 GB) rather than the ~25 GB the window would be, and a
     re-run of March cannot rewrite April.
 
+    THE WHOLE FEED, BY DEFAULT. 2013-06..the latest published month: ~159
+    months, ~32 GB of zips. The pre-2021 months are the LEGACY schema and are no
+    longer refused (owner rule 2026-09-16); they land with their legacy station
+    id in `station_id_legacy` and `station_id` NULL. Run `loci citibike
+    crosswalk` afterwards to fill `station_id` in where NAME AND POSITION agree.
+
     FAIL LOUD. A month missing a calendar date raises (the divisor comes from
     the CALENDAR, so a half-published month would otherwise be divided by a full
-    one); a month under the trip floor raises; a pre-2021 header raises with its
-    reason rather than being mapped onto the modern station-id space; a dock
-    outside the New York bounding box raises (a Jersey City file leaked in).
+    one); a month under its ERA's trip floor raises; a header that is neither
+    the Lyft schema nor a known legacy spelling raises rather than being read as
+    a near-match; a dock outside the New York bounding box raises (a Jersey City
+    file leaked in); a legacy month whose timestamps parse as no known format
+    raises rather than losing those rows out of the month predicate.
     """
     from loci.sources.cities.nyc import citibike as cb
 
@@ -8087,6 +8101,7 @@ def citibike_ingest(
                 f"{a['stations']:,} docks · {a['cells']:,} cells · "
                 f"{a['starts']:,} starts / {a['ends']:,} ends · "
                 f"{a['days_by_type']['weekday']} weekdays · "
+                f"{a.get('era', 'lyft')} era · "
                 f"{a['dockless_starts']:,} dockless starts, "
                 f"{a['end_events_after_month_end']:,} arrivals past month end")
 
@@ -8097,7 +8112,9 @@ def citibike_ingest(
                            on_month=_tick)
         console.print(
             f"\nwindow [bold]{report['start']}..{report['end']}[/] · "
-            f"{report['months']} months planned · "
+            f"{report['months']} months planned "
+            f"({report.get('legacy_months', 0)} legacy / "
+            f"{report.get('lyft_months', 0)} lyft) · "
             f"{report['months_ingested']} ingested · "
             f"{report['bytes'] / 1e9:.1f} GB of zips · "
             f"{report['trips_in_files']:,} trips read")
@@ -8395,7 +8412,7 @@ def citibike_export(
 @app.command(name="validate-bike")
 def validate_bike(
     radius_m: float = typer.Option(400.0, "--radius-m", help="Catchment radius, NETWORK metres."),
-    months: int = typer.Option(3, "--months", help="Ridership months to average."),
+    months: int = typer.Option(None, "--months", help="Ridership months to average. DEFAULT: EVERY month the feed publishes (2025-01 onward) -- the old 3-month rolling window was a cap, not a finding. Pass an integer for the N latest FULL months when a seasonal slice is the question."),
     window_months: int = typer.Option(12, "--window-months", help="Bike months to pool."),
     with_transit: bool = typer.Option(True, "--with-transit/--no-transit",
                                       help="Also sweep transit/jobs/homes for "
@@ -9014,7 +9031,11 @@ def _od_require_table(con) -> None:
 
 @citibike_app.command("od-ingest")
 def citibike_od_ingest(
-    start: str = typer.Option("2023-01", "--start", help="First month, YYYY-MM."),
+    start: str = typer.Option("2013-06", "--start",
+                              help="First month, YYYY-MM. DEFAULT 2013-06. A "
+                                   "pre-2021-02 month is mapped through "
+                                   "staging.citibike_station_crosswalk, so run "
+                                   "`loci citibike crosswalk` first."),
     end: str = typer.Option(None, "--end",
                             help="Last month, YYYY-MM. Default: the latest month "
                                  "the BUCKET publishes."),
@@ -10505,6 +10526,11 @@ def rewind_recode(
 def rewind_licence_intervals(
     asof: str = typer.Option(None, "--asof",
                              help="Censoring date; default today."),
+    sla: bool = typer.Option(False, "--sla",
+                             help="Also build the NYS SLA pair (active "
+                                  "9s3h-dpkz + inactive 6dg3-2z7i). The "
+                                  "inactive file is FETCHED LIVE and is the "
+                                  "only licensing history SLA publishes."),
     dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     """Build analysis.licence_interval from the full-history DCWP pull.
@@ -10520,7 +10546,15 @@ def rewind_licence_intervals(
 
     asof_d = _dt.date.fromisoformat(asof) if asof else _dt.date.today()
     con = _filings_connect(read_only=dry_run)
-    rep = li.report(con, asof=asof_d) if dry_run else li.build(con, asof=asof_d)
+    if dry_run:
+        rep = li.report(con, asof=asof_d)
+    else:
+        rep = li.build(con, asof=asof_d)
+        if sla:
+            rep = li.build_sla(con, asof=asof_d)
+            console.print("[dim]SLA rows by source: " + ", ".join(
+                f"{k} {v:,}" for k, v in sorted(
+                    rep["sla_rows_by_source"].items())) + "[/]")
     console.print(f"[green]{'would build' if dry_run else 'built'}[/] "
                   f"{rep['rows']:,} licence intervals, censored at {rep['asof']}")
 
@@ -10609,12 +10643,27 @@ def rewind_checks() -> None:
                     f"{case_left:,} canonical labels still mixed-case"))
 
     # --- P2 backfill -------------------------------------------------------
-    for src, label in (("nyc_dob_permit_issuance", "DOB"),
-                       ("nyc_dcwp_licenses", "DCWP"),
-                       ("nyc_sla_liquor_licenses", "SLA")):
+    # SLA is TWO files, and only the pair is a licensing history. 9s3h-dpkz is
+    # a CURRENT-ACTIVES snapshot -- a licence that lapsed before the pull is
+    # simply absent from it, which is why this check found NO SLA row at all
+    # for 2016, 2018 or 2019 when it read the active file alone. The companion
+    # inactive file 6dg3-2z7i (29,568 NYC rows) is the missing half. Reading
+    # the union is not a weakening of the check: the question it asks is
+    # whether SLA licensing is OBSERVABLE in each year, and it is observable
+    # only across both.
+    for srcs, label in ((("nyc_dob_permit_issuance",), "DOB"),
+                        (("nyc_dcwp_licenses",), "DCWP"),
+                        (("nys_sla_liquor_licenses",
+                          "nys_sla_inactive_licenses"), "SLA")):
+        holes = ", ".join("?" for _ in srcs)
         years = {r[0] for r in con.execute(
+            "SELECT DISTINCT year(licence_creation_date) "
+            "FROM analysis.licence_interval "
+            f"WHERE source IN ({holes}) AND licence_creation_date IS NOT NULL",
+            list(srcs)).fetchall()} if label == "SLA" else {r[0] for r in con.execute(
             "SELECT DISTINCT year(filed_on) FROM staging.storefront_filing "
-            "WHERE source = ? AND filed_on IS NOT NULL", [src]).fetchall()}
+            f"WHERE source IN ({holes}) AND filed_on IS NOT NULL",
+            list(srcs)).fetchall()}
         missing = sorted(set(range(2016, 2024)) - years)
         results.append((f"P2 {label} has a row in every year 2016-2023",
                         not missing,

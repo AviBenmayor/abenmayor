@@ -126,8 +126,15 @@ def test_the_constants_the_panel_was_built_from_did_not_move(committed):
 
 
 def test_the_public_surface_is_unchanged(committed):
-    """Nothing that another module imports may have disappeared."""
-    assert cb.__all__ == committed.__all__
+    """Nothing that another module imports may have disappeared.
+
+    A SUPERSET, not equality: the legacy era (GTM-168 track L) added
+    `DEFAULT_START`, `LEGACY_START`, `era_of`, `trips_sql` and friends. What
+    this test guards is the promise in its own name -- that nothing DISAPPEARED
+    -- and an equality assertion would freeze the module against ever gaining a
+    function.
+    """
+    assert set(committed.__all__) <= set(cb.__all__)
     missing = [n for n in committed.__all__ if not hasattr(cb, n)]
     assert missing == []
     # citibike_od.py and validation/bike_counts.py reach for these by name.
@@ -157,7 +164,8 @@ def test_the_two_systems_differ_on_every_per_system_fact():
     for field in ("bucket_url", "cache_dirname", "month_key_re", "legacy_key_re",
                   "bbox", "station_id_re", "min_trips_per_month",
                   "max_out_of_system_share", "schema_cutoff", "log_prefix",
-                  "source_id", "label"):
+                  "source_id", "label", "legacy_schema_readable",
+                  "legacy_start", "min_trips_per_month_legacy"):
         assert getattr(ny, field) != getattr(chi, field), field
     # The sibling-system exclusion is a NEW YORK fact: Divvy's bucket holds one
     # system, so inventing a prefix for it would be a filter with nothing to do.
@@ -183,13 +191,24 @@ def test_the_dockless_gate_is_a_per_system_parameter_and_never_a_silent_drop():
     assert "MAX_DOCKLESS" not in src
 
 
-def test_a_month_before_a_systems_own_cutoff_is_refused_not_mapped():
-    """Each system has its OWN schema cutoff; Divvy's legacy quarterly archives
-    are on a different id space exactly as NYC's pre-2021 files are."""
+def test_a_month_before_a_systems_own_cutoff_is_refused_where_it_is_unreadable():
+    """The refusal is now a PER-SYSTEM property, which is what it always should
+    have been.
+
+    Chicago's pre-2020 archives are QUARTERLY and keyed on a station NAME, and
+    nobody has probed them -- `legacy_schema_readable` is False and a 2019 month
+    still raises with the id-space reason. New York's legacy schema IS probed
+    and readable, so its 2020-12 plans as `era='legacy'` instead of raising.
+    """
     with pytest.raises(lyft.BikeshareError, match="PRE-2021"):
         lyft.plan(lyft.SYSTEMS["chicago_divvy"], (2019, 6))
-    with pytest.raises(lyft.BikeshareError, match="PRE-2021"):
-        lyft.plan(lyft.SYSTEMS["nyc_citibike"], (2020, 12))
+    ny = lyft.SYSTEMS["nyc_citibike"]
+    assert ny.legacy_schema_readable is True
+    assert lyft.SYSTEMS["chicago_divvy"].legacy_schema_readable is False
+    assert ny.era_of(2020, 12) == "legacy"
+    assert ny.first_month() == (2013, 6)
+    # the floor is a per-ERA number, not one constant applied to both
+    assert ny.min_trips("legacy") < ny.min_trips("lyft")
 
 
 def test_divvy_keys_parse_and_the_legacy_ones_are_not_usable():

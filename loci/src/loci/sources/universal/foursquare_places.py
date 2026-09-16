@@ -188,6 +188,12 @@ class FoursquarePlacesAdapter(SourceAdapter):
         seen: set[str] = set()
         unmapped: dict[str, int] = {}
         self.dropped_stale = 0
+        #: (POIRecord, stale_reason, date_refreshed) for every venue the
+        #: staleness gate holds back. Populated by normalize(), written by
+        #: load(). A LIST rather than a second pass over the parquet: the file
+        #: is read once and the gate's decision is made once, so the held-back
+        #: set and the loaded set cannot disagree.
+        self.stale_records: list[tuple] = []
         for r in rows:
             rid = r.get("id")
             lat, lon = r.get("lat"), r.get("lon")
@@ -196,14 +202,45 @@ class FoursquarePlacesAdapter(SourceAdapter):
             if r.get("closed"):
                 continue
             refreshed = _as_date(r.get("refreshed"))
-            if refreshed is None or refreshed < dt.date.fromisoformat(MIN_REFRESHED):
-                self.dropped_stale += 1
-                continue
             category = map_leaf(r.get("labels"))
             if category is None:
                 for path in (r.get("labels") or []):
                     leaf = (path or "").split(">")[-1].strip().lower()
                     unmapped[leaf] = unmapped.get(leaf, 0) + 1
+                continue
+            # THE STALENESS GATE. Unchanged as a SUPPLY rule -- a venue nobody
+            # has refreshed since MIN_REFRESHED still does not enter
+            # staging.poi, and `poi_is_open` is untouched, so no POI that was
+            # counted yesterday is counted differently today. What changed on
+            # 2026-09-16 is that the row is no longer THROWN AWAY: it is held
+            # in staging.poi_stale (sql/050) with the reason and the freshness
+            # stamp, so the 79,182 mapped venues this gate removes are
+            # measurable and the promotion is priceable.
+            #
+            # IT CANNOT SIMPLY BE RETAINED IN staging.poi. Foursquare publishes
+            # no status field, so a stale venue there resolves to 'unknown',
+            # and the closure gate is `poi_status <> 'closed'` -- 'unknown'
+            # survives it and IS counted as supply. Retaining them in place
+            # would move the supply hash on the strength of check-in records
+            # nobody has touched in three years. That is an owner ruling, not
+            # a plumbing change. sql/050's header has the full argument.
+            if refreshed is None or refreshed < dt.date.fromisoformat(MIN_REFRESHED):
+                self.dropped_stale += 1
+                if rid not in seen:
+                    self.stale_records.append((
+                        POIRecord(
+                            source_id=self.source_id, source_record_id=str(rid),
+                            category=category,
+                            name=(r.get("name") or "").strip() or None,
+                            lon=float(lon), lat=float(lat), observed_on=today,
+                            opened_on=_as_date(r.get("created")),
+                            confidence=0.6,
+                            attrs={"labels": list(r.get("labels") or []),
+                                   "refreshed": str(r.get("refreshed") or "")[:10] or None}),
+                        ("no_refresh_date" if refreshed is None
+                         else "refreshed_before_min"),
+                        refreshed))
+                    seen.add(rid)
                 continue
             seen.add(rid)
             opened = _as_date(r.get("created"))
@@ -216,6 +253,63 @@ class FoursquarePlacesAdapter(SourceAdapter):
                        "refreshed": str(r.get("refreshed") or "")[:10] or None},
             )
         self.unmapped_leaves = dict(sorted(unmapped.items(), key=lambda kv: -kv[1])[:40])
+
+
+    def load(self, con, *, limit: int | None = None, dry_run: bool = False,
+             table: str = "staging.poi"):
+        """The base load(), plus the staleness hold-back written to its own
+        table so the gate stops being a data loss.
+
+        The hold-back is written ONLY on the real staging.poi load: staging
+        into a holding table is a different operation with a different
+        reviewer, and duplicating the stale set into it would make the two
+        disagree the moment one is promoted. Idempotent per source, exactly
+        like the base method.
+        """
+        records = super().load(con, limit=limit, dry_run=dry_run, table=table)
+        if dry_run or table != "staging.poi":
+            return records
+        self._write_stale(con)
+        return records
+
+    def _write_stale(self, con) -> int:
+        import json as _json
+
+        import pandas as pd
+
+        con.execute("DELETE FROM staging.poi_stale WHERE source_id = ?",
+                    [self.source_id])
+        held = getattr(self, "stale_records", [])
+        if not held:
+            return 0
+        df = pd.DataFrame([{
+            "poi_id": r.poi_id, "source_id": r.source_id,
+            "source_record_id": r.source_record_id, "category": r.category,
+            "tier": r.tier, "name": r.name, "lon": r.lon, "lat": r.lat,
+            "observed_on": r.observed_on.isoformat() if r.observed_on else None,
+            "opened_on": r.opened_on.isoformat() if r.opened_on else None,
+            "closed_on": None, "confidence": r.confidence,
+            "attrs": _json.dumps(r.attrs or {}),
+            "stale_reason": reason,
+            "date_refreshed": refreshed.isoformat() if refreshed else None,
+        } for r, reason, refreshed in held])
+        con.register("_stale_df", df)
+        try:
+            con.execute("""
+                INSERT INTO staging.poi_stale
+                    (poi_id, source_id, source_record_id, category, tier, name,
+                     geom, observed_on, opened_on, closed_on, confidence, attrs,
+                     stale_reason, date_refreshed, ingested_at)
+                SELECT poi_id, source_id, source_record_id, category, tier, name,
+                       ST_Point(lon, lat),
+                       CAST(observed_on AS DATE), CAST(opened_on AS DATE),
+                       CAST(closed_on AS DATE), confidence, CAST(attrs AS JSON),
+                       stale_reason, CAST(date_refreshed AS DATE), now()
+                FROM _stale_df
+            """)
+        finally:
+            con.unregister("_stale_df")
+        return len(df)
 
 
 # ---------------------------------------------------------------------------

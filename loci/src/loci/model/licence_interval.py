@@ -256,6 +256,18 @@ def report(con, *, asof: dt.date | None = None) -> dict:
     rows = con.execute(f"SELECT count(*) FROM {TABLE}").fetchone()[0]
     return {
         "rows": rows,
+        # The table is MULTI-SOURCE since 2026-09-16 (DCWP roster + the SLA
+        # active/inactive pair). Every aggregate below pools them, which is
+        # right for "how many dated intervals does the warehouse hold" and
+        # WRONG for anything per-source: DCWP publishes no status-change date
+        # and SLA's inactive file does, so their end_kind mixes are not
+        # comparable. Split on this before quoting a survival number.
+        "by_source": con.execute(f"""
+            SELECT source, count(*) n,
+                   min(licence_creation_date), max(licence_creation_date),
+                   count(*) FILTER (WHERE loci_category IS NOT NULL) mapped,
+                   count(*) FILTER (WHERE bbl IS NOT NULL) with_bbl
+            FROM {TABLE} GROUP BY 1 ORDER BY 2 DESC""").fetchall(),
         "asof": (asof or dt.date.today()).isoformat(),
         "by_status": con.execute(f"""
             SELECT status, count(*) n,
@@ -337,3 +349,229 @@ def match_rates(con) -> dict:
     """).fetchone()
     return {"per_category": per_cat, "total": total, "mnbk": mnbk,
             "proximity_ceiling_mnbk": ceiling}
+
+
+# ==========================================================================
+# THE SLA HALF (2026-09-16) -- the same table, two more sources
+# ==========================================================================
+#
+# WHY HERE AND NOT IN A NEW TABLE. This module's grain is already "one licence,
+# one dated interval, one end_kind that says what is known about the end". The
+# SLA pair has exactly that grain. A second table would be the same grain under
+# a different name, which is the table-proliferation failure the owner named
+# on 2026-09-09: pivots and subsets are views, and a NEW MEASURE extends the
+# grain rather than forking it.
+#
+# WHY TWO SOURCES AND NOT ONE. SLA publishes the two halves of the panel in two
+# files and neither is usable alone:
+#
+#   9s3h-dpkz  Current ACTIVE licences.   A snapshot. A licence that lapsed
+#              before the pull is simply absent, so this file's year histogram
+#              is a RENEWAL CURVE, not a licensing history. It supplies the
+#              right-censored (still-open) rows.
+#   6dg3-2z7i  Current INACTIVE licences. 29,568 NYC rows, expiration_date
+#              2015..2029. It supplies the ENDINGS, and it is the reason
+#              `loci rewind checks` P2 can see SLA activity in 2016, 2018 and
+#              2019 at all -- the active file has no row in any of them.
+#
+# THE CATEGORY WIN. Unlike the DCWP roster, whose 49 business categories map
+# onto exactly ONE Loci category (6 rows), the SLA `description` vocabulary
+# maps onto FOUR of the fifteen -- restaurant, bar, grocery, pharmacy -- through
+# model/filing_categories.yaml, which is already the single definition of that
+# mapping and is shared by anchor with the pending-licence feed. So this is the
+# first source in the warehouse that gives a dated START and a dated END for
+# categories the screen actually ranks.
+#
+# CAVEATS THE DATABASE CANNOT ENFORCE
+#  1. A LICENCE END IS NOT A BUSINESS END. `expiration_date` is the last day
+#     the licence was valid. A bar that surrendered early still shows its full
+#     term; a bar that changed hands appears as one licence ending and another
+#     beginning at the same address. Treat it as an UPPER BOUND on the closure
+#     date -- tight for a lapse, loose for a surrender.
+#  2. 1,147 NYC inactive rows carry an expiration_date in 2027-2029, i.e. in
+#     the future. Those are licences made inactive for a reason SLA does not
+#     publish (surrender, revocation, premises sold mid-term). They get
+#     end_kind 'expiry_future' and MUST NOT be read as "ends in 2028".
+#  3. BOTH FILES ARE "CURRENT". A licence that lapsed and was later reissued at
+#     the same premises may leave the inactive file when the new licence
+#     issues, so the panel is right-censored in both directions and is not an
+#     archive. The same premises can also appear under several licence
+#     numbers over time and NOTHING here links them -- a premises-level
+#     survival curve needs the ledger join, not this table alone.
+#  4. `original_issue_date` on a RENEWED licence is the date the FIRST licence
+#     issued at that premises, which is the right field for "when did this bar
+#     open" and the wrong one for "when did this licence term start". It is
+#     also why filing_stages.OPEN_STAGES excludes `liquor_active`.
+
+SLA_ACTIVE_SOURCE = "nys_sla_liquor_licenses"
+SLA_INACTIVE_SOURCE = "nys_sla_inactive_licenses"
+
+
+def _sla_category_case(source: str) -> str:
+    """CASE mapping `category_hint` -> loci category, emitted from
+    model/filing_categories.yaml so the SLA vocabulary has ONE definition."""
+    from loci.model.storefront_pipeline import load_category_map
+
+    block = load_category_map()["sources"][source]
+    lines = "\n".join(f"            WHEN {_lit(k)} THEN {_lit(v)}"
+                      for k, v in sorted(block["map"].items()))
+    conf = "\n".join(
+        f"            WHEN {_lit(k)} THEN {_lit(block['confidence'][k])}"
+        for k in sorted(block["map"]))
+    return lines, conf
+
+
+def build_sla(con, *, asof: dt.date | None = None,
+              use_cache: bool = True, session=None) -> dict:
+    """Populate analysis.licence_interval for BOTH SLA sources.
+
+    The active half is read from `staging.storefront_filing` (already BBL-
+    resolved and name-keyed by model/storefront_filing.assemble). The inactive
+    half is fetched live and run through the SAME `assemble()` -- so it gets
+    the identical BBL ladder and name key -- and then landed HERE rather than
+    in staging.storefront_filing, because a closure is not a rung on the
+    opening ladder `filing_stages.STAGES` encodes and adding it there would
+    make `furthest_stage` mean "it closed".
+
+    Full DELETE-then-INSERT per source; idempotent.
+    """
+    from loci.model import storefront_filing as sf
+
+    asof = asof or dt.date.today()
+    _register_name_key(con)
+
+    # The BBL ladder is a TEMP table built per connection, so it has to exist
+    # before assemble() runs. Built here rather than assumed: the SLA inactive
+    # rows publish no BBL of their own (bbl_raw is None on every row), so
+    # every one of them resolves through the PLUTO address/proximity rungs or
+    # not at all, and skipping this would land 29,568 rows at
+    # match_method='unmatched' and then quietly halve the P3 BBL rate.
+    sf.build_pluto_index(con)
+
+    # ---- the INACTIVE half: fetch, BBL-match, land -----------------------
+    frame, fetch_report = sf.assemble(
+        con, [SLA_INACTIVE_SOURCE], asof=asof, use_cache=use_cache,
+        session=session)
+    if frame.empty:
+        # Never ingest a silent zero. An empty inactive file is a fetch
+        # failure, not a city in which no liquor licence has ever lapsed.
+        raise RuntimeError(
+            f"{SLA_INACTIVE_SOURCE}: 6dg3-2z7i returned no rows. Refusing to "
+            f"ingest an empty closure history -- with no endings every bar in "
+            f"the warehouse reads as still trading.")
+
+    n_by_source = {}
+    for source, df in ((SLA_INACTIVE_SOURCE, frame),):
+        n_by_source[source] = _insert_sla_frame(con, df, source, asof)
+
+    # ---- the ACTIVE half: already in staging.storefront_filing -----------
+    n_by_source[SLA_ACTIVE_SOURCE] = _insert_sla_active(con, asof)
+
+    rep = report(con, asof=asof)
+    rep["sla_rows_by_source"] = n_by_source
+    rep["sla_fetch"] = fetch_report
+    return rep
+
+
+def _insert_sla_frame(con, frame, source: str, asof: dt.date) -> int:
+    """Land an assembled FEED_COLUMNS frame as licence intervals."""
+    cat_when, conf_when = _sla_category_case(source)
+    con.execute(f"DELETE FROM {TABLE} WHERE source = ?", [source])
+    con.register("_sla_df", frame)
+    try:
+        con.execute(f"""
+            INSERT INTO {TABLE} (
+                licence_number, business_name_key, poi_name_key, business_name,
+                bbl, match_method, borough, address, lon, lat, geom,
+                business_category, licence_type, loci_category,
+                category_confidence, licence_creation_date, expiration_date,
+                status, status_date, interval_end, end_kind, days_observed,
+                pulled_asof, source, provenance, ingested_at,
+                business_unique_id)
+            WITH src AS (
+                SELECT raw_id AS licence_number, business_name_key,
+                       business_name, bbl, match_method, borough,
+                       NULLIF(trim(coalesce(house_number, '') || ' '
+                                   || coalesce(street_name, '')), '') AS address,
+                       lon, lat,
+                       category_hint AS business_category,
+                       license_type  AS licence_type,
+                       CAST(filed_on AS DATE)    AS licence_creation_date,
+                       CAST(status_date AS DATE) AS expiration_date,
+                       status, provenance
+                FROM _sla_df
+                WHERE raw_id IS NOT NULL AND filed_on IS NOT NULL
+                -- The PRIMARY KEY guard. One SLA licence id can legitimately
+                -- appear twice (a premises relicensed under the same serial);
+                -- the EARLIEST issue wins, matching the renewal collapse in
+                -- storefront_filing.assemble.
+                QUALIFY ROW_NUMBER() OVER (PARTITION BY raw_id
+                                           ORDER BY filed_on, status) = 1
+            ),
+            typed AS (
+                SELECT *,
+                    upper(trim(coalesce(status, ''))) = 'ACTIVE' AS is_active,
+                    CASE WHEN expiration_date IS NOT NULL
+                          AND expiration_date <= DATE '{asof.isoformat()}'
+                         THEN expiration_date END                AS past_expiry
+                FROM src
+            )
+            SELECT licence_number, business_name_key,
+                   loci_poi_name_key(business_name) AS poi_name_key,
+                   business_name, bbl, match_method, borough, address, lon, lat,
+                   CASE WHEN lon IS NOT NULL AND lat IS NOT NULL
+                        THEN ST_Point(lon, lat) END              AS geom,
+                   business_category, licence_type,
+                   CASE business_category
+{cat_when}
+                   END                                           AS loci_category,
+                   CASE business_category
+{conf_when}
+                   END                                           AS category_confidence,
+                   licence_creation_date, expiration_date, status,
+                   -- STATUS_DATE. For the inactive file the expiry IS the last
+                   -- day the licence was valid, and membership in the file is
+                   -- the statement that it is over -- so unlike DCWP (which
+                   -- publishes no status-change date at all) there IS a dated
+                   -- end here, for the rows whose expiry is in the past.
+                   past_expiry                                   AS status_date,
+                   greatest(licence_creation_date,
+                            CASE WHEN is_active THEN DATE '{asof.isoformat()}'
+                                 WHEN past_expiry IS NOT NULL THEN past_expiry
+                                 ELSE DATE '{asof.isoformat()}' END)
+                                                                 AS interval_end,
+                   CASE WHEN is_active                   THEN 'active_censored'
+                        WHEN past_expiry IS NOT NULL     THEN 'expiry_observed'
+                        WHEN expiration_date IS NOT NULL THEN 'expiry_future'
+                        ELSE 'no_expiry' END                     AS end_kind,
+                   CAST(date_diff('day', licence_creation_date,
+                        greatest(licence_creation_date,
+                                 CASE WHEN is_active THEN DATE '{asof.isoformat()}'
+                                      WHEN past_expiry IS NOT NULL THEN past_expiry
+                                      ELSE DATE '{asof.isoformat()}' END))
+                        AS INTEGER)                              AS days_observed,
+                   DATE '{asof.isoformat()}'                     AS pulled_asof,
+                   '{source}'                                    AS source,
+                   provenance, now()                             AS ingested_at,
+                   CAST(NULL AS VARCHAR)                         AS business_unique_id
+            FROM typed
+        """)
+    finally:
+        con.unregister("_sla_df")
+    return con.execute(f"SELECT count(*) FROM {TABLE} WHERE source = ?",
+                       [source]).fetchone()[0]
+
+
+def _insert_sla_active(con, asof: dt.date) -> int:
+    """The active half, read from staging.storefront_filing."""
+    source = SLA_ACTIVE_SOURCE
+    con.execute("CREATE OR REPLACE TEMP VIEW _sla_active AS "
+                "SELECT * FROM staging.storefront_filing "
+                f"WHERE source = '{source}' AND stage = 'liquor_active'")
+    df = con.execute("SELECT * FROM _sla_active").fetchdf()
+    if df.empty:
+        raise RuntimeError(
+            f"{source}: no rows in staging.storefront_filing. Run "
+            f"`loci filings ingest --source {source}` first -- an SLA panel "
+            f"with no open licences is a fetch failure, not a dry city.")
+    return _insert_sla_frame(con, df, source, asof)

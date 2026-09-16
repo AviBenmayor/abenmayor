@@ -14,13 +14,13 @@ Owner ask, 2026-09-14: *"what are the critical inputs necessary to be able to ex
 |---|---|---|
 | **universal** | 7 | Works on day one, anywhere on earth. Nothing to procure. |
 | **national (US federal)** | 10 | Works on day one in any US city. Carries its own portable bias. |
-| **state** | 6 | Re-plumbed per state. Publication quality varies enormously; expect some states to publish nothing usable. |
+| **state** | 7 | Re-plumbed per state. Publication quality varies enormously; expect some states to publish nothing usable. |
 | **city open data (different schema)** | 15 | An equivalent exists but the schema is different. This is the real cost of a second city: an adapter per source. |
 | **city-unique (no equivalent exists)** | 6 | No equivalent exists. The stage degrades, permanently — see §4. |
 
-**44 sources classed.** 17 of them (39%) need no per-city work at all.
+**45 sources classed.** 17 of them (38%) need no per-city work at all.
 
-**17 of the 44 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
+**18 of the 45 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
 
 ---
 
@@ -104,6 +104,7 @@ application, first inspection — rolled up per address.
 | Source | Class | Without it |
 |---|---|---|
 | NYS SLA Current Pending Licenses | state *(med conf.)* | The earliest go-live signal is lost: the pipeline starts at fit-out filing instead of at the signed lease, costing roughly a quarter of forward visibility for bars. |
+| NYS Liquor Authority Current Inactive Licenses | state *(med conf.)* | The bar category loses its only dated ENDINGS. Openings survive (the active file and the pending queue), closures do not, and a survival curve for bars becomes uncomputable rather than merely noisy. |
 | NYS Liquor Authority Current Active Licenses | state | Bar loses its anchor and the alcohol map overlay disappears; bar supply reverts to aggregators, which over-count bars relative to every other category. |
 | NYC DCWP License Applications | city open data (different schema) *(med conf.)* | Loses the best name-bearing early signal for the non-alcohol trades -- the fit-out feed names the landlord, not the operator, so nothing replaces it. |
 | NYC DCWP Legally Operating Businesses | city open data (different schema) | Loses the E5 licence-history panel. No effect on the bundle count -- D55 found it contributes essentially nothing to the fifteen categories. |
@@ -542,6 +543,7 @@ second-city plan starts from the doubt rather than rediscovering it.
 | NYC Energy and Water Data Disclosure (Local Law 84 / LL133) | city open data (different schema) | med | Roughly 40 US cities have a benchmarking ordinance, but the laundry-hookup columns are a New York reporting artefact, not part of the standard template. |
 | NYC MapPLUTO (Primary Land Use Tax Lot Output) | city-unique (no equivalent exists) | med | A parcel file with residential units exists in nearly every US county assessor. What is NYC-specific is the bundle: UnitsRes + BldgArea/RetailArea/OfficeArea + ResidFAR/BuiltFAR + BldgClass + LandUse on one row, citywide, free, twice a year. Expect to rebuild floor area and zoning capacity from two or three separate files. |
 | NYS SLA Current Pending Licenses | state | med | A pending/applications queue is far rarer than the active-licence file; most ABC authorities publish only what has issued. |
+| NYS Liquor Authority Current Inactive Licenses | state | med | Far fewer states publish the inactive companion than publish the active file, so this is the rung most likely to be missing in city number two. |
 | StreetEasy listing pages (advertised in-building laundry, via Tavily) | city-unique (no equivalent exists) | med | StreetEasy is NYC-only, but the FUNCTION -- a dominant listings portal whose pages advertise in-building amenities -- exists in most metros under another brand. |
 
 ---

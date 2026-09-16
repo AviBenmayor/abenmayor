@@ -228,19 +228,21 @@ sources:
   # an independent storefront. 2,080 active rows. Mapping it to `bar` would
   # count one venue as two openings. Unmapped, as staging.poi already does
   # (nys_sla.BAR_DESCRIPTIONS excludes it).
-  nyc_sla_liquor_licenses: &sla
+  nys_sla_liquor_licenses: &sla
     vocabulary: controlled
     field: description
     confidence: high
     map:
       "Restaurant": restaurant
       "Summer Restaurant": restaurant
+      "Winter Restaurant": restaurant
       "Restaurant Brewer": restaurant       # brewpub: brews and serves food
       "Food & Beverage Business": bar
       "Summer Food & Beverage Business": bar
       "Summer Food & beverage business": bar
       "Winter Food & Beverage Business": bar
       "Club": bar
+      "Summer Club": bar
       "For-profit Club": bar
       "Bottle Club": bar
       "Cabaret": bar
@@ -281,6 +283,14 @@ sources:
       - "Outdoor Athletic Fields and Stadiums"
       - "Golf Venue"
       - "Summer - Tavern Miscellaneous"
+      # The three below are first seen in the INACTIVE companion file
+      # (6dg3-2z7i), which reaches to 2015 and so carries classes the current
+      # active file has aged out of. "Tavern Miscellaneous" is a catch-all
+      # SLA applies to premises that do not fit a named class; mapping it to
+      # `bar` would guess.
+      - "Tavern Miscellaneous"
+      - "Winter - Tavern Miscellaneous"
+      - "Winter Legitimate Theatre"
       - "Corporate Dining"
       # --- catering: serves at an event site, not at its own address ---
       - "Catering Establishment"
@@ -293,6 +303,7 @@ sources:
       # --- conveyances ---
       - "Vessel"
       - "Summer Vessel"
+      - "Winter Vessel"
       - "Aircraft"
       - "Railroad car"
       # --- producers, wholesalers, importers: not storefronts ---
@@ -304,6 +315,10 @@ sources:
       - "Cider Producer"
       - "Farm Cidery"
       - "Winery"
+      - "Farm winery"
+      - "Cider Producer (Manufacturer)"
+      - "Direct Shipper Wine"
+      - "Vendor"
       - "Custom Winemaker's Center"
       - "Distiller Class A"
       - "Distiller Class A-1 (Micro-distiller)"
@@ -318,6 +333,13 @@ sources:
       - "Wholesale Wine"
 
   nyc_sla_pending_licenses: *sla
+
+  # The INACTIVE companion file. Same agency, same `description` vocabulary,
+  # same mapping -- anchored rather than copied so the two can never drift.
+  # Its vocabulary is a SUPERSET of the active file's: it reaches to 2015 and
+  # carries classes SLA has since retired, which is why several `unmapped`
+  # entries above are marked as first seen here.
+  nys_sla_inactive_licenses: *sla
 
   # =====================================================================
   # NYC DCWP -- `business_category` (trade licence type)

@@ -119,7 +119,7 @@ def test_nothing_mapped_to_bar_is_an_off_premises_licence():
     vocabulary (sources/cities/nyc/alcohol_licences.yaml), so a liquor store
     can never end up in the bar supply."""
     doc = sp.load_category_map()
-    for source in ("nyc_sla_liquor_licenses", "nyc_sla_pending_licenses"):
+    for source in ("nys_sla_liquor_licenses", "nyc_sla_pending_licenses"):
         for value, slug in doc["sources"][source]["map"].items():
             if slug == "bar":
                 # 'unknown' is allowed: alcohol_licences.yaml was captured from
@@ -133,9 +133,9 @@ def test_additional_bar_is_not_a_new_storefront():
     """A rider on an existing licensed premises -- a second service bar inside
     a hotel or a theatre -- is not a business opening. 2,080 active rows;
     mapping it to `bar` would count one venue as two openings."""
-    for value in HINTS["controlled"]["nyc_sla_liquor_licenses"]:
+    for value in HINTS["controlled"]["nys_sla_liquor_licenses"]:
         if value and value.lower().startswith("additional bar"):
-            assert sp.loci_category_of("nyc_sla_liquor_licenses", value)[0] is None
+            assert sp.loci_category_of("nys_sla_liquor_licenses", value)[0] is None
 
 
 def test_industrial_laundry_is_unmapped_exactly_as_the_dcwp_ingest_has_it():

@@ -200,23 +200,21 @@ def test_every_feeds_key_is_a_registered_source_id():
         (locidb.PKG / "registry.yaml").read_text())
     ids = {s["id"] for s in reg["sources"]}
 
-    # ONE PRE-EXISTING EXCEPTION, pinned rather than fixed. The FEEDS key is
-    # `nyc_sla_liquor_licenses`; registry.yaml:251 calls the same dataset
+    # THE EXCEPTION IS GONE (2026-09-16). It used to read: the FEEDS key is
+    # `nyc_sla_liquor_licenses` while registry.yaml calls the same dataset
     # (9s3h-dpkz) `nys_sla_liquor_licenses` -- NYS, not NYC, because the State
-    # Liquor Authority is a state agency. The two names differ by ONE LETTER
-    # and mean the same thing, which is the failure mode CLAUDE.md's naming
-    # rule exists to prevent, read in reverse.
-    #
-    # NOT renamed here, deliberately: `source` is a stored column and
-    # staging.storefront_filing already holds 24,850 rows under the FEEDS
-    # spelling. Renaming is a data migration with a DELETE-by-source in it, it
-    # belongs in its own ticket, and doing it inside a backfill would mean a
-    # single change moved both the row population and the row identity.
-    known = {"nyc_sla_liquor_licenses"}
+    # Liquor Authority is a state agency. Two names one letter apart meaning
+    # the same thing is the failure CLAUDE.md's naming rule exists to prevent.
+    # sql/042_sla_source_rename.sql rewrote the 24,850 stored rows in place
+    # (both `source` and the `filing_id` primary key, which embeds the source),
+    # so there is no longer a value in staging.storefront_filing.source that
+    # matches no registry id. `known` is now EMPTY and must stay that way.
+    known: set[str] = set()
     assert set(ff.FEEDS) - known <= ids, sorted(set(ff.FEEDS) - known - ids)
-    assert "nys_sla_liquor_licenses" in ids, (
-        "the registry entry this exception points at is gone; either the "
-        "rename happened and `known` should shrink, or the source was dropped")
+    assert "nys_sla_liquor_licenses" in ids
+    assert "nys_sla_inactive_licenses" in ids, (
+        "the SLA inactive companion file (6dg3-2z7i) is the only history the "
+        "SLA publishes; without a registry entry its rows are untraceable")
 
 
 def test_a_feed_returning_nothing_is_still_a_frame_with_the_contract():

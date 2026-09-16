@@ -335,7 +335,14 @@ class DohmhChildcareAdapter(SourceAdapter):
 PENDING_TABLE = "staging.poi_dohmh_childcare_pending"
 
 POI_COLUMNS = ("poi_id, source_id, source_record_id, category, tier, name, geom, "
-               "observed_on, opened_on, closed_on, confidence, attrs")
+               "observed_on, opened_on, closed_on, confidence, attrs, "
+               # sql/043. NAMED, never positional: two column orders
+               # exist in the wild depending on how a warehouse was
+               # built (the bug commit 70cbd55 fixed on
+               # analysis.storefront), and the pending table is a
+               # `SELECT * ... LIMIT 0` clone whose shape follows
+               # staging.poi.
+               "license_status, licence_number, business_unique_id")
 
 
 def ensure_pending_table(con, table: str = PENDING_TABLE) -> None:

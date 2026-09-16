@@ -54,10 +54,12 @@ def test_unknown_header_raises_rather_than_normalising_to_null():
         cb.classify_header(["a", "b", "c"])
 
 
-def test_legacy_is_refused_with_the_id_space_reason():
-    """The refusal must NAME the id-space problem. A future reader who only
-    sees 'unsupported' will reasonably decide to map the columns, which is the
-    easy half and the wrong half."""
+def test_the_refusal_text_still_names_the_id_space_problem():
+    """`refuse_legacy` is no longer New York's path -- the legacy era is READ --
+    but it is still the one place the ID-SPACE argument is written down, and it
+    is still what an unprobed system's files hit. A future reader who only sees
+    'unsupported' will reasonably decide to map the columns, which is the easy
+    half and the wrong half."""
     with pytest.raises(cb.CitibikeError) as e:
         cb.refuse_legacy("202001")
     msg = str(e.value)
@@ -65,15 +67,38 @@ def test_legacy_is_refused_with_the_id_space_reason():
     assert "2021-02" in msg
 
 
-def test_plan_refuses_a_window_that_starts_before_the_cutoff(monkeypatch):
+def test_the_pre_2021_cap_is_gone_and_the_window_starts_at_the_first_month(
+        monkeypatch):
+    """CAP 5. The default start was 2023-01 and anything before 2021-02 RAISED.
+    Both are gone (owner 2026-09-16): the bucket publishes from 2013-06 and all
+    of it is planned, with the pre-cutoff months marked 'legacy'."""
     monkeypatch.setattr(cb, "list_bucket", lambda **k: [
-        {"key": "202012-citibike-tripdata.zip", "size": 1, "last_modified": "x"}])
-    with pytest.raises(cb.CitibikeError, match="PRE-2021"):
-        cb.plan((2020, 12))
+        {"key": "2020-citibike-tripdata.zip", "size": 1, "last_modified": "x"},
+        {"key": "2021-citibike-tripdata.zip", "size": 1, "last_modified": "x"},
+        {"key": "202102-citibike-tripdata.zip", "size": 1, "last_modified": "x"},
+    ])
+    out, rep = cb.plan((2020, 12), (2021, 2))
+    assert [(e["year"], e["month"], e["era"]) for e in out] == [
+        (2020, 12, "legacy"), (2021, 1, "legacy"), (2021, 2, "lyft")]
+    assert rep["legacy_months"] == 2 and rep["lyft_months"] == 1
+    assert cb.DEFAULT_START == (2013, 6)
+    import inspect
+    assert inspect.signature(cb.ingest).parameters["start"].default == (2013, 6)
+
+
+def test_a_month_before_the_feed_itself_is_still_refused(monkeypatch):
+    """Removing the cap is not the same as inventing data. 2013-05 has no file:
+    planning it would put a hole at the front of the panel."""
+    monkeypatch.setattr(cb, "list_bucket", lambda **k: [
+        {"key": "2013-citibike-tripdata.zip", "size": 1, "last_modified": "x"}])
+    with pytest.raises(cb.CitibikeError, match="before the first month"):
+        cb.plan((2013, 5), (2013, 6))
 
 
 def test_schema_cutoff_is_the_documented_one():
     assert cb.SCHEMA_CUTOFF == (2021, 2)
+    assert cb.LEGACY_START == (2013, 6)
+    assert cb.era_of(2021, 1) == "legacy" and cb.era_of(2021, 2) == "lyft"
 
 
 # ------------------------------------------------------- Jersey City exclusion
@@ -369,6 +394,9 @@ def warehouse(tmp_path):
     con.execute("CREATE SCHEMA staging; CREATE SCHEMA analysis")
     con.execute(pathlib.Path("src/loci/sql/034_citibike.sql").read_text()
                 .split("ALTER TABLE analysis.address")[0])
+    # 044 is part of the definition of staging.citibike_station_month now: it
+    # adds station_id_legacy and era, and `rebuild_roster` scopes to era='lyft'.
+    con.execute(pathlib.Path("src/loci/sql/044_citibike_legacy.sql").read_text())
     con.execute("""
         CREATE TABLE analysis.address (
             address_id VARCHAR, borough VARCHAR, lon DOUBLE, lat DOUBLE,

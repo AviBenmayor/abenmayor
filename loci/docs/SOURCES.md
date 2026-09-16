@@ -2,7 +2,7 @@
 
 **GENERATED — do not edit.** Rendered by `loci gen-sources` from the non-wishlist entries in [`src/loci/registry.yaml`](../src/loci/registry.yaml). `loci check-sources` fails if this file differs from a fresh render, so a claim here is a claim in the registry with its dated evidence beside it.
 
-Registry verified 2026-09-02. **44 sources** in or committed to the pipeline, grouped by role. The post-raise wishlist is generated separately into [`docs/PAID-SOURCES.md`](PAID-SOURCES.md); the per-source portability classing is generated into [`docs/PORTABILITY.md`](PORTABILITY.md).
+Registry verified 2026-09-02. **45 sources** in or committed to the pipeline, grouped by role. The post-raise wishlist is generated separately into [`docs/PAID-SOURCES.md`](PAID-SOURCES.md); the per-source portability classing is generated into [`docs/PORTABILITY.md`](PORTABILITY.md).
 
 ## Business locations, present day
 
@@ -26,6 +26,7 @@ Registry verified 2026-09-02. **44 sources** in or committed to the pipeline, gr
 | Source | Dataset ID | Tier | Geography | Cost | Status | Known bias |
 |---|---|---|---|---|---|---|
 | **LEHD LODES Workplace Area Characteristics (LODES8)** | - | universal | census block | $0 | planned | Counts JOBS, not establishments. Census noise infusion at block level. Excludes most self-employed. See CONTEXT.md 7.4. |
+| **NYS Liquor Authority Current Inactive Licenses** | `6dg3-2z7i` | city | point | $0 | verified | This is a CURRENT-inactives file, not an archive … |
 
 ## Outcome variables
 

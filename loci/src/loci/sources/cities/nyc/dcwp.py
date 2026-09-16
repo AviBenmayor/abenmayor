@@ -119,8 +119,9 @@ NYC_LON_RANGE = (-74.3, -73.6)
 NYC_LAT_RANGE = (40.4, 41.0)
 
 SELECT = (
-    "license_nbr,business_name,dba_trade_name,business_category,"
-    "license_status,license_creation_date,latitude,longitude,address_borough"
+    "license_nbr,business_unique_id,business_name,dba_trade_name,"
+    "business_category,license_type,license_status,license_creation_date,"
+    "lic_expir_dd,latitude,longitude,address_borough"
 )
 WHERE = (
     "upper(business_category) like '%LAUNDR%' "
@@ -170,13 +171,33 @@ class DcwpAdapter(SourceAdapter):
                 break
 
     def normalize(self, rows: Iterable[dict]) -> Iterator[POIRecord]:
+        """Every roster row that maps onto a Loci category, EVERY STATUS.
+
+        THE ACTIVE FILTER IS GONE (2026-09-16, owner rule: never limit a data
+        pull). It used to `continue` on anything whose `license_status` was not
+        'Active', which threw away the only dated ENDINGS this roster
+        publishes -- and a survival clock needs the endings more than the
+        beginnings. Measured on the live file: the laundry/pharmacy slice this
+        adapter classifies is "Laundries" x 6 rows, ALL Expired, so the filter
+        was emitting literally zero POIs and the licence_number rung of
+        analysis.licence_interval_poi could never fire (see sql/043).
+
+        THE OPEN PREDICATE IS UNCHANGED, and that is the point. Non-Active rows
+        do not arrive as some new kind of open. They arrive carrying
+        `license_expiration_date` (DCWP's `lic_expir_dd`), which
+        model/poi_presence.poi_is_open ALREADY reads: an expiry in the past is
+        'closed', an expiry in the future with active=true is 'open'. Only
+        'Active' sets attrs.active = true, so nothing but an Active licence can
+        reach the 'open' branch. No basis constant, no predicate branch and no
+        supply-set rule was added for this change -- if the supply hash moves,
+        it moves because a row EXISTS that did not before, never because the
+        rule changed underneath the rows that were already there.
+        """
         today = dt.date.today()
         seen: set[str] = set()
         for r in rows:
             license_nbr = r.get("license_nbr")
             if not license_nbr or license_nbr in seen:
-                continue
-            if r.get("license_status") != ACTIVE_STATUS:
                 continue
             if r.get("address_borough") == "Outside NYC":
                 continue
@@ -196,6 +217,18 @@ class DcwpAdapter(SourceAdapter):
                 continue
             seen.add(license_nbr)
             name = (r.get("dba_trade_name") or r.get("business_name") or "").strip().title() or None
+            status = (r.get("license_status") or "").strip()
+            expiry = _parse_iso_date(r.get("lic_expir_dd"))
+            # ACTIVE is the publisher's word and the ONLY one that sets
+            # attrs.active. Every other status ('Expired', 'Surrendered',
+            # 'Revoked', 'Voided', 'Suspended', 'Failed to Renew', 'Ready for
+            # Renewal', 'Out of Business', 'Close') is carried verbatim and
+            # yields active=false, which poi_is_open reads as 'unknown' -- NOT
+            # as a published closure. Only the EXPIRY DATE can produce
+            # 'closed', because only it is dated. Inventing a closure date for
+            # a surrendered licence (the pull date? the expiry? a midpoint?)
+            # would hand a survival model a fabricated hazard shape.
+            is_active = status.upper() == ACTIVE_STATUS.upper()
             yield POIRecord(
                 source_id=self.source_id,
                 source_record_id=license_nbr,
@@ -204,10 +237,28 @@ class DcwpAdapter(SourceAdapter):
                 lon=lonf, lat=latf,
                 observed_on=today,
                 confidence=0.8,
+                license_status=status or None,
+                licence_number=license_nbr,
+                business_unique_id=r.get("business_unique_id"),
                 attrs={
                     "business_category": r.get("business_category"),
-                    "license_status": r.get("license_status"),
+                    "license_type": r.get("license_type"),
+                    "license_status": status or None,
                     "license_creation_date": r.get("license_creation_date"),
+                    # The key poi_is_open coalesces for the expiry branch. Named
+                    # to match EXPIRY_ATTR_KEYS, not DCWP's `lic_expir_dd`.
+                    "license_expiration_date": (expiry.isoformat() if expiry
+                                                else None),
+                    "licence_number": license_nbr,
+                    "business_unique_id": r.get("business_unique_id"),
+                    "active": is_active,
+                    "active_basis": ("valid_to_" + expiry.isoformat()
+                                     if is_active and expiry
+                                     else "no_expiration_date" if is_active
+                                     else "license_status_"
+                                          + (status.lower().replace(" ", "_")
+                                             or "absent")),
+                    "mapping_confidence": "high",   # exact category-value match
                     "borough": r.get("address_borough"),
                 },
             )
@@ -278,7 +329,8 @@ LIVE_STATUSES = frozenset({"Pass", "No Violation Issued", "Violation Issued",
                            "No Warning Issued", "NOH Withdrawn", "Closed"})
 
 INSPECTION_SELECT = (
-    "business_unique_id,business_name,dba_trade_name,business_category,"
+    "business_unique_id,dcwp_license_number,business_name,dba_trade_name,"
+    "business_category,"
     "inspection_number,inspection_type,inspection_status,date_of_occurrence,"
     "borough,bbl,bin,nta,zip_code,building_no,street_1,latitude,longitude"
 )
@@ -393,6 +445,7 @@ class DcwpInspectionsAdapter(SourceAdapter):
         last_rows: dict[str, list[dict]] = {}  # rows on that max date
         n_insp: dict[str, int] = {}
         addrs: dict[str, set] = {}
+        licnos: dict[str, set[str]] = {}
 
         for r in rows:
             bid = r.get("business_unique_id")
@@ -405,6 +458,9 @@ class DcwpInspectionsAdapter(SourceAdapter):
             n_insp[bid] = n_insp.get(bid, 0) + 1
             addrs.setdefault(bid, set()).add((r.get("bbl"), r.get("building_no"),
                                               r.get("street_1")))
+            lic = (r.get("dcwp_license_number") or "").strip()
+            if lic:
+                licnos.setdefault(bid, set()).add(lic)
             d = r.get("date_of_occurrence") or ""
             prev = last.get(bid)
             if prev is None or d > prev:
@@ -432,6 +488,13 @@ class DcwpInspectionsAdapter(SourceAdapter):
             active, basis = inspection_active_state(
                 r.get("inspection_status") for r in latest)
             last_date = _parse_iso_date(last[bid])
+            # The licence number, where DCWP published one on ANY inspection of
+            # this establishment -- not only the latest. min() over the
+            # non-null set so the value is deterministic across two runs; an
+            # establishment with two licence numbers is a data question, not
+            # something to pick arbitrarily.
+            lic = sorted(licnos.get(bid) or ())
+            licence_number = lic[0] if lic else None
             yield POIRecord(
                 source_id=self.source_id,
                 source_record_id=bid,
@@ -461,9 +524,20 @@ class DcwpInspectionsAdapter(SourceAdapter):
                     "n_inspections": n_insp[bid],
                     "n_addresses": len(addrs[bid]),
                     "mapping_confidence": "high",   # exact category-value match
+                    "licence_number": licence_number,
+                    "business_unique_id": bid,
                     "active": active,
                     "active_basis": basis,
                 },
+                # sql/043. `dcwp_license_number` is NULL on 98% of Retail
+                # Laundry rows -- DCWP inspects this category but does not
+                # publish licences for it -- so this column is mostly NULL BY
+                # CONSTRUCTION, not by a fetch failure. `business_unique_id` is
+                # the key that actually crosses the two DCWP feeds and it is
+                # populated on every row.
+                license_status=None,
+                licence_number=licence_number,
+                business_unique_id=bid,
             )
 
 
@@ -490,7 +564,14 @@ def _parse_iso_date(raw: str | None) -> dt.date | None:
 PENDING_TABLE = "staging.poi_dcwp_pending"
 
 POI_COLUMNS = ("poi_id, source_id, source_record_id, category, tier, name, geom, "
-               "observed_on, opened_on, closed_on, confidence, attrs")
+               "observed_on, opened_on, closed_on, confidence, attrs, "
+               # sql/043. NAMED, never positional: two column orders
+               # exist in the wild depending on how a warehouse was
+               # built (the bug commit 70cbd55 fixed on
+               # analysis.storefront), and the pending table is a
+               # `SELECT * ... LIMIT 0` clone whose shape follows
+               # staging.poi.
+               "license_status, licence_number, business_unique_id")
 
 
 def ensure_pending_table(con, table: str = PENDING_TABLE) -> None:

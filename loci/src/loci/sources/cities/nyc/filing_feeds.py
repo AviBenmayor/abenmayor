@@ -16,7 +16,8 @@ lifecycle rather than only its front half
 -----------------------------------------
   nyc_dob_permit_issuance      rbx6-tga4  -> permit_issued, sign_permit
   nyc_dcwp_licenses            w7w3-xahh  -> license_issued
-  nyc_sla_liquor_licenses      9s3h-dpkz  -> liquor_active
+  nys_sla_liquor_licenses      9s3h-dpkz  -> liquor_active
+  nys_sla_inactive_licenses    6dg3-2z7i  -> liquor_inactive  (NEW 2026-09-16)
   nyc_dohmh_restaurants        43nn-pn8j  -> first_inspection
 
 --------------------------------------------------------------------------
@@ -652,7 +653,7 @@ def fetch_sla_active(*, asof: dt.date | None = None, limit: int | None = None,
     socrata.assert_fields(socrata.NYS_DOMAIN, SLA_ACTIVE_DATASET,
                           SLA_ACTIVE_FIELDS, session=session)
     rows = socrata.fetch(
-        "nyc_sla_liquor_licenses", socrata.NYS_DOMAIN, SLA_ACTIVE_DATASET,
+        "nys_sla_liquor_licenses", socrata.NYS_DOMAIN, SLA_ACTIVE_DATASET,
         select=",".join(SLA_ACTIVE_FIELDS), where=where, limit=limit,
         asof=asof, use_cache=use_cache, session=session)
 
@@ -667,7 +668,7 @@ def fetch_sla_active(*, asof: dt.date | None = None, limit: int | None = None,
         coords = geo.get("coordinates") or [None, None]
         lon, lat = _point_ok(_float(coords[0]), _float(coords[1]))
         out.append({
-            "source": "nyc_sla_liquor_licenses", "stage": "liquor_active",
+            "source": "nys_sla_liquor_licenses", "stage": "liquor_active",
             "business_name": (r.get("dba") or r.get("legalname") or "").strip() or None,
             "bbl_raw": None, "bin": None, "house_number": None,
             "street_name": (r.get("actualaddressofpremises") or "").strip() or None,
@@ -680,6 +681,99 @@ def fetch_sla_active(*, asof: dt.date | None = None, limit: int | None = None,
             "category_hint": (r.get("description") or "").strip() or None,
             "license_type": f"type {r.get('type')} class {r.get('class')}",
             "raw_id": r.get("licensepermitid"),
+            "provenance": prov,
+        })
+    return _frame(out)
+
+
+# ------------------------------------------- 7b. SLA INACTIVE licences (NEW)
+
+SLA_INACTIVE_DATASET = "6dg3-2z7i"
+#: The inactive file spells its columns with underscores where the ACTIVE file
+#: (9s3h-dpkz) runs them together -- `license_permit_id` vs `licensepermitid`,
+#: `original_issue_date` vs `originalissuedate`. Two files, one agency, two
+#: conventions; asserted live before any row is read so a rename raises rather
+#: than yielding a column of NULLs.
+SLA_INACTIVE_FIELDS = ("license_permit_id", "premises_county", "description",
+                       "legalname", "dba", "actual_address_of_premises",
+                       "original_issue_date", "last_issue_date",
+                       "effective_date", "expiration_date", "georeference",
+                       "class", "type")
+
+
+def fetch_sla_inactive(*, asof: dt.date | None = None, limit: int | None = None,
+                       since: dt.date | None = None,
+                       use_cache: bool = True, session=None) -> pd.DataFrame:
+    """NYS SLA *Inactive* Licenses (6dg3-2z7i) -> stage `liquor_inactive`.
+
+    THIS FILE IS THE HISTORY THE ACTIVE FILE DOES NOT HAVE. 9s3h-dpkz is a
+    CURRENT-ACTIVES snapshot: a licence that lapsed before the pull is simply
+    absent from it, which is why `loci rewind checks` P2 found NO SLA row at
+    all for 2016, 2018 or 2019 and why the module docstring above says the
+    active feed "cannot support a 2020 rewind". The inactive companion is the
+    missing half -- 29,568 NYC rows, expiration_date 2015..2029 -- and the two
+    together are an establishment panel with a dated START
+    (`original_issue_date`) and a dated END (`expiration_date`).
+
+    WHAT `status` MEANS HERE. The file publishes no status column: membership
+    IS the status. Every row is stamped `Inactive`, and `status_date` is
+    `expiration_date`, the last day the licence was valid. That is an OBSERVED
+    end date, not a bound -- but see the caveats.
+
+    CAVEATS THE DATABASE CANNOT ENFORCE
+      1. `expiration_date` is when the LICENCE lapsed, not when the BUSINESS
+         closed. A bar that surrendered early still shows its full term, and a
+         bar that changed hands appears as one licence ending and another
+         beginning at the same address. Read it as an upper bound on the
+         closure date, tight for a lapse and loose for a surrender.
+      2. 1,147 NYC rows carry an expiration_date in the FUTURE (2027-2029).
+         Those are licences made inactive for a reason other than expiry
+         (surrender, revocation, a premises sold mid-term) and the file does
+         not say which. They are landed with the published date; a consumer
+         that needs "already ended" must compare against its own as-of.
+      3. This is a CURRENT-inactives file too. A licence that lapsed and was
+         later reissued to the same premises may leave the inactive file when
+         the new licence issues, so the panel is right-censored in both
+         directions. It is not an archive.
+      4. No date predicate is applied by default (`since=None`), per the
+         owner's 2026-09-16 rule. `since` exists only for an explicit CLI ask.
+    """
+    asof = asof or dt.date.today()
+    counties = ", ".join(f"'{c}'" for c in NYC_COUNTIES)
+    where = _and(f"premises_county in ({counties})",
+                 _since_pred("original_issue_date", since))
+    socrata.assert_fields(socrata.NYS_DOMAIN, SLA_INACTIVE_DATASET,
+                          SLA_INACTIVE_FIELDS, session=session)
+    rows = socrata.fetch(
+        "nys_sla_inactive_licenses", socrata.NYS_DOMAIN, SLA_INACTIVE_DATASET,
+        select=",".join(SLA_INACTIVE_FIELDS), where=where, limit=limit,
+        asof=asof, use_cache=use_cache, session=session)
+
+    prov = (f"{SLA_INACTIVE_DATASET} (NYS SLA Current Inactive Licenses), "
+            f"original_issue_date {_window_note(since)}, NYC counties, "
+            f"asof {asof.isoformat()}; THE CLOSURE HALF of the SLA panel -- "
+            f"status is 'Inactive' for every row because membership in this "
+            f"file IS the status, and status_date is expiration_date, the last "
+            f"day the licence was valid (a licence end, not a business end)")
+    out = []
+    for r in rows:
+        geo = r.get("georeference") or {}
+        coords = geo.get("coordinates") or [None, None]
+        lon, lat = _point_ok(_float(coords[0]), _float(coords[1]))
+        out.append({
+            "source": "nys_sla_inactive_licenses", "stage": "liquor_inactive",
+            "business_name": (r.get("dba") or r.get("legalname") or "").strip() or None,
+            "bbl_raw": None, "bin": None, "house_number": None,
+            "street_name": (r.get("actual_address_of_premises") or "").strip() or None,
+            "borough": COUNTY_BOROUGH.get(
+                (r.get("premises_county") or "").strip().lower()),
+            "lon": lon, "lat": lat,
+            "filed_on": _date(r.get("original_issue_date")),
+            "status": "Inactive",
+            "status_date": _date(r.get("expiration_date")),
+            "category_hint": (r.get("description") or "").strip() or None,
+            "license_type": f"type {r.get('type')} class {r.get('class')}",
+            "raw_id": r.get("license_permit_id"),
             "provenance": prov,
         })
     return _frame(out)
@@ -915,6 +1009,7 @@ FEEDS = {
     "nyc_dcwp_license_applications": fetch_dcwp_applications,
     "nyc_dob_permit_issuance": fetch_dob_permits_all,
     "nyc_dcwp_licenses": fetch_dcwp_licenses,
-    "nyc_sla_liquor_licenses": fetch_sla_active,
+    "nys_sla_liquor_licenses": fetch_sla_active,
+    "nys_sla_inactive_licenses": fetch_sla_inactive,
     "nyc_dohmh_restaurants": fetch_dohmh_first_inspection,
 }

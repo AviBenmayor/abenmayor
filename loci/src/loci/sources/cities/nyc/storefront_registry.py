@@ -63,7 +63,18 @@ BORO_NAME = {
     "MANHATTAN": "MN", "BRONX": "BX", "BROOKLYN": "BK",
     "QUEENS": "QN", "STATEN ISLAND": "SI",
 }
-DEFAULT_BOROUGHS = ("MN", "BK")   # D48
+#: WHAT IS INGESTED vs WHAT IS SCREENED. The registry file is city-wide and
+#: already downloaded whole, so all five boroughs land in analysis.storefront
+#: (owner rule 2026-09-16: never limit a data pull). D48's MN+BK SCREEN is
+#: unchanged and lives at QUERY time -- `loci storefronts` still defaults to
+#: MN,BK and is the only thing that writes storefront columns onto
+#: analysis.address, so no QN/BX/SI row can reach a screen table by widening
+#: this tuple. Anything that reads analysis.storefront WITHOUT a borough
+#: predicate now sees five boroughs; the three such readers are
+#: report/evidence._vacant_storefront_rows (spatially filtered by the caller),
+#: model/revenue._demise_sqft (LEFT JOIN from MN+BK lots, so unmatched BBLs
+#: drop) and the narrative row count in validation/retrodiction.
+DEFAULT_BOROUGHS = ("MN", "BX", "BK", "QN", "SI")   # D48 screen stays MN+BK
 
 #: Socrata `fieldName`s, asserted against the live column list before any row
 #: is read. A rename raises rather than yielding a column of NULLs -- a NULL

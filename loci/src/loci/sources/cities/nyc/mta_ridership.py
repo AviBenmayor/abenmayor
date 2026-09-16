@@ -128,7 +128,26 @@ ENTRANCES_DATASET_ID = "i9wp-a4ja"
 
 TIMEOUT = 300
 PAGE = 5_000                 # 424 complexes; one page is always enough
-DEFAULT_MONTHS = 3           # "the latest 3 full months"
+
+#: The first month 5wq4-mkjj publishes. The feed is the 2025-onward hourly
+#: ridership series; there is nothing before this to pull.
+FEED_START = (2025, 1)
+
+#: THE DEFAULT WINDOW IS EVERY MONTH THE FEED PUBLISHES.
+#:
+#: It was 3 -- "the latest 3 full months" -- and that was a cap, not a finding.
+#: Owner rule 2026-09-16, verbatim: "your goal is to have AS MUCH AS DATA AS
+#: POSSIBLE" and "never ever ever limit data pulls". `None` means the full
+#: range, FEED_START..the last complete month the feed carries, and every entry
+#: point in this module and every caller now defaults to it.
+#:
+#: The seasonality caveat the 3-month window was written around does not go
+#: away, it MOVES: a window that spans every published month is a mean over all
+#: seasons rather than over whichever three happened to be latest, which is the
+#: more stable estimate and the one whose composition does not silently change
+#: every time the pipeline is re-run. An explicit `--months N` still gives the
+#: old behaviour when a seasonal slice is the question.
+DEFAULT_MONTHS: int | None = None
 
 #: Below this share of ridership complexes matching an entrance complex_id,
 #: refuse to build: the two feeds' ID spaces have diverged.
@@ -158,16 +177,47 @@ def month_bounds(year: int, month: int) -> tuple[dt.date, dt.date]:
     return dt.date(year, month, 1), dt.date(year, month, last)
 
 
-def latest_full_months(asof: dt.date, n: int = DEFAULT_MONTHS) -> list[tuple[int, int]]:
-    """The `n` most recent CALENDAR months that ended on or before `asof`,
-    oldest first. `asof` is the feed's max timestamp, not today: a feed that
-    stops on the 2nd of a month has that month INCOMPLETE, and averaging two
-    days of it into a three-month window would be a silent partial."""
+def last_full_month(asof: dt.date) -> tuple[int, int]:
+    """The most recent CALENDAR month that ended on or before `asof`.
+
+    `asof` is the FEED's max timestamp, not today: a feed that stops on the 2nd
+    of a month has that month INCOMPLETE, and averaging two days of it into a
+    window would be a silent partial.
+    """
     y, m = asof.year, asof.month
     _, last = month_bounds(y, m)
     if asof < last:                 # the current month is not finished
         y, m = (y - 1, 12) if m == 1 else (y, m - 1)
-    out: list[tuple[int, int]] = []
+    return y, m
+
+
+def latest_full_months(asof: dt.date, n: int | None = DEFAULT_MONTHS,
+                       start: tuple[int, int] = FEED_START
+                       ) -> list[tuple[int, int]]:
+    """The window, oldest first.
+
+    `n=None` (the default) is EVERY month the feed publishes: `start`
+    (2025-01) through the last complete month. `n=<int>` keeps the old
+    behaviour -- the `n` most recent complete months -- for the case where a
+    seasonal slice really is the question.
+
+    RAISES when the feed has not yet completed its first month, rather than
+    returning an empty window that would divide by zero days downstream.
+    """
+    y, m = last_full_month(asof)
+    if (y, m) < start:
+        raise RuntimeError(
+            f"mta_ridership: the feed's last complete month is {y}-{m:02d}, before "
+            f"its first published month {start[0]}-{start[1]:02d}. There is no "
+            f"window to build; refusing to return an empty one.")
+    if n is None:
+        out = []
+        cur = start
+        while cur <= (y, m):
+            out.append(cur)
+            cur = (cur[0] + 1, 1) if cur[1] == 12 else (cur[0], cur[1] + 1)
+        return out
+    out = []
     for _ in range(n):
         out.append((y, m))
         y, m = (y - 1, 12) if m == 1 else (y, m - 1)
@@ -372,7 +422,7 @@ def entry_points(entries: dict[str, dict], entrances: list[dict] | None,
     return pts, report
 
 
-def build_entry_points(*, months: int = DEFAULT_MONTHS, asof: dt.date | None = None,
+def build_entry_points(*, months: int | None = DEFAULT_MONTHS, asof: dt.date | None = None,
                        use_entrances: bool = True, refresh: bool = False
                        ) -> tuple[list[tuple[str, float, float, float]], dict]:
     """The one call model/address_access.py makes: fetch, window, split, report."""
@@ -824,7 +874,7 @@ def entrance_table(entries: dict[str, dict], entrances: list[dict] | None,
     return rows, report
 
 
-def build_profile(*, months: int = DEFAULT_MONTHS, asof: dt.date | None = None,
+def build_profile(*, months: int | None = DEFAULT_MONTHS, asof: dt.date | None = None,
                   use_entrances: bool = True, refresh: bool = False
                   ) -> tuple[dict[str, dict[tuple[str, str], float]], list[dict], dict]:
     """The one call model/address_transit_profile.py makes.

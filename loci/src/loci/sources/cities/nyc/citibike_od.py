@@ -16,11 +16,25 @@ entries, taps or footfalls can. This module reads the same published trip
 files phase 1 reads and aggregates them at ORIGIN NTA x DESTINATION NTA.
 
 Everything about the FEED -- the bucket, the zips, the 2021+ Lyft schema, the
-pre-2021 refusal, the New York dock-id pattern, the trailing-underscore fusion,
-the dayparts, the day types, the holiday list -- is `citibike.py`'s and is
-IMPORTED HERE, never restated. There is one definition of "am_peak is 06-10"
-and one definition of "a New York public dock" in this codebase; a second copy
-would drift and the two panels would silently stop meaning the same thing.
+LEGACY schema and its projection, the New York dock-id pattern, the
+trailing-underscore fusion, the dayparts, the day types, the holiday list -- is
+`citibike.py`'s and is IMPORTED HERE, never restated. There is one definition of
+"am_peak is 06-10" and one definition of "a New York public dock" in this
+codebase; a second copy would drift and the two panels would silently stop
+meaning the same thing.
+
+THE LEGACY ERA (2013-06..2021-01) IS INCLUDED, THROUGH THE CROSSWALK
+---------------------------------------------------------------------------
+The caps came off on 2026-09-16 (owner: "never ever ever limit data pulls"), so
+the default window here is 2013-06 too. A legacy month reaches this pass as the
+same Lyft-shaped relation phase 1 reads, but its dock key is a LEGACY id, and
+this table is keyed on NTA pairs derived from `staging.citibike_station_month`
+-- which stores legacy ids in their own column. So a legacy OD month is mapped
+through `staging.citibike_station_crosswalk` INSIDE the scan, with an INNER
+join: a legacy dock with no confident crosswalk row contributes no OD trip and
+is COUNTED as `dropped_no_crosswalk`, never guessed onto a nearby dock. Run
+`loci citibike crosswalk` before an OD pass over the legacy era; it raises with
+that instruction if the crosswalk is empty.
 
 CARD CONTEXT ONLY, on the D76 footing (R1, owner 2026-09-15). Nothing built
 from this table enters `gap_score`, `supply_ratio_vs_base`, a recommendation
@@ -161,6 +175,7 @@ from loci.sources.cities.nyc.citibike import (
     plan,
     read_csv_sql,
     station_id_sql,
+    trips_sql,
     twin_sql,
 )
 
@@ -342,7 +357,8 @@ def dock_nta(con, year: int, month: int,
 # ------------------------------------------------------------------ the SQL
 
 def od_month_sql(glob: str, year: int, month: int, *,
-                 dock_rel: str = "_od_dock", type_rel: str = "_od_type") -> str:
+                 dock_rel: str = "_od_dock", type_rel: str = "_od_type",
+                 era: str = "lyft", xw_rel: str = "_od_xw") -> str:
     """The ONE query that turns a month of trips into NTA-pair OD cells.
 
     `dock_rel` is [station_id, nta_code] and `type_rel` is [station_id,
@@ -357,6 +373,13 @@ def od_month_sql(glob: str, year: int, month: int, *,
     The join to `dock_rel` is an INNER join on BOTH ends, so a trip either has
     two known NTAs or is not an OD observation at all. `type_rel` is a LEFT join
     coalescing to 'unknown', which is a real class, not a gap.
+
+    ON A LEGACY MONTH the file's dock key is a LEGACY id, so `xw_rel`
+    [station_id_legacy, station_id] is joined in FIRST, INNER, on both ends. A
+    legacy dock with no confident crosswalk row therefore contributes no OD
+    trip. That is the correct answer and not a loss to be papered over: without
+    a crosswalk row we do not know WHICH modern dock it is, and attributing it
+    to the nearest one is exactly the fusion sql/044 exists to prevent.
     """
     first, last = month_bounds(year, month)
     sid_s, sid_e = station_id_sql("start_station_id"), station_id_sql("end_station_id")
@@ -364,15 +387,22 @@ def od_month_sql(glob: str, year: int, month: int, *,
     in_month = (f"started_at::DATE BETWEEN DATE '{first.isoformat()}' "
                 f"AND DATE '{last.isoformat()}'"
                 + holiday_predicate_sql("started_at", year, month))
+    if era == "legacy":
+        o_expr = f"xo.station_id"
+        d_expr = f"xd.station_id"
+        xw_join = (f"        JOIN {xw_rel} xo ON xo.station_id_legacy = {sid_s}\n"
+                   f"        JOIN {xw_rel} xd ON xd.station_id_legacy = {sid_e}\n")
+    else:
+        o_expr, d_expr, xw_join = sid_s, sid_e, ""
     return f"""
     WITH t AS (
-        SELECT {sid_s}  AS o_station,
-               {sid_e}  AS d_station,
+        SELECT {o_expr}  AS o_station,
+               {d_expr}  AS d_station,
                {dt_s}   AS day_type,
                {dp_s}   AS daypart,
                member_casual
-        FROM {read_csv_sql(glob)}
-        WHERE {is_ny_station_sql('start_station_id')}
+        FROM {trips_sql(glob, era)}
+{xw_join}        WHERE {is_ny_station_sql('start_station_id')}
           AND {is_ny_station_sql('end_station_id')}
           AND started_at IS NOT NULL AND ended_at IS NOT NULL
           AND start_lat IS NOT NULL AND start_lng IS NOT NULL
@@ -398,7 +428,7 @@ def od_month_sql(glob: str, year: int, month: int, *,
     """
 
 
-def od_audit_sql(glob: str, year: int, month: int) -> str:
+def od_audit_sql(glob: str, year: int, month: int, era: str = "lyft") -> str:
     """The OD-specific facts the report must state, in one pass over the file.
 
     Phase 1's `audit_sql` already states the file-level ones (dates, dockless,
@@ -437,14 +467,37 @@ def od_audit_sql(glob: str, year: int, month: int) -> str:
                             AND trim(end_station_id) <> '')       AS dropped_out_of_system,
            count(*) FILTER ({in_month} AND {both} AND NOT ({coords}))
                                                                  AS dropped_no_coords
-    FROM {read_csv_sql(glob)}
+    FROM {trips_sql(glob, era)}
     """
 
 
 # --------------------------------------------------------------- the ingest
 
+def load_crosswalk(con):
+    """[station_id_legacy, station_id] for the CONFIDENT crosswalk rows only.
+
+    RAISES on an empty crosswalk rather than returning an empty frame: the OD
+    join is INNER on both ends, so an empty right-hand side would aggregate a
+    legacy month to zero cells -- a silent zero wearing a dimension's clothes,
+    which is the one failure this module refuses everywhere else.
+    """
+    df = con.execute(
+        "SELECT station_id_legacy, station_id "
+        "FROM staging.citibike_station_crosswalk "
+        "WHERE station_id IS NOT NULL").fetchdf()
+    if df.empty:
+        raise CitibikeError(
+            "citibike-od: staging.citibike_station_crosswalk holds no matched "
+            "row, so every legacy trip would fall out of the INNER join and the "
+            "month would aggregate to zero OD cells. Run `loci citibike "
+            "crosswalk` first (it needs the legacy months and the modern roster "
+            "to be ingested).")
+    return df
+
+
 def od_month_frame(con, csv_glob: str, year: int, month: int,
-                   tmp_dir: pathlib.Path, min_trips: int | None = None):
+                   tmp_dir: pathlib.Path, min_trips: int | None = None,
+                   era: str | None = None):
     """(OD cell frame, audit dict) for ONE month of CSVs.
 
     `con` is the WAREHOUSE (read is enough): it supplies the phase-1 panel that
@@ -456,31 +509,39 @@ def od_month_frame(con, csv_glob: str, year: int, month: int,
     Pure with respect to the warehouse: it reads and returns a frame. Every
     assertion runs here, so nothing that fails one can reach a writer.
     """
+    era = era or _cb.era_of(year, month)
     types, type_rep = classify_origin_type(con, year, month)
     docks, dock_rep = dock_nta(con, year, month)
+    xw = load_crosswalk(con) if era == "legacy" else None
 
     mem = _cb._mem(tmp_dir)
     try:
-        audit = mem.execute(audit_sql(csv_glob, year, month)).fetchdf() \
+        audit = mem.execute(audit_sql(csv_glob, year, month, era)).fetchdf() \
                    .to_dict("records")[0]
         audit = {k: (v.item() if hasattr(v, "item") else v) for k, v in audit.items()}
-        assert_month_complete(audit, year, month, min_trips)
+        audit["era"] = era
+        assert_month_complete(audit, year, month, min_trips, era)
         assert_out_of_system_bounded(audit, year, month)
         # On the RAW ids, BEFORE station_id_sql fuses them -- afterwards the
         # evidence for the fusion is gone.
         audit["underscore_twins"] = assert_underscore_twins_agree(
-            mem.execute(twin_sql(csv_glob)).fetchdf())
-        od_audit = mem.execute(od_audit_sql(csv_glob, year, month)).fetchdf() \
+            mem.execute(twin_sql(csv_glob, era)).fetchdf())
+        od_audit = mem.execute(od_audit_sql(csv_glob, year, month, era)).fetchdf() \
                       .to_dict("records")[0]
         audit.update({k: (v.item() if hasattr(v, "item") else v)
                       for k, v in od_audit.items()})
         mem.register("_od_dock", docks)
         mem.register("_od_type", types[["station_id", "origin_type"]])
+        if xw is not None:
+            mem.register("_od_xw", xw)
         try:
-            df = mem.execute(od_month_sql(csv_glob, year, month)).fetchdf()
+            df = mem.execute(od_month_sql(csv_glob, year, month,
+                                          era=era)).fetchdf()
         finally:
             mem.unregister("_od_dock")
             mem.unregister("_od_type")
+            if xw is not None:
+                mem.unregister("_od_xw")
     finally:
         mem.close()
 
@@ -503,7 +564,12 @@ def od_month_frame(con, csv_glob: str, year: int, month: int,
         # Trips whose start and end are both real New York docks but whose dock
         # fell out of the hex frame. Bounded by MAX_UNMAPPED_DOCK_SHARE above;
         # stated here so the loss is named rather than inferred.
+        # On the LYFT era this is trips whose docks fell out of the hex frame.
+        # On the LEGACY era it also carries the trips whose dock has no
+        # confident crosswalk row -- both are named losses, neither is guessed
+        # onto a neighbouring dock.
         "trips_dropped_unmapped_dock": int(audit["od_trips"] - df["trips"].sum()),
+        "crosswalk_rows": (0 if xw is None else int(len(xw))),
     })
     return df, audit
 
@@ -527,7 +593,7 @@ def write_od_month(con, df, year: int, month: int, run_at: dt.datetime) -> int:
     return len(out)
 
 
-def ingest_od(con, start: tuple[int, int] = (2023, 1),
+def ingest_od(con, start: tuple[int, int] = _cb.DEFAULT_START,
               end: tuple[int, int] | None = None, *,
               workdir: pathlib.Path | None = None,
               refresh: bool = False, dry_run: bool = False,
@@ -573,12 +639,14 @@ def ingest_od(con, start: tuple[int, int] = (2023, 1),
             t0 = time.perf_counter()
             files = extract_month(zip_path, y, m, scratch)
             t1 = time.perf_counter()
-            df, audit = od_month_frame(con, str(scratch / "*.csv"), y, m, work)
+            df, audit = od_month_frame(con, str(scratch / "*.csv"), y, m, work,
+                                       era=e.get("era") or _cb.era_of(y, m))
             t2 = time.perf_counter()
             written = 0 if dry_run else write_od_month(con, df, y, m, run_at)
             t3 = time.perf_counter()
             rows += written
             audit.update({"month": f"{y}-{m:02d}", "key": e["key"],
+                          "era": e.get("era") or _cb.era_of(y, m),
                           "csv_members": len(files), "rows_written": written,
                           "unzip_s": round(t1 - t0, 1),
                           "aggregate_s": round(t2 - t1, 1),

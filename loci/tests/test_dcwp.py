@@ -33,9 +33,17 @@ def test_normalize_maps_dedupes_and_drops():
         {"license_nbr": "L3", "business_name": "ACME TOW",
          "business_category": "Tow Truck Company", "license_status": "Active",
          "latitude": "40.7", "longitude": "-73.9", "address_borough": "Queens"},
-        # laundry category but expired license -> dropped
+        # laundry category, EXPIRED license -> KEPT since 2026-09-16 (owner
+        # rule: never limit a data pull). It used to be dropped, which meant
+        # the roster adapter emitted zero POIs on the live file -- all six
+        # "Laundries" licences DCWP has ever issued are Expired -- and so the
+        # licence_number rung of analysis.licence_interval_poi could never
+        # fire. It is kept and carries its expiry, which poi_is_open reads as
+        # 'closed'; it is a dated ENDING, not new supply.
         {"license_nbr": "L4", "business_name": "OLD LAUNDROMAT",
          "business_category": "Laundries", "license_status": "Expired",
+         "license_creation_date": "2021-07-01T00:00:00.000",
+         "lic_expir_dd": "2023-12-31T00:00:00.000",
          "latitude": "40.7", "longitude": "-73.9", "address_borough": "Brooklyn"},
         # laundry category, active, but outside NYC -> dropped
         {"license_nbr": "L5", "business_name": "CINTAS CORP",
@@ -48,7 +56,22 @@ def test_normalize_maps_dedupes_and_drops():
     ]
     recs = list(a.normalize(raw))
     ids = {r.source_record_id for r in recs}
-    assert ids == {"L1", "L2"}
+    assert ids == {"L1", "L2", "L4"}
+
+    # THE STATUS IS CARRIED, THE VERDICT IS NOT CHANGED. Only 'Active' sets
+    # attrs.active, so an expired licence cannot reach poi_is_open's 'open'
+    # branch; its expiry date is what makes it 'closed'. This is the assertion
+    # that keeps "stop dropping rows" from quietly becoming "count more
+    # supply".
+    from loci.model.poi_presence import poi_status
+    by_id_all = {r.source_record_id: r for r in recs}
+    assert by_id_all["L4"].license_status == "Expired"
+    assert by_id_all["L4"].attrs["active"] is False
+    assert by_id_all["L1"].attrs["active"] is True
+    assert poi_status(by_id_all["L4"].attrs,
+                      source_id="nyc_dcwp_licenses")[0] == "closed"
+    # licence identity is promoted to columns (sql/043), not only attrs
+    assert by_id_all["L1"].licence_number == "L1"
 
     by_id = {r.source_record_id: r for r in recs}
     assert by_id["L1"].category == "laundry"

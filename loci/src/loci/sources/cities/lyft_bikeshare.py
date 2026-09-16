@@ -87,15 +87,24 @@ __all__ = [
     "DAYPART_NAMES",
     "DAY_TYPES",
     "HOLIDAYS",
+    "HOLIDAYS_2013_2020",
     "HOLIDAYS_2021_2024",
     "HOLIDAY_COVERAGE",
+    "LEGACY_ALIASES",
+    "LEGACY_CANONICAL",
+    "LEGACY_EXTRA_COLUMNS",
     "LEGACY_MARKERS",
+    "LEGACY_READ_TYPES",
+    "LEGACY_TS_FORMATS",
     "LYFT_COLUMNS",
+    "MAX_UNPARSED_TIMESTAMP_SHARE",
     "READ_TYPES",
+    "STATION_MONTH_WRITE_COLUMNS",
     "SYSTEMS",
     "BikeshareError",
     "System",
     "assert_holidays_cover",
+    "assert_legacy_parses",
     "assert_month_complete",
     "assert_out_of_system_bounded",
     "assert_underscore_twins_agree",
@@ -104,12 +113,17 @@ __all__ = [
     "csv_members",
     "day_type_case_sql",
     "day_type_of_date",
+    "dedupe_members",
     "daypart_case_sql",
     "days_by_type",
     "download",
     "extract_month",
     "holiday_predicate_sql",
     "is_public_station_sql",
+    "legacy_header_map",
+    "legacy_parse_audit_sql",
+    "legacy_projection_sql",
+    "legacy_read_csv_sql",
     "list_bucket",
     "month_bounds",
     "month_frame",
@@ -120,6 +134,7 @@ __all__ = [
     "refuse_legacy",
     "station_id_sql",
     "station_month_ddl",
+    "trips_sql",
     "twin_sql",
 ]
 
@@ -145,6 +160,70 @@ LEGACY_MARKERS = frozenset({
     "starttime", "stoptime", "start station id", "end station id",
     "usertype", "birth year", "tripduration",
 })
+
+#: The LEGACY header, canonicalised. New York published this shape from
+#: 2013-06 to 2021-01 in THREE spellings, all seen in the archives:
+#:   * bare lowercase      `tripduration,starttime,...`     (2013-06..2016-12,
+#:                                                           2018..2020)
+#:   * quoted lowercase    `"tripduration","starttime",...` (2013 flat copies,
+#:                                                           2018 flat copies)
+#:   * Title Case + spaces `Trip Duration,Start Time,...`   (2017)
+#: `LEGACY_ALIASES` folds all three onto the first, which is why the reader can
+#: hand DuckDB a fixed `columns={...}` map for every legacy month.
+LEGACY_CANONICAL = (
+    "tripduration", "starttime", "stoptime",
+    "start station id", "start station name",
+    "start station latitude", "start station longitude",
+    "end station id", "end station name",
+    "end station latitude", "end station longitude",
+    "bikeid", "usertype", "birth year", "gender",
+)
+
+#: spelling -> canonical legacy name. Keys are already lowercased, unquoted and
+#: BOM-stripped by `_norm_col`.
+LEGACY_ALIASES: dict[str, str] = {
+    **{c: c for c in LEGACY_CANONICAL},
+    "trip duration": "tripduration",
+    "start time": "starttime",
+    "stop time": "stoptime",
+    "bike id": "bikeid",
+    "user type": "usertype",
+    "birthyear": "birth year",
+}
+
+#: How the legacy columns are READ. Everything that can be dirty is read as
+#: VARCHAR and cast in `legacy_projection_sql`, deliberately:
+#:   * the timestamps come in three formats (`2013-06-01 00:00:01`,
+#:     `2019-12-01 00:00:05.5640` with FOUR fractional digits, and
+#:     `9/1/2014 00:00:25` with no zero padding). A TIMESTAMP column type makes
+#:     DuckDB refuse the whole file on the second one.
+#:   * the station ids arrive as `434` in one copy of a month and `434.0` in
+#:     another. Reading them as VARCHAR and normalising ONCE is the only way the
+#:     two copies agree.
+LEGACY_READ_TYPES = {
+    "tripduration": "VARCHAR",
+    "starttime": "VARCHAR", "stoptime": "VARCHAR",
+    "start station id": "VARCHAR", "start station name": "VARCHAR",
+    "start station latitude": "DOUBLE", "start station longitude": "DOUBLE",
+    "end station id": "VARCHAR", "end station name": "VARCHAR",
+    "end station latitude": "DOUBLE", "end station longitude": "DOUBLE",
+    "bikeid": "VARCHAR", "usertype": "VARCHAR",
+    "birth year": "VARCHAR", "gender": "VARCHAR",
+}
+
+#: The timestamp spellings, tried in order. The fractional part is stripped
+#: before the attempt (see `legacy_projection_sql`), so `%f` never appears.
+LEGACY_TS_FORMATS = (
+    "%Y-%m-%d %H:%M:%S",
+    "%m/%d/%Y %H:%M:%S",
+    "%Y-%m-%d %H:%M",
+    "%m/%d/%Y %H:%M",
+)
+
+#: Above this share of unparseable `starttime`/`stoptime` values a legacy month
+#: is REFUSED rather than landed with a hole: an unparsed timestamp falls out of
+#: the month predicate and reads downstream as a quiet dock.
+MAX_UNPARSED_TIMESTAMP_SHARE = 0.001
 
 #: Every column the aggregation reads, so a renamed column is a hard error at
 #: the CSV reader rather than a silent NULL.
@@ -177,10 +256,45 @@ HOLIDAYS_2021_2024: frozenset[dt.date] = frozenset(
         (2024, 12, 25),
     ])
 
+#: Observed US FEDERAL holidays 2013-2020 -- the LEGACY era (GTM-168 track L,
+#: owner rule 2026-09-16 "never ever ever limit data pulls"). Generated with the
+#: same convention as the block above and verified Mon-Fri: the statutory date
+#: OBSERVED, i.e. a Saturday holiday moves to the Friday before and a Sunday
+#: holiday to the Monday after. NO JUNETEENTH before 2021 -- it became a federal
+#: holiday on 2021-06-17, and back-dating it would silently remove a real
+#: working weekday from seven years of divisors.
+#:
+#: This list is what makes 2013-06..2020-12 INGESTABLE AT ALL:
+#: `assert_holidays_cover` refuses any window outside HOLIDAY_COVERAGE rather
+#: than counting July 4th as a Tuesday.
+HOLIDAYS_2013_2020: frozenset[dt.date] = frozenset(
+    dt.date(*d) for d in [
+        (2013, 1, 1), (2013, 1, 21), (2013, 2, 18), (2013, 5, 27), (2013, 7, 4),
+        (2013, 9, 2), (2013, 10, 14), (2013, 11, 11), (2013, 11, 28), (2013, 12, 25),
+        (2014, 1, 1), (2014, 1, 20), (2014, 2, 17), (2014, 5, 26), (2014, 7, 4),
+        (2014, 9, 1), (2014, 10, 13), (2014, 11, 11), (2014, 11, 27), (2014, 12, 25),
+        (2015, 1, 1), (2015, 1, 19), (2015, 2, 16), (2015, 5, 25), (2015, 7, 3),
+        (2015, 9, 7), (2015, 10, 12), (2015, 11, 11), (2015, 11, 26), (2015, 12, 25),
+        (2016, 1, 1), (2016, 1, 18), (2016, 2, 15), (2016, 5, 30), (2016, 7, 4),
+        (2016, 9, 5), (2016, 10, 10), (2016, 11, 11), (2016, 11, 24), (2016, 12, 26),
+        (2017, 1, 2), (2017, 1, 16), (2017, 2, 20), (2017, 5, 29), (2017, 7, 4),
+        (2017, 9, 4), (2017, 10, 9), (2017, 11, 10), (2017, 11, 23), (2017, 12, 25),
+        (2018, 1, 1), (2018, 1, 15), (2018, 2, 19), (2018, 5, 28), (2018, 7, 4),
+        (2018, 9, 3), (2018, 10, 8), (2018, 11, 12), (2018, 11, 22), (2018, 12, 25),
+        (2019, 1, 1), (2019, 1, 21), (2019, 2, 18), (2019, 5, 27), (2019, 7, 4),
+        (2019, 9, 2), (2019, 10, 14), (2019, 11, 11), (2019, 11, 28), (2019, 12, 25),
+        (2020, 1, 1), (2020, 1, 20), (2020, 2, 17), (2020, 5, 25), (2020, 7, 3),
+        (2020, 9, 7), (2020, 10, 12), (2020, 11, 11), (2020, 11, 26), (2020, 12, 25),
+    ])
+
 #: The union actually used. ONE holiday vocabulary for transit and every bike
-#: system.
-HOLIDAYS: frozenset[dt.date] = HOLIDAYS_2021_2024 | HOLIDAYS_2025_2027
-HOLIDAY_COVERAGE = (2021, 2027)
+#: system. EXTENDING THIS BACKWARD CANNOT MOVE THE 2021+ PANEL: every date added
+#: lies outside it, and `holiday_predicate_sql` renders only the dates inside the
+#: month it is called for -- which is why `tests/test_lyft_systems.py` still
+#: compares the 2023-06 and 2026-04 SQL byte for byte.
+HOLIDAYS: frozenset[dt.date] = (HOLIDAYS_2013_2020 | HOLIDAYS_2021_2024
+                                | HOLIDAYS_2025_2027)
+HOLIDAY_COVERAGE = (2013, 2027)
 
 
 class BikeshareError(RuntimeError):
@@ -280,8 +394,30 @@ class System:
     #: refused as a publication problem rather than an outage.
     max_zero_dates: int
     #: The first month published on the Lyft schema. Everything before it is
-    #: refused, not mapped.
+    #: the LEGACY schema: readable only where `legacy_schema_readable`, refused
+    #: otherwise.
     schema_cutoff: tuple[int, int]
+
+    # ---------------------------------------------------- the legacy era
+    # GTM-168 track L, owner rule 2026-09-16 ("never ever ever limit data
+    # pulls"). New York's pre-2021 months are no longer refused; they are landed
+    # with their LEGACY station id in its own column. See `legacy_projection_sql`
+    # and the crosswalk in `sources/cities/nyc/citibike.py`.
+
+    #: True when this system's pre-cutoff files can be mapped onto the Lyft
+    #: contract. New York: yes -- the legacy schema is a known, stable
+    #: 15-column shape. Chicago: NO -- the pre-2020 Divvy files are QUARTERLY,
+    #: keyed on a station NAME, and nobody has probed them; a `True` here would
+    #: be a guess wearing a parameter's clothes.
+    legacy_schema_readable: bool = False
+    #: The first month the system ever published. `None` where the legacy era is
+    #: not readable.
+    legacy_start: tuple[int, int] | None = None
+    #: The truncation floor for a LEGACY month. It cannot be
+    #: `min_trips_per_month`: New York's smallest real legacy month is February
+    #: 2014 at ~169k trips, well under the 300k floor the 2021+ panel uses, so
+    #: the modern floor would refuse eight genuine winters.
+    min_trips_per_month_legacy: int | None = None
 
     @property
     def cache_dir(self) -> pathlib.Path:
@@ -291,6 +427,27 @@ class System:
         """'start'|'end' -> the column carrying this system's station key."""
         kind = "id" if self.station_id_kind == "id" else "name"
         return f"{side}_station_{kind}"
+
+    def era_of(self, year: int, month: int) -> str:
+        """'lyft' | 'legacy' for one month of THIS system.
+
+        The era is a property of the FILE's schema, not of a preference: it
+        decides which header is expected, which column map DuckDB is handed and
+        which truncation floor applies.
+        """
+        return "lyft" if (year, month) >= self.schema_cutoff else "legacy"
+
+    def first_month(self) -> tuple[int, int]:
+        """The earliest month this system can ingest. The LEGACY start where the
+        legacy era is readable, the schema cutoff where it is not."""
+        if self.legacy_schema_readable and self.legacy_start:
+            return self.legacy_start
+        return self.schema_cutoff
+
+    def min_trips(self, era: str) -> int:
+        if era == "legacy" and self.min_trips_per_month_legacy is not None:
+            return self.min_trips_per_month_legacy
+        return self.min_trips_per_month
 
 
 SYSTEMS: dict[str, System] = {
@@ -328,6 +485,16 @@ SYSTEMS: dict[str, System] = {
         min_trips_per_month=300_000,
         max_zero_dates=2,
         schema_cutoff=(2021, 2),
+        # THE LEGACY ERA IS READ, NOT REFUSED (owner rule 2026-09-16).
+        # 2013-06 is the first month in the bucket: the 2013 year archive holds
+        # 201306..201312 and nothing earlier (the system opened 2013-05-27 and
+        # those five days were never published as their own file).
+        legacy_schema_readable=True,
+        legacy_start=(2013, 6),
+        # Measured floor: the smallest real legacy month is 2014-02 at ~169k
+        # trips (2014-01 ~190k, 2013-12 ~300k). 50k sits three times below the
+        # smallest real month and far above a truncated export.
+        min_trips_per_month_legacy=50_000,
     ),
     # -------------------------------------------------------------- Chicago
     # Measured on 202506-divvy-tripdata.zip, 2026-09-15: 678,904 trips, 1,376
@@ -465,11 +632,23 @@ def plan(sys: System, start: tuple[int, int], end: tuple[int, int] | None = None
     publishes", derived from the listing rather than from today's date: the
     file for a month lands days into the next one.
 
-    RAISES on a month before the schema cutoff, and on a month the bucket does
-    not cover at all. A silently short window is a silently thin panel.
+    RAISES on a month before the system's FIRST month, and on a month the
+    bucket does not cover at all. A silently short window is a silently thin
+    panel.
+
+    A month before `schema_cutoff` is planned with `era='legacy'` where the
+    system can read that schema (New York) and REFUSED where it cannot
+    (Chicago's pre-2020 quarterly files, which nobody has probed).
     """
-    if start < sys.schema_cutoff:
-        refuse_legacy(sys, f"{start[0]}-{start[1]:02d}")
+    floor = sys.first_month()
+    if start < floor:
+        if not sys.legacy_schema_readable:
+            refuse_legacy(sys, f"{start[0]}-{start[1]:02d}")
+        raise BikeshareError(
+            f"{sys.log_prefix}: {start[0]}-{start[1]:02d} is before the first month "
+            f"the bucket publishes ({floor[0]}-{floor[1]:02d}). There is no file "
+            f"to read, and planning a window that starts earlier would put a "
+            f"hole at the front of the panel.")
     month_key = re.compile(sys.month_key_re)
     year_key = re.compile(sys.legacy_key_re)
     listing = {e["key"]: e for e in list_bucket(sys, refresh=refresh)
@@ -496,6 +675,7 @@ def plan(sys: System, start: tuple[int, int], end: tuple[int, int] | None = None
             continue
         out.append({"year": ym[0], "month": ym[1], "key": key,
                     "size": listing[key]["size"],
+                    "era": sys.era_of(*ym),
                     "archive": "year" if key in yearly.values() and ym not in monthly
                                else "month"})
     if missing:
@@ -507,7 +687,9 @@ def plan(sys: System, start: tuple[int, int], end: tuple[int, int] | None = None
                  "end": f"{end[0]}-{end[1]:02d}",
                  "months": len(out),
                  "keys": sorted({e["key"] for e in out}),
-                 "bytes": sum({e["key"]: e["size"] for e in out}.values())}
+                 "bytes": sum({e["key"]: e["size"] for e in out}.values()),
+                 "legacy_months": sum(1 for e in out if e["era"] == "legacy"),
+                 "lyft_months": sum(1 for e in out if e["era"] == "lyft")}
 
 
 def download(sys: System, key: str, *, refresh: bool = False) -> pathlib.Path:
@@ -538,13 +720,39 @@ def download(sys: System, key: str, *, refresh: bool = False) -> pathlib.Path:
 
 # ------------------------------------------------------------------ the schema
 
+def _norm_col(c) -> str:
+    """One column name, canonicalised for comparison.
+
+    BOM FIRST, then quotes: the first column of a UTF-8-BOM file is
+    `﻿"ride_id"`, and stripping quotes before the BOM leaves the quote in place
+    and the whole header unrecognised.
+    """
+    return str(c).strip().lstrip("﻿").strip('"').strip().lower()
+
+
+def legacy_header_map(columns) -> dict[int, str] | None:
+    """Position -> canonical legacy name, or None if this is not a legacy header.
+
+    Returns a POSITIONAL map rather than a set because the three published
+    spellings differ only in case and spacing, and rewriting the header by
+    position is what lets DuckDB read 2013, 2017 and 2020 with ONE column map.
+    A legacy header is accepted only when every one of its columns is a known
+    alias: an unknown column means the shape moved and must be looked at, not
+    guessed past.
+    """
+    out: dict[int, str] = {}
+    for i, c in enumerate(columns):
+        name = LEGACY_ALIASES.get(_norm_col(c))
+        if name is None:
+            return None
+        out[i] = name
+    missing = set(LEGACY_CANONICAL) - set(out.values())
+    return None if missing else out
+
+
 def classify_header(sys: System, columns) -> str:
     """'lyft_2021' | 'legacy_pre2021' -- or RAISE on neither."""
-    # BOM FIRST, then quotes: the first column of a UTF-8-BOM file is
-    # `﻿"ride_id"`, and stripping quotes before the BOM leaves the quote in
-    # place and the whole header unrecognised.
-    cols = {str(c).strip().lstrip("﻿").strip('"').strip().lower()
-            for c in columns}
+    cols = {_norm_col(c) for c in columns}
     if LYFT_COLUMNS <= cols:
         return "lyft_2021"
     if cols & LEGACY_MARKERS:
@@ -595,6 +803,62 @@ def _month_of(name: str) -> tuple[int, int] | None:
     return (int(m.group(1)), int(m.group(2))) if m else None
 
 
+#: A member whose stem ends `_1`, `_2`, ... is ONE CHUNK of a month that was
+#: split to fit an export limit. A member without that suffix is the WHOLE
+#: month. See `dedupe_members`.
+_CHUNK_SUFFIX = re.compile(r"_\d+$")
+
+
+def _is_chunk(base: str) -> bool:
+    stem = base[:-4] if base.lower().endswith(".csv") else base
+    return bool(_CHUNK_SUFFIX.search(stem))
+
+
+def dedupe_members(names: list[str]) -> tuple[list[str], list[str]]:
+    """(kept, suppressed) -- THE SAME MONTH IS PUBLISHED TWICE IN SOME ARCHIVES.
+
+    This is not hypothetical and it is not small. Measured on the bucket,
+    2026-09-16:
+
+      * `2013-citibike-tripdata.zip` holds June..December 2013 TWICE: once as a
+        quoted flat CSV at the archive root (`201306-citibike-tripdata.csv`) and
+        again, unquoted and chunked, under a month-named folder
+        (`6_June/201306-citibike-tripdata_1.csv`). The first two data rows are
+        the same two trips.
+      * `2018-citibike-tripdata.zip` holds April 2018 THREE times: a flat
+        `201804-citibike-tripdata.csv`, a chunked `201804-citibike-tripdata_1/2.csv`
+        BESIDE it at the same depth, and the same chunks again under `4_April/`.
+
+    The existing reader flattens every member onto `dest/<basename>`, so two
+    copies with different basenames both land and the month is counted TWICE --
+    a doubling of 2013 and of April 2018 with no error anywhere. That is the
+    same class of bug as fusing two storefronts, run backwards.
+
+    The rule, in two steps, both deterministic:
+
+      1. keep only the SHALLOWEST depth at which the month appears. The
+         month-named folders are a second copy of what sits at the root;
+         where there is nothing at the root (2014-2017, 2019) the folder copy
+         is the only copy and is kept.
+      2. within that depth, if an UNSUFFIXED member exists, drop the `_N`
+         chunked ones. The unsuffixed file is the whole month; the chunks are a
+         second rendering of it. Where every member is chunked (every Lyft-era
+         monthly zip) nothing is dropped and the behaviour is unchanged.
+
+    For 2013 this picks the ROOT flat copy, which is also the better file: the
+    folder copy writes station ids as `434.0` and birth years as `1983.0`,
+    while the flat copy writes `434` and `1983`.
+    """
+    if len(names) <= 1:
+        return list(names), []
+    depth = min(n.count("/") for n in names)
+    kept = [n for n in names if n.count("/") == depth]
+    if any(not _is_chunk(n.rsplit("/", 1)[-1]) for n in kept):
+        kept = [n for n in kept if not _is_chunk(n.rsplit("/", 1)[-1])]
+    keep = set(kept)
+    return kept, [n for n in names if n not in keep]
+
+
 def extract_month(sys: System, zip_path: pathlib.Path, year: int, month: int,
                   dest: pathlib.Path) -> list[pathlib.Path]:
     """Extract the CSV members for (year, month) into `dest`, flat.
@@ -603,29 +867,36 @@ def extract_month(sys: System, zip_path: pathlib.Path, year: int, month: int,
     YEAR archive, whose members are twelve monthly files -- or twelve nested
     monthly ZIPS, which are opened in memory. Returns the written paths.
 
-    Every member's header is classified, so a legacy file inside an archive is
-    refused by name instead of being read as if its columns meant what the 2021
-    columns mean.
+    DUPLICATE PUBLICATIONS OF ONE MONTH ARE RESOLVED, NOT CONCATENATED. See
+    `dedupe_members`: 2013 and April 2018 each ship the same trips twice, and
+    flattening both onto `dest/` would double them.
+
+    Every member's header is classified. A LEGACY header is rewritten to the
+    canonical legacy column names where the system can read that schema (New
+    York, owner rule 2026-09-16), and refused by name where it cannot.
     """
     dest.mkdir(parents=True, exist_ok=True)
     written: list[pathlib.Path] = []
     with zipfile.ZipFile(zip_path) as zf:
-        for name in csv_members(sys, zf):
+        members = csv_members(sys, zf)
+        nested = [n for n in members if n.rsplit("/", 1)[-1].lower().endswith(".zip")]
+        flat = [n for n in members if n not in nested
+                and _month_of(n.rsplit("/", 1)[-1]) in (None, (year, month))]
+        keep, _dropped = dedupe_members(flat)
+        for name in keep:
+            written.append(_write_member(sys, zf, name, dest,
+                                         name.rsplit("/", 1)[-1]))
+        for name in nested:
             base = name.rsplit("/", 1)[-1]
-            if base.lower().endswith(".zip"):
-                if _month_of(base) not in (None, (year, month)):
-                    continue
-                with zipfile.ZipFile(io.BytesIO(zf.read(name))) as inner:
-                    for iname in csv_members(sys, inner):
-                        ibase = iname.rsplit("/", 1)[-1]
-                        if _month_of(ibase) != (year, month):
-                            continue
-                        written.append(_write_member(sys, inner, iname, dest, ibase))
+            if _month_of(base) not in (None, (year, month)):
                 continue
-            got = _month_of(base)
-            if got is not None and got != (year, month):
-                continue
-            written.append(_write_member(sys, zf, name, dest, base))
+            with zipfile.ZipFile(io.BytesIO(zf.read(name))) as inner:
+                imembers = [n for n in csv_members(sys, inner)
+                            if _month_of(n.rsplit("/", 1)[-1]) == (year, month)]
+                ikeep, _idropped = dedupe_members(imembers)
+                for iname in ikeep:
+                    written.append(_write_member(sys, inner, iname, dest,
+                                                 iname.rsplit("/", 1)[-1]))
     if not written:
         raise BikeshareError(
             f"{sys.log_prefix}: {zip_path.name} holds no member for "
@@ -640,7 +911,25 @@ def _write_member(sys: System, zf: zipfile.ZipFile, name: str, dest: pathlib.Pat
         head = raw.decode("utf-8-sig", "replace").rstrip("\r\n")
         kind = classify_header(sys, head.split(","))
         if kind != "lyft_2021":
-            refuse_legacy(sys, f"{base} (header: {head[:60]}...)")
+            if not sys.legacy_schema_readable:
+                refuse_legacy(sys, f"{base} (header: {head[:60]}...)")
+            # The legacy header is REWRITTEN, not reinterpreted. Three published
+            # spellings of the same fifteen columns collapse onto
+            # LEGACY_CANONICAL here, so `legacy_read_csv_sql` can hand DuckDB one
+            # fixed column map for 2013, 2017 and 2020 alike. An unknown column
+            # is refused rather than passed through: a shape that moved must be
+            # looked at.
+            cmap = legacy_header_map(head.split(","))
+            if cmap is None:
+                raise BikeshareError(
+                    f"{sys.log_prefix}: {base} carries a pre-{sys.schema_cutoff[0]}-"
+                    f"{sys.schema_cutoff[1]:02d} header this reader does not know "
+                    f"({head[:120]}...). The legacy era is READ, not guessed: add "
+                    f"the spelling to LEGACY_ALIASES after checking what the "
+                    f"column means. Reading it as a near-match would put a "
+                    f"silently wrong column into eight years of panel.")
+            term = b"\r\n" if raw.endswith(b"\r\n") else b"\n"
+            raw = ",".join(cmap[i] for i in sorted(cmap)).encode() + term
         out = dest / base
         with out.open("wb") as w:
             # The header is re-emitted with ITS OWN line terminator, minus any
@@ -779,8 +1068,151 @@ def read_csv_sql(glob: str) -> str:
             f"ignore_errors=false, union_by_name=true)")
 
 
+def legacy_read_csv_sql(glob: str) -> str:
+    cols = ", ".join(f'"{k}": \'{v}\'' for k, v in LEGACY_READ_TYPES.items())
+    return (f"read_csv('{glob}', header=true, columns={{{cols}}}, "
+            f"ignore_errors=false, union_by_name=true)")
+
+
+def _legacy_ts_sql(col: str) -> str:
+    """One legacy timestamp column -> TIMESTAMP, or NULL if it parses as none.
+
+    The fractional part is stripped FIRST (`2019-12-01 00:00:05.5640` carries
+    four digits, which `%f` does not accept), then the published spellings are
+    tried in order. NULL is deliberate and bounded: `assert_legacy_parses`
+    refuses a month above MAX_UNPARSED_TIMESTAMP_SHARE rather than letting an
+    unreadable row fall quietly out of the month predicate.
+    """
+    fmts = ", ".join(f"'{f}'" for f in LEGACY_TS_FORMATS)
+    return (f"try_strptime(regexp_replace(trim({col}), '\\.[0-9]+$', ''), "
+            f"[{fmts}])")
+
+
+def legacy_projection_sql(glob: str) -> str:
+    """The legacy file, PRESENTED AS THE LYFT CONTRACT.
+
+    Everything downstream of this -- `month_sql`, `audit_sql`, `twin_sql`,
+    `start_disposition_sql`, the OD pass -- reads `started_at`,
+    `start_station_id`, `member_casual` and friends, and never learns which era
+    it is on. That is the point: there is ONE aggregation, not a second one that
+    can drift.
+
+    WHAT IS MAPPED, AND WHAT IS REFUSED TO BE INVENTED
+    -----------------------------------------------------------------------
+      starttime/stoptime        -> started_at/ended_at   (three formats, above)
+      start/end station id      -> start/end_station_id, NORMALISED: one copy of
+                                   a 2013 month writes `434` and the other
+                                   `434.0`, so a trailing `.0` is stripped. It is
+                                   stripped ONLY when the fractional part is
+                                   zero -- a modern id like `5905.14` must never
+                                   be truncated by a rule written for the legacy
+                                   era, and this expression is shared.
+      latitude/longitude        -> start/end_lat, start/end_lng
+      usertype                  -> member_casual: 'Subscriber' -> member,
+                                   'Customer' -> casual. NOT resident/visitor;
+                                   see the module docstring's caveat 5.
+      ride_id                   -> NULL. The legacy file has no trip id; `bikeid`
+                                   is the BIKE, and putting it in a column named
+                                   ride_id would invent an identity that could
+                                   later be de-duplicated on.
+      rideable_type             -> NULL, never 'classic_bike'. The legacy feed
+                                   does not publish it. Citi Bike's e-bikes
+                                   launched in 2018, INSIDE this era, so a
+                                   blanket 'classic_bike' would be a false
+                                   statement about 2018-2020, not a harmless
+                                   default. `electric_trips` therefore reads 0
+                                   for every legacy month, which is the honest
+                                   answer to "the feed does not say".
+
+    THE STATION ID IS THE LEGACY ID AND IS NEVER TREATED AS A MODERN ONE. It
+    flows through the shared aggregation under the same column name because the
+    aggregation only needs a key; `month_frame` then moves it to
+    `station_id_legacy` and leaves `station_id` NULL. Legacy `3002` and modern
+    `3002` are two different docks, and this is the seam that keeps them apart.
+    """
+    def sid(col: str) -> str:
+        # `434.0` -> `434`; `5905.14` untouched (the regexp anchors on `.0` at
+        # the end and nothing else).
+        return f"regexp_replace(trim(\"{col}\"), '\\.0+$', '')"
+
+    return f"""
+        SELECT CAST(NULL AS VARCHAR)                     AS ride_id,
+               CAST(NULL AS VARCHAR)                     AS rideable_type,
+               {_legacy_ts_sql('"starttime"')}           AS started_at,
+               {_legacy_ts_sql('"stoptime"')}            AS ended_at,
+               trim("start station name")                AS start_station_name,
+               {sid('start station id')}                 AS start_station_id,
+               trim("end station name")                  AS end_station_name,
+               {sid('end station id')}                   AS end_station_id,
+               "start station latitude"                  AS start_lat,
+               "start station longitude"                 AS start_lng,
+               "end station latitude"                    AS end_lat,
+               "end station longitude"                   AS end_lng,
+               CASE lower(trim("usertype"))
+                    WHEN 'subscriber' THEN 'member'
+                    WHEN 'customer'   THEN 'casual'
+               END                                       AS member_casual
+        FROM {legacy_read_csv_sql(glob)}
+    """
+
+
+def trips_sql(glob: str, era: str = "lyft") -> str:
+    """The relation every aggregation reads, for either era.
+
+    `era='lyft'` returns EXACTLY `read_csv_sql(glob)` -- byte for byte, because
+    `tests/test_lyft_systems.py` compares the rendered New York SQL against the
+    committed pre-refactor module character by character and a 2021+ back-ingest
+    was built from that text.
+    """
+    if era == "lyft":
+        return read_csv_sql(glob)
+    if era == "legacy":
+        return f"({legacy_projection_sql(glob)})"
+    raise BikeshareError(
+        f"unknown era {era!r}: the file is either on the Lyft schema or on the "
+        f"legacy one, and guessing is how two id spaces get fused.")
+
+
+def legacy_parse_audit_sql(glob: str) -> str:
+    """Rows, and rows whose `starttime`/`stoptime` parse as no known format.
+
+    Run BEFORE the aggregation on a legacy month: an unparsed timestamp is not a
+    row that errors, it is a row that silently leaves the month.
+    """
+    return f"""
+    SELECT count(*)                                              AS rows_in_file,
+           count(*) FILTER ({_legacy_ts_sql('"starttime"')} IS NULL)
+                                                                 AS unparsed_starttime,
+           count(*) FILTER ({_legacy_ts_sql('"stoptime"')} IS NULL)
+                                                                 AS unparsed_stoptime,
+           -- COALESCE, not a bare NOT IN: `NULL NOT IN (...)` is NULL, which
+           -- SQL treats as false, so a blank usertype would be counted as
+           -- CLASSIFIED. Measured: 201701 has 767 blank ones out of 178,843.
+           count(*) FILTER (COALESCE(lower(trim("usertype")), '')
+                            NOT IN ('subscriber', 'customer'))
+                                                                 AS unclassified_usertype
+    FROM {legacy_read_csv_sql(glob)}
+    """
+
+
+def assert_legacy_parses(sys: System, audit: dict, year: int, month: int) -> None:
+    """Refuse a legacy month whose timestamps did not read."""
+    rows = max(int(audit.get("rows_in_file", 0)), 1)
+    worst = max(int(audit.get("unparsed_starttime", 0)),
+                int(audit.get("unparsed_stoptime", 0)))
+    share = worst / rows
+    audit["unparsed_timestamp_share"] = share
+    if share > MAX_UNPARSED_TIMESTAMP_SHARE:
+        raise BikeshareError(
+            f"{sys.log_prefix}: {year}-{month:02d} has {share:.3%} of rows whose "
+            f"timestamp matches none of {list(LEGACY_TS_FORMATS)}. Those rows do "
+            f"not error -- they become NULL, fall out of the month predicate and "
+            f"read downstream as docks nobody used. Add the format to "
+            f"LEGACY_TS_FORMATS before ingesting.")
+
+
 def month_sql(sys: System, glob: str, year: int, month: int,
-              holidays: frozenset[dt.date] = HOLIDAYS) -> str:
+              holidays: frozenset[dt.date] = HOLIDAYS, era: str = "lyft") -> str:
     """The ONE query that turns a month of trips into station-month cells.
 
     Starts and ends are aggregated SEPARATELY and FULL-OUTER-joined, because a
@@ -802,7 +1234,7 @@ def month_sql(sys: System, glob: str, year: int, month: int,
     s_col, e_col = sys.station_col("start"), sys.station_col("end")
     sid_s, sid_e = station_id_sql(sys, s_col), station_id_sql(sys, e_col)
     return f"""
-    WITH trips AS (SELECT * FROM {read_csv_sql(glob)}),
+    WITH trips AS (SELECT * FROM {trips_sql(glob, era)}),
     s AS (
         SELECT {sid_s}                  AS station_id,
                {dt_s}                   AS day_type,
@@ -857,7 +1289,7 @@ def month_sql(sys: System, glob: str, year: int, month: int,
     """
 
 
-def twin_sql(sys: System, glob: str) -> str:
+def twin_sql(sys: System, glob: str, era: str = "lyft") -> str:
     """Raw (unfused) id, modal name and modal position per START dock.
 
     Feeds `assert_underscore_twins_agree`. It must read the id UNTRIMMED of its
@@ -869,14 +1301,15 @@ def twin_sql(sys: System, glob: str) -> str:
            mode(trim(start_station_name)) AS station_name,
            mode(start_lng)               AS lon,
            mode(start_lat)               AS lat
-    FROM {read_csv_sql(glob)}
+    FROM {trips_sql(glob, era)}
     WHERE {is_public_station_sql(sys, s_col)}
       AND start_lat IS NOT NULL AND start_lng IS NOT NULL
     GROUP BY 1
     """
 
 
-def audit_sql(sys: System, glob: str, year: int, month: int) -> str:
+def audit_sql(sys: System, glob: str, year: int, month: int,
+              era: str = "lyft") -> str:
     """The per-month facts the report must state, in one pass over the file."""
     first, last = month_bounds(year, month)
     s_col, e_col = sys.station_col("start"), sys.station_col("end")
@@ -936,7 +1369,7 @@ def audit_sql(sys: System, glob: str, year: int, month: int) -> str:
            max(start_lng) FILTER ({is_public_station_sql(sys, s_col)}) AS lon_max,
            min(start_lat) FILTER ({is_public_station_sql(sys, s_col)}) AS lat_min,
            max(start_lat) FILTER ({is_public_station_sql(sys, s_col)}) AS lat_max
-    FROM {read_csv_sql(glob)}
+    FROM {trips_sql(glob, era)}
     """
 
 
@@ -952,7 +1385,8 @@ def _as_date(v) -> dt.date:
 
 
 def assert_month_complete(sys: System, audit: dict, year: int, month: int,
-                          min_trips: int | None = None) -> None:
+                          min_trips: int | None = None,
+                          era: str | None = None) -> None:
     """The month is whole: not truncated, and not missing a run of dates.
 
     TRUNCATION VERSUS AN OUTAGE, AND HOW THEY ARE TOLD APART
@@ -982,7 +1416,11 @@ def assert_month_complete(sys: System, audit: dict, year: int, month: int,
     """
     first, last = month_bounds(year, month)
     expected = (last - first).days + 1
-    floor = sys.min_trips_per_month if min_trips is None else int(min_trips)
+    # The floor is PER ERA. New York's 2021+ floor is 300k; the smallest real
+    # legacy month is 2014-02 at ~169k, so applying the modern floor to the
+    # legacy era would refuse eight genuine winters as "truncated".
+    era = era or sys.era_of(year, month)
+    floor = sys.min_trips(era) if min_trips is None else int(min_trips)
     if audit["rows_in_file"] < floor:
         raise BikeshareError(
             f"{sys.log_prefix}: {year}-{month:02d} has only {audit['rows_in_file']:,} trips "
@@ -1121,6 +1559,15 @@ STATION_MONTH_COLUMNS = [
     "casual_ends", "days_in_cell", "ingested_at",
 ]
 
+#: The two columns sql/044 adds for the LEGACY era. Kept separate from
+#: STATION_MONTH_COLUMNS above because that list is the 034 grain and
+#: `tests/test_lyft_systems.py` compares it against the committed module: the
+#: panel the 2021+ back-ingest wrote must still be described by the same names.
+LEGACY_EXTRA_COLUMNS = ["station_id_legacy", "era"]
+
+#: What a writer that knows about sql/044 inserts.
+STATION_MONTH_WRITE_COLUMNS = STATION_MONTH_COLUMNS + LEGACY_EXTRA_COLUMNS
+
 
 def mem(tmp_dir: pathlib.Path):
     import duckdb
@@ -1131,31 +1578,60 @@ def mem(tmp_dir: pathlib.Path):
 
 
 def month_frame(sys: System, csv_glob: str, year: int, month: int,
-                tmp_dir: pathlib.Path, min_trips: int | None = None):
+                tmp_dir: pathlib.Path, min_trips: int | None = None,
+                era: str | None = None):
     """(station-month cell frame, audit dict) for ONE month of CSVs.
 
     Pure with respect to any warehouse: it reads files and returns a frame. The
-    three assertions (complete month, plausible size, no foreign system) run
-    here, so nothing that fails them can reach a writer.
+    assertions (timestamps parsed, complete month, plausible size, no foreign
+    system) run here, so nothing that fails them can reach a writer.
+
+    THE LEGACY ERA LANDS IN ITS OWN ID COLUMN. A legacy month is aggregated by
+    exactly the same SQL -- `legacy_projection_sql` presents it as the Lyft
+    contract -- and then its key is MOVED to `station_id_legacy` with
+    `station_id` left NULL. Legacy `3002` and modern `3002` are two different
+    docks and no published crosswalk maps them, so they never share a column.
+    `sources/cities/nyc/citibike.build_crosswalk` fills `station_id` in
+    afterwards, per row, only where name AND position agree.
     """
+    era = era or sys.era_of(year, month)
     m = mem(tmp_dir)
     try:
-        audit = m.execute(audit_sql(sys, csv_glob, year, month)).fetchdf() \
+        if era == "legacy":
+            parse = m.execute(legacy_parse_audit_sql(csv_glob)).fetchdf() \
+                     .to_dict("records")[0]
+            parse = {k: (v.item() if hasattr(v, "item") else v)
+                     for k, v in parse.items()}
+            assert_legacy_parses(sys, parse, year, month)
+        else:
+            parse = {}
+        audit = m.execute(audit_sql(sys, csv_glob, year, month, era)).fetchdf() \
                  .to_dict("records")[0]
         audit = {k: (v.item() if hasattr(v, "item") else v) for k, v in audit.items()}
-        assert_month_complete(sys, audit, year, month, min_trips)
+        audit.update({k: v for k, v in parse.items() if k != "rows_in_file"})
+        audit["era"] = era
+        assert_month_complete(sys, audit, year, month, min_trips, era)
         assert_out_of_system_bounded(sys, audit, year, month)
         # The twin check runs on the RAW ids, BEFORE month_sql fuses
         # them -- afterwards the evidence for the fusion is gone.
         audit["underscore_twins"] = assert_underscore_twins_agree(
-            sys, m.execute(twin_sql(sys, csv_glob)).fetchdf())
-        df = m.execute(month_sql(sys, csv_glob, year, month)).fetchdf()
+            sys, m.execute(twin_sql(sys, csv_glob, era)).fetchdf())
+        df = m.execute(month_sql(sys, csv_glob, year, month,
+                                 HOLIDAYS, era)).fetchdf()
     finally:
         m.close()
     if df.empty:                                         # pragma: no cover
         raise BikeshareError(
             f"{sys.log_prefix}: {year}-{month:02d} aggregated to zero station cells from "
             f"{audit['rows_in_file']:,} trips. Refusing to write an empty month.")
+    # The id space split. Nothing downstream ever sees a legacy id in
+    # `station_id`; see the docstring and sql/044.
+    df["era"] = era
+    if era == "legacy":
+        df["station_id_legacy"] = df["station_id"]
+        df["station_id"] = None
+    else:
+        df["station_id_legacy"] = None
     days = days_by_type(year, month)
     df["days_in_cell"] = df["day_type"].map(days).astype("int16")
     unknown = df.loc[df["days_in_cell"].isna() if df["days_in_cell"].dtype.kind == "f"
@@ -1163,7 +1639,8 @@ def month_frame(sys: System, csv_glob: str, year: int, month: int,
     if len(unknown):                                     # pragma: no cover
         raise BikeshareError(f"{sys.log_prefix}: unknown day types {sorted(set(unknown))}")
     audit["cells"] = int(len(df))
-    audit["stations"] = int(df["station_id"].nunique())
+    key = "station_id_legacy" if era == "legacy" else "station_id"
+    audit["stations"] = int(df[key].nunique())
     audit["starts"] = int(df["starts"].sum())
     audit["ends"] = int(df["ends"].sum())
     audit["days_by_type"] = days
@@ -1209,7 +1686,9 @@ def station_month_ddl(table: str) -> str:
            "    member_ends    BIGINT,\n"
            "    casual_ends    BIGINT,\n"
            "    days_in_cell   SMALLINT,\n"
-           "    ingested_at    TIMESTAMP\n"
+           "    ingested_at    TIMESTAMP,\n"
+           "    station_id_legacy VARCHAR,  -- pre-Lyft id space; NULL on 2021+\n"
+           "    era            VARCHAR      -- 'lyft' | 'legacy'\n"
            ")")
     return (f"CREATE SCHEMA IF NOT EXISTS {schema};\n{ddl}" if schema else ddl)
 
@@ -1222,9 +1701,12 @@ def write_station_month(con, table: str, df, year: int, month: int,
     out = df.copy()
     out["ingested_at"] = run_at
     con.execute(f"DELETE FROM {table} WHERE month = ?", [first])
-    con.register("_lyft_month", out[STATION_MONTH_COLUMNS])
+    for c in LEGACY_EXTRA_COLUMNS:
+        if c not in out.columns:
+            out[c] = None
+    con.register("_lyft_month", out[STATION_MONTH_WRITE_COLUMNS])
     try:
-        cols = ", ".join(STATION_MONTH_COLUMNS)
+        cols = ", ".join(STATION_MONTH_WRITE_COLUMNS)
         # Named column lists, never SELECT * -- D72 records this exact shape
         # silently mis-mapping two type-compatible columns when a new one landed.
         con.execute(f"INSERT INTO {table} ({cols}) SELECT {cols} FROM _lyft_month")
@@ -1234,7 +1716,8 @@ def write_station_month(con, table: str, df, year: int, month: int,
 
 
 def start_disposition_sql(sys: System, glob: str, year: int, month: int,
-                          holidays: frozenset[dt.date] = HOLIDAYS) -> str:
+                          holidays: frozenset[dt.date] = HOLIDAYS,
+                          era: str = "lyft") -> str:
     """Where every trip in the file WENT, in mutually exclusive classes.
 
     The counted class is exactly `month_sql`'s start-side WHERE, in the same
@@ -1262,7 +1745,7 @@ def start_disposition_sql(sys: System, glob: str, year: int, month: int,
              ELSE 'counted'
            END                                                 AS disposition,
            count(*)                                            AS trips
-    FROM {read_csv_sql(glob)}
+    FROM {trips_sql(glob, era)}
     GROUP BY 1
     ORDER BY 2 DESC
     """
@@ -1321,10 +1804,12 @@ def probe_month(sys: System, year: int, month: int, *, db_path: pathlib.Path | N
             encoding="utf-8-sig", errors="replace").split("\n", 1)[0]
         header_cols = {c.strip().strip('"').strip().lower()
                        for c in header.split(",")}
+        era = entry.get("era") or sys.era_of(year, month)
         df, audit = month_frame(sys, str(scratch / "*.csv"), year, month,
-                                pathlib.Path(workdir))
+                                pathlib.Path(workdir), era=era)
         report = {
             "system": sys.system_id, "month": f"{year}-{month:02d}",
+            "era": era,
             "key": entry["key"], "bytes": entry["size"],
             "bucket": sys.bucket_url, "csv_members": len(files),
             "header_is_subset_of_lyft_columns": header_cols >= LYFT_COLUMNS,
@@ -1359,7 +1844,7 @@ def probe_month(sys: System, year: int, month: int, *, db_path: pathlib.Path | N
         m = mem(pathlib.Path(workdir))
         try:
             disp = m.execute(start_disposition_sql(
-                sys, str(scratch / "*.csv"), year, month)).fetchdf()
+                sys, str(scratch / "*.csv"), year, month, HOLIDAYS, era)).fetchdf()
         finally:
             m.close()
         report["start_disposition"] = {r["disposition"]: int(r["trips"])
