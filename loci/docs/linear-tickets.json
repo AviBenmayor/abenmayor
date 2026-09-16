@@ -1948,6 +1948,16 @@
       "Labels": "score,rigor,infra",
       "Project": "Loci",
       "Milestone": "E2 \u00b7 Access Engine"
+    },
+    {
+      "Title": "Second El Punto site search + first scored operator datum + straight-line distance rule (D16 flip found in two owner memos, corrected)",
+      "Description": "Owner: \"we aren't getting more feedback so we need to use what we have.\" First operator datum: El Punto rent $4,000/mo \u2014 a HIT on the pre-registered $3,500\u2013$6,500 (central $4,800, log error 0.18); food cost lower than Lion's Milk (page assumption reversed); evenings wine-and-dine; a daytime Cuban-coffee + breakfast-burrito plan. Sales/staff/orders unknown, so economics stays C and no revenue figure went on the owner page. Site search (docs/recommendations/el-punto-second-site-2026-09-16.md): 213,813 MN+BK lot rows filtered on storefront presence, vacancy or vacant food storefront \u2264150 m, >1.5 km from 376 Graham, entrance \u2264250 m, AM-outflow profile, on-premises licences 17\u201364, no Cuban/Caribbean/Latin/Spanish DOHMH venue within 400 m \u2192 47 strict / 88 parity blocks; equal-weight standardised similarity to Graham on homes, family, Spanish, WFH, income spread, 18\u201334, transit shape, evening trade. Top 3: 570 Franklin Ave at Fulton (another Graham; vacant food unit at 1000 Dean 208 m; 99 active pipeline units), 106 Clifton Pl (richer, entrance 82 m, one vacancy), 444A Greene Ave (vacancy at the lot, strongest AM outflow, poorer, stalled pipeline \u2192 card D). Placebo: without the exclusion the next four blocks citywide sit within 450 m of Graham. Stability: 2\u00d7 transit/family weights keep the top five. Correction found on the way: the two Graham memos measured straight-line \"400 m\" on raw ST_Point(lon, lat) \u2014 the D16 flip \u2014 a 1.44 km \u00d7 0.30 km sliver; warehouse unaffected; true-disc licences 39/112/210 (Graham/Roebling/Broome), shed demographics restated (Spanish 13.9% not 22.0%, over $200k 31.2% not 19.4%); memos, owner pages and the Stone Street report corrected. Rule: scratchpad distances use METRES_SQL / ST_FlipCoordinates with a known-pair assertion (Graham\u2192Roebling 976 m).\n\nDone 2026-09-16 (CHECKPOINT D117). Pushed to Linear 2026-09-16 as GTM-193.",
+      "Status": "Done",
+      "Priority": 2,
+      "Estimate": 5,
+      "Labels": "validation,rigor,docs",
+      "Project": "Loci",
+      "Milestone": "E4 \u00b7 Validation and Artifact"
     }
   ]
 }
