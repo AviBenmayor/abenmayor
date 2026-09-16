@@ -310,3 +310,5 @@ Do all three in one day; Franklin → Classon → Bedford is a 25-minute walk en
   a renewed permit is still not a shovel.
 - **`loci recommend` warns of supply-hash drift** (baseline fitted on `ba944e18c57b`, live
   set `18eb5ab24629`), which caps section 3 at grade C on every card above.
+
+- **2026-09-16:** owner-facing pages corrected and republished after the D16 lat/lon flip was found (El Punto: licence row 92/211 → 39/112, 1 bar; Graham Avenue: shed demographics restated as shares on the true 400 m disc, distances corrected, levers 7 and 9 demoted, sureness section rewritten to disclose the correction). Fourth page "A second El Punto" (artifact pending id) published: 570 Franklin Ave / Fulton (another Graham), 106 Clifton Pl (richer, no space), 444A Greene Ave (morning-outflow bet, stalled pipeline); revenue deliberately omitted (no owner sales figure → model is typical-operator only).
