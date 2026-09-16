@@ -870,24 +870,6 @@ decisions pending an owner ruling, not descriptive-tier research questions.
 - **Session:** 2026-09-15, abenmayor-cc
 - **Current answer:** —
 
-### D42 — Where does OD leakage enter the revenue model if it ever graduates?
-- **Status:** open
-- **Answered by:** — (no ticket yet)
-- **Tier:** P3 — infra housekeeping
-- **Tag:** *model / method*
-- **Session:** 2026-09-15, abenmayor-db
-- **Why it matters:** R1 (D108) keeps λ untouched because λ is a six-term identification constant (true leakage, commuter inflow, non-household demand, CEX mapping error, unit-to-household gap, POI-vs-EC count gap) that an OD matrix cannot decompose. The candidate entry point is the Huff denominator (revenue.py eq. 3) as an outside-option term whose weight is the NTA's evening/weekend outflow share. Needs a backtest showing the leave-one-ZIP-out fit improves, and a fold design that does not let dock density (endogenous to retail) leak in.
-- **Current answer:** Open; not before DOT ρ clears +0.50 (D108 measured +0.327).
-
-### D43 — The Citi Bike OD category placebo's null baseline is unfalsifiable as built.
-- **Status:** open
-- **Answered by:** —
-- **Tier:** P3 — infra housekeeping
-- **Tag:** *validation / method*
-- **Session:** 2026-09-15, abenmayor-db
-- **Why it matters:** With density per 1,000 residential units, only 2 of the measurable NTAs are above median in all 15 categories, so the null is 0.6% and every category "beats" it by +0.211 to +0.824 (D108). What null actually tests whether supplied_share is destination retail density in a costume? Candidates: a permutation null over category labels; the trip-weighted rank of destination density; or requiring category c's supplied_share to exceed the mean of the other 14 categories' supplied_share at the same origins by a margin.
-- **Current answer:** Open; until ruled, the placebo line on `od-validate` is descriptive only.
-
 ### D45 — Should the `.sql.draft` pattern be the standing rule for D25's uncommitted-migration hazard?
 - **Status:** open
 - **Answered by:** —
@@ -1144,6 +1126,16 @@ decisions pending an owner ruling, not descriptive-tier research questions.
 - **Status:** answered
 - **Answered by:** — (GTM-192, tier 3 watch; the ticket title contains backticks the citation parser cannot carry, see CHECKPOINT D110)
 - **Current answer:** Designed and ticketed as GTM-192 (D110): tier-3 `watch` for 1–2-location operators with an intent signal, internal-only until graduation.
+
+### D42 — Where does OD leakage enter the revenue model if it ever graduates?
+- **Status:** answered
+- **Answered by:** — (not ticketed)
+- **Current answer:** Answered 2026-09-16 (owner, D120): parked behind DOT ρ ≥ +0.50 with the pre-registration recorded in docs/retrodiction-2026-09.md §12.
+
+### D43 — The Citi Bike OD category placebo's null baseline is unfalsifiable as built.
+- **Status:** answered
+- **Answered by:** `Citi Bike phase 2: origin-destination leakage per NTA × category ('where residents of this gap area go') and the card line`
+- **Current answer:** Answered 2026-09-16 (owner, D120): residual-rank placebo with blind thresholds replaces the intersection null; 4 of 15 category-specific.
 
 ---
 
