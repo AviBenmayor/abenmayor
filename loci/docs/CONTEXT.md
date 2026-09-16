@@ -65,13 +65,16 @@ Openings clustered where supply was already thick. Two results carry this, and t
 
 Loci may claim decision value only when it carries a survival or viability label that clears a pre-registered numeric floor on a named out-of-sample vintage, ratified by the `statistician` agent **before** the result is seen. This copies D111 exactly, where a Citi Bike growth feature was tested against a +0.005 delta-AUC floor set in advance and was recorded as a null.
 
-**The source list is closed at three.** Adding a fourth is itself a decision (below).
+**The source list is closed at four (source #4 admitted by D119 under its own floor and date, as the rule requires).**
 
 | # | Source | What it is | Pre-registered floor | Date | Status |
 |---|---|---|---|---|---|
 | 1 | Foursquare pre-ledger closure panel | 54,190 venues that opened and closed before the snapshot (`docs/GTM.md:122`); raw ascertainment ~3% of closures, categorically non-random | An ascertainment-corrected survival label with out-of-sample AUC ≥ 0.65 against realized closures, the correction itself ratified before fitting | 2027-03-31 | Unbuilt |
 | 2 | LL157 go-dark | The one survival-adjacent outcome the city publishes | ≥ +0.02 AUC over the same model without the score, sign stable across both outcome definitions | 2027-06-30 (one re-run, on the next full-universe filing) | **Failed once.** AUC 0.549 vs 0.535; sign flips (+0.42 / −0.20) |
 | 3 | `analysis.address_observation` | The human ground-truth ledger. Per C5 it may **score** a label but may never be a feature in the screen, so it enters as a scoring and labelling source only | ≥ 200 observed storefronts across ≥ 60 anchors, and a pre-registered label reaching AUC ≥ 0.65 out of sample against observed closure | 2027-06-30 | 103 observations, 19 anchors (D107) |
+| 4 | DCWP licence-status intervals (`w7w3-xahh`, full history; `analysis.licence_interval`) | Licence creation → first non-Active status, every status carried; the roster publishes no status-change date, so surrender/revocation are bounds and only expiry is observed; its vocabulary maps to one Loci category today (D119) | AUC ≥ 0.65 AND ΔAUC ≥ +0.02 over a category × borough hazard AND decile calibration gap ≤ 0.10 AND sign-stable across both closure definitions AND ≥ 200 events, 36 m, cohort-stacked 2016–2022 | 2027-06-30 | 72,451 intervals landed; identity join 0.9%; re-sourcing in wave two |
+
+Pre-registration for the 2020→2023 rewind (entry ΔAUC ≥ +0.008 at 12/24 m with 2021-01-01 primary and 2020 as a declared pandemic regime arm; category-correctness +0.05 top-1, κ ≥ 0.10, eight licensed categories; time-to-close descriptive only) is recorded in D119; a pass on the 2020 cohort alone does not satisfy this gate.
 
 **The stop rule, and it is revisitable.** If all three sources fail by their dates, then on **2027-07-01** Loci claims cost of search, and this charter amends itself on that date to say so. "Exhausted" means the dates passed, not that effort ran out. The rule reopens only when a **new** closure source is admitted to `src/loci/registry.yaml` by its own CHECKPOINT decision naming that source's floor and its date. A source added without a floor and a date does not reopen it.
 
