@@ -42,6 +42,7 @@ import json
 import h3
 import pytest
 
+from loci.model import supply_asof
 from loci import db
 from loci.model import poi_evidence as pe
 from loci.model import poi_presence as pp
@@ -98,6 +99,11 @@ assert list(AGE_TYPES) == wx.AGE_FIT_GAP_COLUMNS
 def con():
     c = db.connect(":memory:")
     c.execute("CREATE SCHEMA staging; CREATE SCHEMA analysis;")
+    # The open/closed predicate's as-of date is pinned in analysis.supply_asof
+    # (owner ruling 2026-09-16): every SQL rendering of
+    # model/poi_presence.poi_is_open binds that table by name, so a scratch
+    # warehouse needs it exactly as db.init_schema creates it.
+    supply_asof.ensure_table(c)
     # Column subset of the real staging.poi (sql/002_schema.sql), in the real
     # relative order. `source_record_id` and `attrs` are here because the
     # restaurant detail rides in them -- a fixture missing them would let the

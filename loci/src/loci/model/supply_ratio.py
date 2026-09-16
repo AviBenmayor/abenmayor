@@ -174,6 +174,7 @@ from scipy.sparse.csgraph import dijkstra
 from scipy.spatial import ConvexHull, QhullError
 
 from loci.categories import CATEGORIES
+from loci.model import supply_asof as supply_asof_mod
 from loci.model.conveniences import ALLCATS, graph_version
 from loci.score.access import MIN_COMPONENT, THRESHOLDS, _prune, _to_csr
 from loci.score.supply import DEFAULT_SUPPLY_SET, supply_hash, supply_predicate
@@ -628,6 +629,13 @@ _BASELINE_HEADER = """\
 # and under-provision is correlated with race net of income (Meltzer &
 # Schuetz), so a low ratio measures what is there and never proves unmet demand.
 #
+# `supply_asof` is the date the open/closed predicate was EVALUATED at
+# (analysis.supply_asof, owner ruling 2026-09-16) -- NOT `asof`, which is the
+# wall-clock day the fit ran. Licences lapse and inspection evidence ages, so
+# the same warehouse yields a different supply set at a different as-of date;
+# pinning it is what keeps `supply_hash` moving only on real evidence writes.
+# Advance it with `loci supply-asof advance`, then re-run the canonical order.
+#
 # `supply_hash` is score/supply.supply_hash at fit time. analysis.poi_supply is
 # a VIEW: it moves when dedup is re-run or an anchor is loaded, and a baseline
 # fitted on a different supply set is not comparable to a ratio computed on
@@ -909,7 +917,15 @@ def build_supply_ratio(
         doc = {
             "supply_hash": report["supply_hash"],
             "supply_set": supply_set,
+            # `asof` is the WALL-CLOCK day the fit RAN -- provenance only.
+            # `supply_asof` is the date the open/closed predicate was EVALUATED
+            # at, read from analysis.supply_asof (owner ruling 2026-09-16).
+            # They are not the same thing and conflating them is how the pin
+            # comes undone: a re-fit run on 2026-09-20 against a pin held at
+            # 2026-09-15 is a legitimate, reproducible state.
+            # tests/test_supply_ratio.py's drift test hashes at `supply_asof`.
             "asof": dt.date.today().isoformat(),
+            "supply_asof": supply_asof_mod.read(con).isoformat(),
             "radius_m": float(radius_m),
             "boroughs": list(boroughs),
             # D75: the eligibility gate is retired, so this is every address

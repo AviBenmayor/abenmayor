@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from loci.model import supply_asof
 from loci import db as locidb
 from loci.validation import retrodiction as rd
 
@@ -33,6 +34,11 @@ from loci.validation import retrodiction as rd
 def con():
     c = locidb.connect(":memory:")
     c.execute("CREATE SCHEMA IF NOT EXISTS analysis")
+    # The open/closed predicate's as-of date is pinned in analysis.supply_asof
+    # (owner ruling 2026-09-16): every SQL rendering of
+    # model/poi_presence.poi_is_open binds that table by name, so a scratch
+    # warehouse needs it exactly as db.init_schema creates it.
+    supply_asof.ensure_table(c)
     c.execute("""CREATE TABLE analysis.poi_presence (
         location_key VARCHAR, category VARCHAR, display_name VARCHAR,
         lon DOUBLE, lat DOUBLE, borough VARCHAR,
@@ -211,6 +217,11 @@ def poi_con():
     c = locidb.connect(":memory:")
     c.execute("CREATE SCHEMA IF NOT EXISTS staging")
     c.execute("CREATE SCHEMA IF NOT EXISTS analysis")
+    # The open/closed predicate's as-of date is pinned in analysis.supply_asof
+    # (owner ruling 2026-09-16): every SQL rendering of
+    # model/poi_presence.poi_is_open binds that table by name, so a scratch
+    # warehouse needs it exactly as db.init_schema creates it.
+    supply_asof.ensure_table(c)
     c.execute("""CREATE TABLE analysis.poi_presence (
         location_key VARCHAR, category VARCHAR, borough VARCHAR,
         first_seen_kind VARCHAR, first_seen_src_date DATE,

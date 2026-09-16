@@ -44,6 +44,7 @@ import json
 
 import pytest
 
+from loci.model import supply_asof
 from loci import db
 from loci.viz import webmap_export as wx
 
@@ -62,6 +63,11 @@ def con():
     c = db.connect(":memory:")
     c.execute("CREATE SCHEMA IF NOT EXISTS analysis;")
     c.execute("CREATE SCHEMA IF NOT EXISTS staging;")
+    # The open/closed predicate's as-of date is pinned in analysis.supply_asof
+    # (owner ruling 2026-09-16): every SQL rendering of
+    # model/poi_presence.poi_is_open binds that table by name, so a scratch
+    # warehouse needs it exactly as db.init_schema creates it.
+    supply_asof.ensure_table(c)
     ratios = ", ".join(f"{cat}_ratio DOUBLE, {cat}_nearest_m DOUBLE" for cat in CATS)
     c.execute(f"""
         CREATE TABLE analysis.address_gaps (

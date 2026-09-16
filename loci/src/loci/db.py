@@ -35,6 +35,17 @@ def init_schema(con: duckdb.DuckDBPyConnection) -> None:
     """Apply every migration from 002 onward, in numeric filename order.
     Idempotent (each file is CREATE ... IF NOT EXISTS / CREATE OR REPLACE).
     001 is the per-connection extension bootstrap and is applied by connect()."""
+    # analysis.supply_asof BEFORE the sweep, not at its migration number.
+    # sql/029_poi_colocation.sql's views read it as a scalar subquery and
+    # DuckDB binds a view's query at CREATE time, so the table has to exist by
+    # 029 -- and its own migration (sql/040) sorts after. Idempotent: creates
+    # the table and seeds one row from model/supply_baseline.yaml only when it
+    # is empty. See model/supply_asof.py for why the predicate is pinned at
+    # all. Local import for the same reason as the hooks below: model/ imports
+    # loci.db.
+    from loci.model.supply_asof import ensure_table as _ensure_supply_asof
+    _ensure_supply_asof(con)
+
     for path in sorted(SQL_DIR.glob("*.sql")):
         if path.name.startswith("001_"):
             continue

@@ -248,7 +248,8 @@ def canonical_poi_sql(supply_set: str = DEFAULT_SUPPLY_SET,
                       cols: str = "s.category, ST_X(s.geom), ST_Y(s.geom)",
                       *,
                       gate_closed: bool | None = None,
-                      collapse_unresolved: bool | None = None) -> str:
+                      collapse_unresolved: bool | None = None,
+                      view: str | None = None) -> str:
     """The one SELECT every consumer of "the supply of businesses" should use.
 
     Replaces the hand-written `staging.poi JOIN analysis.poi_dedup ON ...
@@ -270,12 +271,18 @@ def canonical_poi_sql(supply_set: str = DEFAULT_SUPPLY_SET,
     """
     gate = GATE_CLOSED if gate_closed is None else gate_closed
     collapse = COLLAPSE_UNRESOLVED if collapse_unresolved is None else collapse_unresolved
+    # `view` exists for ONE caller: model/supply_asof.pinned_supply_view, which
+    # renders the same view at another as-of date so `supply_hash(asof=...)`
+    # can answer "what would tomorrow cost" WITHOUT writing. It is not a knob:
+    # anything else passing a view here is reading a different supply set under
+    # the same name.
+    src_view = view or SUPPLY_VIEW
     where = [f"s.{supply_predicate(supply_set)}"]
     if gate:
         # `<> 'closed'` and never `= 'open'`: the predicate is TRI-STATE and
         # 'unknown' must survive (see GATE_CLOSED).
         where.append("s.poi_status <> 'closed'")
-    sql = f"SELECT {cols} FROM {SUPPLY_VIEW} s WHERE " + " AND ".join(where)
+    sql = f"SELECT {cols} FROM {src_view} s WHERE " + " AND ".join(where)
     if collapse:
         # Deterministic survivor: a positively-open member beats an unknown one
         # ('open' < 'unknown' lexically), then the lowest poi_id, so two runs
@@ -395,15 +402,32 @@ def build_category_anchor(con, year: int | None = None,
 
 # ---------------------------------------------------------------- provenance
 
-def supply_hash(con, supply_set: str = DEFAULT_SUPPLY_SET) -> str:
+def supply_hash(con, supply_set: str = DEFAULT_SUPPLY_SET, *, asof=None) -> str:
     """Short, stable hash of everything that decides WHICH POIs a run counted:
     the set name, the dedup rule parameters, the qualifying-anchor set, and
     the resulting per-category supply counts. Same rationale as
     address_gaps._reach_hash — two runs whose supply differs must be
     distinguishable once written, and the count alone would not catch a
     same-size but differently-composed set.
+
+    `asof` computes the hash at ANOTHER as-of date than the one pinned in
+    `analysis.supply_asof`, by rendering the live view against a date literal
+    in a TEMP VIEW (so it works read-only and writes nothing). That is how the
+    drift test pins the baseline's own date and how `loci supply-asof advance`
+    prices a day. `asof=None` -- every existing caller -- reads the pin, which
+    is what the warehouse itself uses.
+
+    THE AS-OF DATE IS NOT IN THE BLOB, deliberately (model/supply_asof.py
+    caveat 3): adding it would change every historical hash, and
+    `ba944e18c57b` reproducing at asof 2026-09-15 is the whole proof that the
+    pin is inert.
     """
     from loci.score.dedup import BOOTH_METERS, BOOTH_SOURCES, MATCH_METERS
+
+    view = None
+    if asof is not None:
+        from loci.model.supply_asof import pinned_supply_view
+        view = pinned_supply_view(con, asof)
 
     # Through canonical_poi_sql, so the hash describes the set actually
     # counted (gate and collapse included) rather than the ungated view.
@@ -411,7 +435,7 @@ def supply_hash(con, supply_set: str = DEFAULT_SUPPLY_SET) -> str:
     # must not land after a GROUP BY.
     counts = dict(con.execute(
         "SELECT category, count(*) FROM ("
-        + canonical_poi_sql(supply_set, "s.category") + ") GROUP BY 1"
+        + canonical_poi_sql(supply_set, "s.category", view=view) + ") GROUP BY 1"
     ).fetchall())
     def _cats(predicate: str) -> list[str]:
         try:

@@ -54,6 +54,7 @@ from dataclasses import dataclass, field
 
 import h3
 
+from loci.model.supply_asof import ASOF_SQL, default_today
 from loci.score.dedup import BLOCK_RES, MATCH_METERS, haversine_m, names_match, norm_tokens
 
 SQL_018 = pathlib.Path(__file__).resolve().parents[1] / "sql" / "018_poi_presence.sql"
@@ -222,6 +223,17 @@ FIRST_SEEN_FIELDS: tuple[tuple[str, str], ...] = (
 #  3. FRESHNESS IS A WINDOW, NOT A FACT.  OPEN_EVIDENCE_MAX_AGE_DAYS is the
 #     same 24 months dohmh.py derived as ~1.4x the p90 inter-inspection gap.
 #     A POI whose only evidence is older is 'unknown', not 'closed'.
+#  4. "TODAY" IS A PINNED DATE, NOT THE WALL CLOCK (owner ruling 2026-09-16).
+#     Two of the branches below are functions of the current date -- the
+#     licence-expiry test and the two freshness windows -- so a `current_date`
+#     here made the verdict, the supply set and `score/supply.supply_hash`
+#     change at every midnight with no write to the warehouse.  They now read
+#     `model/supply_asof.ASOF_SQL`, a scalar subquery over the one-row table
+#     `analysis.supply_asof`, and the Python twin reads the same date through
+#     `supply_asof.default_today()`.  Advancing that date is a NAMED,
+#     ANNOUNCED step (`loci supply-asof advance`); see model/supply_asof.py
+#     for the measured cost of one day (12 POIs, 9 of them leaving supply, on
+#     the 2026-09-15 -> 2026-09-16 roll).
 
 #: How old a source's own "still trading" evidence may be and still support an
 #: OPEN verdict.  Deliberately the SAME number as dohmh.STALE_DAYS (24 months,
@@ -301,7 +313,7 @@ def poi_status(attrs: dict | None, *,
     and asserts they agree row for row. Two copies of a rule is how a rule
     drifts, so they are tested as one.
     """
-    today = today or dt.date.today()
+    today = today or default_today()
     src = source_id or "?"
 
     def _date(v):
@@ -370,7 +382,7 @@ def _sql_list(values) -> str:
 
 
 def poi_is_open(poi: str = "p", closed_on: str = "NULL",
-                today: str = "current_date",
+                today: str = ASOF_SQL,
                 max_age_days: int = OPEN_EVIDENCE_MAX_AGE_DAYS) -> str:
     """THE predicate, as a SQL CASE expression yielding 'open'/'closed'/'unknown'.
 
@@ -420,7 +432,7 @@ END"""
 
 
 def poi_status_basis(poi: str = "p", closed_on: str = "NULL",
-                     today: str = "current_date",
+                     today: str = ASOF_SQL,
                      max_age_days: int = OPEN_EVIDENCE_MAX_AGE_DAYS) -> str:
     """The `basis` string that goes with `poi_is_open()`, as SQL. Provenance:
     every verdict says which source key produced it, so a reader can tell a
@@ -662,6 +674,8 @@ def ensure_schema(con) -> None:
     that view -- 020's, plus the closure columns -- and only CREATE ... IF NOT
     EXISTS / ALTER ... IF NOT EXISTS / CREATE OR REPLACE VIEW, so re-applying it
     here costs nothing and keeps the view at the newest migration's shape."""
+    from loci.model.supply_asof import ensure_table as _ensure_supply_asof
+    _ensure_supply_asof(con)
     con.execute(SQL_018.read_text())
     sql_027 = SQL_018.parent / "027_poi_closure.sql"
     if sql_027.exists():

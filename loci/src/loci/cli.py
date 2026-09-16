@@ -9919,3 +9919,128 @@ def citibike_divvy_probe(
         f"not transfer, which is why the gate is a per-system field.[/]")
     console.print("[green]probe passes[/]" if ok else "[red]probe FAILS[/]")
     raise typer.Exit(0 if ok else 1)
+
+
+# ===========================================================================
+# supply-asof -- THE PINNED AS-OF DATE OF THE OPEN/CLOSED PREDICATE
+# ===========================================================================
+# Owner ruling 2026-09-16. `analysis.supply_asof` holds ONE date; every SQL
+# rendering of model/poi_presence.poi_is_open reads it, so the supply set and
+# score/supply.supply_hash stop moving at midnight and move only when someone
+# writes evidence -- or runs `advance` below, which is a NAMED, ANNOUNCED step
+# in the canonical order and not a refresh. See model/supply_asof.py.
+supply_asof_app = typer.Typer(
+    help="The pinned as-of date the open/closed predicate is evaluated at "
+         "(analysis.supply_asof). Advancing it moves the shared supply hash.")
+app.add_typer(supply_asof_app, name="supply-asof")
+
+
+@supply_asof_app.command("show")
+def supply_asof_show() -> None:
+    """Print the pinned as-of date, the baseline YAML's, and whether they agree."""
+    from loci.model import supply_asof as sa
+
+    con = locidb.connect()
+    try:
+        sa.ensure_table(con)
+        live, doc, agree = sa.check(con)
+        row = con.execute(
+            f"SELECT set_at, set_by, reason FROM {sa.TABLE}").fetchone()
+    finally:
+        con.close()
+
+    t = Table(title="supply as-of")
+    for c in ("where", "value"):
+        t.add_column(c)
+    t.add_row("analysis.supply_asof", f"[bold]{live}[/]")
+    t.add_row("model/supply_baseline.yaml (supply_asof)", str(doc))
+    t.add_row("set_at / set_by", f"{row[0]} / {row[1]}")
+    t.add_row("reason", str(row[2] or ""))
+    marker = sa.freeze_marker()
+    t.add_row("freeze marker", f"[red]SET ({marker})[/]" if marker else "none")
+    console.print(t)
+    if not agree:
+        console.print(
+            f"[red]MISMATCH[/] the warehouse is pinned at {live} but the baseline "
+            f"was fitted at {doc}. Every supply_ratio_vs_base in the warehouse "
+            f"now mixes two supply sets, exactly as a moved supply_hash would. "
+            f"Re-fit (`loci supply-ratio --boroughs MN,BK --fit-baseline`) or "
+            f"move the pin back.")
+        raise typer.Exit(1)
+    console.print("[green]ok[/] warehouse and baseline agree.")
+
+
+@supply_asof_app.command("advance")
+def supply_asof_advance(
+    to: str = typer.Option(None, "--to", metavar="YYYY-MM-DD",
+                           help="The date to move to. Default: today."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Compute the hashes and the flip table, "
+                                      "write nothing. Read-only."),
+    supply_set: str = typer.Option("principled", "--supply-set"),
+    force: bool = typer.Option(False, "--force",
+                               help="Advance despite a freeze marker, or move the "
+                                    "date BACKWARDS. Hash steward only."),
+    reason: str = typer.Option("", "--reason",
+                               help="Recorded on the row. Say why the date moved."),
+) -> None:
+    """Move the pinned as-of date. HASH-MOVING -- announce it like a poi_status write.
+
+    Prints the supply hash before and after and the POI status flips the move
+    causes. `--dry-run` prices the move without making it.
+    """
+    import datetime as _dt
+
+    from loci.model import supply_asof as sa
+
+    target = _dt.date.fromisoformat(to) if to else _dt.date.today()
+    con = locidb.connect(read_only=dry_run)
+    try:
+        if not dry_run:
+            sa.ensure_table(con)
+        rep = sa.advance(con, to=target, dry_run=dry_run, supply_set=supply_set,
+                         force=force, set_by="loci supply-asof advance",
+                         reason=reason)
+    finally:
+        con.close()
+
+    t = Table(title=f"supply as-of {rep['from']} -> {rep['to']}")
+    for c in ("", "as-of", "supply_hash"):
+        t.add_column(c)
+    t.add_row("before", str(rep["from"]), rep["hash_before"])
+    t.add_row("after", str(rep["to"]),
+              f"[red]{rep['hash_after']}[/]" if rep["moved"] else rep["hash_after"])
+    console.print(t)
+
+    flips = rep["flips"]
+    if flips is None or flips.empty:
+        console.print("[dim]no POI changes verdict between these two dates.[/]")
+    else:
+        f = Table(title="poi_status flips")
+        for c in flips.columns:
+            f.add_column(str(c), justify="right" if c.startswith("n") else "left")
+        for _, r in flips.iterrows():
+            f.add_row(*[str(v) for v in r])
+        console.print(f)
+
+    if rep.get("unpinned"):
+        console.print(
+            "[yellow]this warehouse has no analysis.supply_asof yet[/] -- the "
+            "'before' date came from model/supply_baseline.yaml. Apply "
+            "sql/040_supply_asof.sql (or run db.init_schema) before advancing "
+            "for real.")
+    if rep["freeze_marker"]:
+        console.print(f"[red]freeze marker set[/] {rep['freeze_marker']}")
+    if rep["dry_run"]:
+        console.print("[dim]--dry-run:[/] nothing written.")
+        raise typer.Exit(0)
+    if rep["moved"]:
+        console.print(
+            f"[yellow]the shared supply hash moved {rep['hash_before']} -> "
+            f"{rep['hash_after']}.[/] ANNOUNCE this to every peer session, then "
+            f"re-run the canonical order from step 01 "
+            f"(`loci supply-ratio --boroughs MN,BK --fit-baseline`). Until you "
+            f"do, the baseline, address_gaps, revenue, the forecast vintage and "
+            f"the webmap meta.json are all a vintage behind.")
+    else:
+        console.print("[green]ok[/] date moved; the supply hash did not.")

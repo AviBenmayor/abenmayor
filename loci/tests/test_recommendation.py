@@ -21,6 +21,7 @@ import json
 
 import pytest
 
+from loci.model import supply_asof
 from loci import db as locidb
 from loci.model import recommendation_ledger as rl
 
@@ -48,6 +49,11 @@ def con():
     c = locidb.connect(":memory:")
     c.execute("CREATE SCHEMA IF NOT EXISTS analysis")
     c.execute("CREATE SCHEMA IF NOT EXISTS staging")
+    # The open/closed predicate's as-of date is pinned in analysis.supply_asof
+    # (owner ruling 2026-09-16): every SQL rendering of
+    # model/poi_presence.poi_is_open binds that table by name, so a scratch
+    # warehouse needs it exactly as db.init_schema creates it.
+    supply_asof.ensure_table(c)
     # sql/020 ALTERs analysis.address_category; a stub is enough for the DDL.
     c.execute("CREATE TABLE analysis.address_category ("
               "address_id VARCHAR, category VARCHAR)")

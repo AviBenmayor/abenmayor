@@ -59,6 +59,19 @@
 --     A group's size is a property of the data, not of the set the screen
 --     happens to be running; `in_principled` filtering happens downstream.
 --
+-- AS-OF DATE (owner ruling 2026-09-16).  The predicate's licence-expiry and
+-- freshness branches used to read `current_date`, which a DuckDB view
+-- evaluates at QUERY time -- so this view answered a different question every
+-- midnight and score/supply.supply_hash moved with no write to the warehouse
+-- (ba944e18c57b -> 18eb5ab24629 on the 2026-09-16 roll: 12 POIs flipped, 9 of
+-- them out of supply, nothing ingested).  They now read the one-row table
+-- analysis.supply_asof (sql/040_supply_asof.sql), which db.init_schema creates
+-- BEFORE this file runs because DuckDB binds a view's query at CREATE time.
+-- Moving the date is an UPDATE on that table and a NAMED, ANNOUNCED step --
+-- `loci supply-asof advance` -- never a side effect of the clock.  The
+-- rationale, the measured cost of one day and the freeze rule are in
+-- model/supply_asof.py.
+--
 -- ---------------------------------------------------------------------------
 -- THE TWO VIEWS
 -- ---------------------------------------------------------------------------
@@ -107,18 +120,18 @@ base AS (
            CASE
     WHEN f.closed_on IS NOT NULL THEN 'closed'
     WHEN json_extract_string(p.attrs, '$.active_basis') IN ('closed_at_last_inspection', 'no_evidence_of_activity', 'out_of_business', 'unable_to_locate') THEN 'closed'
-    WHEN coalesce(try_cast(json_extract_string(p.attrs, '$.expires') AS DATE), try_cast(json_extract_string(p.attrs, '$.license_expiration_date') AS DATE)) IS NOT NULL AND coalesce(try_cast(json_extract_string(p.attrs, '$.expires') AS DATE), try_cast(json_extract_string(p.attrs, '$.license_expiration_date') AS DATE)) < current_date THEN 'closed'
+    WHEN coalesce(try_cast(json_extract_string(p.attrs, '$.expires') AS DATE), try_cast(json_extract_string(p.attrs, '$.license_expiration_date') AS DATE)) IS NOT NULL AND coalesce(try_cast(json_extract_string(p.attrs, '$.expires') AS DATE), try_cast(json_extract_string(p.attrs, '$.license_expiration_date') AS DATE)) < (SELECT asof_date FROM analysis.supply_asof) THEN 'closed'
     WHEN json_extract_string(p.attrs, '$.active_basis') LIKE 'stale_%' THEN 'unknown'
     WHEN NOT coalesce(lower(json_extract_string(p.attrs, '$.active')) = 'true', FALSE) THEN 'unknown'
     WHEN json_extract_string(p.attrs, '$.active_basis') IN ('never_inspected', 'no_expiration_date', 'no_status') THEN 'unknown'
     WHEN coalesce(try_cast(json_extract_string(p.attrs, '$.expires') AS DATE), try_cast(json_extract_string(p.attrs, '$.license_expiration_date') AS DATE)) IS NOT NULL THEN 'open'
     WHEN (json_extract_string(p.attrs, '$.active_basis') LIKE 'inspected_%' OR json_extract_string(p.attrs, '$.active_basis') LIKE 'inspected%' OR json_extract_string(p.attrs, '$.active_basis') IN ('dead_marker_overridden_same_day')) THEN
         CASE WHEN try_cast(json_extract_string(p.attrs, '$.last_inspection_date') AS DATE) IS NOT NULL
-              AND date_diff('day', try_cast(json_extract_string(p.attrs, '$.last_inspection_date') AS DATE), current_date) <= 731
+              AND date_diff('day', try_cast(json_extract_string(p.attrs, '$.last_inspection_date') AS DATE), (SELECT asof_date FROM analysis.supply_asof)) <= 731
              THEN 'open' ELSE 'unknown' END
     WHEN json_extract_string(p.attrs, '$.active_basis') IN ('published_active_medicaid_ffs_roster', 'published_active_roster') THEN
         CASE WHEN try_cast(p.observed_on AS DATE) IS NOT NULL
-              AND date_diff('day', try_cast(p.observed_on AS DATE), current_date) <= 731
+              AND date_diff('day', try_cast(p.observed_on AS DATE), (SELECT asof_date FROM analysis.supply_asof)) <= 731
              THEN 'open' ELSE 'unknown' END
     ELSE 'unknown'
 END AS poi_status,
@@ -126,7 +139,7 @@ END AS poi_status,
     WHEN f.closed_on IS NOT NULL
         THEN 'ledger:closed_on_' || strftime(f.closed_on, '%Y-%m-%d')
     WHEN json_extract_string(p.attrs, '$.active_basis') IN ('closed_at_last_inspection', 'no_evidence_of_activity', 'out_of_business', 'unable_to_locate') THEN p.source_id || ':' || json_extract_string(p.attrs, '$.active_basis')
-    WHEN coalesce(try_cast(json_extract_string(p.attrs, '$.expires') AS DATE), try_cast(json_extract_string(p.attrs, '$.license_expiration_date') AS DATE)) IS NOT NULL AND coalesce(try_cast(json_extract_string(p.attrs, '$.expires') AS DATE), try_cast(json_extract_string(p.attrs, '$.license_expiration_date') AS DATE)) < current_date
+    WHEN coalesce(try_cast(json_extract_string(p.attrs, '$.expires') AS DATE), try_cast(json_extract_string(p.attrs, '$.license_expiration_date') AS DATE)) IS NOT NULL AND coalesce(try_cast(json_extract_string(p.attrs, '$.expires') AS DATE), try_cast(json_extract_string(p.attrs, '$.license_expiration_date') AS DATE)) < (SELECT asof_date FROM analysis.supply_asof)
         THEN p.source_id || ':expired_' || strftime(coalesce(try_cast(json_extract_string(p.attrs, '$.expires') AS DATE), try_cast(json_extract_string(p.attrs, '$.license_expiration_date') AS DATE)), '%Y-%m-%d')
     WHEN json_extract_string(p.attrs, '$.active_basis') LIKE 'stale_%' THEN p.source_id || ':' || json_extract_string(p.attrs, '$.active_basis') || ':absence_derived_not_a_closure'
     WHEN NOT coalesce(lower(json_extract_string(p.attrs, '$.active')) = 'true', FALSE)
@@ -136,12 +149,12 @@ END AS poi_status,
     WHEN coalesce(try_cast(json_extract_string(p.attrs, '$.expires') AS DATE), try_cast(json_extract_string(p.attrs, '$.license_expiration_date') AS DATE)) IS NOT NULL THEN p.source_id || ':valid_to_' || strftime(coalesce(try_cast(json_extract_string(p.attrs, '$.expires') AS DATE), try_cast(json_extract_string(p.attrs, '$.license_expiration_date') AS DATE)), '%Y-%m-%d')
     WHEN (json_extract_string(p.attrs, '$.active_basis') LIKE 'inspected_%' OR json_extract_string(p.attrs, '$.active_basis') LIKE 'inspected%' OR json_extract_string(p.attrs, '$.active_basis') IN ('dead_marker_overridden_same_day')) THEN
         CASE WHEN try_cast(json_extract_string(p.attrs, '$.last_inspection_date') AS DATE) IS NOT NULL
-              AND date_diff('day', try_cast(json_extract_string(p.attrs, '$.last_inspection_date') AS DATE), current_date) <= 731
+              AND date_diff('day', try_cast(json_extract_string(p.attrs, '$.last_inspection_date') AS DATE), (SELECT asof_date FROM analysis.supply_asof)) <= 731
              THEN p.source_id || ':' || json_extract_string(p.attrs, '$.active_basis')
              ELSE p.source_id || ':' || json_extract_string(p.attrs, '$.active_basis') || ':evidence_older_than_731d' END
     WHEN json_extract_string(p.attrs, '$.active_basis') IN ('published_active_medicaid_ffs_roster', 'published_active_roster') THEN
         CASE WHEN try_cast(p.observed_on AS DATE) IS NOT NULL
-              AND date_diff('day', try_cast(p.observed_on AS DATE), current_date) <= 731
+              AND date_diff('day', try_cast(p.observed_on AS DATE), (SELECT asof_date FROM analysis.supply_asof)) <= 731
              THEN p.source_id || ':' || json_extract_string(p.attrs, '$.active_basis')
              ELSE p.source_id || ':' || json_extract_string(p.attrs, '$.active_basis') || ':evidence_older_than_731d' END
     ELSE p.source_id || ':' || coalesce(json_extract_string(p.attrs, '$.active_basis'), 'no_status_field')

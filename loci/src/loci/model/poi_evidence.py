@@ -49,6 +49,7 @@ import hashlib
 from dataclasses import dataclass, field
 
 from loci.model import poi_presence as pp
+from loci.model import supply_asof as pp_asof
 
 STATUS_OPEN = pp.STATUS_OPEN
 STATUS_CLOSED = pp.STATUS_CLOSED
@@ -228,7 +229,7 @@ def poi_status_date(attrs: dict | None, *, closed_on=None, observed_on=None,
 
 
 def poi_status_date_sql(poi: str = "p", closed_on: str = "NULL",
-                        today: str = "current_date",
+                        today: str = pp_asof.ASOF_SQL,
                         max_age_days: int = pp.OPEN_EVIDENCE_MAX_AGE_DAYS) -> str:
     """SQL twin of `poi_status_date()`. Same branch order and semantics as
     `poi_presence.poi_is_open()`; see that function and the section header."""

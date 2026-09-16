@@ -416,18 +416,69 @@ def test_baseline_supply_hash_matches_the_live_poi_supply():
     if not locidb.DEFAULT_PATH.exists():
         pytest.skip(f"warehouse absent at {locidb.DEFAULT_PATH}; drift cannot be checked")
 
+    from loci.model.supply_asof import baseline_asof
     from loci.score.supply import supply_hash
 
     doc = load_baselines()
+    asof = baseline_asof()
     con = locidb.connect(read_only=True)
     try:
-        live = supply_hash(con, doc.get("supply_set", "principled"))
+        live = supply_hash(con, doc.get("supply_set", "principled"), asof=asof)
     finally:
         con.close()
     assert doc["supply_hash"] == live, (
-        f"supply_baseline.yaml was fitted on supply {doc['supply_hash']} but the live "
-        f"set is {live}. Every supply_ratio_vs_base in the warehouse now mixes two "
-        f"supply sets. Re-fit with `loci supply-ratio --boroughs MN,BK --fit-baseline`.")
+        f"supply_baseline.yaml was fitted on supply {doc['supply_hash']} at as-of "
+        f"{asof} but the live set at that same as-of date is {live}. Every "
+        f"supply_ratio_vs_base in the warehouse now mixes two supply sets. This is "
+        f"a REAL evidence change (a closure verdict, a dedup re-run, an anchor), "
+        f"not a date roll -- the date is pinned. Re-fit with "
+        f"`loci supply-ratio --boroughs MN,BK --fit-baseline`.")
+
+
+def test_the_hash_at_the_next_day_may_differ_and_that_is_not_a_failure():
+    """THE POINT OF THE PIN, asserted rather than described.
+
+    The hash at the baseline's as-of date is what the drift test above pins.
+    The hash ONE DAY LATER is allowed to differ -- licences lapse and evidence
+    ages -- and that difference must not fail anything, because it is not a
+    change to the warehouse. It is what `loci supply-asof advance` exists to
+    make into a deliberate, announced event.
+
+    Measured on the 2026-09-16 build: ba944e18c57b at 2026-09-15, 18eb5ab24629
+    at 2026-09-16, 12 POIs flipping (9 lapsed licences leaving supply, 3 DOHMH
+    inspections aging out of the OPEN window and staying).
+    """
+    import datetime as dt
+
+    from loci import db as locidb
+    from loci.model.supply_asof import baseline_asof, status_flips
+    from loci.score.supply import supply_hash
+
+    if not BASELINE_PATH.exists() or not locidb.DEFAULT_PATH.exists():
+        pytest.skip("warehouse or baseline absent; the date roll cannot be priced")
+
+    asof = baseline_asof()
+    nxt = asof + dt.timedelta(days=1)
+    con = locidb.connect(read_only=True)
+    try:
+        h0 = supply_hash(con, asof=asof)
+        h1 = supply_hash(con, asof=nxt)
+        flips = status_flips(con, asof, nxt)
+    finally:
+        con.close()
+
+    # No assertion that they DIFFER (on a quiet day they will not) and none
+    # that they AGREE (a lapsing licence is not a defect). What is asserted is
+    # that the difference is fully explained by the date: every flip carries a
+    # date-dependent reason, so nothing else has moved underneath.
+    if h0 != h1:
+        assert not flips.empty, (
+            f"the hash moved with the date ({h0} -> {h1}) but no POI changed "
+            f"verdict. Something other than the as-of date is in the hash.")
+        assert set(flips["reason"]) <= {
+            "licence expiry lapsed",
+            "evidence aged past the open-evidence window",
+        }, f"a date roll produced a flip with no date-dependent cause: {flips}"
 
 
 def test_baseline_yaml_declares_its_radius_and_universe():
