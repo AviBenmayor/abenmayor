@@ -1,4 +1,4 @@
-.PHONY: help setup db-init check tickets paid-sources portability nyc chains-refresh chains-page clean
+.PHONY: help setup db-init check tickets sources categories paid-sources portability nyc chains-refresh chains-page clean
 
 help:          ## Show targets
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | column -t -s "$$(printf '\t')"
@@ -28,6 +28,18 @@ check:         ## Registry + URL sweep + QUESTIONS drift + decisions + ledger co
 
 tickets:       ## Regenerate docs/TICKETS.md + docs/linear-*.{csv,json}
 	uv run loci gen-tickets
+
+sources:       ## Regenerate docs/SOURCES.md from the registry's non-wishlist entries
+	# GENERATED, like PAID-SOURCES.md: `loci check-sources` (and so `make
+	# check`) fails if docs/SOURCES.md is not a byte-identical render. This
+	# is CONTEXT.md's drift-check target as of D116 -- CONTEXT.md v2 points
+	# at this doc instead of embedding the source table.
+	uv run loci gen-sources
+
+categories:    ## Regenerate docs/CATEGORIES.md from categories.py / categories.yaml
+	# GENERATED, like SOURCES.md. `tests/test_category_registry.py` fails
+	# if this doc drifts from categories.py; CONTEXT.md §4.2 points here.
+	uv run loci gen-categories
 
 paid-sources:  ## Regenerate docs/PAID-SOURCES.md from the registry wishlist
 	# GENERATED, like TICKETS.md: `loci check-sources` (and so `make check`)

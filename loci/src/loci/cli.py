@@ -134,7 +134,7 @@ def sources(role: str = typer.Option(None, help="Filter by role.")) -> None:
 
 @app.command(name="check-sources")
 def check_sources(urls: bool = typer.Option(False, "--urls", help="Also check every URL resolves.")) -> None:
-    """Validate the registry and assert it agrees with docs/CONTEXT.md."""
+    """Validate the registry and assert it agrees with docs/SOURCES.md."""
     errors = registry.validate(check_urls=urls)
     for e in errors:
         console.print(f"[red]FAIL[/] {e}")
@@ -5817,6 +5817,35 @@ def dot_export_cmd(
     rep = de.export(con, out_dir=out_dir, trend_years=trend_years)
     console.print(f"[green]ok[/] {rep['path']} — {rep['counts']} count points, "
                   f"{rep['cameras']} cameras, {rep['bytes']:,} bytes")
+
+
+@app.command(name="gen-sources")
+def gen_sources() -> None:
+    """Regenerate docs/SOURCES.md from the registry's non-wishlist entries.
+
+    The live-pipeline source table is GENERATED for the same reason
+    PAID-SOURCES.md and PORTABILITY.md are: a hand-maintained mirror of
+    registry.yaml is exactly the kind of doc that drifts silently.
+    `loci check-sources` fails if this file is not a byte-identical render.
+    """
+    from loci import sources_doc as sd
+
+    n = sd.generate()
+    console.print(f"[green]ok[/] docs/SOURCES.md — {n} non-wishlist sources rendered")
+
+
+@app.command(name="gen-categories")
+def gen_categories() -> None:
+    """Regenerate docs/CATEGORIES.md from categories.py and categories.yaml.
+
+    The daily-needs bundle table is GENERATED for the same reason: CONTEXT.md
+    v2 (D116) points at this doc instead of embedding the table, and
+    `tests/test_category_registry.py` fails if it drifts from categories.py.
+    """
+    from loci import categories_doc as cgd
+
+    n = cgd.generate()
+    console.print(f"[green]ok[/] docs/CATEGORIES.md — {n} categories rendered")
 
 
 @app.command(name="gen-paid-sources")

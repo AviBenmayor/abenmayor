@@ -131,15 +131,22 @@ _ROW = re.compile(r"^\|.*\|\s*(\d{1,2})\s*\|\s*([^|]+?)\s*\|")
 
 def test_context_section_2_1_table_matches_categories_py():
     """The docs-drift half of the CLAUDE.md 'machine-check the docs against the
-    code' habit: CONTEXT.md §2.1 is the human-readable copy of CATEGORIES."""
-    text = (DOCS / "CONTEXT.md").read_text()
-    body = text.split("### 2.1 The daily-needs bundle", 1)[1].split("\n### ", 1)[0]
+    code' habit. CONTEXT.md v2 (D116) stopped embedding this table and points
+    at docs/CATEGORIES.md instead (§4.2); this test now targets that generated
+    doc, which `loci gen-categories` renders from categories.py."""
+    text = (DOCS / "CATEGORIES.md").read_text()
+    body = text.split("## The daily-needs bundle", 1)[1].split("\n### ", 1)[0]
     rows = [m.groups() for m in (_ROW.match(ln) for ln in body.splitlines()) if m]
     assert [int(n) for n, _ in rows] == list(range(1, len(CATEGORIES) + 1)), (
-        "CONTEXT.md §2.1 does not number exactly 1..N"
+        "docs/CATEGORIES.md does not number exactly 1..N"
     )
     assert [label for _, label in rows] == [c.label for c in CATEGORIES.values()], (
-        "CONTEXT.md §2.1 labels/order have drifted from categories.py"
+        "docs/CATEGORIES.md labels/order have drifted from categories.py"
     )
     for w in TIER_WEIGHTS.values():
-        assert f"**{w:.2f}**" in body, f"CONTEXT.md §2.1 does not state tier weight {w:.2f}"
+        assert f"**{w:.2f}**" in body, f"docs/CATEGORIES.md does not state tier weight {w:.2f}"
+    from loci import categories_doc
+    assert text == categories_doc.render(), (
+        "docs/CATEGORIES.md differs from a fresh render — it is GENERATED; "
+        "run `loci gen-categories`"
+    )

@@ -1,12 +1,18 @@
 """The data source registry: load it, and guard it against drift.
 
-`registry.yaml` is the machine-readable mirror of docs/CONTEXT.md section 3.
-`validate()` asserts the two agree, so the human doc and the machine registry
-cannot silently diverge. Exposed as `loci check-sources`.
+`registry.yaml` is the machine-readable source of truth; `docs/SOURCES.md`
+(rendered by `loci gen-sources`, see sources_doc.py) is its human-readable
+mirror. `validate()` asserts the two agree, so the human doc and the machine
+registry cannot silently diverge. Exposed as `loci check-sources`.
+
+(Until CONTEXT.md v2 / D116, the mirror was an embedded table in CONTEXT.md
+section 3 rather than a generated doc; the drift check now targets
+docs/SOURCES.md instead, for the same reason PAID-SOURCES.md and
+PORTABILITY.md are generated rather than hand-maintained.)
 
 Status `wishlist` is the one exception to both rules. A wishlist entry is a PAID
 source Loci would buy post-raise — it is not ingested, not budgeted, and not a
-row in CONTEXT.md section 3 (41 vendor rows would drown the 40 sources actually
+row in docs/SOURCES.md (41 vendor rows would drown the 40 sources actually
 in the pipeline). It mirrors docs/PAID-SOURCES.md instead, which `loci
 gen-paid-sources` renders from these entries; the drift check below asserts the
 doc is a byte-identical render, so the doc can never be hand-edited into a lie
@@ -117,7 +123,10 @@ def load() -> dict:
 def validate(check_urls: bool = False) -> list[str]:
     """Return a list of problems. Empty list means the registry is sound."""
     reg = load()
-    context = (ROOT / "docs" / "CONTEXT.md").read_text()
+    # docs/SOURCES.md, not CONTEXT.md: CONTEXT.md v2 (D116) points at the
+    # generated doc rather than embedding the table, so this is the mirror the
+    # drift check now runs against (see sources_doc.py).
+    sources_doc_text = (ROOT / "docs" / "SOURCES.md").read_text()
     sources = reg["sources"]
     errors: list[str] = []
 
@@ -138,11 +147,12 @@ def validate(check_urls: bool = False) -> list[str]:
             errors.append(f"{s['id']}: bad status {s.get('status')!r}")
         if s.get("tier") == "city" and "city" not in s:
             errors.append(f"{s['id']}: tier=city requires a `city` key")
-        # Drift check: every dataset_id in the registry must appear in CONTEXT.md.
-        # Wishlist entries are exempt -- they mirror docs/PAID-SOURCES.md instead.
+        # Drift check: every dataset_id in the registry must appear in
+        # docs/SOURCES.md. Wishlist entries are exempt -- they mirror
+        # docs/PAID-SOURCES.md instead.
         did = s.get("dataset_id")
-        if did and s.get("status") != "wishlist" and did not in context:
-            errors.append(f"{s['id']}: dataset_id {did} absent from docs/CONTEXT.md section 3")
+        if did and s.get("status") != "wishlist" and did not in sources_doc_text:
+            errors.append(f"{s['id']}: dataset_id {did} absent from docs/SOURCES.md")
         if s.get("status") == "wishlist":
             errors += _validate_wishlist_entry(s)
         else:
@@ -160,6 +170,7 @@ def validate(check_urls: bool = False) -> list[str]:
 
     errors += _validate_paid_sources_doc(wishlist)
     errors += _validate_portability_doc(sources)
+    errors += _validate_sources_doc(sources)
 
     if check_urls:
         import urllib.error
@@ -187,7 +198,7 @@ def validate(check_urls: bool = False) -> list[str]:
         n_unique = sum(1 for s in sources
                        if s.get("portability", {}).get("class") == "city_unique")
         print(f"ok — {len(sources) - len(wishlist)} sources, ${budgeted} budgeted, "
-              f"no CONTEXT.md drift; {len(wishlist)} wishlist entries "
+              f"no SOURCES.md drift; {len(wishlist)} wishlist entries "
               f"(${wish_total:,}/yr post-raise), no PAID-SOURCES.md drift; "
               f"portability classed on all {len(sources) - len(wishlist)} "
               f"({n_unique} city_unique), no PORTABILITY.md drift")
@@ -271,6 +282,29 @@ def _validate_paid_sources_doc(wishlist: list[dict]) -> list[str]:
     if text != paid_sources.render():
         errors.append("docs/PAID-SOURCES.md differs from a fresh render — "
                       "it is GENERATED; run `loci gen-paid-sources`")
+    return errors
+
+
+def _validate_sources_doc(sources: list[dict]) -> list[str]:
+    """docs/SOURCES.md is GENERATED, exactly like PAID-SOURCES.md and
+    PORTABILITY.md: byte-identity against a fresh render, not a fuzzy match,
+    so a hand edit to the live-pipeline source table cannot silently drift
+    from registry.yaml the way the old embedded CONTEXT.md table could.
+    """
+    from loci import sources_doc  # local import: sources_doc reads the registry
+
+    doc = ROOT / "docs" / "SOURCES.md"
+    if not doc.exists():
+        return ["docs/SOURCES.md missing — run `loci gen-sources`"]
+
+    errors = []
+    text = doc.read_text()
+    for s in sources:
+        if s.get("status") != "wishlist" and s["name"] not in text:
+            errors.append(f"{s['id']}: {s['name']!r} absent from docs/SOURCES.md")
+    if text != sources_doc.render():
+        errors.append("docs/SOURCES.md differs from a fresh render — "
+                      "it is GENERATED; run `loci gen-sources`")
     return errors
 
 
