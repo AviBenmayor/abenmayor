@@ -279,6 +279,14 @@ CREATE TABLE IF NOT EXISTS analysis.storefront (
     vacant_0630      BOOLEAN,
     construction_reported BOOLEAN,
     primary_business_activity VARCHAR,  -- DOF's 19-value vocabulary, verbatim
+    -- The SAME label with DOF's 2024 recode undone and the HEALTH CARE or/OR
+    -- case split normalised. DERIVED, never filed. Read THIS for any question
+    -- that spans 2024-06-03; read the raw column above to quote what the
+    -- landlord actually submitted. sql/012_activity_recode.yaml holds the
+    -- crosswalk and its caveats; sql/041 ALTERs this column onto a warehouse
+    -- that predates it, which is why every INSERT into this table names its
+    -- columns rather than relying on their order.
+    activity_canonical VARCHAR,
     lease_expiry     DATE,              -- most recent lease's expiry; sparse, see caveat 5
     sold_date        DATE,
     source           VARCHAR NOT NULL,  -- 'nyc_dof_storefront_registry'

@@ -1,0 +1,211 @@
+# LL157 `primary_business_activity` recode crosswalk
+# ===================================================================
+# Package data for model/activity_recode.py. Lives beside
+# sql/012_storefront_registry.sql because that is the DDL it patches, per
+# CLAUDE.md's "config lives with the code that reads it".
+#
+# WHAT HAPPENED
+# -------------
+# Between the 2023-08-15 and 2024-06-03 LL157 filings DOF re-coded the
+# `primary_business_activity` column. The values stayed in-domain -- all 17
+# labels still appear -- so no constraint, no NOT NULL, no enum and no row
+# count catches it. What changed is WHICH LABEL IS PRINTED for a given
+# storefront. Citywide marginals across the boundary:
+#
+#     FOOD SERVICES         8,859 -> 19
+#     EDUCATIONAL SERVICES    516 -> 12,827
+#     RETAIL               12,028 -> 8,844
+#     WHOLESALE               403 -> 5,505
+#     PUBLISHING               17 -> 2,185
+#
+# Year-over-year same-activity persistence on single-storefront premises is
+# 78.0 / 83.8 / 87.4 / **6.8** / 92.4 per cent across the five filing pairs.
+# Vacancy persistence is 93-96% on all five, so the break is confined to this
+# one column: it is a relabelling, not a re-survey.
+#
+# HOW THIS TABLE WAS DERIVED
+# --------------------------
+# Premises-level crosstab, 2023-08-15 -> 2024-06-03, restricted to premises
+# reporting EXACTLY ONE storefront in BOTH filings (n = 8,491 premises), so
+# the pairing is unambiguous. `pre` -> modal `post`, with the share of that
+# pre-code's premises the modal target captures. The result is a PERMUTATION:
+# 17 pre-codes, 17 distinct post-codes, and the two sets are equal. It
+# decomposes into one 16-cycle plus a single fixed point
+# (NO BUSINESS ACTIVITY IDENTIFIED), i.e. an off-by-one against a reordered
+# code list -- which is why it is invertible and why a crosswalk is the right
+# instrument rather than a fuzzy re-map.
+#
+# DIRECTION. `canonical` is the PRE vocabulary, for three reasons: four of the
+# six full filings (2019-2023 observations) are in it; the 2026-02-15 filing
+# REVERTED to it; and it is the one that is semantically right (8,859 food
+# service storefronts in a city of 39,132 filed storefronts is plausible, 19
+# is not). So a filing inside the recode era has its printed label mapped
+# BACKWARD through this table (post -> pre) to produce `activity_canonical`.
+# Outside the era `activity_canonical` = the raw value, case-normalised.
+#
+# CAVEATS THE DATABASE CANNOT ENFORCE
+# -----------------------------------
+# 1. The crosswalk is MODAL, not certain. The modal target captures 57-91% of
+#    each pre-code's premises; the residual is real churn (a premises that
+#    genuinely changed use) plus recode noise, and the two are not separable.
+#    `activity_canonical` is therefore a corrected LABEL, not a measurement:
+#    it restores comparability of the marginals and of persistence, and it
+#    does NOT certify any individual row.
+# 2. Three pre-codes are supported by fewer than 30 premises
+#    (PUBLISHING n=4, BROADCASTING/TELECOMM n=9, LEGAL SERVICES n=21).
+#    Their mapping is nonetheless forced by the permutation structure: with
+#    16 of 17 assignments fixed, the last is determined. `confidence` records
+#    which rows lean on that argument rather than on their own n.
+# 3. The recode era is a PINNED LIST of filing dates, not a date range, and
+#    model/activity_recode.py re-derives the era from each filing's own
+#    marginals and RAISES if the derivation disagrees with this list. A new
+#    DOF filing that is recoded and not listed must fail the build loudly
+#    rather than be silently mis-mapped.
+# 4. A LABEL OUTSIDE THIS TABLE'S DOMAIN CARRIES THROUGH, case-normalised, and
+#    is never mapped and never NULLed. One such value exists today:
+#    `NO BUSINESS ACTIVITY REPORTED` (577 rows, vacant-only filings), a second
+#    no-activity sentinel distinct from `NO BUSINESS ACTIVITY IDENTIFIED`. It
+#    appears only OUTSIDE the recode era, so the identity branch is the right
+#    answer for it -- but if DOF ever prints it inside the era it will pass
+#    through unmapped, so `recode_report()` counts unmapped in-era labels and
+#    a non-zero count is a signal to re-derive this table, not to widen it.
+#    Both sentinels are already in viz/webmap_export.NO_ACTIVITY.
+# 5. `HEALTH CARE OR SOCIAL ASSISTANCE` (2020-08-15 filing, 2,206 rows) and
+#    `HEALTH CARE or SOCIAL ASSISTANCE` (every later filing) are the SAME
+#    value with different case. Normalisation is UPPER(TRIM(...)) on every
+#    label, applied before and independently of the recode.
+
+version: 1
+derived_on: 2026-09-16
+derived_from: analysis.storefront, universe='full', premises reporting exactly
+  one storefront in both the 2023-08-15 and 2024-06-03 filings (n=8,491)
+boundary_pre_filing: 2024-06-03
+boundary_post_filing: 2023-08-15
+
+# Filings whose printed `primary_business_activity` is in the RECODED
+# vocabulary. Re-derived from each filing's marginals at build time and
+# checked against this list; a mismatch raises.
+recoded_filings:
+  - 2024-06-03      # full universe,   38,866 rows
+  - 2025-06-03      # full universe,   38,318 rows
+  - 2025-08-15      # vacant-only,      1,554 rows
+# NOT recoded: 2020-08-15, 2021-08-15, 2022-08-15, 2023-08-15 (full) and
+# 2024-02-15, 2024-08-15, 2025-02-15 (vacant-only, activity is NULL on every
+# row) and 2026-02-15 (vacant-only -- DOF reverted to the pre vocabulary).
+
+# The marginal signature used to detect the era independently of the list
+# above. In the pre vocabulary FOOD SERVICES is ~20% of a full filing and
+# EDUCATIONAL SERVICES ~1.2%; in the recoded vocabulary the two swap to
+# ~0.05% and ~33%. The separation is three orders of magnitude, so the
+# detector needs no tuning.
+detector:
+  pre_dominant: FOOD SERVICES
+  post_dominant: EDUCATIONAL SERVICES
+  min_labelled_rows: 200   # below this a filing is undecidable; treat as raw
+
+# pre (canonical) -> post (as printed inside the recode era).
+# `share` is the fraction of that pre-code's paired premises landing on the
+# modal post-code; `n` is the numerator, `premises` the denominator.
+crosswalk:
+  - canonical: RETAIL
+    recoded_as: EDUCATIONAL SERVICES
+    n: 2346
+    premises: 2694
+    share: 0.8708
+    confidence: high
+  - canonical: FOOD SERVICES
+    recoded_as: RETAIL
+    n: 1883
+    premises: 2078
+    share: 0.9062
+    confidence: high
+  - canonical: OTHER
+    recoded_as: WHOLESALE
+    n: 929
+    premises: 1269
+    share: 0.7321
+    confidence: high
+  - canonical: NO BUSINESS ACTIVITY IDENTIFIED
+    recoded_as: NO BUSINESS ACTIVITY IDENTIFIED
+    n: 463
+    premises: 808
+    share: 0.5730
+    confidence: high          # the permutation's fixed point
+  - canonical: HEALTH CARE OR SOCIAL ASSISTANCE
+    recoded_as: PUBLISHING
+    n: 419
+    premises: 469
+    share: 0.8934
+    confidence: high
+  - canonical: MISCELLANEOUS OTHER SERVICE
+    recoded_as: REAL ESTATE
+    n: 301
+    premises: 436
+    share: 0.6904
+    confidence: high
+  - canonical: FINANCE & INSURANCE
+    recoded_as: LEGAL SERVICES
+    n: 131
+    premises: 145
+    share: 0.9034
+    confidence: high
+  - canonical: REAL ESTATE
+    recoded_as: MANUFACTURING
+    n: 114
+    premises: 167
+    share: 0.6826
+    confidence: high
+  - canonical: WHOLESALE
+    recoded_as: BROADCASTING/TELECOMM
+    n: 114
+    premises: 130
+    share: 0.8769
+    confidence: high
+  - canonical: EDUCATIONAL SERVICES
+    recoded_as: OTHER
+    n: 103
+    premises: 119
+    share: 0.8655
+    confidence: high
+  - canonical: MANUFACTURING
+    recoded_as: ACCOUNTING SERVICES
+    n: 55
+    premises: 62
+    share: 0.8871
+    confidence: high
+  - canonical: ACCOUNTING SERVICES
+    recoded_as: MOVIES/VIDEO/SOUND
+    n: 28
+    premises: 35
+    share: 0.8000
+    confidence: medium        # n < 50
+  - canonical: MOVIES/VIDEO/SOUND
+    recoded_as: HEALTH CARE OR SOCIAL ASSISTANCE
+    n: 18
+    premises: 28
+    share: 0.6429
+    confidence: medium        # n < 50
+  - canonical: LEGAL SERVICES
+    recoded_as: MISCELLANEOUS OTHER SERVICE
+    n: 18
+    premises: 21
+    share: 0.8571
+    confidence: low           # n < 30; leans on the permutation closure
+  - canonical: INFORMATION SERVICES
+    recoded_as: FINANCE & INSURANCE
+    n: 13
+    premises: 17
+    share: 0.7647
+    confidence: low           # n < 30; leans on the permutation closure
+  - canonical: BROADCASTING/TELECOMM
+    recoded_as: INFORMATION SERVICES
+    n: 5
+    premises: 9
+    share: 0.5556
+    confidence: low           # n < 30; leans on the permutation closure
+  - canonical: PUBLISHING
+    recoded_as: FOOD SERVICES
+    n: 3
+    premises: 4
+    share: 0.7500
+    confidence: low           # n < 30; leans on the permutation closure

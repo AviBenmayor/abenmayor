@@ -186,7 +186,11 @@ def load_storefronts(con, boroughs: list[str], asof: dt.date) -> pd.DataFrame:
                universe, reporting_year, observed_1231,
                COALESCE(vacant_1231, FALSE) AS vacant,
                construction_reported,
-               primary_business_activity, lease_expiry,
+               -- D67's prior-use string. activity_canonical, not the raw
+               -- column: the default snapshot is the newest FULL filing, which
+               -- since 2024-06-03 is inside DOF's recode.
+               activity_canonical AS primary_business_activity,
+               lease_expiry,
                ST_X(geom) AS lon, ST_Y(geom) AS lat
         FROM analysis.storefront
         WHERE borough IN ({holes})

@@ -1404,10 +1404,15 @@ def _prior_use_cte(boroughs: list[str]) -> str:
     no_act = ", ".join(f"'{v}'" for v in NO_ACTIVITY)
     return f"""
         SELECT premises_id,
-               ARG_MAX(primary_business_activity, filing_due_date) AS last_use
+               -- activity_canonical, NOT primary_business_activity: ARG_MAX
+               -- picks the NEWEST filing, and the newest filings are the ones
+               -- DOF recoded in 2024. Reading the raw column here made the
+               -- card's prior-use line say EDUCATIONAL SERVICES where the
+               -- premises had been RETAIL. sql/012_activity_recode.yaml.
+               ARG_MAX(activity_canonical, filing_due_date) AS last_use
         FROM {schema}.{table}
         WHERE borough IN ({ph})
-          AND primary_business_activity NOT IN ({no_act})
+          AND activity_canonical NOT IN ({no_act})
         GROUP BY 1
     """
 

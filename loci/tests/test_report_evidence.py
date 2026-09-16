@@ -173,11 +173,15 @@ def _vacant_storefront(con, premises_id, address, dlat_m, reporting_year, vacant
     con.execute(
         "INSERT INTO analysis.storefront (storefront_id, premises_id, filing_due_date, "
         "reporting_year, universe, borough, source, ingested_at, "
-        "bbl, address, geom, vacant_1231, vacant_0630, primary_business_activity) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,ST_Point(?,?),?,?,?)",
+        "bbl, address, geom, vacant_1231, vacant_0630, primary_business_activity, "
+        "activity_canonical) "   # sql/041; `last_use` reads the canonical one
+        "VALUES (?,?,?,?,?,?,?,?,?,?,ST_Point(?,?),?,?,?,?)",
         [f"{premises_id}-{reporting_year}", premises_id, dt.date(reporting_year, 12, 31),
          reporting_year, "full", "BK", "nyc_dof_storefront_registry", dt.datetime.now(),
-         bbl, address, ADDR_LON, lat, vacant, vacant, activity])
+         bbl, address, ADDR_LON, lat, vacant, vacant, activity,
+         # Pre-recode-era fixture, so canonical == raw here. Present because
+         # `last_use` binds to the canonical column (sql/041).
+         activity])
 
 
 def _pipeline_filing(con, pipeline_id, business_name, category, entry_stage, dlat_m,

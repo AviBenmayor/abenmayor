@@ -317,11 +317,17 @@ def match_bbl(con, frame: pd.DataFrame) -> pd.DataFrame:
 
 def assemble(con, sources: list[str] | None = None, *,
              asof: dt.date | None = None, limit: int | None = None,
+             since: dt.date | None = None,
              use_cache: bool = True, session=None) -> tuple[pd.DataFrame, dict]:
     """Fetch every requested feed, key the names, resolve the BBLs.
 
     Returns (frame ready for `write`, report). Raises on an unknown source id
     rather than silently ingesting nothing.
+
+    `since=None` -- THE DEFAULT -- pulls each feed's FULL HISTORY. It replaced
+    a 24-month clip on 2026-09-16, which had made every pre-2024 cohort
+    unobservable and so made a rewind backtest impossible. Pass a date only to
+    reproduce an older, narrower extract.
     """
     asof = asof or dt.date.today()
     wanted = list(sources or FEEDS)
@@ -333,8 +339,8 @@ def assemble(con, sources: list[str] | None = None, *,
 
     frames, per_source = [], {}
     for sid in wanted:
-        df = FEEDS[sid](asof=asof, limit=limit, use_cache=use_cache,
-                        session=session)
+        df = FEEDS[sid](asof=asof, limit=limit, since=since,
+                        use_cache=use_cache, session=session)
         per_source[sid] = len(df)
         frames.append(df)
 
@@ -373,6 +379,7 @@ def assemble(con, sources: list[str] | None = None, *,
 
     report = {
         "asof": asof.isoformat(),
+        "since": since.isoformat() if since else None,
         "rows_per_source": per_source,
         "dropped_no_date_or_id": n_no_date,
         "dropped_duplicate_filing_id": n_dupe,

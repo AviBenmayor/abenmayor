@@ -322,6 +322,9 @@ def gd_con(con):
         storefront_id VARCHAR, premises_id VARCHAR, reporting_year INTEGER,
         vacant_1231 BOOLEAN, construction_reported BOOLEAN, bbl VARCHAR,
         nta_code VARCHAR, borough VARCHAR, primary_business_activity VARCHAR,
+        -- sql/041. The retrodiction panel spans 2019-2026 and so spans
+        -- DOF's 2024 recode; it reads the canonical column.
+        activity_canonical VARCHAR,
         geom GEOMETRY)""")
     con.execute("""CREATE TABLE analysis.address (
         address_id VARCHAR, frame VARCHAR, borough VARCHAR, lon DOUBLE,
@@ -338,9 +341,11 @@ def gd_con(con):
 
 def _premises(con, pid, year, vacant, activity="RETAIL", constr=False, jitter=0.0):
     con.execute(
-        "INSERT INTO analysis.storefront VALUES (?,?,?,?,?,?,?,?,?,ST_Point(?,?))",
+        "INSERT INTO analysis.storefront VALUES (?,?,?,?,?,?,?,?,?,?,ST_Point(?,?))",
         [f"{pid}#{year}", pid, year, vacant, constr, "3000010001", "BK99", "BK",
-         activity, LON + jitter, LAT])
+         # raw, then canonical: this fixture predates the recode era, so the
+         # two agree. Present because the panel binds to the canonical column.
+         activity, activity, LON + jitter, LAT])
 
 
 def test_a_premises_already_vacant_at_base_year_is_not_at_risk(gd_con):
@@ -383,16 +388,16 @@ def test_any_unit_vacant_makes_the_premises_dark(gd_con):
     cannot drift to 'all units' without a test failing."""
     gd_con.execute(
         "INSERT INTO analysis.storefront VALUES "
-        "('m#2022a','mixed',2022,FALSE,FALSE,'3000010001','BK99','BK','RETAIL',"
+        "('m#2022a','mixed',2022,FALSE,FALSE,'3000010001','BK99','BK','RETAIL','RETAIL',"
         " ST_Point(?,?))", [LON, LAT])
     gd_con.execute(
         "INSERT INTO analysis.storefront VALUES "
-        "('m#2022b','mixed',2022,FALSE,FALSE,'3000010001','BK99','BK','RETAIL',"
+        "('m#2022b','mixed',2022,FALSE,FALSE,'3000010001','BK99','BK','RETAIL','RETAIL',"
         " ST_Point(?,?))", [LON, LAT])
     _premises(gd_con, "mixed", 2024, False)
     gd_con.execute(
         "INSERT INTO analysis.storefront VALUES "
-        "('m#2024b','mixed',2024,TRUE,FALSE,'3000010001','BK99','BK','RETAIL',"
+        "('m#2024b','mixed',2024,TRUE,FALSE,'3000010001','BK99','BK','RETAIL','RETAIL',"
         " ST_Point(?,?))", [LON, LAT])
 
     p = rd.go_dark_panel(gd_con, attrition_is_event=False)

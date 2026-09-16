@@ -1253,7 +1253,9 @@ def go_dark_panel(con, *, base_year: int = GO_DARK_BASE_YEAR,
                  any_value(bbl)                   AS bbl,
                  any_value(nta_code)              AS nta_code,
                  any_value(borough)               AS borough,
-                 any_value(primary_business_activity) AS activity,
+                 -- canonical, not raw: this panel spans 2019-2026 and so
+                 -- spans DOF's 2024 recode (sql/012_activity_recode.yaml).
+                 any_value(activity_canonical)    AS activity,
                  avg(ST_X(geom))                  AS lon,
                  avg(ST_Y(geom))                  AS lat
           FROM analysis.storefront

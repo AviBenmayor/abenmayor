@@ -177,6 +177,13 @@ def con():
         reporting_year INTEGER, universe VARCHAR, observed_1231 DATE,
         borough VARCHAR, address VARCHAR, geom GEOMETRY, vacant_1231 BOOLEAN,
         construction_reported BOOLEAN, primary_business_activity VARCHAR,
+        -- sql/041: the recode-corrected label. The webmap's prior-use ARG_MAX
+        -- reads THIS, not the raw column, because ARG_MAX picks the newest
+        -- filing and the newest filings are the ones DOF recoded. This fixture
+        -- carries pre-recode-era filings only, so the two columns agree here --
+        -- which is exactly why the column has to be present for the query to
+        -- bind rather than simply omitted.
+        activity_canonical VARCHAR,
         lease_expiry DATE, source VARCHAR, source_vintage VARCHAR,
         provenance VARCHAR)""")
     # The REAL supply-set definitions, not a restatement of them: 006 also
@@ -300,11 +307,13 @@ def _add_storefront(con, premises, boro, seq=1, filing=SNAP_FILING,
         "INSERT INTO analysis.storefront VALUES "
         "(?, ?, CAST(? AS DATE), ?, ?, CAST(? AS DATE), ?, ?, "
         + ("ST_Point(?, ?)" if geom else "NULL") +
-        ", ?, ?, ?, CAST(? AS DATE), ?, ?, ?)",
+        ", ?, ?, ?, ?, CAST(? AS DATE), ?, ?, ?)",
         [f"{premises}#{seq}", premises, filing, int(observed[:4]), universe,
          observed, boro, address or f"{premises} MAIN ST"]
         + ([lon, lat] if geom else [])
-        + [vacant, construction, business, lease,
+        + [vacant, construction, business,
+           (business.upper() if isinstance(business, str) else business),
+           lease,
            "nyc_dof_storefront_registry", vintage, f"92iy-9c3n@{vintage}"])
 
 

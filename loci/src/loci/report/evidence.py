@@ -428,7 +428,10 @@ def _vacant_storefront_rows(con, lat: float, lon: float,
     invents a square footage."""
     df = con.execute("""
         SELECT premises_id, address, bbl, ST_X(geom) AS lon, ST_Y(geom) AS lat,
-               reporting_year, vacant_1231, vacant_0630, primary_business_activity
+               reporting_year, vacant_1231, vacant_0630,
+               -- `last_use` walks filings NEWEST-first, so before the recode
+               -- was undone it read the 2024/2025 vocabulary preferentially.
+               activity_canonical AS primary_business_activity
         FROM analysis.storefront
         WHERE geom IS NOT NULL AND premises_id IS NOT NULL
     """).fetchdf()

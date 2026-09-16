@@ -122,9 +122,19 @@ def test_dob_now_filter_requires_a_storefront_work_type():
     assert "plumbing" not in where and "sprinkler" not in where
 
 
-def test_dob_now_window_is_24_months():
-    where = ff.dob_now_where(dt.date(2026, 9, 13))
-    assert "filing_date >= '2024-09-13T00:00:00'" in where
+def test_dob_now_window_is_opt_in_and_full_history_is_the_default():
+    """SUPERSEDES test_dob_now_window_is_24_months (2026-09-16). The 24-month
+    clip stopped being the default: it made every pre-2024 cohort literally
+    unobservable, which is what the rewind backtest ran into. The window MATHS
+    is unchanged and still pinned -- only which side of the `since=None`
+    default it sits on moved. Full-history behaviour is covered in
+    tests/test_filing_backfill.py."""
+    unclipped = ff.dob_now_where(dt.date(2026, 9, 13))
+    assert "filing_date" not in unclipped
+
+    clipped = ff.dob_now_where(dt.date(2026, 9, 13),
+                               ff.window_start(dt.date(2026, 9, 13)))
+    assert "filing_date >= '2024-09-13T00:00:00'" in clipped
     assert ff.window_start(dt.date(2026, 1, 31)) == dt.date(2024, 1, 28)
     assert ff.window_start(dt.date(2026, 3, 1)) == dt.date(2024, 3, 1)
 

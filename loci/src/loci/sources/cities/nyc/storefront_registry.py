@@ -378,14 +378,34 @@ def write_storefronts(con, csv_path: pathlib.Path, boroughs: tuple[str, ...],
     holes = ", ".join("?" for _ in boroughs)
     con.execute(f"DELETE FROM analysis.storefront WHERE borough IN ({holes})",
                 list(boroughs))
+    # A NAMED-COLUMN INSERT, not a positional one. `activity_canonical` was
+    # added by sql/041 as an ALTER, so on an existing warehouse it lands at the
+    # END of the table while a fresh CREATE from sql/012 puts it beside
+    # `primary_business_activity` -- two different column orders for the same
+    # table. A positional INSERT is correct under exactly one of them, and
+    # under the other it either fails (which is what happened, 2026-09-16) or,
+    # worse, writes a lease date into a business-activity column.
+    from loci.model.activity_recode import canonical_sql
     con.execute(f"""
-        INSERT INTO analysis.storefront
+        INSERT INTO analysis.storefront (
+            storefront_id, premises_id, filing_due_date, reporting_year,
+            reporting_period, universe, observed_1231, observed_0630,
+            bbl, bin, borough, address, street_number, street_name, unit,
+            zip, nta_code, census_tract, geom, geom_source,
+            vacant_1231, vacant_0630, construction_reported,
+            primary_business_activity, activity_canonical, lease_expiry,
+            sold_date, source, source_vintage, provenance, ingested_at)
         SELECT storefront_id, premises_id, filing_due_date, reporting_year,
                reporting_period, universe, observed_1231, observed_0630,
                bbl, bin, borough, address, street_number, street_name, unit,
                zip, nta_code, census_tract, geom, geom_source,
                vacant_1231, vacant_0630, construction_reported,
-               primary_business_activity, lease_expiry, sold_date,
+               primary_business_activity,
+               -- Derived AT INGEST so a fresh `loci storefronts` run never
+               -- leaves the canonical column NULL and silently degrades every
+               -- longitudinal reader to "no prior use on file".
+               {canonical_sql()} AS activity_canonical,
+               lease_expiry, sold_date,
                source, source_vintage, provenance, ingested_at
         FROM ({sql})
     """)

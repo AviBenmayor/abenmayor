@@ -4206,7 +4206,14 @@ def filings_ingest(
     source: list[str] = typer.Option(None, "--source",
                                      help="Repeatable. Default: all seven feeds."),
     asof: str = typer.Option(None, "--asof", help="YYYY-MM-DD; default today. "
-                                                  "Sets the 24-month window."),
+                                                  "The extract's as-of, not a clip."),
+    since: str = typer.Option(None, "--since",
+                              help="YYYY-MM-DD. OPT-IN CLIP. Default None = "
+                                   "FULL HISTORY, every feed, every status."),
+    window_months: int = typer.Option(None, "--window-months",
+                                      help="Opt-in clip expressed as months "
+                                           "before --asof. Mutually exclusive "
+                                           "with --since."),
     limit: int = typer.Option(None, "--limit", help="Cap rows per feed (probing)."),
     refresh: bool = typer.Option(False, "--refresh",
                                  help="Ignore data/raw/<source>/ and re-pull."),
@@ -4228,6 +4235,17 @@ def filings_ingest(
     from loci.sources.cities.nyc.filing_feeds import FEEDS, dob_now_where
 
     asof_d = _dt.date.fromisoformat(asof) if asof else _dt.date.today()
+    if since and window_months is not None:
+        raise typer.BadParameter("--since and --window-months both given; "
+                                 "they set the same clip two ways.")
+    # FULL HISTORY IS THE DEFAULT (owner rule, 2026-09-16). The 24-month clip
+    # this replaced is reachable with --window-months 24 and nothing else.
+    since_d = None
+    if since:
+        since_d = _dt.date.fromisoformat(since)
+    elif window_months is not None:
+        from loci.sources.cities.nyc.filing_feeds import window_start
+        since_d = window_start(asof_d, window_months)
     sources = list(source) if source else list(FEEDS)
 
     con = _filings_connect(read_only=False)
@@ -4236,8 +4254,11 @@ def filings_ingest(
     console.print(f"  {n_lots:,} lots, five boroughs, all land uses")
 
     console.rule(f"[bold]2/4 fetch + geocode ({len(sources)} feed(s))")
+    console.print("  window: " + (f"filings on or after {since_d}"
+                                  if since_d else
+                                  "[bold]FULL HISTORY[/] (no date clip)"))
     frame, report = sf.assemble(con, sources, asof=asof_d, limit=limit,
-                                use_cache=not refresh)
+                                since=since_d, use_cache=not refresh)
 
     t = Table(title=f"rows per source x stage — asof {report['asof']}")
     for col in ("source", "stage", "rows"):
@@ -4260,7 +4281,7 @@ def filings_ingest(
         console.print(f"    {src}: {n:,} rows in duplicated groups")
     console.print(f"  name key NULL (junk name): {report['name_key_null']:,}")
     if "nyc_dob_now_job_filings" in sources:
-        console.print(Panel(dob_now_where(asof_d),
+        console.print(Panel(dob_now_where(asof_d, since_d) or "(no predicate)",
                             title="DOB NOW storefront filter (server-side)"))
 
     if dry_run:
@@ -10170,3 +10191,265 @@ def supply_asof_advance(
             f"the webmap meta.json are all a vintage behind.")
     else:
         console.print("[green]ok[/] date moved; the supply hash did not.")
+
+
+# ===========================================================================
+# `loci rewind` -- data prerequisites for the 2020->2023 rewind backtest
+# (GTM, 2026-09-16)
+#
+# Appended at the END of this file for the same reason the `filings` block
+# above is: several concurrent sessions hold hunks further up, and a block that
+# only adds lines at the bottom cannot conflict with any of them.
+#
+# These are PREREQUISITES, not the backtest. Nothing here scores anything, and
+# the pass/fail thresholds are the statistician's pre-registration's (P1-P4),
+# not this module's opinion.
+# ===========================================================================
+
+rewind_app = typer.Typer(add_completion=False, help=(
+    "Build and check the data the 2020->2023 rewind rests on: the LL157 "
+    "activity-recode repair, the DCWP licence-interval clock, and the "
+    "by-feed-by-year coverage the full-history backfill produced."))
+app.add_typer(rewind_app, name="rewind")
+
+
+@rewind_app.command("coverage")
+def rewind_coverage(
+    first_year: int = typer.Option(2007, "--first-year"),
+    last_year: int = typer.Option(2026, "--last-year"),
+) -> None:
+    """Rows per feed per year in staging.storefront_filing.
+
+    THE CHECK THE 24-MONTH CLIP WOULD HAVE FAILED SILENTLY. Under the old
+    default every cell before 2024-09 was zero, and nothing anywhere said so --
+    a query for 2020 returned no rows, which reads identically to a year in
+    which nobody in New York filed anything.
+
+    The two DOB datasets are split out because they are one registered source
+    (registry.yaml:822) covering two eras: BIS to the cutover, DOB NOW after.
+    Pooled, they show a hump at the changeover that is two systems running in
+    parallel and NOT a construction cycle.
+    """
+    con = _filings_connect(read_only=True)
+    rows = con.execute("""
+        SELECT CASE
+                 WHEN source = 'nyc_dob_permit_issuance'
+                      AND license_type LIKE 'BIS %' THEN 'dob_permits (BIS)'
+                 WHEN source = 'nyc_dob_permit_issuance' THEN 'dob_permits (NOW)'
+                 ELSE replace(source, 'nyc_', '') END AS feed,
+               year(filed_on) AS y, count(*) AS n
+        FROM staging.storefront_filing GROUP BY 1, 2
+    """).fetchall()
+    feeds = sorted({r[0] for r in rows})
+    grid = {(f, y): n for f, y, n in rows}
+
+    t = Table(title="staging.storefront_filing — rows by feed by year")
+    t.add_column("year")
+    for f in feeds:
+        t.add_column(f[:16], justify="right")
+    t.add_column("TOTAL", justify="right")
+    earlier = [sum(n for (ff, y), n in grid.items()
+                   if ff == f and y is not None and y < first_year) for f in feeds]
+    if any(earlier):
+        t.add_row(f"<{first_year}", *[f"{v:,}" for v in earlier],
+                  f"{sum(earlier):,}")
+    for y in range(first_year, last_year + 1):
+        vals = [grid.get((f, y), 0) for f in feeds]
+        t.add_row(str(y), *[f"{v:,}" for v in vals], f"{sum(vals):,}")
+    totals = [sum(n for (ff, _), n in grid.items() if ff == f) for f in feeds]
+    t.add_row("ALL", *[f"{v:,}" for v in totals], f"{sum(totals):,}")
+    console.print(t)
+    console.print("[dim]DOB NOW rolled out across 2021; its pre-2021 counts are "
+                  "a rollout curve, not a construction cycle. The SLA active "
+                  "feed is a CURRENT-ACTIVES snapshot, so its year histogram is "
+                  "a renewal curve and not a licensing history.[/]")
+
+
+@rewind_app.command("recode")
+def rewind_recode(
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Report; write nothing."),
+) -> None:
+    """Undo DOF's 2024 LL157 activity recode into `activity_canonical`.
+
+    Reports year-over-year activity persistence BEFORE and AFTER on the raw and
+    canonical columns side by side. The acceptance measure is the pair spanning
+    2023-08-15 -> 2024-06-03: it reads 6.8% on the raw column and must clear
+    75% on the canonical one, while every other pair moves by less than 0.5 pt.
+    A repair that also moved the in-era pairs would be a second relabelling.
+    """
+    from loci.model import activity_recode as ar
+
+    con = _filings_connect(read_only=dry_run)
+    ar.assert_era_pinned(con)
+    if not dry_run:
+        n = ar.backfill(con)
+        console.print(f"[green]ok[/] activity_canonical set on {n:,} rows")
+
+    rep = ar.recode_report(con)
+    e = Table(title="filing era (detected from each filing's own marginals)")
+    for c in ("filing", "detected", "pinned"):
+        e.add_column(c)
+    for filing, kind in sorted(rep["detected"].items()):
+        e.add_row(str(filing), kind,
+                  "yes" if filing in rep["recoded_filings"] else "")
+    console.print(e)
+
+    p = Table(title="same-activity persistence, single-storefront premises")
+    for c in ("from", "to", "premises", "raw", "canonical", "delta"):
+        p.add_column(c, justify="right")
+    for raw, can in zip(rep["persistence_raw"], rep["persistence_canonical"]):
+        d = (can["pct"] or 0) - (raw["pct"] or 0)
+        p.add_row(str(raw["from"]), str(raw["to"]), f"{raw['n']:,}",
+                  f"{raw['pct']:.1f}%", f"{can['pct']:.1f}%", f"{d:+.1f}")
+    console.print(p)
+    if rep["unmapped_labels_inside_era"]:
+        console.print("[yellow]labels inside the recode era with no crosswalk "
+                      "entry (carried through unmapped):[/]")
+        for row in rep["unmapped_labels_inside_era"]:
+            console.print(f"  {row['label']}: {row['n']:,}")
+
+
+@rewind_app.command("licence-intervals")
+def rewind_licence_intervals(
+    asof: str = typer.Option(None, "--asof",
+                             help="Censoring date; default today."),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    """Build analysis.licence_interval from the full-history DCWP pull.
+
+    One row per licence number: creation date, expiry, status verbatim, and an
+    explicitly TYPED interval end. It does NOT decide which statuses are
+    closures -- the pre-registration does, and it decides differently under its
+    primary and strict arms.
+    """
+    import datetime as _dt
+
+    from loci.model import licence_interval as li
+
+    asof_d = _dt.date.fromisoformat(asof) if asof else _dt.date.today()
+    con = _filings_connect(read_only=dry_run)
+    rep = li.report(con, asof=asof_d) if dry_run else li.build(con, asof=asof_d)
+    console.print(f"[green]{'would build' if dry_run else 'built'}[/] "
+                  f"{rep['rows']:,} licence intervals, censored at {rep['asof']}")
+
+    s = Table(title="status (carried verbatim; NOT classified here)")
+    for c in ("status", "licences", "first created", "last created"):
+        s.add_column(c, justify="right")
+    for status, n, first, last in rep["by_status"]:
+        s.add_row(str(status), f"{n:,}", str(first), str(last))
+    console.print(s)
+
+    k = Table(title="interval end")
+    for c in ("end_kind", "licences", "meaning"):
+        k.add_column(c)
+    meaning = {
+        "active_censored": "alive at the pull; right-censored",
+        "expiry_observed": "published expiry, already past — a real date",
+        "expiry_future": "ended early, END DATE UNKNOWN — a bound, not an event",
+        "no_expiry": "no expiry published — a bound, not an event",
+    }
+    for kind, n in rep["by_end_kind"]:
+        k.add_row(kind, f"{n:,}", meaning.get(kind, ""))
+    console.print(k)
+    console.print(f"  BBL resolved: {rep['bbl_resolved']:,} of {rep['rows']:,}"
+                  f"  ·  MN+BK: {rep['bbl_resolved_mnbk']:,} of {rep['mnbk']:,}")
+    if rep["negative_durations"]:
+        console.print(f"[red]FAIL[/] {rep['negative_durations']:,} negative durations")
+
+    mr = li.match_rates(con)
+    m = Table(title="join to the POI ledger, by Loci category")
+    for c in ("loci_category", "licences", "matched", "rate",
+              "by licence no.", "by name+50m"):
+        m.add_column(c, justify="right")
+    for cat, n, mt, bn, bname in mr["per_category"]:
+        m.add_row(str(cat), f"{n:,}", f"{mt:,}", f"{100 * mt / n:.1f}%",
+                  f"{bn:,}", f"{bname:,}")
+    console.print(m)
+    tot, tm = mr["total"]
+    ceil_n, ceil_near = mr["proximity_ceiling_mnbk"]
+    console.print(f"  overall {tm:,}/{tot:,} ({100 * tm / tot:.1f}%)")
+    console.print(f"[dim]  ceiling, NOT a match rate: {ceil_near:,} of "
+                  f"{ceil_n:,} ({100 * ceil_near / ceil_n:.1f}%) geocoded MN+BK "
+                  f"licences have SOME ledger location within 50 m, ignoring "
+                  f"the name. Accepting the nearest regardless of name would "
+                  f"pair 'BANANA SUPERMARKET INC.' with 'Jkl Laundromat Inc' "
+                  f"30 m away -- the dedup-fusing-distinct-storefronts bug, "
+                  f"entered through a join.[/]")
+
+
+@rewind_app.command("checks")
+def rewind_checks() -> None:
+    """P1-P4 from the rewind pre-registration, each printed PASS or FAIL.
+
+    Run this before any fit. A prerequisite that is not run by its date is a
+    fail, not a deferral.
+    """
+    from loci.model import activity_recode as ar
+    from loci.model import licence_interval as li
+    from loci.score import supply
+
+    con = _filings_connect(read_only=True)
+    results: list[tuple[str, bool, str]] = []
+
+    # --- P1 recode ---------------------------------------------------------
+    per = {(r["from"], r["to"]): r for r in ar.persistence(con)}
+    raw = {(r["from"], r["to"]): r for r in ar.persistence(con, ar.RAW_COLUMN)}
+    era = sorted(ar.recoded_filings())
+    boundary = next((k for k in per if k[1] == era[0]), None) if era else None
+    if boundary is None:
+        results.append(("P1 recode persistence", False, "no boundary pair found"))
+    else:
+        pct = per[boundary]["pct"]
+        moved = [f"{k[0]}->{k[1]} {abs(per[k]['pct'] - raw[k]['pct']):.1f}pt"
+                 for k in per if k != boundary
+                 and abs(per[k]["pct"] - raw[k]["pct"]) > 0.5]
+        results.append((
+            f"P1 recode persistence {boundary[0]}->{boundary[1]}",
+            pct >= 75.0 and not moved,
+            f"{raw[boundary]['pct']:.1f}% -> {pct:.1f}% (floor 75%)"
+            + (f"; OTHER PAIRS MOVED: {moved}" if moved else
+               "; all other pairs unchanged within 0.5pt")))
+
+    case_left = con.execute(
+        f"SELECT count(*) FROM {ar.TABLE} "
+        f"WHERE {ar.CANON_COLUMN} <> upper(trim({ar.CANON_COLUMN}))").fetchone()[0]
+    results.append(("P1 case split normalised", case_left == 0,
+                    f"{case_left:,} canonical labels still mixed-case"))
+
+    # --- P2 backfill -------------------------------------------------------
+    for src, label in (("nyc_dob_permit_issuance", "DOB"),
+                       ("nyc_dcwp_licenses", "DCWP"),
+                       ("nyc_sla_liquor_licenses", "SLA")):
+        years = {r[0] for r in con.execute(
+            "SELECT DISTINCT year(filed_on) FROM staging.storefront_filing "
+            "WHERE source = ? AND filed_on IS NOT NULL", [src]).fetchall()}
+        missing = sorted(set(range(2016, 2024)) - years)
+        results.append((f"P2 {label} has a row in every year 2016-2023",
+                        not missing,
+                        "complete" if not missing else f"missing {missing}"))
+
+    # --- P3 DCWP join ------------------------------------------------------
+    rep = li.report(con)
+    if rep["mnbk"]:
+        pct_bbl = 100.0 * rep["bbl_resolved_mnbk"] / rep["mnbk"]
+        results.append(("P3 MN+BK licences resolve to a BBL", pct_bbl >= 70.0,
+                        f"{pct_bbl:.1f}% (floor 70%)"))
+    mr = li.match_rates(con)
+    tot, tm = mr["mnbk"]
+    pct_poi = 100.0 * tm / tot if tot else 0.0
+    results.append(("P3 MN+BK licences join the POI ledger", pct_poi >= 50.0,
+                    f"{pct_poi:.1f}% (floor 50%)"))
+
+    # --- P4 supply hash ----------------------------------------------------
+    h = supply.supply_hash(con)
+    results.append(("P4 supply hash unchanged", h == "ba944e18c57b",
+                    f"{h} (baseline ba944e18c57b)"))
+
+    t = Table(title="rewind pre-registration, data prerequisites P1-P4")
+    for c in ("check", "result", "detail"):
+        t.add_column(c)
+    for name, ok, detail in results:
+        t.add_row(name, "[green]PASS[/]" if ok else "[red]FAIL[/]", detail)
+    console.print(t)
+    raise typer.Exit(0 if all(ok for _, ok, _ in results) else 1)
