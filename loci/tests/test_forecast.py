@@ -335,6 +335,28 @@ def test_forecast_latest_carries_the_newest_p_beside_the_newest_outcome(con):
     assert int(r["realized_openings"]) == 3
 
 
+def test_forecast_latest_breaks_a_same_month_tie_on_frozen_at_not_the_version_string(con):
+    """2026-09-15 (D112 fallout): two vintages of the SAME month are tied on
+    `issued_month`, so the view has to pick one. It used to pick
+    `max(model_version)` -- a lexicographic sort on '<semver>+<8 hex>', which
+    orders by the HASH. The real pair was '0.1.1+f1cb6628' (frozen 09-14
+    23:26) and D112's re-issue '0.1.1+51bab17f' (frozen 09-15 17:53): 'f' >
+    '5', so the STALE vintage won and every card and allocator report stamped
+    the wrong model version. The tie-break is `frozen_at DESC`."""
+    fc.ensure_schema(con)
+    for version, frozen, p_open in (("0.1.1+f1cb6628", "2026-09-14 23:26:50", 0.31),
+                                    ("0.1.1+51bab17f", "2026-09-15 17:53:22", 0.11)):
+        con.execute("""INSERT INTO analysis.forecast VALUES
+            (?, '2026-09', 12, ?, 'a1', 'hardware', 'lot', 'BK', 'BK0101', '0:0',
+             ?, ?, 'fitted', '{"sr":1.0}', ?::TIMESTAMP)""",
+                    [f"f-2026-09-{version}", version, p_open, p_open, frozen])
+
+    r = con.execute("SELECT model_version, p_opening FROM analysis.forecast_latest"
+                    ).fetchone()
+    assert r[0] == "0.1.1+51bab17f", "the newest-FROZEN vintage must win the tie"
+    assert r[1] == pytest.approx(0.11)
+
+
 def test_forecast_latest_holds_the_columns_the_webmap_and_the_card_read(con):
     """A view contract is a promise to callers. Pin the column names so a
     rename is a failing test rather than a silently empty panel on a card."""

@@ -8621,6 +8621,17 @@ def report_cmd(
             "zero closure-check calls and writes zero closure-evidence rows; "
             "the Supply section still lists every POI's current status and "
             "basis, and the rents/leases/news searches and prose call still run."),
+    category: str = typer.Option(
+        None, "--category",
+        help="Force the lead category instead of taking the thinnest supply "
+            "ratio (owner ruling R3, 2026-09-15). A category demoted from "
+            "headline use (clinic, tailor_repair, hair_barber — D30) is "
+            "REFUSED unless --allow-demoted is also given."),
+    allow_demoted: bool = typer.Option(
+        False, "--allow-demoted",
+        help="Permit --category to name a headline:false category. Say it out "
+            "loud: this memo leads with a category whose gaps are as likely "
+            "holes in the data as in the market."),
     cap: float = typer.Option(1.0, "--cap", help="Hard spend cap in USD."),
     out: str = typer.Option(
         None, "--out", help="Write the markdown here instead of "
@@ -8635,9 +8646,18 @@ def report_cmd(
     snap to the address frame) -- an address GeoSearch cannot place, or that
     snaps to nothing in coverage, is refused with 'not in Loci coverage'
     (exit 2), never a degraded report (seed "Search rule").
+
+    THREE REFUSALS, three exit codes, none of them a degraded memo:
+    exit 2 -- address not in Loci coverage, or `--category` names a category
+              this address has no card for / a demoted one without
+              `--allow-demoted` (owner ruling R3);
+    exit 3 -- another recent memo on the same BBL leads a DIFFERENT category
+              (owner ruling R2): the conflict is printed, no file is written
+              and nothing is spent.
     """
     from loci.geo.geosearch import NotInCoverage, resolve
-    from loci.report.run import generate
+    from loci.report.evidence import CategoryNotAvailable, DemotedCategory
+    from loci.report.run import SameBBLConflict, generate
 
     con = locidb.connect(db, read_only=dry_run)
     try:
@@ -8646,8 +8666,22 @@ def report_cmd(
         console.print(f"[red]{exc}[/]")
         raise typer.Exit(2) from exc
 
-    result = generate(con, address_id, cap_usd=cap, dry_run=dry_run,
-                      no_cache=no_cache, out=out, closure_checks=closure_checks)
+    try:
+        result = generate(con, address_id, cap_usd=cap, dry_run=dry_run,
+                          no_cache=no_cache, out=out, closure_checks=closure_checks,
+                          category=category, allow_demoted=allow_demoted)
+    except (CategoryNotAvailable, DemotedCategory) as exc:
+        console.print(f"[red]REFUSE[/] {exc}")
+        raise typer.Exit(2) from exc
+    except SameBBLConflict as exc:
+        console.print(
+            "[red]REFUSE[/] same-BBL conflict — no memo written, nothing spent.")
+        for c in exc.conflicts:
+            console.print(f"  - {c}")
+        console.print(
+            "Resolve the disagreement before this address gets a memo: re-run or "
+            "delete the other file, or force this one's lead with --category.")
+        raise typer.Exit(3) from exc
 
     if dry_run:
         if result.plan:

@@ -58,6 +58,20 @@ GRADE_BBOX_HALF_WIDTH_M = 100.0
 _M_PER_DEG_LAT = 111_320.0
 
 
+class CategoryNotAvailable(ValueError):
+    """`--category <cat>` named a category that is not one of the 15 Loci
+    slugs, or that this address has no card for."""
+
+
+class DemotedCategory(ValueError):
+    """`--category <cat>` named a category demoted from headline use (owner
+    ruling 2026-09-14 on the D30 precedent: clinic, tailor_repair,
+    hair_barber -- 34-45% of their gaps are holes in the DATA, not in the
+    market). It may still be forced with `--allow-demoted`, which is the
+    point of the flag: the analyst has to say out loud that the lead category
+    of this memo is one the project does not let lead a recommendation."""
+
+
 @dataclass
 class POIRow:
     """One business in the catchment, as the supply section prints it."""
@@ -457,9 +471,11 @@ def _vacant_storefront_rows(con, lat: float, lon: float,
                 break
 
         out.append(VacantStorefrontRow(
-            premises_id=premises_id, address=last.address, dist_m=round(dist_m, 1),
-            floor_area_sqft=None, last_use=last_use, vacant_since=vacant_since,
-            bbl=last.bbl))
+            premises_id=premises_id,
+            address=last.address if _present(last.address) else None,
+            dist_m=round(dist_m, 1), floor_area_sqft=None, last_use=last_use,
+            vacant_since=vacant_since if _present(vacant_since) else None,
+            bbl=last.bbl if _present(last.bbl) else None))
 
     bbls = sorted({v.bbl for v in out if v.bbl})
     if bbls:
@@ -496,10 +512,17 @@ def _pipeline_rows(con, lat: float, lon: float, catchment_m: float) -> list[Pipe
         dist_m = haversine_m(lat, lon, r.lat, r.lon)
         if dist_m > catchment_m:
             continue
+        # `_present`, not `or` (2026-09-15 fix): fetchdf() renders a NULL
+        # VARCHAR as float NaN, which is TRUTHY -- `r.business_name or "—"`
+        # kept the NaN and `render._pipeline_table` died on `.replace` the
+        # first time a full memo met an unnamed filing.
         out.append(PipelineRow(
-            pipeline_id=r.pipeline_id, business_name=r.business_name,
-            category=r.loci_category, kind=kind, stage=r.entry_stage,
-            entry_date=r.entry_date, dist_m=round(dist_m, 1)))
+            pipeline_id=r.pipeline_id,
+            business_name=r.business_name if _present(r.business_name) else None,
+            category=r.loci_category if _present(r.loci_category) else None,
+            kind=kind, stage=r.entry_stage if _present(r.entry_stage) else None,
+            entry_date=r.entry_date if _present(r.entry_date) else None,
+            dist_m=round(dist_m, 1)))
     out.sort(key=lambda p: p.dist_m)
     return out
 
@@ -527,8 +550,10 @@ def _chains_watch_rows(con, lat: float, lon: float,
         if dist_m > radius_m:
             continue
         out.append(ChainWatchRow(
-            brand_key=r.brand_key, display_name=r.display_name or r.brand_key,
-            category=r.category, dist_m=round(dist_m, 1),
+            brand_key=r.brand_key,
+            display_name=r.display_name if _present(r.display_name) else r.brand_key,
+            category=r.category if _present(r.category) else None,
+            dist_m=round(dist_m, 1),
             locations_new_12m=r.locations_new_12m, locations_total=r.locations_total))
     out.sort(key=lambda c: c.dist_m)
     return out
@@ -570,8 +595,38 @@ def _demand_facts(con, address_id: str, category: str | None, row: dict) -> dict
     return out
 
 
+def lead_category_override(grades: list, category: str, *,
+                           allow_demoted: bool = False) -> list:
+    """Re-order `grades` so `category` leads (owner ruling R3, 2026-09-15).
+
+    The override moves a card to the FRONT; it never re-grades it, never
+    invents one, and never drops the others -- `rank_categories`' thinnest-
+    first order survives behind the forced lead, so the rest of the memo
+    reads exactly as it would have. A demoted category is refused unless
+    `allow_demoted`, because `rank_categories` exists precisely to stop one
+    leading by accident (`model.recommend.non_headline_categories`)."""
+    from loci.categories import CATEGORIES
+    from loci.model.recommend import non_headline_categories
+
+    if category not in CATEGORIES:
+        raise CategoryNotAvailable(
+            f"{category!r} is not a Loci category (one of: {', '.join(sorted(CATEGORIES))})")
+    if category in non_headline_categories() and not allow_demoted:
+        raise DemotedCategory(
+            f"{category!r} is demoted from headline use (owner ruling 2026-09-14, D30 "
+            "precedent: a gap of its own is as likely a hole in the data as in the "
+            "market). Pass --allow-demoted to lead a memo with it anyway.")
+    hit = next((i for i, c in enumerate(grades) if c["category"] == category), None)
+    if hit is None:
+        raise CategoryNotAvailable(
+            f"{category!r} has no graded card at this address (no supply-ratio "
+            "measurement for it in the catchment)")
+    return [grades[hit]] + grades[:hit] + grades[hit + 1:]
+
+
 def assemble(con, address_id: str, *, catchment_m: float = DEFAULT_CATCHMENT_M,
-            recommendations_dir=None) -> EvidencePack:
+            recommendations_dir=None, category: str | None = None,
+            allow_demoted: bool = False) -> EvidencePack:
     """Every warehouse fact the four sections need, for ONE address. Pure
     read: no INSERT/UPDATE anywhere in this function, no paid call.
 
@@ -579,13 +634,22 @@ def assemble(con, address_id: str, *, catchment_m: float = DEFAULT_CATCHMENT_M,
     (investor review item 6) looks for other recent memos -- production
     callers never pass it (it defaults to `render.OUT_DIR`, the real
     `docs/recommendations/`); tests pass a `tmp_path` so this never reads or
-    depends on the real repo's memo directory."""
+    depends on the real repo's memo directory.
+
+    `category` (owner ruling R3, `loci report --category`) forces the lead
+    category instead of taking `rank_categories`' thinnest-first answer --
+    `lead_category_override` refuses a demoted category unless
+    `allow_demoted`. Everything downstream (forecast row, demand facts, the
+    SLA 500-ft check, `EvidencePack.hash()`, so the cache key) keys off the
+    lead, so the override changes the whole memo, not just its headline."""
     address = _address_row(con, address_id)
     legality = _legality_row(con, address_id)
     bbox = _bbox_around(address["lat"], address["lon"], GRADE_BBOX_HALF_WIDTH_M)
     rules = load_rules()
     scores = area_facts(con, address_id, bbox=bbox, boroughs=(address["borough"],))
     grades = build_cards(scores, rules)
+    if category is not None:
+        grades = lead_category_override(grades, category, allow_demoted=allow_demoted)
     lead_category = grades[0]["category"] if grades else None
     forecast = _forecast_row(con, address_id, lead_category)
     supply = _supply_rows(con, address["lat"], address["lon"], catchment_m)
@@ -594,8 +658,15 @@ def assemble(con, address_id: str, *, catchment_m: float = DEFAULT_CATCHMENT_M,
     pipeline = _pipeline_rows(con, address["lat"], address["lon"], catchment_m)
     chains_watch = _chains_watch_rows(con, address["lat"], address["lon"])
     sla_500ft = _sla_500ft_context(con, lead_category, address["lat"], address["lon"])
+    # The file THIS run is about to write is not a second opinion about
+    # itself (ruling R2's precondition): without the exclusion every re-run
+    # on the same day reads yesterday's copy of its own memo and reports a
+    # conflict with its own headline -- the `3027550006-2026-09-15.md` line
+    # the 2026-09-15 review found in the footer.
+    from loci.report.render import default_out_path
     same_bbl_conflicts = _same_bbl_consistency(
-        address.get("bbl"), lead_category, recommendations_dir=recommendations_dir)
+        address.get("bbl"), lead_category, recommendations_dir=recommendations_dir,
+        exclude_path=default_out_path(address, directory=recommendations_dir))
     context = {
         "neighborhood": address.get("neighborhood"),
         "nta_code": address.get("nta_code"),

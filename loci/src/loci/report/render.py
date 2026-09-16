@@ -51,10 +51,23 @@ INVESTOR REVIEW (GTM-172, 2026-09-14/15), SIX CHANGES LANDED HERE
 Internal identifiers (run id, total spend, model version, supply hash) move
 out of the top header into `_provenance_footer` at the very end of the
 document -- the cross-cutting jargon-leak complaint from the review.
+
+-----------------------------------------------------------------------------
+OWNER RULING R1 (2026-09-15, GTM-172) -- NO CALL IS NOT NO TRADE
+-----------------------------------------------------------------------------
+The one-page note now renders under one of two banners, chosen by `verdict()`:
+NO TRADE (site failure -- carries the falsification trigger, `_section1_no_trade`
+renders the same deterministic block the memo does) or NO CALL (data failure --
+`no_call_reasons()` names every missing input and `relook_date()` says when to
+come back). The closure-check disclosure and the unresolved co-located-pair
+count (`_closure_disclosure_lines`) and the planner's legality block
+(`_legality_lines`) render on BOTH paths -- each used to be full-memo-only,
+which is how the notes shipped the symptom with the cause removed.
 """
 from __future__ import annotations
 
 import datetime as dt
+import pathlib
 import re
 
 from loci.db import REPO_ROOT
@@ -83,6 +96,22 @@ PROSE_PARSE_FAILED = "*prose could not be parsed; raw output in provenance foote
 GRADE_RANK = {"A": 4, "B": 3, "C": 2, "D": 1}
 GRADE_GATE_MIN = "C"
 
+#: OWNER RULING R1 (2026-09-15, GTM-172): a memo that does not recommend the
+#: site is one of TWO documents and they are not interchangeable.
+#:
+#:   NO TRADE is a SITE failure. The evidence is present and it says no, so
+#:   the note carries the falsification trigger that would reverse it.
+#:   NO CALL is a DATA failure -- closure checks were not run, co-located
+#:   pairs are unresolved, or an input the grade needs is absent. It names
+#:   what is missing and carries a re-look date; it makes no claim about the
+#:   site at all.
+#:
+#: Printing "no trade" over a data failure tells an allocator the site was
+#: tested when it was not -- the review's blocking cross-cutting finding.
+VERDICT_FULL = "FULL"
+VERDICT_NO_TRADE = "NO TRADE"
+VERDICT_NO_CALL = "NO CALL"
+
 #: A sentence containing any of these (case-insensitive substring) is never
 #: allowed to survive into rendered prose -- item 1: the falsification
 #: sentence is rendered from `pack.forecast` in exactly one place below, and
@@ -95,14 +124,32 @@ def slug(label: str) -> str:
     return s or "address"
 
 
+def address_label(address: dict) -> str:
+    """The human name this memo is filed under -- `street_name` when the
+    address frame carries one, the BBL otherwise (see the slug note above)."""
+    return (address.get("street_name") or address.get("bbl")
+            or address.get("address_id") or "address")
+
+
 def _address_label(pack) -> str:
-    a = pack.address
-    return a.get("street_name") or a.get("bbl") or a.get("address_id") or "address"
+    return address_label(pack.address)
 
 
-def out_path(pack, *, today: dt.date | None = None) -> "pathlib.Path":
+def default_out_path(address: dict, *, today: dt.date | None = None,
+                     directory: pathlib.Path | str | None = None) -> pathlib.Path:
+    """Where `out_path()` would file a memo for this ADDRESS ROW, without a
+    built pack. `evidence.assemble` needs exactly this and only has the row:
+    the same-BBL consistency check has to exclude the file this run is about
+    to overwrite, or every re-run reads yesterday's copy of itself as a
+    second opinion and reports a conflict with its own headline (the
+    2026-09-15 `3027550006-2026-09-15.md` case in the review)."""
     today = today or dt.date.today()
-    return OUT_DIR / f"{slug(_address_label(pack))}-{today.isoformat()}.md"
+    base = pathlib.Path(directory) if directory is not None else OUT_DIR
+    return base / f"{slug(address_label(address))}-{today.isoformat()}.md"
+
+
+def out_path(pack, *, today: dt.date | None = None) -> pathlib.Path:
+    return default_out_path(pack.address, today=today)
 
 
 def _n(v, fmt="{:,.0f}", dash="—"):
@@ -134,6 +181,64 @@ def is_below_c(pack) -> bool:
     if grade is None:
         return True
     return GRADE_RANK.get(grade, 0) < GRADE_RANK[GRADE_GATE_MIN]
+
+
+def relook_date(today: dt.date | None = None) -> dt.date:
+    """The date a NO CALL note tells the reader to come back (ruling R1).
+    The first of the NEXT month: every instrument that could resolve a
+    no-call reason runs monthly on that day -- the first-seen ledger
+    snapshot (D79), the chains refresh (D77) and `loci recommendations
+    check` (D89) -- so an earlier re-look would read the same warehouse
+    twice and print the same note."""
+    today = today or dt.date.today()
+    return dt.date(today.year + today.month // 12, today.month % 12 + 1, 1)
+
+
+def no_call_reasons(pack, enrichment) -> list[str]:
+    """Why this address cannot be CALLED, as distinct from called no (ruling
+    R1). Every reason here names a MISSING INPUT; none of them is a property
+    of the site. An empty list means the evidence is present and whatever
+    verdict follows is a real one."""
+    reasons: list[str] = []
+    if getattr(enrichment, "closure_checks_disabled", False):
+        reasons.append(
+            "Closure checks disabled for this run — every 'unknown' status below "
+            "is unresolved by choice, not by evidence, so the open-competitor "
+            "count this grade rests on was never measured.")
+    unresolved = [p for p in pack.supply if p.colocation == "unresolved"]
+    if unresolved:
+        reasons.append(
+            f"{len(unresolved)} unresolved co-located pair(s) in the catchment — two "
+            "POIs at one coordinate the evidence cannot yet split (D94), so the "
+            "supply count is ambiguous by that many businesses.")
+    if not pack.grades:
+        reasons.append(
+            "No category could be graded at this address — no supply-ratio "
+            "measurement exists in any of the 15 categories.")
+    else:
+        cat = pack.lead_category
+        lead = [p for p in pack.supply if p.category == cat]
+        n_unknown = sum(1 for p in lead if p.status == "unknown")
+        n_open = sum(1 for p in lead if p.status == "open")
+        if n_unknown and n_unknown >= n_open:
+            reasons.append(
+                f"{n_unknown} of {len(lead)} {cat} POI in the catchment carry status "
+                f"'unknown' against {n_open} confirmed open — resolving them could at "
+                "least double the measured supply of the one category this call is "
+                "about, so the thinness the call turns on is not measured.")
+    return reasons
+
+
+def verdict(pack, enrichment=None) -> str:
+    """`VERDICT_FULL` (the four-section memo), `VERDICT_NO_CALL` or
+    `VERDICT_NO_TRADE` -- what `render()` is about to produce. The grade gate
+    (`is_below_c`) decides memo vs note exactly as before; ruling R1 only
+    splits the NOTE in two, on whether any input is missing. A graded site
+    still gets its full memo with the same disclosures in section 2, so
+    default behaviour for a C-or-better address is unchanged."""
+    if not is_below_c(pack):
+        return VERDICT_FULL
+    return VERDICT_NO_CALL if no_call_reasons(pack, enrichment) else VERDICT_NO_TRADE
 
 
 def _split_sentences(text: str) -> list[str]:
@@ -248,6 +353,132 @@ def _appendix_supply_table(pack) -> str:
     return "\n".join(lines)
 
 
+def _falsification_lines(pack, card) -> list[str]:
+    """The p(opening) + falsification sentence, rendered from `pack.forecast`
+    in ONE place and shared by the full memo and the note (ruling R1: a NO
+    TRADE note carries the trigger that would reverse it). `card` is the lead
+    grade card; `None` is not a valid argument here -- callers check first."""
+    lines: list[str] = []
+    fc = pack.forecast
+    if fc and fc.get("p_opening") is not None:
+        issued = fc.get("issued_month")
+        horizon = fc.get("horizon_months") or 12
+        try:
+            y, m = (int(x) for x in str(issued).split("-"))
+            end = dt.date(y + (m + horizon - 1) // 12, (m + horizon - 1) % 12 + 1, 1)
+            end_s = end.strftime("%Y-%m")
+        except Exception:      # noqa: BLE001 -- malformed issued_month, fall back
+            end_s = "the forecast horizon"
+        lines.append("")
+        lines.append(f"p(opening) = **{fc['p_opening']:.3f}** (issued {issued}, "
+                     f"{horizon}-month horizon).")
+        lines.append(f"**Falsification test:** this call is wrong if no "
+                     f"{card['category_label'].lower()} is first-seen within 400 m "
+                     f"by {end_s} (scored {issued}).")
+    else:
+        lines.append("")
+        lines.append("No forecast is on file for this address x category "
+                     "(nothing to falsify against yet).")
+    return lines
+
+
+def _what_would_change_lines(pack) -> list[str]:
+    """Investor review item 1 / ruling R1: a note that ends at "no" without
+    naming what would reverse it is not a falsifiable call, it is an opinion.
+    Each trigger is read off the pack -- a NAMED vacancy, a DATED permit
+    delivery, a COUNTED status verification -- so the reader can go and check
+    one. Nothing here is estimated; where the pack is empty this says so."""
+    lines = ["", "**What would change this call:**", ""]
+    v = pack.vacant_storefronts[0] if pack.vacant_storefronts else None
+    if v is not None:
+        extra = ""
+        if v.vacant_since:
+            extra += f", vacant since {v.vacant_since}"
+        if v.floor_area_sqft:
+            extra += f", {_n(v.floor_area_sqft)} sq ft"
+        lines.append(f"- A signed lease at a named vacancy in the catchment — nearest on "
+                     f"file: **{v.address or 'unnamed premises'}** at {v.dist_m:.0f} m"
+                     f"{extra} (DOF Storefront Registry).")
+    else:
+        lines.append("- A named vacancy in the catchment: none is on file in the DOF "
+                     "Storefront Registry, so there is no space here to underwrite today.")
+    d = pack.demand
+    permitted = d.get("units_permitted_400m")
+    if permitted:
+        lines.append(f"- Delivery of the {_n(permitted)} units permitted within 400 m "
+                     f"({_n(d.get('units_completed_24mo_400m'))} completed in the last "
+                     "24 months) — the catchment this call is priced on changes when "
+                     "they are occupied, not when they are filed.")
+    else:
+        lines.append("- New units permitted within 400 m: none on file, so the catchment "
+                     "is not about to grow on the development pipeline.")
+    n_unknown = _status_counts(pack.supply)["unknown"]
+    if n_unknown:
+        lines.append(f"- Status verification of the {n_unknown} 'unknown' POI in the "
+                     "catchment (`loci verify-closures --area ...`): every one that "
+                     "resolves to closed removes a competitor this grade is counting.")
+    return lines
+
+
+def _closure_disclosure_lines(pack, enrichment) -> list[str]:
+    """The closure-check disclosure -- checks-disabled or checks-done, plus
+    the unresolved co-located pair count. Shared by the full memo and the
+    note (ruling R1: the note carries the SYMPTOM -- unknown competitors ->
+    D -- so it must carry the CAUSE too; the review found it printed only on
+    the full path)."""
+    lines: list[str] = []
+    if enrichment is not None:
+        if getattr(enrichment, "closure_checks_disabled", False):
+            lines.append("Closure checks disabled for this run (status shown as of "
+                         f"{pack.provenance.get('supply_hash')}).")
+        else:
+            lines.append(f"On-demand checks this run: **{enrichment.checks_done}** of "
+                         f"**{enrichment.checks_planned}** unknown POIs "
+                         f"({'cap hit — stopped early' if enrichment.cap_hit else 'cap not hit'}).")
+    unresolved = [p for p in pack.supply if p.colocation == "unresolved"]
+    if unresolved:
+        lines.append(f"{len(unresolved)} unresolved co-located pair(s) at this catchment "
+                     "(two POIs at one coordinate the evidence cannot yet split).")
+    return lines
+
+
+def _legality_lines(pack) -> list[str]:
+    """The planner's verdict block (investor review items 4 and 6): the
+    legality label AND the basis that actually makes the use commercial --
+    zoning district, both overlays, special district, LPC fit-out cost, the
+    SLA 500-foot rule and the flood/environmental "not loaded" line.
+
+    Shared by `_section4_full` and `_section4_no_trade` (2026-09-15): the
+    note used to print `legality_basis` alone, which reads "commercially
+    zoned (R6A)" at 376 Graham -- R6A is residential, the commercial right
+    comes from the C2-4 overlay, and a planner stops reading there."""
+    leg = pack.legality
+    lines = [f"**Legality: {leg.get('legality') or 'unknown'}** — "
+             f"{leg.get('legality_basis') or 'no basis on file'}."]
+    lines.append(f"Special district: {leg.get('spdist1') or 'not loaded'}.")
+    if leg.get("histdist") or leg.get("landmark"):
+        lines.append(f"Fit-out cost warning: historic district = {leg.get('histdist') or '—'}, "
+                     f"individual landmark = {leg.get('landmark') or '—'} — budget for LPC "
+                     "storefront review time before a build-out (label only — never a factor "
+                     "in the grade or legality verdict).")
+    lines.append(f"Zoning: {leg.get('zonedist1') or '—'} "
+                 f"(overlays {leg.get('overlay1') or '—'} / {leg.get('overlay2') or '—'}), "
+                 f"land use {leg.get('landuse') or '—'}, owner type {leg.get('ownertype') or '—'}.")
+    sla = pack.provenance.get("sla_500ft")
+    if sla is not None:
+        if sla["triggers_hearing"]:
+            lines.append(f"**SLA 500-foot rule:** {sla['n_on_premises_licenses']} active "
+                         "on-premises licences within 500 ft — a new full liquor licence "
+                         "application here draws a mandatory public-interest hearing.")
+        else:
+            lines.append(f"SLA 500-foot rule: {sla['n_on_premises_licenses']} active "
+                         "on-premises licences within 500 ft — below the 3-licence hearing "
+                         "trigger.")
+    lines.append(pack.provenance.get("flood_environmental")
+                 or "flood/environmental overlays: not loaded")
+    return lines
+
+
 def _underwriting_lines(pack) -> list[str]:
     """Investor review item 3: catchment homes vs the D18 ECON minimum for
     the lead category, rent ceiling as a share of modelled p50 revenue, a
@@ -313,26 +544,7 @@ def _section1_full(pack, enrichment, prose_text: str | None,
         return "\n".join(lines)
     lines.append(f"**Lead category: {card['category_label']}** — "
                  f"overall grade **{card['overall_grade']}** ({card['verdict']}).")
-    fc = pack.forecast
-    if fc and fc.get("p_opening") is not None:
-        issued = fc.get("issued_month")
-        horizon = fc.get("horizon_months") or 12
-        try:
-            y, m = (int(x) for x in str(issued).split("-"))
-            end = dt.date(y + (m + horizon - 1) // 12, (m + horizon - 1) % 12 + 1, 1)
-            end_s = end.strftime("%Y-%m")
-        except Exception:      # noqa: BLE001 -- malformed issued_month, fall back
-            end_s = "the forecast horizon"
-        lines.append("")
-        lines.append(f"p(opening) = **{fc['p_opening']:.3f}** (issued {issued}, "
-                     f"{horizon}-month horizon).")
-        lines.append(f"**Falsification test:** this call is wrong if no "
-                     f"{card['category_label'].lower()} is first-seen within 400 m "
-                     f"by {end_s} (scored {issued}).")
-    else:
-        lines.append("")
-        lines.append("No forecast is on file for this address x category "
-                     "(nothing to falsify against yet).")
+    lines += _falsification_lines(pack, card)
     lines.append("")
     lines.append("**Caveat:** this call reads market entry, not viability — a forecast "
                  "that a category opens here is not a prediction that it survives.")
@@ -356,18 +568,7 @@ def _section2_full(pack, enrichment, prose_text: str | None,
     lines.append(f"{len(pack.supply)} POI within {pack.context.get('catchment_m', 500):.0f} m "
                  f"— {counts['open']} open, {counts['closed']} closed, "
                  f"{counts['unknown']} unknown (full list in the appendix).")
-    if enrichment is not None:
-        if getattr(enrichment, "closure_checks_disabled", False):
-            lines.append("Closure checks disabled for this run (status shown as of "
-                         f"{pack.provenance.get('supply_hash')}).")
-        else:
-            lines.append(f"On-demand checks this run: **{enrichment.checks_done}** of "
-                         f"**{enrichment.checks_planned}** unknown POIs "
-                         f"({'cap hit — stopped early' if enrichment.cap_hit else 'cap not hit'}).")
-    unresolved = [p for p in pack.supply if p.colocation == "unresolved"]
-    if unresolved:
-        lines.append(f"{len(unresolved)} unresolved co-located pair(s) at this catchment "
-                     "(two POIs at one coordinate the evidence cannot yet split).")
+    lines += _closure_disclosure_lines(pack, enrichment)
     lines += _vacant_storefront_table(pack.vacant_storefronts)
     lines += _pipeline_table(pack.pipeline)
     if not pack.vacant_storefronts and not pack.pipeline:
@@ -417,30 +618,7 @@ def _section3_full(pack, enrichment, prose_text: str | None,
 def _section4_full(pack, enrichment, prose_text: str | None,
                    note: str = PROSE_UNAVAILABLE) -> str:
     lines = [HEADINGS[3], ""]
-    leg = pack.legality
-    lines.append(f"**Legality: {leg.get('legality') or 'unknown'}** — "
-                 f"{leg.get('legality_basis') or 'no basis on file'}.")
-    lines.append(f"Special district: {leg.get('spdist1') or 'not loaded'}.")
-    if leg.get("histdist") or leg.get("landmark"):
-        lines.append(f"Fit-out cost warning: historic district = {leg.get('histdist') or '—'}, "
-                     f"individual landmark = {leg.get('landmark') or '—'} — budget for LPC "
-                     "storefront review time before a build-out (label only — never a factor "
-                     "in the grade or legality verdict).")
-    lines.append(f"Zoning: {leg.get('zonedist1') or '—'} "
-                 f"(overlays {leg.get('overlay1') or '—'} / {leg.get('overlay2') or '—'}), "
-                 f"land use {leg.get('landuse') or '—'}, owner type {leg.get('ownertype') or '—'}.")
-    sla = pack.provenance.get("sla_500ft")
-    if sla is not None:
-        if sla["triggers_hearing"]:
-            lines.append(f"**SLA 500-foot rule:** {sla['n_on_premises_licenses']} active "
-                         "on-premises licences within 500 ft — a new full liquor licence "
-                         "application here draws a mandatory public-interest hearing.")
-        else:
-            lines.append(f"SLA 500-foot rule: {sla['n_on_premises_licenses']} active "
-                         "on-premises licences within 500 ft — below the 3-licence hearing "
-                         "trigger.")
-    lines.append(pack.provenance.get("flood_environmental")
-                or "flood/environmental overlays: not loaded")
+    lines += _legality_lines(pack)
     d = pack.demand
     if d.get("vacant_storefronts_400m") is not None:
         lines.append(f"Vacant storefronts within 400 m (screen count): "
@@ -475,10 +653,12 @@ def _section1_no_trade(pack, prose_text: str | None,
         lines.append(f"Lead category **{card['category_label']}**, overall grade "
                      f"**{card['overall_grade']}** ({card['verdict']}) — below the "
                      f"{GRADE_GATE_MIN} threshold for a full memo.")
-        fc = pack.forecast
-        if fc and fc.get("p_opening") is not None:
-            lines.append(f" p(opening) = **{fc['p_opening']:.3f}** "
-                         f"(issued {fc.get('issued_month')}).")
+        # Ruling R1: the note carries the SAME deterministic falsification
+        # block as the memo. The 09-15 generator deleted the trigger along
+        # with the contradiction it was fixing; only the PROSE claim is
+        # scrubbed (below), never the rendered test itself.
+        lines += _falsification_lines(pack, card)
+    lines += _what_would_change_lines(pack)
     prose_text = _scrub_falsification_claims(prose_text)
     if prose_text:
         lines += ["", prose_text]
@@ -487,14 +667,18 @@ def _section1_no_trade(pack, prose_text: str | None,
     return "\n".join(lines)
 
 
-def _section2_no_trade(pack, prose_text: str | None,
+def _section2_no_trade(pack, enrichment, prose_text: str | None,
                        note: str = PROSE_UNAVAILABLE) -> str:
     lines = [HEADINGS[1], ""]
     counts = _status_counts(pack.supply)
     lines.append(f"{len(pack.supply)} POI within "
                  f"{pack.context.get('catchment_m', 500):.0f} m — {counts['open']} open, "
                  f"{counts['closed']} closed, {counts['unknown']} unknown. No POI table or "
-                 "named pipeline in a no-trade note.")
+                 "named pipeline in a one-page note.")
+    # Ruling R1: the reader was getting the symptom (unknown competitors ->
+    # grade D) with the cause removed -- these lines used to render only on
+    # the full-memo path.
+    lines += _closure_disclosure_lines(pack, enrichment)
     if prose_text:
         lines += ["", prose_text]
     else:
@@ -519,9 +703,7 @@ def _section3_no_trade(pack, prose_text: str | None,
 def _section4_no_trade(pack, enrichment, prose_text: str | None,
                        note: str = PROSE_UNAVAILABLE) -> str:
     lines = [HEADINGS[3], ""]
-    leg = pack.legality
-    lines.append(f"**Legality: {leg.get('legality') or 'unknown'}** — "
-                 f"{leg.get('legality_basis') or 'no basis on file'}.")
+    lines += _legality_lines(pack)
     if enrichment is not None and enrichment.news:
         lines += ["", "**News:**"]
         for h in enrichment.news[:3]:
@@ -602,6 +784,28 @@ def _render_full(pack, enrichment, prose: dict, *, run_id: str, total_usd: float
            + appendix + "\n\n" + footer + "\n")
 
 
+def _no_call_banner(pack, enrichment) -> list[str]:
+    """Ruling R1: a NO CALL names every missing input and gives the date the
+    instrument that could supply it next runs. It makes NO claim about the
+    site -- that is the whole distinction from NO TRADE."""
+    lines = ["", "**NO CALL.** This is a DATA failure, not a site failure: the inputs a "
+             "call needs are missing, so no call is made in either direction.", ""]
+    lines += [f"- {r}" for r in no_call_reasons(pack, enrichment)]
+    lines += ["", f"**Re-look: {relook_date().isoformat()}** — the next monthly refresh "
+              "(first-seen ledger snapshot, chains refresh, `loci recommendations check`). "
+              f"Re-run `loci report {pack.address.get('address_id')}` with closure checks "
+              "enabled on or after that date; nothing in this note should be read as a "
+              "judgement on the site."]
+    return lines
+
+
+def _no_trade_banner() -> list[str]:
+    return ["", f"**NO TRADE.** This is a SITE failure, not a data failure: the evidence "
+            f"is present and the grade is below {GRADE_GATE_MIN}. One-page note, not a "
+            "full memo — no POI table, no rent/lease web signals. The falsification "
+            "trigger that would reverse this call is in section 1."]
+
+
 def _render_no_trade(pack, enrichment, prose: dict, *, run_id: str, total_usd: float,
                      cached_note: str | None) -> str:
     label = _address_label(pack)
@@ -610,13 +814,14 @@ def _render_no_trade(pack, enrichment, prose: dict, *, run_id: str, total_usd: f
         "",
         f"Generated {dt.date.today().isoformat()} · lead category "
         f"**{pack.lead_category or '—'}** · grade **{_lead_grade(pack) or '—'}**.",
-        "",
-        f"**NO TRADE.** Grade is below {GRADE_GATE_MIN} (or ungraded) — this is a one-page "
-        "note, not a full memo. No POI table, no rent/lease web signals.",
     ]
+    if verdict(pack, enrichment) == VERDICT_NO_CALL:
+        header += _no_call_banner(pack, enrichment)
+    else:
+        header += _no_trade_banner()
     body = [
         _section1_no_trade(pack, prose.get(0), _prose_note(prose, 0)),
-        _section2_no_trade(pack, prose.get(1), _prose_note(prose, 1)),
+        _section2_no_trade(pack, enrichment, prose.get(1), _prose_note(prose, 1)),
         _section3_no_trade(pack, prose.get(2), _prose_note(prose, 2)),
         _section4_no_trade(pack, enrichment, prose.get(3), _prose_note(prose, 3)),
     ]

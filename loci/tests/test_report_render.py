@@ -29,8 +29,9 @@ from loci.report.evidence import (
 from loci.report.ledger import Budget
 from loci.report.prose import ProseSections, write_prose
 from loci.report.render import (
-    GRADE_GATE_MIN, HEADINGS, PROSE_PARSE_FAILED, PROSE_UNAVAILABLE, is_below_c, out_path,
-    render, slug,
+    HEADINGS, PROSE_PARSE_FAILED, PROSE_UNAVAILABLE, VERDICT_FULL,
+    VERDICT_NO_CALL, VERDICT_NO_TRADE, is_below_c, no_call_reasons, out_path,
+    relook_date, render, slug, verdict,
 )
 
 
@@ -195,11 +196,17 @@ def test_grade_d_renders_the_one_page_no_trade_note():
     assert md.count(PROSE_UNAVAILABLE) == 4
 
 
-def test_no_grades_at_all_also_renders_the_no_trade_note():
+def test_no_grades_at_all_renders_a_no_call_note_not_a_no_trade_one():
+    """Owner ruling R1: an address with no gradeable category is a DATA
+    failure -- nothing about the SITE was tested -- so it gets NO CALL, names
+    the missing input and carries a re-look date. It used to print NO TRADE,
+    which tells an allocator the site was rejected."""
     pack = _pack(no_grades=True)
     md = render(pack, None, None, run_id="r1", total_usd=0.0)
-    assert "**NO TRADE.**" in md
-    assert "No category could be graded for this address." in md
+    assert "**NO CALL.**" in md
+    assert "**NO TRADE.**" not in md
+    assert "No category could be graded at this address" in md
+    assert f"**Re-look: {relook_date().isoformat()}**" in md
 
 
 def test_grade_c_still_renders_the_full_memo():
@@ -392,3 +399,135 @@ def test_unparsed_prose_prints_the_honest_parse_failed_line_and_raw_text_in_foot
     assert "garbled model reply" in footer
     body = md[:md.index("## Provenance")]
     assert "garbled model reply" not in body
+
+
+# ------------------------------- owner ruling R1: NO CALL is not NO TRADE
+
+def test_verdict_is_no_trade_when_the_grade_is_low_and_every_input_is_present():
+    pack = _pack(grade="D")
+    assert verdict(pack, None) == VERDICT_NO_TRADE
+    md = render(pack, None, None, run_id="r1", total_usd=0.0)
+    assert "**NO TRADE.**" in md
+    assert "SITE failure" in md
+    assert "**NO CALL.**" not in md
+
+
+def test_verdict_is_full_for_a_graded_address_whatever_the_inputs():
+    """Ruling R1 splits the NOTE in two; it does not add a third path for a
+    C-or-better address. Default behaviour is unchanged."""
+    pack = _pack(grade="C")
+    enrichment = Enrichment(closure_checks_disabled=True)
+    assert verdict(pack, enrichment) == VERDICT_FULL
+
+
+def test_closure_checks_disabled_turns_a_no_trade_into_a_no_call():
+    pack = _pack(grade="D")
+    enrichment = Enrichment(closure_checks_disabled=True)
+    assert verdict(pack, enrichment) == VERDICT_NO_CALL
+    md = render(pack, enrichment, None, run_id="r1", total_usd=0.0)
+    assert "**NO CALL.**" in md
+    assert "**NO TRADE.**" not in md
+    assert "DATA failure" in md
+    assert "Closure checks disabled for this run" in md
+
+
+def test_unresolved_colocated_pairs_are_a_no_call_reason_and_are_counted():
+    pack = _pack(grade="D")
+    pack.supply[0].colocation = "unresolved"
+    reasons = no_call_reasons(pack, None)
+    assert any("1 unresolved co-located pair" in r for r in reasons)
+    md = render(pack, None, None, run_id="r1", total_usd=0.0)
+    assert "**NO CALL.**" in md
+
+
+def test_unknowns_dominating_the_lead_category_are_a_no_call_reason():
+    """The review's blocking finding: unknown-status shares of 43-61% produced
+    a D, and the note printed the symptom with the cause removed. When the
+    unresolved records could at least DOUBLE the lead category's measured
+    supply, the thinness the call turns on was never measured."""
+    pack = _pack(grade="D")
+    pack.supply.append(POIRow(poi_id="p4", name="Maybe Grocer", category="grocery",
+                              dist_m=90.0, status="unknown", basis="overture_places:none",
+                              colocation=None))
+    reasons = no_call_reasons(pack, None)
+    assert any("grocery POI in the catchment carry status 'unknown'" in r for r in reasons)
+
+
+def test_a_no_call_note_carries_a_relook_date_and_a_no_trade_note_does_not():
+    no_call = render(_pack(grade="D"), Enrichment(closure_checks_disabled=True), None,
+                     run_id="r1", total_usd=0.0)
+    no_trade = render(_pack(grade="D"), None, None, run_id="r1", total_usd=0.0)
+    assert f"**Re-look: {relook_date().isoformat()}**" in no_call
+    assert "Re-look:" not in no_trade
+
+
+def test_relook_date_is_the_first_of_the_next_month_including_across_a_year():
+    import datetime as dt
+    assert relook_date(dt.date(2026, 9, 15)) == dt.date(2026, 10, 1)
+    assert relook_date(dt.date(2026, 12, 31)) == dt.date(2027, 1, 1)
+
+
+# ----------- ruling R1: the note carries the disclosures and the trigger
+
+def test_the_note_renders_the_falsification_block_instead_of_scrubbing_it():
+    """Investor review item 1 / ruling R1: the 09-15 fix deleted the
+    contradiction AND the test. The deterministic block belongs on the note
+    path too -- a NO TRADE that names no trigger is an opinion."""
+    md = render(_pack(grade="D"), None, None, run_id="r1", total_usd=0.0)
+    assert md.count("**Falsification test:**") == 1
+    assert "p(opening) = **0.210**" in md
+
+
+def test_prose_still_cannot_contradict_the_falsification_line_on_the_note_path():
+    prose = {0: "No falsification test is present here. The grade is low."}
+    md = render(_pack(grade="D"), None, prose, run_id="r1", total_usd=0.0)
+    assert md.count("**Falsification test:**") == 1
+    assert "no falsification test" not in md.lower()
+    assert "The grade is low." in md
+
+
+def test_the_note_names_what_would_change_the_call():
+    pack = _pack(grade="D")
+    pack.vacant_storefronts = [VacantStorefrontRow(
+        premises_id="sf1", address="318 Graham Ave", dist_m=77.0,
+        floor_area_sqft=900.0, last_use="FOOD SERVICES", vacant_since=2022)]
+    md = render(pack, None, None, run_id="r1", total_usd=0.0)
+    assert "**What would change this call:**" in md
+    assert "318 Graham Ave" in md          # the NAMED vacancy, not "4 vacant storefronts"
+    assert "vacant since 2022" in md
+    assert "50" in md                      # units permitted within 400 m
+    assert "verify-closures" in md         # the status-verification trigger
+
+
+def test_the_note_carries_the_closure_disclosure_that_justifies_the_grade():
+    pack = _pack(grade="D")
+    enrichment = Enrichment(checks_planned=9, checks_done=4, cap_hit=True)
+    md = render(pack, enrichment, None, run_id="r1", total_usd=0.0)
+    sec2 = md[md.index(HEADINGS[1]):md.index(HEADINGS[2])]
+    assert "**4**" in sec2 and "**9**" in sec2
+    assert "cap hit" in sec2.lower()
+
+
+# ------------- investor review item 4: the legality basis on the note path
+
+def test_the_note_prints_the_effective_commercial_basis_not_just_the_zoning_string():
+    """376 Graham printed "commercially zoned (R6A)" -- R6A is RESIDENTIAL;
+    the commercial right is the C2-4 overlay. The note now renders the same
+    planner's block the full memo does, so the overlay, the special district
+    and the flood line sit under the verdict."""
+    pack = _pack(grade="D")
+    pack.legality.update({"legality_basis": "commercially zoned (R6A)", "zonedist1": "R6A",
+                          "overlay1": "C2-4", "spdist1": None})
+    md = render(pack, None, None, run_id="r1", total_usd=0.0)
+    sec4 = md[md.index(HEADINGS[3]):]
+    assert "Zoning: R6A (overlays C2-4" in sec4
+    assert "Special district: not loaded." in sec4
+    assert "flood/environmental overlays: not loaded" in sec4
+
+
+def test_the_note_prints_the_sla_500ft_rule_for_a_bar_lead_category():
+    pack = _pack(grade="D")
+    pack.grades[0]["category"] = "bar"
+    pack.provenance["sla_500ft"] = {"n_on_premises_licenses": 5, "triggers_hearing": True}
+    md = render(pack, None, None, run_id="r1", total_usd=0.0)
+    assert "SLA 500-foot rule:** 5 active" in md

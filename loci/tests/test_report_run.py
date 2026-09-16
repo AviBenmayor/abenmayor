@@ -10,6 +10,8 @@ from __future__ import annotations
 import datetime as dt
 import json
 
+import pytest
+
 import loci.db as locidb
 from loci.categories import CATEGORIES
 from loci.report import cache, run
@@ -204,23 +206,42 @@ def test_closure_checks_false_makes_zero_places_calls_and_shows_the_disabled_lin
     assert "unknown" in result.markdown
 
 
-def test_below_c_grade_renders_the_no_trade_note_end_to_end(tmp_path, monkeypatch):
-    """Investor review item 2, the other half of the gate: THIS fixture's
-    synthetic address grades below C on the real grading rules (unforced --
-    see the sibling test above, which forces the opposite path). The
-    no-trade note has no POI table/appendix, no rents/leases web signals
-    (item 2's "no web enrichment beyond news"), and still makes zero paid
-    Places calls when `--no-closure-checks` is set."""
+def test_below_c_grade_with_closure_checks_off_renders_a_no_call_note(tmp_path, monkeypatch):
+    """Investor review item 2 + owner ruling R1: THIS fixture's synthetic
+    address grades below C on the real grading rules (unforced -- see the
+    sibling test above, which forces the opposite path), so it renders the
+    one-page note: no POI table/appendix, no rents/leases web signals, zero
+    paid Places calls under `--no-closure-checks`.
+
+    And because closure checks are OFF, the note is a NO CALL, not a NO
+    TRADE -- the open-competitor count the grade rests on was never
+    measured, so nothing was learned about the site."""
     con = _db()
     places, web, prose = _clients()
     result = _generate(con, tmp_path, monkeypatch, closure_checks=False,
                        clients=(places, web, prose))
-    assert "**NO TRADE.**" in result.markdown
+    assert "**NO CALL.**" in result.markdown
+    assert "**NO TRADE.**" not in result.markdown
+    assert "Closure checks disabled for this run" in result.markdown
+    assert "Re-look:" in result.markdown
     assert "## Appendix — supply detail" not in result.markdown
     assert "Mystery Cafe" not in result.markdown
     for h in HEADINGS:
         assert h in result.markdown
     assert places.calls == []
+
+
+def test_below_c_grade_with_the_inputs_present_renders_a_no_trade_note(tmp_path, monkeypatch):
+    """The other side of ruling R1: same address, same low grade, but the
+    closure checks DID run and nothing is unresolved in the lead category --
+    so this is a judgement on the site and it carries the falsification
+    trigger that would reverse it."""
+    con = _db(include_unknown_poi=False)
+    places, web, prose = _clients()
+    result = _generate(con, tmp_path, monkeypatch, clients=(places, web, prose))
+    assert "**NO TRADE.**" in result.markdown
+    assert "**NO CALL.**" not in result.markdown
+    assert "**What would change this call:**" in result.markdown
 
 
 # --------------------------------------------------------------- AC-21
@@ -235,3 +256,100 @@ def test_ac21_prose_called_exactly_once_with_one_ledger_row(tmp_path, monkeypatc
         [result.run_id]).fetchall()
     assert len(rows) == 1
     assert "s1" in result.markdown and "s4" in result.markdown
+
+
+# ------------------------- owner ruling R2: the same-BBL check GATES the run
+
+def _memo(dirpath, name, bbl, category):
+    dirpath.mkdir(parents=True, exist_ok=True)
+    (dirpath / name).write_text(
+        f"# Hand memo\n\nBBL {bbl}\n\n| lead_category | 0.30 / **{category}** |\n")
+
+
+def test_a_conflicting_recent_memo_on_the_same_bbl_refuses_to_render(tmp_path, monkeypatch):
+    """Ruling R2: a note whose provenance footer tells the reader its own
+    headline category is wrong must not be written at all. The refusal
+    happens after the pure warehouse read and BEFORE the cache lookup and
+    the budget, so no file appears and nothing is spent."""
+    import loci.report.render as render_mod
+
+    docs = tmp_path / "recommendations"
+    _memo(docs, "graham-ave-376-2026-09-13.md", "3012340001", "tailor_repair")
+    monkeypatch.setattr(render_mod, "OUT_DIR", docs)
+    con = _db()
+    out = tmp_path / "report.md"
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "cache")
+
+    with pytest.raises(run.SameBBLConflict) as exc:
+        run.generate(con, ADDR_ID, out=out, clients=_clients())
+
+    assert "tailor_repair" in str(exc.value)
+    assert not out.exists()
+    assert con.execute("SELECT count(*) FROM analysis.spend_ledger").fetchone()[0] == 0
+
+
+def test_an_agreeing_recent_memo_on_the_same_bbl_does_not_refuse(tmp_path, monkeypatch):
+    import loci.report.render as render_mod
+
+    docs = tmp_path / "recommendations"
+    _memo(docs, "other-2026-09-13.md", "3012340001", "grocery")   # the same lead
+    monkeypatch.setattr(render_mod, "OUT_DIR", docs)
+    con = _db()
+    result = _generate(con, tmp_path, monkeypatch, clients=_clients())
+    assert result.path is not None
+
+
+def test_the_memo_this_run_is_about_to_overwrite_is_not_a_conflict(tmp_path, monkeypatch):
+    """The file at today's own output path is this report's previous copy,
+    not a second opinion. Without the exclusion every same-day re-run reads
+    yesterday's version of itself, reports a conflict with its own headline
+    (the `3027550006-2026-09-15.md` line the review found) and -- under
+    ruling R2 -- would now refuse forever."""
+    import loci.report.render as render_mod
+
+    docs = tmp_path / "recommendations"
+    monkeypatch.setattr(render_mod, "OUT_DIR", docs)
+    con = _db()
+    pack_addr = {"street_name": "Test Street", "bbl": "3012340001", "address_id": ADDR_ID}
+    self_path = render_mod.default_out_path(pack_addr)
+    _memo(docs, self_path.name, "3012340001", "tailor_repair")
+
+    result = run.generate(con, ADDR_ID, out=tmp_path / "report.md", clients=_clients(),
+                          no_cache=True)
+    assert result.path is not None
+
+
+# --------------------------------- owner ruling R3: --category override
+
+def test_category_override_forces_the_lead_and_the_whole_memo_follows(tmp_path, monkeypatch):
+    con = _db()      # grocery is the thinnest (0.1) and would lead unforced
+    unforced = _generate(con, tmp_path, monkeypatch, clients=_clients(), no_cache=True)
+    assert "lead category **grocery**" in unforced.markdown
+
+    forced = _generate(con, tmp_path, monkeypatch, clients=_clients(), no_cache=True,
+                       category="hardware", out=tmp_path / "forced.md")
+    assert "lead category **hardware**" in forced.markdown
+
+
+def test_category_override_refuses_a_demoted_category_without_the_flag(tmp_path, monkeypatch):
+    from loci.report.evidence import DemotedCategory
+
+    con = _db()
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "cache")
+    with pytest.raises(DemotedCategory):
+        run.generate(con, ADDR_ID, out=tmp_path / "r.md", clients=_clients(),
+                     category="tailor_repair")
+
+    result = run.generate(con, ADDR_ID, out=tmp_path / "r.md", clients=_clients(),
+                          category="tailor_repair", allow_demoted=True)
+    assert "lead category **tailor_repair**" in result.markdown
+
+
+def test_category_override_refuses_a_category_that_is_not_a_loci_slug(tmp_path, monkeypatch):
+    from loci.report.evidence import CategoryNotAvailable
+
+    con = _db()
+    monkeypatch.setattr(cache, "CACHE_DIR", tmp_path / "cache")
+    with pytest.raises(CategoryNotAvailable):
+        run.generate(con, ADDR_ID, out=tmp_path / "r.md", clients=_clients(),
+                     category="taco_truck")

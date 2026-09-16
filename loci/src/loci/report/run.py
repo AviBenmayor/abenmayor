@@ -36,6 +36,29 @@ logger = logging.getLogger(__name__)
 DEFAULT_CAP_USD = 1.00
 
 
+class SameBBLConflict(RuntimeError):
+    """OWNER RULING R2 (2026-09-15, GTM-172): the same-BBL consistency check
+    GATES the run, it does not annotate it.
+
+    Until now a memo whose provenance footer said "another recent file names
+    lead_category ['childcare','convenience','tailor_repair'] for this BBL;
+    this report reads 'bank'" still shipped -- a document telling its own
+    reader that its headline is wrong. There is no reader for whom that is
+    the right artefact, so the generator refuses: no file is written, no paid
+    call is made (this is raised straight after the pure warehouse read, before
+    the cache lookup and before `Budget` exists), and the caller exits
+    non-zero. The fix is to resolve the disagreement -- re-run the other memo,
+    delete it, or force this one's lead with `--category` -- not to publish
+    both."""
+
+    def __init__(self, address_id: str, conflicts: list):
+        self.address_id = address_id
+        self.conflicts = list(conflicts)
+        super().__init__(
+            f"same-BBL conflict for {address_id}: "
+            + "; ".join(self.conflicts))
+
+
 @dataclass
 class ReportResult:
     path: str | None
@@ -53,7 +76,8 @@ def _new_run_id() -> str:
 def generate(con, address_id: str, *, cap_usd: float = DEFAULT_CAP_USD,
             dry_run: bool = False, no_cache: bool = False,
             out: str | Path | None = None, clients=None,
-            closure_checks: bool = True) -> ReportResult:
+            closure_checks: bool = True, category: str | None = None,
+            allow_demoted: bool = False) -> ReportResult:
     """Generate (or fetch from cache) the allocator report for one Loci
     `address_id`. `clients`, when given, is `(places, web, prose)` -- ALWAYS
     the injected fakes in a test; `None` calls `report.clients.default_clients()`
@@ -63,8 +87,17 @@ def generate(con, address_id: str, *, cap_usd: float = DEFAULT_CAP_USD,
     straight through to `enrich()`: zero Places calls, zero closure-evidence
     writes, `poi_status` untouched. The web searches for rents/leases/news
     and the one prose call are unaffected -- this flag governs the per-POI
-    closure pass only."""
-    pack = evidence.assemble(con, address_id)
+    closure pass only.
+
+    `category` (ruling R3) forces the lead category through to
+    `evidence.assemble`; `allow_demoted` is what lets a `headline: false`
+    category lead. `SameBBLConflict` (ruling R2) is raised before anything is
+    spent or written."""
+    pack = evidence.assemble(con, address_id, category=category,
+                             allow_demoted=allow_demoted)
+    conflicts = pack.provenance.get("same_bbl_conflicts") or []
+    if conflicts:
+        raise SameBBLConflict(address_id, conflicts)
     evidence_hash = pack.hash()
     path = Path(out) if out else render.out_path(pack)
 

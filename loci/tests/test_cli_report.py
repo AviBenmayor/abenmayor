@@ -131,3 +131,75 @@ def test_not_in_coverage_exits_2_with_the_exact_message(monkeypatch, tmp_path):
 
     assert result.exit_code == 2
     assert "not in Loci coverage" in result.stdout
+
+
+# ------------------------------------------- owner ruling R3: --category
+
+def test_category_option_forces_the_lead_category(monkeypatch, tmp_path):
+    con = _db()
+    out = tmp_path / "forced.md"
+    result = _invoke(monkeypatch, con,
+                     ["report", ADDR_ID, "--category", "hardware", "--no-cache",
+                      "--out", str(out)], tmp_path)
+
+    assert result.exit_code == 0, result.stdout
+    assert "lead category **hardware**" in out.read_text()
+
+
+def test_a_demoted_category_is_refused_with_exit_2_and_named_in_the_message(
+        monkeypatch, tmp_path):
+    """Owner ruling R3: `headline: false` (clinic, tailor_repair, hair_barber
+    -- the D30 precedent) may not lead a memo by accident. The refusal names
+    the flag that overrides it, so the analyst has to say it out loud."""
+    con = _db()
+    result = _invoke(monkeypatch, con,
+                     ["report", ADDR_ID, "--category", "tailor_repair", "--no-cache",
+                      "--out", str(tmp_path / "r.md")], tmp_path)
+
+    assert result.exit_code == 2
+    assert "REFUSE" in result.stdout
+    assert "--allow-demoted" in result.stdout
+    assert not (tmp_path / "r.md").exists()
+
+
+def test_allow_demoted_lets_a_demoted_category_lead(monkeypatch, tmp_path):
+    con = _db()
+    out = tmp_path / "demoted.md"
+    result = _invoke(monkeypatch, con,
+                     ["report", ADDR_ID, "--category", "tailor_repair", "--allow-demoted",
+                      "--no-cache", "--out", str(out)], tmp_path)
+
+    assert result.exit_code == 0, result.stdout
+    assert "lead category **tailor_repair**" in out.read_text()
+
+
+def test_an_unknown_category_is_refused_with_exit_2(monkeypatch, tmp_path):
+    con = _db()
+    result = _invoke(monkeypatch, con,
+                     ["report", ADDR_ID, "--category", "taco_truck", "--no-cache"],
+                     tmp_path)
+    assert result.exit_code == 2
+    assert "REFUSE" in result.stdout
+
+
+# --------------------------- owner ruling R2: same-BBL conflict gates the run
+
+def test_a_same_bbl_conflict_exits_3_prints_the_conflict_and_writes_nothing(
+        monkeypatch, tmp_path):
+    import loci.report.render as render_mod
+
+    docs = tmp_path / "recommendations"
+    docs.mkdir()
+    (docs / "graham-ave-376-2026-09-13.md").write_text(
+        "# Hand memo\n\nBBL 3012340001\n\n| lead_category | 0.30 / **tailor_repair** |\n")
+    monkeypatch.setattr(render_mod, "OUT_DIR", docs)
+    con = _db()
+    out = tmp_path / "r.md"
+    result = _invoke(monkeypatch, con,
+                     ["report", ADDR_ID, "--no-cache", "--out", str(out)], tmp_path)
+
+    assert result.exit_code == 3
+    assert "same-BBL conflict" in result.stdout
+    assert "tailor_repair" in result.stdout
+    assert not out.exists()
+    assert con.execute("SELECT count(*) FROM analysis.spend_ledger").fetchone()[0] == 0

@@ -315,9 +315,19 @@ fc AS (
     JOIN newest_fc n
       ON n.address_id = f.address_id AND n.category = f.category
      AND n.issued_month = f.issued_month
+    -- TIE-BREAK BY WHEN IT WAS ISSUED, NOT BY HOW ITS VERSION STRING SORTS
+    -- (2026-09-15 fix). `model_version` is '<semver>+<8 hex git-ish hash>';
+    -- DESC on that string orders two same-month vintages by the HEX, which is
+    -- arbitrary -- '0.1.1+f1cb6628' (2026-09-14 23:26) beat D112's re-issued
+    -- '0.1.1+51bab17f' (2026-09-15 17:53) purely on 'f' > '5', so the newest
+    -- re-baseline lost to a stale one and every card and report stamped the
+    -- wrong model version. `frozen_at` is the actual issue time of the
+    -- vintage (analysis.forecast, NOT NULL); the version string stays as the
+    -- deterministic second key so the pick is stable if two vintages were
+    -- frozen in the same microsecond.
     QUALIFY row_number() OVER (
         PARTITION BY f.address_id, f.category
-        ORDER BY f.model_version DESC) = 1
+        ORDER BY f.frozen_at DESC, f.model_version DESC) = 1
 ),
 scored AS (
     SELECT f.address_id, f.category, f.issued_month AS scored_vintage_month,
