@@ -9410,6 +9410,172 @@ def citibike_od_measures(
         con.close()
 
 
+#: How each D43 verdict renders. The strings are the pre-registration's own
+#: words: NULL is a positive claim and the only one `resweep_failing_categories`
+#: will act on, INCONCLUSIVE is explicitly not a null, and in an UNDERPOWERED run
+#: every non-PASS reads "cannot resolve" (P3) whatever its underlying state.
+_OD_SPEC_VERDICT = {
+    "PASS": "[green]PASS — stores a number[/]",
+    "NULL": "[red]NULL — not specific[/]",
+    "INCONCLUSIVE": "[yellow]INCONCLUSIVE — no stored number, NOT a null[/]",
+    "LOW_POWER": "[yellow]LOW_POWER — test not readable[/]",
+    "CANNOT_RESOLVE": "[yellow]cannot resolve — MDE above the floor[/]",
+    "NO_STORED_NUMBER": "[red]no stored number — kill rule[/]",
+    "PENDING": "[dim]thresholds pending ratification[/]",
+}
+
+
+def _od_spec_verdict(verdict: str, underpowered: bool) -> str:
+    """P3's wording rule, in one place: in an UNDERPOWERED run every non-PASS
+    reads "cannot resolve", whatever the underlying state was. The state is kept
+    in the report -- `resweep_failing_categories` still refuses everything that
+    is not literally NULL -- but the printed word never claims a null the run
+    could not have detected."""
+    if underpowered and verdict not in ("PASS", "PENDING", "NO_STORED_NUMBER"):
+        return (f"{_OD_SPEC_VERDICT['CANNOT_RESOLVE']} "
+                f"[dim]({verdict.lower()})[/]")
+    return _OD_SPEC_VERDICT.get(verdict, verdict)
+
+
+def _od_print_specificity(bod, con, window, n_perm, n_boot, seed,
+                          spatial_block) -> None:
+    """D43 — the residual-rank category-specificity placebo, printed.
+
+    DIAGNOSTICS FIRST, VERDICTS LAST, which is the pre-registration's ordering
+    and not a style choice: the effective sample here is DESTINATIONS (~78), not
+    origins (~110), and three of the four open items the ratifier left — σ̂₀ and
+    the MDE, the stratum sizes, the collinearity of the origin weight vectors —
+    are meant to be read BEFORE the verdicts they qualify. A reader who sees a
+    verdict table first has already formed a view by the time the MDE tells them
+    the run could not resolve the floor.
+
+    READ-ONLY, and it changes no exit code: the D76 CONTEXT ONLY footing is
+    decided by `dot_validation` below, exactly as before.
+    """
+    kw = {"seed": seed, "spatial_block": spatial_block}
+    if n_perm:
+        kw["n_perm"] = n_perm
+    if n_boot:
+        kw["n_boot"] = n_boot
+    with console.status("D43 category specificity — permuting…"):
+        s = bod.category_specificity(con, window, **kw)
+    b, dg = s["bars"], s["diagnostics"]
+    console.print(
+        f"\n[bold]D43 category specificity[/] — {s['window']}, "
+        f"{s['n_origin_ntas']} origins over {s['n_destination_ntas']} "
+        f"destinations. Bars ratified blind 2026-09-16: BH q={b['bh_q']}, one "
+        f"family of 15, |median W| ≥ {b['min_effect']}, aux R² < "
+        f"{b['aux_r2_cutoff']}, B={b['n_perm']:,} permutations, "
+        f"{b['n_boot']:,} bootstrap resamples.")
+    if s.get("thresholds_pending"):
+        console.print(f"[yellow]{bod.THRESHOLDS_PENDING_MESSAGE}[/] — every "
+                      f"verdict below is provisional and nothing is storable.")
+    if s["per_category"].empty:
+        console.print(f"[red]{s['gate']['message']}[/]")
+        return
+
+    d = Table(title="diagnostics — read these BEFORE the verdicts")
+    for c, j in (("diagnostic", "left"), ("value", "right"), ("flag", "left")):
+        d.add_column(c, justify=j)
+    d.add_row("Σw² per origin (p50 / p90 / max)",
+              f"{dg['sum_w2_p50']:.3f} / {dg['sum_w2_p90']:.3f} / "
+              f"{dg['sum_w2_max']:.3f}",
+              f"n_eff ≈ {dg['n_eff_destinations_p50']:.1f} destinations")
+    d.add_row("Σw² of the trip-weighted mean vector",
+              f"{dg['sum_w2_mean_vector']:.4f}",
+              f"n_eff ≈ {dg['n_eff_mean_vector']:.1f}")
+    d.add_row("σ̂₀ (median over categories) / MDE = 2.8·σ̂₀",
+              f"{dg['sigma0_median']:.4f} / {dg['mde_median']:.4f}",
+              "[red]UNDERPOWERED for the floor[/]" if dg["underpowered"]
+              else f"[green]resolves {b['min_effect']}[/]")
+    d.add_row("strata (other-density × dock count), median size",
+              f"{dg['strata_grid']}, {dg['median_stratum_size']:.1f}",
+              "[yellow]collapsed to tercile × median-split[/]"
+              if dg["strata_collapsed"] else "5×3 as declared")
+    d.add_row("distinct origin weight vectors",
+              f"{dg['distinct_weight_vectors']:,} of {dg['n_origins']:,}",
+              f"{dg['n_cds']} community districts")
+    d.add_row("median pairwise cosine of origin weight vectors",
+              f"{dg['median_pairwise_cosine']:.3f}",
+              "[yellow]> 0.9 — the CD bootstrap is decorative[/]"
+              if dg["cosine_flag"] else "origins carry distinct vectors")
+    d.add_row(f"Moran's I of r_c (k={dg['moran_k']}, "
+              f"{dg['moran_permutations']} perms), categories with p < 0.05",
+              f"{len(dg['moran_flagged'])} of {len(s['per_category'])}",
+              "[yellow]≥ 3 — re-run with --spatial-block as primary[/]"
+              if dg["moran_flag_trips"] else "no spatial re-declaration")
+    d.caption = ("one permutation per draw is applied to EVERY origin, so the "
+                 "effective sample is destinations, never origins.")
+    console.print(d)
+
+    r = Table(title="robustness — none of these is a gate")
+    for c, j in (("category", "left"), ("median W", "right"),
+                 ("per-dock W", "right"), ("unweighted W", "right"),
+                 ("weighted lift", "right"), ("unresid. W", "right"),
+                 ("p unresid.", "right"), ("p label-perm", "right"),
+                 ("p spatial", "right")):
+        r.add_column(c, justify=j)
+    for row in s["robustness"].to_dict("records"):
+        r.add_row(row["category"], f"{row['median_W']:+.3f}",
+                  f"{row['median_W_per_dock']:+.3f}",
+                  f"{row['median_W_unweighted']:+.3f}",
+                  f"{row['weighted_lift']:+.3f}",
+                  f"{row['median_W_unresidualised']:+.3f}",
+                  f"{row['p_unresidualised']:.3f}",
+                  f"{row['p_label_permutation']:.3f}",
+                  f"{row['p_spatial_block']:.3f}")
+    r.caption = ("unresidualised W is the LEVEL the old placebo tested; a "
+                 "category whose residual W collapses to zero while its level W "
+                 "stays large was measuring destination attractiveness.")
+    console.print(r)
+
+    t = Table(title=f"per-category verdicts — BH q={b['bh_q']}, ONE family of "
+                    f"{len(s['per_category'])} (no structural exclusion)")
+    for c, j in (("category", "left"), ("median W", "right"),
+                 ("p", "right"), ("BH", "right"), ("95% CI (dest.)", "right"),
+                 ("CI method", "left"), ("95% CI (CD)", "right"),
+                 ("MDE", "right"), ("aux R²", "right"), ("verdict", "left")):
+        t.add_column(c, justify=j)
+    for row in s["per_category"].to_dict("records"):
+        name = row["category"] + (" *" if row["expected_uninformative"] else "")
+        t.add_row(name, f"{row['median_W']:+.3f}", f"{row['p_primary']:.4f}",
+                  "[green]✓[/]" if row["bh_pass"] else "—",
+                  f"[{row['ci_lo']:+.3f}, {row['ci_hi']:+.3f}]",
+                  row["ci_method"],
+                  f"[{row['cd_ci_lo']:+.3f}, {row['cd_ci_hi']:+.3f}]",
+                  f"{row['mde']:.3f}", f"{row['aux_r2']:.2f}",
+                  _od_spec_verdict(row["verdict"], bool(row["underpowered"])))
+    t.caption = ("* = expected uninformative in advance (weekday business "
+                 "hours): childcare, clinic, bank, tailor_repair, hardware — a "
+                 "built-in negative control, NOT excluded from the family. "
+                 "PASS = BH ∧ destination CI excludes 0 ∧ |median W| ≥ "
+                 f"{b['min_effect']}.")
+    console.print(t)
+
+    k = s["kill_rule"]
+    if k["fired"]:
+        console.print(
+            f"[red]KILL RULE FIRED — {k['message']}[/]: "
+            f"{len(k['passing_flagged'])} of the five expected-uninformative "
+            f"categories PASS with a positive sign "
+            f"({', '.join(k['passing_flagged'])}). The residual did not remove "
+            f"destination attractiveness, so NO category may carry a stored "
+            f"number — not even the ones that passed.")
+    else:
+        console.print(
+            f"[dim]kill rule: {len(k['passing_flagged'])} of the five "
+            f"expected-uninformative categories pass positive "
+            f"(fires at {k['min_passes']}).[/]")
+    console.print(
+        f"D43 gate: {'[green]PASSES[/]' if s['gate']['passes'] else '[red]FAILS[/]'}"
+        f" — {s['gate']['message']}")
+    console.print(
+        "[dim]Verdicts only. This command writes nothing and changes no exit "
+        "code; `bike_od.resweep_failing_categories` is the hand-run hook that "
+        "NULLs a NULL category's stored share, and it is wired to no automatic "
+        "path.[/]\n")
+
+
 @citibike_app.command("od-validate")
 def citibike_od_validate(
     window_months: int = typer.Option(12, "--window-months"),
@@ -9419,6 +9585,19 @@ def citibike_od_validate(
                                            "staging.dot_pedestrian_count."),
     csv: Path = typer.Option(None, "--csv",
                              help="Write the 15x15 placebo matrix here."),
+    category_specificity: bool = typer.Option(
+        False, "--category-specificity",
+        help="Also run the D43 residual-rank specificity test and print its "
+             "diagnostics, robustness columns and per-category verdicts."),
+    n_perm: int = typer.Option(None, "--n-perm",
+                               help="D43 permutation draws (default 10,000)."),
+    n_boot: int = typer.Option(None, "--n-boot",
+                               help="D43 bootstrap resamples (default 2,000)."),
+    seed: int = typer.Option(0, "--seed", help="D43 RNG seed."),
+    spatial_block: bool = typer.Option(
+        False, "--spatial-block",
+        help="Make the spatially-blocked (cyclic-shift) null the PRIMARY one, "
+             "as the pre-registration asks when Moran's I flags 3+ categories."),
     db: Path = typer.Option(None, "--db", help="Warehouse path."),
 ) -> None:
     """Does the OD measure survive? The two tests from GTM-167 §Validation.
@@ -9490,7 +9669,13 @@ def citibike_od_validate(
         n.caption = (f"a category earns its column only by beating the null by "
                      f"{pl['bar']:.2f} at the median origin.")
         console.print(n)
-        console.print(f"overall placebo — {verdict}")
+        console.print(f"overall null-excess description — {verdict}")
+        console.print(
+            "[dim]DESCRIPTIVE since D43 (2026-09-16). The null-excess "
+            "verdict above compares LEVELS, and a destination above the "
+            "grocery median is nine times in ten above every median. The "
+            "GATE is the residual-rank test — `--category-specificity`, "
+            "and the same verdicts drive the DOT half below.[/]")
         if not pl["passes"]:
             console.print(
                 f"[red]{len(pl['categories_failing'])} categories do not beat the "
@@ -9498,6 +9683,10 @@ def citibike_od_validate(
                 f"'riders already reach this elsewhere' is indistinguishable from "
                 f"'riders go to the busy neighbourhoods'. Ship them as PROSE; do "
                 f"not ship bike_od_supplied_share as a column for them.")
+
+        if category_specificity:
+            _od_print_specificity(bod, con, window, n_perm, n_boot,
+                                  seed, spatial_block)
         if placebo_only:
             raise typer.Exit(0 if pl["passes"] else 1)
 
@@ -9510,8 +9699,10 @@ def citibike_od_validate(
                   f"≥ {d['bar']:+.2f}")
         g.add_row("ρ  baseline (POIs per 1,000 residential units) vs DOT",
                   f"{d['rho_baseline_supply_density_vs_dot']:+.3f}", "to beat")
-        g.add_row("placebo — categories failing the null baseline",
+        g.add_row("D43 specificity — categories the gate declares NULL",
                   f"{len(d['placebo_categories_failing'])}", "0")
+        g.add_row("D43 specificity — categories that PASS",
+                  f"{len(d['placebo_categories_passing'])}", "≥ 1")
         g.caption = (f"{d['n_ntas']} NTAs carry both, over {d['dot_points']:,} DOT "
                      f"count points (bridge midpoints excluded).")
         console.print(g)

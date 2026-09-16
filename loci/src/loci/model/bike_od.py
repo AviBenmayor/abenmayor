@@ -1006,6 +1006,16 @@ def placebo(con, window: tuple[dt.date, dt.date] | None = None,
     do not are listed in the summary and ship as PROSE ONLY -- no column, no card
     number, per category, not all-or-nothing.
 
+    DEMOTED TO DESCRIPTIVE 2026-09-16 (D43). Everything in this function --
+    including `null_baseline` and the null-excess verdict -- is now a
+    DESCRIPTION. It compares LEVELS, and a destination above the grocery median
+    is nine times in ten above every median, so beating the all-fifteen share
+    does not separate a specific category from one riding the same
+    destination-attractiveness factor. The GATE is `category_specificity`
+    below, which compares the RESIDUAL of each category's density on the other
+    fourteen. `dot_validation` reads its verdicts and no longer reads `passes`
+    from here.
+
     The 15x15 matrix is still computed and returned. It is a DESCRIPTION of how
     interchangeable the categories are, and no longer a test.
 
@@ -1102,6 +1112,934 @@ def null_baseline(flow_df: pd.DataFrame, density: pd.DataFrame,
     return (hit / tot.replace(0, np.nan)).rename("null"), all_cat
 
 
+# ======================================================================== D43
+# CATEGORY SPECIFICITY -- the placebo that decides whether
+# `bike_od_supplied_share` may be a STORED NUMBER at all.
+#
+# THE QUESTION `null_baseline` could not answer. `placebo()` above asks whether a
+# category beats "riders go to the busy neighbourhoods". It cannot tell a
+# category that is genuinely specific from one that rides on the same
+# destination-attractiveness factor with a slightly different loading, because
+# the quantity it compares is still a LEVEL: a destination above the grocery
+# median is, nine times in ten, above every median. D43 replaces the level with
+# a RESIDUAL. For each category c it regresses log1p(density_c) on log1p(the sum
+# of the other fourteen densities) across destinations, ranks the residual, and
+# asks whether a neighbourhood's riders go to destinations that are unusually
+# WELL supplied with c GIVEN how well supplied they are with everything else.
+#
+#     r_c(d)  = rank-percentile in [0, 1] of that residual among destinations
+#     W_c(o)  = sum_d w_od * r_c(d) - 0.5,  w_od = the origin's inside-universe
+#               outbound non-round evening/weekend trip share
+#
+# W_c(o) is centred so that an origin whose riders spread evenly over
+# destinations reads 0.0. A positive median over origins says "riders from here
+# go where c is denser than expected"; a negative one says "sparser than
+# expected", and the card may use either (P6).
+#
+# THRESHOLDS ARE NOT SET HERE. Every bar below was fixed by a blind ratifier on
+# 2026-09-16 who saw the design and no data (`D43 pre-registration`, binding),
+# and each one is a keyword argument so that re-running under a different bar is
+# an argument change rather than an edit. `THRESHOLDS_PENDING` gates the verdict
+# column: while it is True every verdict prints as "thresholds pending
+# ratification" and nothing may be stored or swept.
+#
+# THE EFFECTIVE SAMPLE IS DESTINATIONS, NEVER ORIGINS. One permutation per draw
+# is applied to every origin, so the ~110 origin readings are ~78 destination
+# ranks wearing 110 hats. Every diagnostic in this section exists to keep that
+# fact in front of the reader: sum w^2 per origin, the cosine similarity of the
+# origin weight vectors, the number of distinct weight vectors, and Moran's I of
+# r_c over destinations.
+#
+# REPORT ONLY. Nothing here writes; `resweep_failing_categories` is the one
+# function that can, it defaults to a dry run, and it is wired to no automatic
+# path.
+
+#: The five categories whose demand happens during WEEKDAY BUSINESS HOURS, which
+#: is exactly the window `LEAKAGE_WINDOW_SQL` excludes. They are NOT dropped --
+#: P8 of the pre-registration forbids a structural exclusion, and all fifteen sit
+#: in ONE Benjamini-Hochberg family. They are flagged IN ADVANCE as a built-in
+#: negative control: an evening bike trip is not how anyone reaches a bank.
+EXPECTED_UNINFORMATIVE = frozenset({
+    "childcare", "clinic", "bank", "tailor_repair", "hardware"})
+
+#: THE KILL RULE (P8). If two or more of the five above PASS with a positive
+#: sign, the statistic is not measuring category specificity -- it is measuring
+#: destination attractiveness through a residual that failed to remove it, and NO
+#: category may carry a stored number. Two, not one, because a single flagged
+#: category passing is within what fifteen tests at q = 0.10 will produce.
+KILL_RULE_MIN_PASSES = 2
+KILL_RULE_MESSAGE = "confounded by destination attractiveness"
+
+#: False since the blind ratification of 2026-09-16. Flip to True to re-blind:
+#: every verdict then reads `THRESHOLDS_PENDING_MESSAGE`, nothing is storable,
+#: and `resweep_failing_categories` refuses to write.
+THRESHOLDS_PENDING = False
+THRESHOLDS_PENDING_MESSAGE = "thresholds pending ratification"
+
+#: P1. Ten thousand permutation draws, and the SAME ten thousand random index
+#: sets reused for all fifteen categories -- cross-category dependence is
+#: preserved, which is what makes a max-T check possible later.
+SPECIFICITY_N_PERM = 10_000
+#: P1/P5. Two thousand resamples, for both bootstraps.
+SPECIFICITY_N_BOOT = 2_000
+#: P2. One family of fifteen, q = 0.10 (the D111 precedent). No second q.
+SPECIFICITY_BH_Q = 0.10
+#: P3. |median W| >= 0.05 is about four rank positions of seventy-nine; the rank
+#: grid itself is 1/79 = 0.0127, so this is four grid steps, not one.
+SPECIFICITY_MIN_EFFECT = 0.05
+#: P3. MDE = 2.8 * sigma-hat-0, sigma-hat-0 read off the permutation draws of
+#: median W. Above `SPECIFICITY_MIN_EFFECT` the run cannot resolve the floor and
+#: every non-PASS says so rather than claiming a null.
+SPECIFICITY_MDE_Z = 2.8
+#: P4, all three declared before the run. A category tripping any of them is
+#: LOW_POWER: still reported, still counted in the BH family, never storable.
+SPECIFICITY_AUX_R2_CUTOFF = 0.75
+SPECIFICITY_MIN_SUPPLIED_DESTINATIONS = 20
+SPECIFICITY_MIN_MEDIAN_POIS = 3
+
+#: P1 strata: quintile of the other-fourteen density x tercile of destination
+#: dock count. Dock count is in the stratum definition because dock siting is the
+#: endogeneity this whole measure is exposed to (D76) -- permuting a rank onto a
+#: destination with a tenth of the docks would manufacture a null the flow could
+#: never produce.
+SPECIFICITY_STRATA = (5, 3)
+#: ... collapsing to tercile x median-split when the 5x3 grid leaves the median
+#: stratum under four destinations. Declared in advance, applied automatically,
+#: and printed in the diagnostics.
+SPECIFICITY_STRATA_COLLAPSED = (3, 2)
+SPECIFICITY_MIN_STRATUM_MEDIAN = 4
+
+#: Diagnostics. k = 6 nearest destinations and 199 permutations for Moran's I;
+#: three flagged categories is the point at which a spatially-blocked null
+#: becomes primary (`--spatial-block`); 0.9 is the cosine above which the median
+#: over origins is one number wearing 110 hats.
+SPECIFICITY_MORAN_K = 6
+SPECIFICITY_MORAN_PERMUTATIONS = 199
+SPECIFICITY_MORAN_FLAG_CATEGORIES = 3
+SPECIFICITY_COSINE_FLAG = 0.9
+
+#: Arithmetic floors, not bars: below these the statistic does not exist at all
+#: and there is nothing for a ratifier to set.
+MIN_SPECIFICITY_DESTINATIONS = 3
+MIN_SPECIFICITY_ORIGINS = 3
+
+
+def rank_percentile(values) -> np.ndarray:
+    """(rank - 0.5) / n, average ranks for ties.
+
+    The -0.5 is not cosmetic. It makes the vector average EXACTLY 0.5 for every
+    n, so `W_c(o) = sum_d w_od r_c(d) - 0.5` is exactly zero for an origin whose
+    riders spread evenly -- and a test can assert that rather than approximate
+    it. `rank/n` averages (n+1)/2n and would put a silent +1/2n on every origin.
+    """
+    v = pd.Series(np.asarray(values, dtype="float64"))
+    n = int(v.notna().sum())
+    if n == 0:
+        return np.full(len(v), np.nan)
+    return ((v.rank(method="average") - 0.5) / n).to_numpy(dtype="float64")
+
+
+def destination_residual_rank(density_df: pd.DataFrame,
+                              ) -> tuple[pd.DataFrame, dict]:
+    """((destination_nta, category, density, other_density, residual, r), aux R2).
+
+    ONE ordinary least squares per category, fifteen in all: log1p(density_c)
+    on log1p(sum of the other fourteen densities), across destinations. The
+    residual is what the other fourteen cannot account for, and `r` is its
+    rank-percentile among destinations.
+
+    WHY log1p AND NOT log. A universe NTA with no open pharmacy has density 0,
+    and it is a real destination, not a missing one -- dropping it would rebuild
+    the eligibility gate D75 forbids, from the supply side. log1p keeps it at 0
+    and leaves the scale near-logarithmic where the counts are large. (Whether
+    log1p on POIs per 1,000 units is the right scale at all is the last open
+    item on the pre-registration; it is recorded, not settled, and the
+    unresidualised robustness column is the check on it.)
+
+    The auxiliary R2 -- how much of a category's density the other fourteen
+    already explain -- is returned beside the ranks because it IS the power of
+    the test: at R2 = 0.95 the residual is noise and the rank is a coin flip,
+    which is what `SPECIFICITY_AUX_R2_CUTOFF` refuses to read.
+    """
+    wide = density_df.pivot_table(index="nta_code", columns="category",
+                                  values="poi_per_1k_units", aggfunc="first")
+    cats = [c for c in sorted(CATEGORIES) if c in wide.columns]
+    wide = wide[cats].fillna(0.0)
+    dest = list(wide.index.astype(str))
+    D = wide.to_numpy(dtype="float64")
+    total = D.sum(axis=1)
+
+    rows, aux = [], {}
+    for j, c in enumerate(cats):
+        other = total - D[:, j]
+        y = np.log1p(D[:, j])
+        x = np.log1p(other)
+        xc = x - x.mean()
+        var = float(xc @ xc)
+        if var <= 0.0:
+            resid = y - y.mean()
+            r2 = 0.0
+        else:
+            b = float(xc @ (y - y.mean())) / var
+            resid = y - (y.mean() + b * xc)
+            sst = float(((y - y.mean()) ** 2).sum())
+            r2 = 0.0 if sst <= 0.0 else 1.0 - float((resid ** 2).sum()) / sst
+        aux[c] = float(r2)
+        rows.append(pd.DataFrame({
+            "destination_nta": dest,
+            "category": c,
+            "density": D[:, j],
+            "other_density": other,
+            "residual": resid,
+            "r": rank_percentile(resid),
+        }))
+    out = (pd.concat(rows, ignore_index=True) if rows
+           else pd.DataFrame(columns=["destination_nta", "category", "density",
+                                      "other_density", "residual", "r"]))
+    return out, aux
+
+
+def origin_weight_matrix(flow_df: pd.DataFrame, destinations: list[str],
+                         min_trips: int = MIN_ORIGIN_TRIPS,
+                         dest_weight: pd.Series | None = None,
+                         weighted: bool = True,
+                         ) -> tuple[list[str], np.ndarray, pd.Series]:
+    """(origins, W of shape origins x destinations with rows summing to 1, trips).
+
+    The SAME window, universe and floor the stored measure uses, and it has to be
+    the same or the placebo would be testing a different number than the one it
+    licenses: non-round evening/weekend trips out of residential docks
+    (`flow()`), destination != origin, destination inside the measurable
+    universe, and at least `min_trips` of them.
+
+    `dest_weight` multiplies each destination's trips before renormalising --
+    1/docks for the trips-per-dock robustness column. `weighted=False` gives every
+    destination an origin reaches the same weight, which is the unweighted arm of
+    the weighted-vs-unweighted lift.
+    """
+    idx = {d: i for i, d in enumerate(destinations)}
+    out = flow_df[flow_df["destination_nta"] != flow_df["origin_nta"]]
+    inside = out[out["destination_nta"].isin(idx)]
+    if inside.empty:
+        return [], np.zeros((0, len(destinations))), pd.Series(dtype="float64")
+    w = inside.copy()
+    w["trips"] = w["trips"].astype("float64")
+    if not weighted:
+        w["trips"] = 1.0
+    if dest_weight is not None:
+        w["trips"] = w["trips"] * w["destination_nta"].map(dest_weight).astype(
+            "float64").fillna(0.0)
+    trips = inside.groupby("origin_nta")["trips"].sum().astype("float64")
+    keep = sorted(trips.index[trips >= float(min_trips)])
+    if not keep:
+        return [], np.zeros((0, len(destinations))), trips
+    oidx = {o: i for i, o in enumerate(keep)}
+    w = w[w["origin_nta"].isin(oidx)]
+    M = np.zeros((len(keep), len(destinations)), dtype="float64")
+    np.add.at(M,
+              (w["origin_nta"].map(oidx).to_numpy(dtype="int64"),
+               w["destination_nta"].map(idx).to_numpy(dtype="int64")),
+              w["trips"].to_numpy(dtype="float64"))
+    tot = M.sum(axis=1, keepdims=True)
+    ok = (tot[:, 0] > 0)
+    M[ok] = M[ok] / tot[ok]
+    keep = [o for o, k in zip(keep, ok) if k]
+    M = M[ok]
+    return keep, M, trips.reindex(keep)
+
+
+def trip_weighted_rank(flow_df: pd.DataFrame, ranks: pd.DataFrame,
+                       min_trips: int = MIN_ORIGIN_TRIPS,
+                       dest_weight: pd.Series | None = None,
+                       weighted: bool = True) -> pd.DataFrame:
+    """(origin_nta, category, w_rank) -- W_c(o), NULL under the trip floor.
+
+    NULL, NEVER ZERO, for the module's standing reason: an origin with fewer than
+    `min_trips` inside-universe outbound trips has no denominator, and a 0.0
+    would assert that its riders go nowhere in particular, which is a claim about
+    the dock network in the costume of a claim about the street. Origins below
+    the floor appear with NaN rather than vanishing, so a caller cannot mistake
+    the frame for the universe.
+    """
+    destinations = sorted(ranks["destination_nta"].unique())
+    cats = sorted(ranks["category"].unique())
+    origins, M, _ = origin_weight_matrix(flow_df, destinations, min_trips,
+                                         dest_weight=dest_weight,
+                                         weighted=weighted)
+    wide = (ranks.pivot(index="destination_nta", columns="category", values="r")
+                 .reindex(destinations)[cats])
+    R = wide.to_numpy(dtype="float64")
+    all_origins = sorted(pd.Series(flow_df["origin_nta"]).dropna().unique())
+    vals = pd.DataFrame(np.nan, index=all_origins, columns=cats)
+    if origins:
+        vals.loc[origins, cats] = M @ R - 0.5
+    return (vals.rename_axis("origin_nta").reset_index()
+                .melt(id_vars="origin_nta", var_name="category",
+                      value_name="w_rank"))
+
+
+def permute_within_strata(values, strata, rng=None, n_draws: int | None = None,
+                          randoms: np.ndarray | None = None) -> np.ndarray:
+    """(n_draws x n) -- `values` shuffled WITHIN each stratum, never across one.
+
+    `randoms`, an (n_draws x n) uniform matrix, is how P1's "the same ten
+    thousand index sets reused for all fifteen categories" is honoured. The
+    strata themselves differ between categories (the quintile is of that
+    category's other-fourteen density), so the index sets cannot be literally
+    identical; reusing the same uniforms and argsorting them inside each
+    category's strata is the faithful version, and it keeps the cross-category
+    dependence a max-T check would need.
+    """
+    v = np.asarray(values, dtype="float64")
+    s = np.asarray(strata, dtype=object)
+    n = len(v)
+    if randoms is None:
+        rng = rng or np.random.default_rng(0)
+        n_draws = int(n_draws or 1)
+        randoms = rng.random((n_draws, n))
+    else:
+        # `n_draws` FOLLOWS the supplied matrix unless it is asked for
+        # explicitly. Defaulting it to 1 here silently reduced a 10,000-draw
+        # permutation null to a single draw, and a p-value read off one draw is
+        # 0.5 or 1.0 with nothing in between.
+        randoms = np.asarray(randoms, dtype="float64")
+        n_draws = int(n_draws or randoms.shape[0])
+    out = np.repeat(v[None, :], n_draws, axis=0)
+    for code in pd.unique(s):
+        idx = np.flatnonzero(s == code)
+        if idx.size < 2:
+            continue
+        order = np.argsort(randoms[:n_draws][:, idx], axis=1, kind="stable")
+        out[:, idx] = v[idx][order]
+    return out
+
+
+def benjamini_hochberg(pvals, q: float) -> np.ndarray:
+    """Which p-values survive Benjamini-Hochberg at false-discovery rate `q`.
+
+    STEP-UP, not per-p: the largest k with p_(k) <= q k/m rejects everything at
+    or below it, including any p above its own line. Comparing each p to its own
+    q i/m is the classic off-by-one and it is conservative in the wrong place.
+    Non-finite p-values are never rejected and never counted in m -- a category
+    whose statistic does not exist is not a test that was run.
+    """
+    p = np.asarray(pvals, dtype="float64")
+    out = np.zeros(p.shape, dtype=bool)
+    idx = np.flatnonzero(np.isfinite(p))
+    if idx.size == 0:
+        return out
+    order = idx[np.argsort(p[idx], kind="mergesort")]
+    m = order.size
+    passed = p[order] <= (q * np.arange(1, m + 1) / m)
+    if passed.any():
+        out[order[:int(np.flatnonzero(passed).max()) + 1]] = True
+    return out
+
+
+def _bca_interval(theta: float, boot, jack, alpha: float = 0.05,
+                  ) -> tuple[float, float, str]:
+    """95% BCa, falling back to the percentile interval and SAYING so.
+
+    BCa needs two corrections the percentile interval skips: z0 for the median
+    bias of the bootstrap distribution, and `a` for how fast the statistic's
+    variance moves with the data, estimated by a leave-one-destination-out
+    jackknife. Both can be undefined here -- z0 when every draw falls on one side
+    of the estimate, `a` when the jackknife is degenerate -- and in either case
+    the returned method string names the fallback rather than letting a
+    percentile interval pass as a BCa one.
+    """
+    from scipy.stats import norm
+
+    b = np.asarray(boot, dtype="float64")
+    b = b[np.isfinite(b)]
+    if b.size < 20:
+        return float("nan"), float("nan"), "too few bootstrap draws"
+    lo_p = float(np.percentile(b, 100 * alpha / 2))
+    hi_p = float(np.percentile(b, 100 * (1 - alpha / 2)))
+    n_less = int((b < theta).sum())
+    if n_less == 0 or n_less == b.size:
+        return lo_p, hi_p, "percentile (z0 undefined)"
+    j = np.asarray(jack, dtype="float64")
+    j = j[np.isfinite(j)]
+    if j.size < 3:
+        return lo_p, hi_p, "percentile (no jackknife)"
+    z0 = float(norm.ppf(n_less / b.size))
+    d = j.mean() - j
+    denom = 6.0 * float((d ** 2).sum()) ** 1.5
+    a = 0.0 if denom == 0 else float((d ** 3).sum()) / denom
+    ends = []
+    for z in (float(norm.ppf(alpha / 2)), float(norm.ppf(1 - alpha / 2))):
+        num = z0 + z
+        adj = z0 + num / (1.0 - a * num)
+        ends.append(float(np.percentile(b, 100 * float(norm.cdf(adj)))))
+    lo, hi = sorted(ends)
+    return lo, hi, "BCa"
+
+
+def _strata_codes(other_density, dock_count, grid: tuple[int, int]) -> np.ndarray:
+    """quintile(other density) x tercile(dock count), as string codes.
+
+    Cut on the RANK, not the value: dock counts are heavily tied at the low end
+    (many NTAs carry three or four docks) and `qcut` on raw values drops most of
+    its edges to duplicates, silently collapsing the tercile to a single bin.
+    """
+    nq, nt = grid
+    q = pd.qcut(pd.Series(other_density).rank(method="first"), nq,
+                labels=False, duplicates="drop").astype("float64")
+    t = pd.qcut(pd.Series(dock_count).rank(method="first"), nt,
+                labels=False, duplicates="drop").astype("float64")
+    return (q.fillna(-1).astype(int).astype(str) + "|"
+            + t.fillna(-1).astype(int).astype(str)).to_numpy(dtype=object)
+
+
+def _spatial_order(destinations: list[str],
+                   centroids: pd.DataFrame | None) -> np.ndarray:
+    """Destinations in a one-dimensional spatial order, community districts kept
+    contiguous. The order the `--spatial-block` cyclic-shift null shifts along."""
+    key = []
+    cds = _cd_codes(destinations)
+    xy = {}
+    if centroids is not None and len(centroids):
+        c = centroids.set_index("nta_code")
+        for d in destinations:
+            if d in c.index:
+                xy[d] = (float(c.loc[d, "lat"]), float(c.loc[d, "lon"]))
+    for i, d in enumerate(destinations):
+        lat, lon = xy.get(d, (0.0, 0.0))
+        key.append((str(cds[i]), lat, lon, d))
+    return np.asarray([i for i, _ in sorted(enumerate(key), key=lambda t: t[1])],
+                      dtype="int64")
+
+
+def _cd_codes(ntas) -> np.ndarray:
+    """Community district per NTA, through `validation/retrodiction.cd_code` --
+    ONE derivation of the CD in the project, not a second one. The fallback is
+    the same four characters, so a circular import would degrade the provenance
+    of the rule and never its result."""
+    try:
+        from loci.validation.retrodiction import cd_code as _cd
+    except Exception:                               # noqa: BLE001 - provenance only
+        def _cd(v):
+            return None if v is None else str(v)[:4]
+    return np.asarray([_cd(v) for v in ntas], dtype=object)
+
+
+def _morans_i(values, xy, k: int, permutations: int, seed: int) -> dict:
+    """Moran's I through `validation/retrodiction.morans_i_knn` -- one
+    implementation, not a second."""
+    try:
+        from loci.validation.retrodiction import morans_i_knn
+    except Exception:                               # noqa: BLE001
+        return {"i": None, "p_perm": None, "note": "morans_i_knn unavailable"}
+    return morans_i_knn(values, xy, k=k, permutations=permutations, seed=seed)
+
+
+def _median_weighted(M: np.ndarray, R: np.ndarray) -> np.ndarray:
+    """median over origins of (M @ R) - 0.5, column by column of R."""
+    return np.median(M @ R - 0.5, axis=0)
+
+
+def _rerank_multiset(resid: np.ndarray, mult: np.ndarray) -> np.ndarray:
+    """Rank-percentiles after resampling destinations with multiplicities.
+
+    A destination drawn three times is three tied observations, so every copy
+    takes the same average rank -- which is why this is exact arithmetic on the
+    sorted order rather than a materialised expansion of the multiset.
+    `mult` is (draws x n_destinations); the result is the same shape.
+    """
+    order = np.argsort(resid, kind="mergesort")
+    mo = mult[:, order]
+    cum_before = np.cumsum(mo, axis=1) - mo
+    avg_rank = cum_before + (mo + 1.0) / 2.0
+    n = mo.sum(axis=1, keepdims=True)
+    r_sorted = np.where(n > 0, (avg_rank - 0.5) / np.maximum(n, 1), np.nan)
+    out = np.empty_like(r_sorted)
+    out[:, order] = r_sorted
+    return out
+
+
+def _median_W_resampled(M: np.ndarray, mult: np.ndarray,
+                        resid: np.ndarray) -> np.ndarray:
+    """median over origins of W_c under each destination resample.
+
+    The resample re-weights rather than re-materialises: a destination drawn
+    twice carries twice the trip weight, and the row is renormalised, which is
+    exactly what resampling the destination would do to the share.
+    """
+    r = _rerank_multiset(resid, mult)
+    num = M @ (mult * np.nan_to_num(r)).T
+    den = M @ mult.T
+    with np.errstate(invalid="ignore", divide="ignore"):
+        vals = np.where(den > 0, num / np.where(den > 0, den, 1.0), np.nan) - 0.5
+    return np.nanmedian(vals, axis=0)
+
+
+def dock_counts(con) -> pd.Series:
+    """Docks per NTA, through `dock_nta_map` -- the module's one dock -> NTA rule.
+
+    In the P1 stratum definition because dock siting is the endogeneity the whole
+    measure is exposed to (D76). A null that moves a rank from a 40-dock
+    destination onto a 3-dock one manufactures a flow the network could not
+    produce, and the test would then reject against an impossibility.
+    """
+    m = dock_nta_map(con)
+    if m.empty:
+        return pd.Series(dtype="float64")
+    return (m.dropna(subset=["nta_code"]).groupby("nta_code")["station_id"]
+             .nunique().astype("float64"))
+
+
+def nta_centroids(con) -> pd.DataFrame:
+    """(nta_code, lon, lat) -- the mean lot-frame address point per NTA.
+
+    Only Moran's I and the `--spatial-block` ordering use it, so a warehouse
+    without coordinates degrades those two diagnostics to "unavailable" and
+    changes no verdict.
+    """
+    try:
+        return con.execute(
+            "SELECT nta_code, avg(lon) AS lon, avg(lat) AS lat "
+            "FROM analysis.address "
+            "WHERE nta_code IS NOT NULL AND lon IS NOT NULL AND lat IS NOT NULL "
+            "  AND COALESCE(frame, 'lot') = 'lot' GROUP BY 1").fetchdf()
+    except Exception:                               # noqa: BLE001 - diagnostic only
+        return pd.DataFrame(columns=["nta_code", "lon", "lat"])
+
+
+def specificity_verdict(bh_pass: bool, ci_excludes_zero: bool,
+                        effect_pass: bool, low_power: bool,
+                        underpowered: bool) -> str:
+    """The CONJUNCTIVE verdict of pre-registration P7, in one place.
+
+    PASS needs all three: a BH-surviving p, a destination CI clear of zero, and
+    |median W| at or above the floor. NULL is RESERVED for the case where none of
+    the three holds -- it is a positive claim that the category is not specific,
+    and it is the only verdict `resweep_failing_categories` will act on. Anything
+    in between is INCONCLUSIVE: both numbers are printed, nothing is stored, and
+    it is explicitly NOT a null.
+
+    UNDERPOWERED (P3): when 2.8 * sigma-hat-0 exceeds the floor, the run cannot
+    resolve the floor, so what would have been NULL becomes CANNOT_RESOLVE.
+    INCONCLUSIVE and LOW_POWER keep their names -- neither asserts a null, both
+    already store nothing, and collapsing them would throw away the reason. The
+    CLI renders every non-PASS verdict in an underpowered run as "cannot
+    resolve" regardless, which is the wording the pre-registration asks for.
+    """
+    if THRESHOLDS_PENDING:
+        return "PENDING"
+    if low_power:
+        return "LOW_POWER"
+    if bh_pass and ci_excludes_zero and effect_pass:
+        return "PASS"
+    if not bh_pass and not ci_excludes_zero and not effect_pass:
+        return "CANNOT_RESOLVE" if underpowered else "NULL"
+    return "INCONCLUSIVE"
+
+
+def _destination_bootstrap_mult(strata: np.ndarray, n_boot: int,
+                                rng) -> np.ndarray:
+    """(n_boot x n_destinations) multiplicities, resampled WITHIN strata.
+
+    Within strata, not over all destinations, for the reason the permutation is
+    stratified: a resample free to replace a 40-dock destination with a 3-dock
+    one is not a resample of this city.
+    """
+    n = len(strata)
+    mult = np.zeros((n_boot, n), dtype="float64")
+    for code in pd.unique(strata):
+        idx = np.flatnonzero(strata == code)
+        m = idx.size
+        mult[:, idx] = rng.multinomial(m, np.full(m, 1.0 / m), size=n_boot)
+    return mult
+
+
+def _cd_bootstrap_draws(origins: list[str], n_boot: int, rng) -> list[np.ndarray]:
+    """Index sets for the SECONDARY bootstrap: community districts resampled with
+    replacement, every origin in a drawn district coming with it.
+
+    Secondary, and under P-open-item-4 possibly decorative: if the origin weight
+    vectors are near-collinear (median pairwise cosine > 0.9) then 110 origins
+    are one number wearing 110 hats and clustering them changes nothing. The
+    diagnostic that says so prints above the verdicts.
+    """
+    cds = _cd_codes(origins)
+    groups = {c: np.flatnonzero(cds == c) for c in pd.unique(cds)}
+    keys = list(groups)
+    if not keys:
+        return []
+    return [np.concatenate([groups[keys[i]] for i in
+                            rng.integers(0, len(keys), len(keys))])
+            for _ in range(n_boot)]
+
+
+def specificity_from_frames(flow_df: pd.DataFrame, density: pd.DataFrame,
+                            docks: pd.Series | None = None,
+                            centroids: pd.DataFrame | None = None,
+                            n_perm: int = SPECIFICITY_N_PERM,
+                            n_boot: int = SPECIFICITY_N_BOOT,
+                            bh_q: float = SPECIFICITY_BH_Q,
+                            min_effect: float = SPECIFICITY_MIN_EFFECT,
+                            aux_r2_cutoff: float = SPECIFICITY_AUX_R2_CUTOFF,
+                            min_supplied_destinations: int =
+                            SPECIFICITY_MIN_SUPPLIED_DESTINATIONS,
+                            min_median_pois: float = SPECIFICITY_MIN_MEDIAN_POIS,
+                            seed: int = 0,
+                            expected_uninformative=EXPECTED_UNINFORMATIVE,
+                            min_trips: int = MIN_ORIGIN_TRIPS,
+                            spatial_block: bool = False,
+                            window: str | None = None) -> dict:
+    """The whole D43 test, on FRAMES -- `category_specificity` is this plus a
+    warehouse read. The seam is here so the synthetic worlds the tests build
+    (trips proportional to one category's density; trips proportional to total
+    density) exercise the statistic itself and not a fixture of the warehouse.
+    """
+    ranks, aux_r2 = destination_residual_rank(density)
+    destinations = sorted(ranks["destination_nta"].unique())
+    cats = [c for c in sorted(CATEGORIES) if c in set(ranks["category"])]
+    n_dest = len(destinations)
+    dock = (pd.Series(dtype="float64") if docks is None else docks).reindex(
+        destinations).fillna(0.0).to_numpy(dtype="float64")
+    origins, M, _trips = origin_weight_matrix(flow_df, destinations, min_trips)
+
+    bars = {"n_perm": int(n_perm), "n_boot": int(n_boot), "bh_q": float(bh_q),
+            "min_effect": float(min_effect), "aux_r2_cutoff": float(aux_r2_cutoff),
+            "min_supplied_destinations": int(min_supplied_destinations),
+            "min_median_pois": float(min_median_pois),
+            "min_origin_trips": int(min_trips), "seed": int(seed),
+            "mde_z": SPECIFICITY_MDE_Z, "spatial_block": bool(spatial_block)}
+    if n_dest < MIN_SPECIFICITY_DESTINATIONS or len(origins) < MIN_SPECIFICITY_ORIGINS:
+        return {"window": window, "bars": bars, "thresholds_pending": THRESHOLDS_PENDING,
+                "n_destination_ntas": n_dest, "n_origin_ntas": len(origins),
+                "per_category": pd.DataFrame(), "robustness": pd.DataFrame(),
+                "verdicts": {}, "diagnostics": {"note": "too few origins or destinations"},
+                "kill_rule": {"fired": False, "passing_flagged": []},
+                "underpowered": True,
+                "gate": {"passes": False, "pending": THRESHOLDS_PENDING,
+                         "confounded": False, "passing": [], "failing": [],
+                         "message": (f"{n_dest} destinations and {len(origins)} "
+                                     f"origins clear the floor: the statistic "
+                                     f"does not exist on this warehouse.")}}
+
+    # --- strata, and the collapse the pre-registration declared in advance ----
+    wide_r = (ranks.pivot(index="destination_nta", columns="category", values="r")
+                   .reindex(destinations)[cats])
+    wide_e = (ranks.pivot(index="destination_nta", columns="category",
+                          values="residual").reindex(destinations)[cats])
+    wide_o = (ranks.pivot(index="destination_nta", columns="category",
+                          values="other_density").reindex(destinations)[cats])
+    wide_d = (ranks.pivot(index="destination_nta", columns="category",
+                          values="density").reindex(destinations)[cats])
+
+    def _all_strata(grid):
+        return {c: _strata_codes(wide_o[c].to_numpy(), dock, grid) for c in cats}
+
+    grid = SPECIFICITY_STRATA
+    strata = _all_strata(grid)
+    med_size = float(np.median([np.median(np.unique(s, return_counts=True)[1])
+                                for s in strata.values()]))
+    collapsed = med_size < SPECIFICITY_MIN_STRATUM_MEDIAN
+    if collapsed:
+        grid = SPECIFICITY_STRATA_COLLAPSED
+        strata = _all_strata(grid)
+        med_size = float(np.median([np.median(np.unique(s, return_counts=True)[1])
+                                    for s in strata.values()]))
+
+    # --- the shared random draws (P1) ----------------------------------------
+    rng = np.random.default_rng(seed)
+    U = rng.random((n_perm, n_dest))                 # ONE set, all 15 categories
+    label_perm = np.argsort(rng.random((n_perm, n_dest)), axis=1, kind="stable")
+    cd_draws = _cd_bootstrap_draws(origins, n_boot, rng)
+    jack_mult = 1.0 - np.eye(n_dest)
+    order = _spatial_order(destinations, centroids)
+    shifts = np.arange(1, n_dest)
+
+    npois = (density.pivot_table(index="nta_code", columns="category",
+                                 values="n_pois", aggfunc="first")
+                    .reindex(destinations).reindex(columns=cats).fillna(0.0))
+
+    per, rob, moran = [], [], {}
+    for c in cats:
+        r = wide_r[c].to_numpy(dtype="float64")
+        e = wide_e[c].to_numpy(dtype="float64")
+        s = strata[c]
+        obs = float(np.median(M @ r - 0.5))
+
+        null = _median_weighted(M, permute_within_strata(r, s, randoms=U).T)
+        p_perm = float((1 + int((np.abs(null) >= abs(obs)).sum())) / (n_perm + 1))
+        sigma0 = float(np.std(null, ddof=1)) if null.size > 1 else float("nan")
+        mde = SPECIFICITY_MDE_Z * sigma0
+
+        boot_rng = np.random.default_rng(seed + 1_000 + cats.index(c))
+        mult = _destination_bootstrap_mult(s, n_boot, boot_rng)
+        boot = _median_W_resampled(M, mult, e)
+        jack = _median_W_resampled(M, jack_mult, e)
+        ci_lo, ci_hi, ci_method = _bca_interval(obs, boot, jack)
+        ci_excl = bool(np.isfinite(ci_lo) and np.isfinite(ci_hi)
+                       and (ci_lo > 0 or ci_hi < 0))
+
+        w_obs = M @ r - 0.5
+        cd = ([float(np.median(w_obs[i])) for i in cd_draws] if cd_draws else [])
+        cd_lo, cd_hi = ((float(np.percentile(cd, 2.5)),
+                         float(np.percentile(cd, 97.5))) if len(cd) >= 20
+                        else (float("nan"), float("nan")))
+
+        n_supplied = int((npois[c].to_numpy() >= 1).sum())
+        med_pois = float(np.median(npois[c].to_numpy()))
+        low_power = bool(aux_r2[c] >= aux_r2_cutoff
+                         or n_supplied < min_supplied_destinations
+                         or med_pois < min_median_pois)
+
+        per.append({
+            "category": c, "median_W": obs, "p_perm": p_perm,
+            "ci_lo": ci_lo, "ci_hi": ci_hi, "ci_method": ci_method,
+            "ci_excludes_zero": ci_excl,
+            "cd_ci_lo": cd_lo, "cd_ci_hi": cd_hi,
+            "sigma0": sigma0, "mde": mde,
+            "effect_pass": bool(abs(obs) >= min_effect),
+            "low_power": low_power, "aux_r2": float(aux_r2[c]),
+            "n_supplied_destinations": n_supplied, "median_pois": med_pois,
+            "expected_uninformative": bool(c in expected_uninformative),
+            "n_origins": len(origins),
+        })
+
+        # ------------------------------------------------ robustness columns
+        per_dock = pd.Series(1.0 / np.maximum(dock, 1.0), index=destinations)
+        _, Mpd, _ = origin_weight_matrix(flow_df, destinations, min_trips,
+                                         dest_weight=per_dock)
+        _, Mun, _ = origin_weight_matrix(flow_df, destinations, min_trips,
+                                         weighted=False)
+        w_pd = float(np.median(Mpd @ r - 0.5)) if len(Mpd) else float("nan")
+        w_un = float(np.median(Mun @ r - 0.5)) if len(Mun) else float("nan")
+
+        r_raw = rank_percentile(wide_d[c].to_numpy(dtype="float64"))
+        obs_raw = float(np.median(M @ r_raw - 0.5))
+        null_raw = _median_weighted(M, permute_within_strata(r_raw, s,
+                                                             randoms=U).T)
+        p_raw = float((1 + int((np.abs(null_raw) >= abs(obs_raw)).sum()))
+                      / (n_perm + 1))
+
+        null_lab = _median_weighted(M, r[label_perm].T)
+        p_lab = float((1 + int((np.abs(null_lab) >= abs(obs)).sum()))
+                      / (n_perm + 1))
+
+        shifted = np.stack([np.roll(r[order], int(k))[np.argsort(order)]
+                            for k in shifts])
+        null_sh = _median_weighted(M, shifted.T)
+        p_shift = float((1 + int((np.abs(null_sh) >= abs(obs)).sum()))
+                        / (shifts.size + 1))
+
+        rob.append({"category": c, "median_W": obs,
+                    "median_W_per_dock": w_pd,
+                    "median_W_unweighted": w_un,
+                    "weighted_lift": obs - w_un,
+                    "median_W_unresidualised": obs_raw,
+                    "p_unresidualised": p_raw,
+                    "p_label_permutation": p_lab,
+                    "p_spatial_block": p_shift})
+
+        if centroids is not None and len(centroids):
+            cxy = centroids.set_index("nta_code").reindex(destinations)
+            moran[c] = _morans_i(r, cxy[["lon", "lat"]].to_numpy(dtype="float64"),
+                                 SPECIFICITY_MORAN_K,
+                                 SPECIFICITY_MORAN_PERMUTATIONS, seed)
+        else:
+            moran[c] = {"i": None, "p_perm": None, "note": "no centroids"}
+
+    per = pd.DataFrame(per)
+    rob = pd.DataFrame(rob)
+
+    # --- one BH family of fifteen (P2/P8), on the PRIMARY p ------------------
+    p_primary = (rob["p_spatial_block"].to_numpy() if spatial_block
+                 else per["p_perm"].to_numpy())
+    per["p_primary"] = p_primary
+    per["bh_pass"] = benjamini_hochberg(p_primary, bh_q)
+
+    underpowered = bool(np.nanmedian(per["mde"].to_numpy()) > min_effect)
+    per["underpowered"] = per["mde"].to_numpy() > min_effect
+    per["verdict"] = [
+        specificity_verdict(bool(row.bh_pass), bool(row.ci_excludes_zero),
+                            bool(row.effect_pass), bool(row.low_power),
+                            bool(row.underpowered))
+        for row in per.itertuples()]
+
+    # --- the kill rule (P8) --------------------------------------------------
+    flagged_pass = sorted(per.loc[(per["expected_uninformative"])
+                                  & (per["verdict"] == "PASS")
+                                  & (per["median_W"] > 0), "category"])
+    killed = len(flagged_pass) >= KILL_RULE_MIN_PASSES
+    if killed:
+        per["verdict"] = "NO_STORED_NUMBER"
+
+    verdicts = dict(zip(per["category"], per["verdict"]))
+    passing = sorted(per.loc[per["verdict"] == "PASS", "category"])
+    failing = sorted(per.loc[per["verdict"] == "NULL", "category"])
+
+    # --- diagnostics, which the CLI prints BEFORE the verdicts ---------------
+    sumsq = (M ** 2).sum(axis=1)
+    wbar = M.mean(axis=0)
+    norm = M / np.maximum(np.linalg.norm(M, axis=1, keepdims=True), 1e-12)
+    cos = norm @ norm.T
+    iu = np.triu_indices(len(origins), k=1)
+    moran_flagged = sorted(c for c, m in moran.items()
+                           if m.get("p_perm") is not None and m["p_perm"] < 0.05)
+    diagnostics = {
+        "n_origins": len(origins), "n_destinations": n_dest,
+        "n_destinations_with_trips": int((M > 0).any(axis=0).sum()),
+        "n_cds": len(set(_cd_codes(origins))),
+        "sum_w2_p50": float(np.median(sumsq)),
+        "sum_w2_p90": float(np.percentile(sumsq, 90)),
+        "sum_w2_max": float(sumsq.max()),
+        "n_eff_destinations_p50": float(np.median(1.0 / np.maximum(sumsq, 1e-12))),
+        "sum_w2_mean_vector": float((wbar ** 2).sum()),
+        "n_eff_mean_vector": float(1.0 / max(float((wbar ** 2).sum()), 1e-12)),
+        "distinct_weight_vectors": len(np.unique(np.round(M, 6), axis=0)),
+        "median_pairwise_cosine": (float(np.median(cos[iu])) if iu[0].size
+                                   else float("nan")),
+        "cosine_flag": (bool(iu[0].size
+                             and np.median(cos[iu]) > SPECIFICITY_COSINE_FLAG)),
+        "strata_grid": f"{grid[0]}x{grid[1]}",
+        "strata_collapsed": bool(collapsed),
+        "median_stratum_size": med_size,
+        "strata_singletons": {c: int((np.unique(strata[c], return_counts=True)[1]
+                                      == 1).sum()) for c in cats},
+        "morans_i": moran,
+        "moran_k": SPECIFICITY_MORAN_K,
+        "moran_permutations": SPECIFICITY_MORAN_PERMUTATIONS,
+        "moran_flagged": moran_flagged,
+        "moran_flag_trips": bool(len(moran_flagged)
+                                 >= SPECIFICITY_MORAN_FLAG_CATEGORIES),
+        "sigma0_median": float(np.nanmedian(per["sigma0"].to_numpy())),
+        "mde_median": float(np.nanmedian(per["mde"].to_numpy())),
+        "underpowered": underpowered,
+    }
+
+    if THRESHOLDS_PENDING:
+        message = THRESHOLDS_PENDING_MESSAGE
+    elif killed:
+        message = (f"{KILL_RULE_MESSAGE}: {len(flagged_pass)} of the five "
+                   f"expected-uninformative categories PASS with a positive sign "
+                   f"({', '.join(flagged_pass)}). No category may carry a stored "
+                   f"number.")
+    elif passing:
+        message = (f"{len(passing)} of {len(cats)} categories are specific: "
+                   f"{', '.join(passing)}.")
+    else:
+        message = ("no category clears all three gates; "
+                   f"bike_od_supplied_share stays prose for all {len(cats)}.")
+
+    return {
+        "window": window, "bars": bars,
+        "thresholds_pending": THRESHOLDS_PENDING,
+        "n_origin_ntas": len(origins), "n_destination_ntas": n_dest,
+        "per_category": per, "robustness": rob, "verdicts": verdicts,
+        "diagnostics": diagnostics, "underpowered": underpowered,
+        "expected_uninformative": sorted(expected_uninformative),
+        "kill_rule": {"fired": bool(killed), "passing_flagged": flagged_pass,
+                      "min_passes": KILL_RULE_MIN_PASSES,
+                      "message": KILL_RULE_MESSAGE},
+        "gate": {"passes": bool(not THRESHOLDS_PENDING and not killed
+                                and bool(passing)),
+                 "pending": bool(THRESHOLDS_PENDING), "confounded": bool(killed),
+                 "passing": passing, "failing": failing, "message": message},
+    }
+
+
+def category_specificity(con, window: tuple[dt.date, dt.date] | None = None,
+                         n_perm: int = SPECIFICITY_N_PERM,
+                         n_boot: int = SPECIFICITY_N_BOOT,
+                         bh_q: float = SPECIFICITY_BH_Q,
+                         min_effect: float = SPECIFICITY_MIN_EFFECT,
+                         aux_r2_cutoff: float = SPECIFICITY_AUX_R2_CUTOFF,
+                         seed: int = 0,
+                         expected_uninformative=EXPECTED_UNINFORMATIVE,
+                         min_trips: int = MIN_ORIGIN_TRIPS,
+                         spatial_block: bool = False) -> dict:
+    """D43. Is `bike_od_supplied_share` about the CATEGORY, or about the
+    destination? Read-only; writes nothing.
+
+    The warehouse read is four frames -- the flow, the supply density, the dock
+    counts and the NTA centroids -- and every one of them comes through the
+    function the stored measure already uses, so the placebo cannot pass a number
+    the build does not compute.
+    """
+    first, last = window or window_bounds(con)
+    return specificity_from_frames(
+        flow(con, first, last), supply_density(con),
+        docks=dock_counts(con), centroids=nta_centroids(con),
+        n_perm=n_perm, n_boot=n_boot, bh_q=bh_q, min_effect=min_effect,
+        aux_r2_cutoff=aux_r2_cutoff, seed=seed,
+        expected_uninformative=expected_uninformative, min_trips=min_trips,
+        spatial_block=spatial_block, window=window_label(first, last))
+
+
+def resweep_failing_categories(con, verdicts, dry_run: bool = True,
+                               confounded: bool = False) -> dict:
+    """NULL `bike_od_supplied_share` for the categories D43 declares NULL.
+
+    THE ONLY WRITE IN THIS SECTION, and it is wired to NO automatic path: a
+    `--re-sweep` that silently dropped a column because a permutation test moved
+    would be a methodology change disguised as a maintenance job. It is called by
+    hand, after a ratified run, and it defaults to `dry_run=True`.
+
+    WHAT IT WILL NOT TOUCH, and why each one matters:
+      * PASS -- the category earned its column;
+      * INCONCLUSIVE -- exactly one gate held. That is not a null, and deleting a
+        number on it would turn "we could not tell" into "we established there is
+        nothing", which is the single most expensive confusion in this project;
+      * LOW_POWER -- the test could not be run at usable power, which says
+        nothing about the category;
+      * CANNOT_RESOLVE -- the run's own MDE exceeds the floor (P3);
+      * anything at all while `THRESHOLDS_PENDING`, or while the kill rule has
+        fired, unless `confounded=True` is passed explicitly -- in which case ALL
+        FIFTEEN go, because a confounded statistic licenses no category.
+    """
+    if isinstance(verdicts, dict) and "verdicts" in verdicts:
+        report = verdicts
+        verdicts = report["verdicts"]
+        killed = bool(report.get("kill_rule", {}).get("fired"))
+    else:
+        killed = False
+    verdicts = {str(k): str(v) for k, v in dict(verdicts).items()}
+    if THRESHOLDS_PENDING:
+        raise RuntimeError(
+            f"refusing to sweep while THRESHOLDS_PENDING: every verdict reads "
+            f"'{THRESHOLDS_PENDING_MESSAGE}', so there is no NULL to act on. "
+            f"Ratify the bars first.")
+    if killed and not confounded:
+        raise RuntimeError(
+            f"the D43 kill rule fired ({KILL_RULE_MESSAGE}): no category may "
+            f"carry a stored number, and sweeping only the NULL ones would leave "
+            f"the rest standing on a confounded statistic. Pass confounded=True "
+            f"to clear all fifteen, deliberately.")
+    if killed and confounded:
+        targets = sorted(verdicts)
+        reason = KILL_RULE_MESSAGE
+    else:
+        targets = sorted(c for c, v in verdicts.items() if v == "NULL")
+        reason = "verdict NULL"
+
+    rep = {"dry_run": bool(dry_run), "reason": reason, "categories": targets,
+           "kill_rule_fired": killed,
+           "verdict_counts": {v: int(sum(1 for x in verdicts.values() if x == v))
+                              for v in sorted(set(verdicts.values()))}}
+    if not targets:
+        rep["rows_matched"] = rep["rows_nulled"] = 0
+        return rep
+    marks = ", ".join("?" for _ in targets)
+    rep["rows_matched"] = int(con.execute(
+        f"SELECT count(*) FROM analysis.address_category "
+        f"WHERE category IN ({marks}) AND bike_od_supplied_share IS NOT NULL",
+        targets).fetchone()[0])
+    if dry_run:
+        rep["rows_nulled"] = 0
+        return rep
+    con.execute(
+        f"UPDATE analysis.address_category SET bike_od_supplied_share = NULL "
+        f"WHERE category IN ({marks})", targets)
+    rep["rows_nulled"] = rep["rows_matched"]
+    return rep
+
+
 #: DOT publishes am / md / pm and NO evening period (staging.dot_pedestrian_count
 #: verified live, 2026-09-15). PM -- the 4-7 pm screenline count -- is therefore
 #: the closest published thing to the leakage window, and the mismatch is named
@@ -1124,7 +2062,9 @@ GROUP BY 1, 2, 3
 
 
 def dot_validation(con, window: tuple[dt.date, dt.date] | None = None,
-                   ) -> dict:
+                   n_perm: int = SPECIFICITY_N_PERM,
+                   n_boot: int = SPECIFICITY_N_BOOT,
+                   seed: int = 0) -> dict:
     """GRADUATION. Convergent validity against an independent instrument.
 
     THE QUESTION. Evening/weekend bike INFLOW to a destination NTA is supposed to
@@ -1136,8 +2076,11 @@ def dot_validation(con, window: tuple[dt.date, dt.date] | None = None,
     THE BARS, BOTH OF WHICH MUST HOLD (§Validation):
       * Spearman rho >= +0.5 between destination-NTA inflow and DOT PM counts
         aggregated to NTA (`DOT_RHO_BAR`);
-      * the placebo above must pass -- every category must beat the null
-        baseline (busy-destination share) by `NULL_BASELINE_MIN_EXCESS`.
+      * the D43 CATEGORY-SPECIFICITY placebo must pass -- at least one category
+        must clear all three of its gates, and the kill rule must not have
+        fired. `placebo()` above is reported beside it as a description and is
+        no longer the test; while `THRESHOLDS_PENDING` is True the gate is False
+        and says `THRESHOLDS_PENDING_MESSAGE`.
     Reported beside the BASELINE TO BEAT: destination-NTA open-POI density
     (per 1,000 residential units) against the same DOT counts. If the baseline
     correlates as well, the trip table has added nothing that a POI count did not
@@ -1181,6 +2124,9 @@ def dot_validation(con, window: tuple[dt.date, dt.date] | None = None,
     base_rho = float(spearmanr(j["supply_density"].fillna(0.0),
                                j["dot_count"]).statistic)
     _, pl = placebo(con, (first, last))
+    spec = category_specificity(con, (first, last), n_perm=n_perm,
+                                n_boot=n_boot, seed=seed)
+    gate = spec["gate"]
     return {
         "window": window_label(first, last),
         "dot_period": DOT_PERIOD,
@@ -1193,9 +2139,18 @@ def dot_validation(con, window: tuple[dt.date, dt.date] | None = None,
         "rho_baseline_poi_per_addr_vs_dot": base_rho,
         "beats_baseline": bool(rho > base_rho),
         "bar": DOT_RHO_BAR,
+        # DESCRIPTIVE, both of them (D43): the level-based placebo is reported
+        # beside the gate, never as the gate.
         "placebo_mean_offdiag": pl["mean_offdiag"],
         "placebo_null_baseline": pl["null_baseline"],
-        "placebo_categories_failing": pl["categories_failing"],
-        "placebo_passes": pl["passes"],
-        "passes": bool(rho >= DOT_RHO_BAR and pl["passes"]),
+        "placebo_null_excess_failing": pl["categories_failing"],
+        # THE GATE: the D43 per-category verdicts.
+        "placebo_categories_failing": gate["failing"],
+        "placebo_categories_passing": gate["passing"],
+        "placebo_passes": bool(gate["passes"]),
+        "placebo_pending": bool(gate["pending"]),
+        "placebo_confounded": bool(gate["confounded"]),
+        "placebo_message": gate["message"],
+        "specificity_verdicts": spec["verdicts"],
+        "passes": bool(rho >= DOT_RHO_BAR and gate["passes"]),
     }
