@@ -617,6 +617,7 @@ def _gap_sql(cat: str, boroughs: list[str], pipeline: bool = True,
                {shop}
                , g.gap_score, g.lead_category {age} {src} {cens}
                {frm}
+               , g.nta_code
         FROM analysis.address_gaps g
         {join}
         WHERE g.borough IN ({placeholders})
@@ -966,6 +967,21 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
     for the same reason (see `_Character`): an address the character build
     never reached has no label, and that null must survive the trip to the
     browser as a null.
+
+    `nta` rides along the same way, one more parallel array and NOT a stride
+    slot (owner 2026-09-16): single-business mode has no per-category
+    neighbourhood scope of its own -- only "all opportunities" reads
+    `nta/<code>.json` -- so `selectNta` on the per-category map was flying the
+    camera and drawing every borough's dots regardless of the picked
+    neighbourhood. `idx` is dictionary-encoded against `vocab` (NTA codes, the
+    same key `ntaSel` holds in the JS and `META.neighborhoods` maps a picked
+    name onto) rather than the name, because code is the honest 1:1 key and
+    name<->code parity is only a comment's promise. A street-frame point (D84)
+    gets its NTA the same way every lot does -- both are joined onto
+    `analysis.hex` by the point's own H3 cell in model/address_gaps.py, not by
+    frame -- but a row shorter than this column (a file built before this
+    change) or an address whose cell never resolved to an NTA encodes `null`,
+    and a null must stay drawn when a neighbourhood is picked, never vanish.
     """
     bidx = {b: i for i, b in enumerate(boroughs)}
     projects = _Projects()
@@ -977,9 +993,13 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
     tail = 8 + npipe + nshop        # where the ranking block starts in a row
     cens_at = tail + 6              # ...and where the D75 censoring pair starts
     frame_at = cens_at + 2          # ...and the D84 frame triple after that
+    nta_at = frame_at + 3           # ...and the NTA code appended after that
     pts, ids = [], []
     cens_cat, cens_lead = [], []
     frames, frontages, streets = [], [], []
+    nta_idx: list[int | None] = []
+    nta_vocab: list[str] = []
+    nta_lookup: dict[str, int] = {}
     for row in rows:
         address_id, lon, lat, boro, units = row[:5]
         if lon is None or lat is None or boro not in bidx:
@@ -1004,6 +1024,15 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
         character.add(address_id)
         legality.add(address_id)
         ids.append(address_id)
+        code = row[nta_at] if len(row) > nta_at else None
+        if code is None:
+            nta_idx.append(None)
+        else:
+            i = nta_lookup.get(code)
+            if i is None:
+                i = nta_lookup[code] = len(nta_vocab)
+                nta_vocab.append(code)
+            nta_idx.append(i)
     return {"category": cat, "label": CATEGORIES[cat].label, "stride": 12,
             "pts": pts, "ids": ids, "n": len(ids),
             "projects": projects.pack(),
@@ -1016,7 +1045,8 @@ def pack_gaps(rows, boroughs: list[str], cat: str,
             "frame": {"street": frames, "frontageM": frontages, "streetName": streets,
                       "n_street": sum(frames), "caveat": STREET_FRAME_CAVEAT},
             "character": character.pack(),
-            "legality": legality.pack()}
+            "legality": legality.pack(),
+            "nta": {"idx": nta_idx, "vocab": nta_vocab}}
 
 
 def _code_for(borough_name: str | None) -> str | None:

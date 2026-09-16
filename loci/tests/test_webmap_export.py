@@ -94,6 +94,11 @@ AGE_TYPES = {
 }
 assert list(AGE_TYPES) == wx.AGE_FIT_GAP_COLUMNS
 
+#: Sentinel for `_add_gap(nta_code=...)` so callers can pass `None` to mean
+#: "this address's H3 cell never resolved to an NTA" and still get the
+#: helper's normal per-borough default when the argument is omitted.
+_UNSET = object()
+
 
 @pytest.fixture()
 def con():
@@ -320,7 +325,7 @@ def _add_storefront(con, premises, boro, seq=1, filing=SNAP_FILING,
 def _add_gap(con, address_id, boro, cat="laundry", ratio=2.0, eligible=True,
              extra=(), units=10.0, score=1.5, pipe=None, shop=None,
              age=None, age_source=None, lead=None, censored=(),
-             lead_censored=False):
+             lead_censored=False, nta_code=_UNSET):
     """One address row. `cat` (plus anything in `extra`) is beyond reach at
     `ratio`; every other category sits at 0.5, comfortably inside it.
 
@@ -333,10 +338,11 @@ def _add_gap(con, address_id, boro, cat="laundry", ratio=2.0, eligible=True,
     missing = {cat, *extra}
     ratios = {c: (ratio if c in missing else 0.5) for c in wx.ALLCATS}
     lon, lat = PLACES[boro]
+    nta_code = (boro + "0001") if nta_code is _UNSET else nta_code
     cols = ["address_id", "lon", "lat", "borough", "units_capped", "nta_code",
             "neighborhood", "eligible", "gap_score", "lead_category",
             "lead_censored"]
-    vals = [address_id, lon, lat, boro, units, boro + "0001",
+    vals = [address_id, lon, lat, boro, units, nta_code,
             "Somewhere in " + boro, eligible, score, lead or cat, lead_censored]
     # `pipe` is the seven PIPELINE_GAP_COLUMNS as a dict; anything not named
     # stays NULL, which is the state of a database whose `loci pipeline` has
@@ -498,6 +504,30 @@ def test_a_pre_d75_database_exports_null_censoring_rather_than_a_confident_zero(
     assert layer["ids"] == ["gap"]
     assert layer["censoring"]["cat"] == [None]
     assert layer["censoring"]["lead"] == [None]
+
+
+def test_gap_layer_carries_the_nta_code_as_a_dictionary_encoded_index(con):
+    """Owner 2026-09-16: single-business mode has no per-category NTA scope of
+    its own, so the picked neighbourhood must be readable off the gap layer
+    itself, point by point. `nta.idx` is one index per point into `nta.vocab`
+    (NTA codes, not names -- the honest 1:1 key), and an address whose H3 cell
+    never resolved to an NTA carries `null` rather than being silently
+    dropped, so a scoped map still draws it instead of making it vanish."""
+    _add_gap(con, "here", "MN", ratio=1.4, nta_code="MN0001")
+    _add_gap(con, "also_here", "MN", ratio=1.6, nta_code="MN0001")
+    _add_gap(con, "elsewhere", "MN", ratio=1.2, nta_code="MN0002")
+    _add_gap(con, "unresolved", "MN", ratio=1.1, nta_code=None)
+
+    layer = wx.collect(con, ["MN"])["gaps"]["laundry"]
+    assert layer["ids"] == ["also_here", "elsewhere", "here", "unresolved"]
+    nta = layer["nta"]
+    assert nta["vocab"] == ["MN0001", "MN0002"]
+    resolved = dict(zip(layer["ids"], nta["idx"]))
+    assert resolved["here"] == resolved["also_here"] == 0
+    assert resolved["elsewhere"] == 1
+    assert resolved["unresolved"] is None
+    # Every point gets exactly one entry -- a parallel array, not a sparse map.
+    assert len(nta["idx"]) == layer["n"]
 
 
 def test_write_emits_one_file_per_category_per_layer(con, tmp_path):

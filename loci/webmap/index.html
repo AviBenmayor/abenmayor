@@ -296,7 +296,13 @@ input[list],select{width:100%;font:inherit;font-size:13px;color:var(--ink);backg
     </div>
     <div class="sec"><h2>Borough</h2><div class="seg" id="boros"></div></div>
     <div class="sec"><h2>Jump to neighborhood</h2><input list="ntal" id="ntaIn" placeholder="e.g. Bushwick"><datalist id="ntal"></datalist>
-      <div class="fine" id="ntaFine"></div></div>
+      <div class="fine" id="ntaFine"></div>
+      <!-- Single-business scope line (owner 2026-09-16): a per-category gap
+           layer has no neighborhood file of its own the way "All
+           opportunities" does, so when a neighborhood is picked here the
+           sidebar has to SAY the map is now scoped to it, or a citywide
+           legend beside a scoped map is how a screenshot starts lying. -->
+      <div class="here" id="ntaScope" hidden></div></div>
     <div class="sec"><h2>Layers</h2>
       <div class="legend" id="legend"></div>
       <label class="chk"><input type="checkbox" id="poiTog" checked> Show known locations</label>
@@ -486,6 +492,16 @@ let showStreet=false;
 const frameAt=(L,j)=>{const f=L&&L.frame; if(!f||!f.street) return null;
   return {street:f.street[j]===1, frontageM:f.frontageM?f.frontageM[j]:null,
           name:f.streetName?f.streetName[j]:null, caveat:f.caveat||''};};
+// The D97 (2026-09-16) NTA code for gap point j -- a dictionary-encoded
+// parallel array, same reasoning as `frameAt`: a NULL cannot live in a
+// numeric stride slot, and here the null case (an address whose H3 cell never
+// resolved to an NTA) must draw when a neighborhood is picked, not vanish.
+// Returns `undefined` (NOT `null`) when the layer carries no `nta` block at
+// all -- a file written before this change -- so a caller can tell "cannot
+// say" from "this point is unscoped" and fall back to the old, unfiltered
+// behaviour rather than pretending to scope.
+const ntaAt=(L,j)=>{const n=L&&L.nta; if(!n||!n.idx) return undefined;
+  const i=n.idx[j]; return i==null?null:n.vocab[i];};
 // The toggle only appears where there is something to toggle: a category whose
 // export carries no street points (or a file written before D84) never shows a
 // control that would do nothing.
@@ -552,7 +568,19 @@ const boroKeep=i=>boroSel==='ALL'||META.boroughs[i]===boroSel;
 function gapFC(){
   const L=CACHE.gaps[biz]; if(!L) return {type:'FeatureCollection',features:[]};
   const f=[],p=L.pts,st=L.stride||4;
+  // Owner bug report 2026-09-16: single-business mode has no NTA-scoped file
+  // the way "All opportunities" does, so `selectNta` used to just fly the
+  // camera and this function kept drawing every borough's dots regardless of
+  // the picked neighborhood. Filter here instead, off the `nta` block --
+  // `undefined` (no block: a file predating this change) never filters,
+  // `null` (this point's cell never resolved to an NTA) always stays drawn,
+  // and only a real, DIFFERENT code is dropped.
+  const ntaScoped=!allMode()&&!!ntaSel;
   for(let i=0;i<p.length;i+=st){ if(!boroKeep(p[i+2])) continue;
+    if(ntaScoped){
+      const nc=ntaAt(L,i/st);
+      if(nc!==undefined&&nc!==null&&nc!==ntaSel) continue;
+    }
     // The pipeline filter. `up` is units PERMITTED within 400 m — coming, not
     // arrived — because that is the number a lease signed today is a bet on.
     const up=st>GAP_PIPE?p[i+GAP_PIPE]:0;
@@ -2604,7 +2632,12 @@ function selectNta(code,fly){
   const n=ntaSel&&META.neighborhoods.find(x=>x.nta===ntaSel);
   if(fly&&n) map.fitBounds([[n.bounds[0],n.bounds[1]],[n.bounds[2],n.bounds[3]]],
     {padding:50,duration:800,maxZoom:16});
-  if(!allMode()) {renderHere();return Promise.resolve();}
+  // Single-business mode (owner 2026-09-16): picking a neighborhood here does
+  // not load a file the way "All opportunities" does, but it now has to
+  // re-filter the layer already on screen and update the sidebar's scope
+  // line -- `refresh()` does both (gapFC reads `ntaSel`, and it renders
+  // `#ntaScope` itself once it knows how many points survived the filter).
+  if(!allMode()) {refresh();renderHere();return Promise.resolve();}
   const ld=document.getElementById('loading');
   if(!ntaSel){NTA=null;refresh();renderHere();return Promise.resolve();}
   ld.hidden=false; ld.textContent='Loading '+(n?n.name:ntaSel)+'…';
@@ -2649,6 +2682,34 @@ function renderHere(){
   }
   const b=document.getElementById('hereClr');
   if(b) b.onclick=()=>{document.getElementById('ntaIn').value='';selectNta(null,false);};
+}
+// The single-business counterpart of `renderHere`, for the same bug (owner
+// 2026-09-16): a per-category layer has no per-NTA FILE the way "All
+// opportunities" does, so nothing else on screen says a neighborhood scope is
+// even active. `count` is `gapFC()`'s own drawn-feature count, passed in by
+// `refresh()` right after it sets the source -- never a precomputed citywide
+// total, which would be the wrong number here and a worse one to guess at.
+function renderNtaScope(count){
+  const el=document.getElementById('ntaScope');
+  if(!el) return;
+  const L=CACHE.gaps[biz];
+  // A file written before this change carries no `nta` block at all -- keep
+  // the old, unscoped behaviour and say nothing rather than claim a scope
+  // `gapFC` never actually applied.
+  const hasBlock=!!(L&&L.nta&&L.nta.idx);
+  if(allMode()||!ntaSel||!hasBlock){el.hidden=true;return;}
+  el.hidden=false;
+  const n=META.neighborhoods.find(x=>x.nta===ntaSel), nm=(n&&n.name)||ntaSel;
+  if(!ntaVisible()){
+    el.innerHTML=`<b>${esc(nm)}</b> is in ${esc(META.boroughNames[ntaBoro(ntaSel)]||'')} — `+
+      `the borough filter above is set to <b>${esc(META.boroughNames[boroSel]||boroSel)}</b>, `+
+      `so nothing is drawn. <button class="clr" id="ntaScopeClr">clear</button>`;
+  }else{
+    el.innerHTML=`<b>${esc(nm)}</b> only · ${(count||0).toLocaleString()} `+
+      `address${count===1?'':'es'} · <button class="clr" id="ntaScopeClr">clear</button>`;
+  }
+  const b2=document.getElementById('ntaScopeClr');
+  if(b2) b2.onclick=()=>{document.getElementById('ntaIn').value='';selectNta(null,false);};
 }
 // The legend IS the per-category breakdown in this mode: every category with a
 // gap in this neighborhood, biggest first, and clicking one highlights the
@@ -3181,6 +3242,7 @@ function refresh(){
     map.getSource('poi').setData(EMPTY);
     map.getSource('allgap').setData(allGapFC());
     map.getSource('allpoi').setData(allPoiFC());
+    renderNtaScope();   // this mode's own scope line is `here`, not `ntaScope`
     // The tint replaces the LEAD-CATEGORY hue, which is this mode's identity
     // channel — so it is a separate, deliberate checkbox, never implied by
     // switching the areas on.
@@ -3205,6 +3267,7 @@ function refresh(){
   rankBreaks(CACHE.gaps[biz]);
   const gf=gapFC();
   map.getSource('gap').setData(gf);
+  renderNtaScope(gf.features.length);
   const pf=poiFC();
   map.getSource('poi').setData(pf);
   map.setPaintProperty('cl','circle-color',lc());
@@ -3245,11 +3308,21 @@ function updateBanner(shown,gshown){
   const poiTxt=filtered?`${shown.toLocaleString()} of ${p.toLocaleString()} known locations shown`
                        :`${p.toLocaleString()} known locations`;
   const cui=cuiSel==='ALL'?'':cuiSel===CUI_OTHER?' · other cuisines':cuiSel===CUI_NONE?' · cuisine not recorded':` · ${cuiSel}`;
+  // A neighborhood scope (owner 2026-09-16) changes what "gap addresses"
+  // means: `g` is META.gapCounts' precomputed borough/citywide total, which
+  // is the WRONG number once `gapFC` is scoped to one NTA -- printing "X of Y"
+  // against it would compare a scoped count to an unscoped one. The honest
+  // thing is `gshown` alone (what actually got drawn) named to the
+  // neighborhood, not a fraction of a total that no longer means anything.
+  const ntaOn=!!(ntaSel&&ntaVisible()&&CACHE.gaps[biz]&&CACHE.gaps[biz].nta&&CACHE.gaps[biz].nta.idx);
   // Same rule as the cuisine filter: a filtered map must never print an
   // unqualified total, because that is how a screenshot starts lying.
-  const gapTxt=((pipeMin||sfMin)&&gshown!=null)
-    ? `${gshown.toLocaleString()} of ${g.toLocaleString()} gap addresses`
-    : `${g.toLocaleString()} gap addresses`;
+  const gapTxt=ntaOn
+    ? `${(gshown||0).toLocaleString()} gap addresses in `+
+      esc((META.neighborhoods.find(x=>x.nta===ntaSel)||{}).name||ntaSel)
+    : ((pipeMin||sfMin)&&gshown!=null)
+      ? `${gshown.toLocaleString()} of ${g.toLocaleString()} gap addresses`
+      : `${g.toLocaleString()} gap addresses`;
   document.getElementById('banner').innerHTML=
     `<span class="sw" style="background:${lc()}"></span><div><b>${label()}${esc(cui)}${activeOnly&&det()?' · active only':''}`+
     `${pipeMin?` · ${pipeMin}+ homes permitted nearby`:''}`+
@@ -3409,7 +3482,11 @@ function buildUI(){
   // which is what loads the file — one control, two jobs, no new widget.
   document.getElementById('ntaIn').addEventListener('change',e=>{
     const n=META.neighborhoods.find(x=>x.name===e.target.value);
-    if(!n){ if(allMode()&&!e.target.value) selectNta(null,false); return; }
+    // Clearing the field clears the scope in EITHER mode now (owner
+    // 2026-09-16) -- it used to only matter in "All opportunities", where an
+    // empty picker meant an unloaded file, but single-business mode now reads
+    // `ntaSel` too and must not keep a stale scope on an emptied field.
+    if(!n){ if(!e.target.value) selectNta(null,false); return; }
     selectNta(n.nta,true);});
   // The same three toggles drive both modes' known-location layers: they mean
   // exactly the same thing here (D47 corroboration, D52 exclusion), and a
