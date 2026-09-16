@@ -1,770 +1,399 @@
-# Loci — Project Context
+# Loci: Project Context
 
-**Status:** charter / pre-implementation
-**Created:** 2026-09-01
-**Scope:** New York City — Manhattan and Brooklyn first (dense, walking-dominant; D48, 2026-09-08). Other boroughs and driving-dominant areas are a later expansion; the data foundation covers all five boroughs but the screen and its calibration target MN+BK.
+**Version:** 2.0
+**Date:** 2026-09-16
+**Supersedes:** CONTEXT.md v1 (2026-09-01), whose head stated a causal residential-growth thesis rejected in week one (D1). The v1 reasoning a later reader still needs is kept in the Superseded appendix, not deleted. **This charter also retires the SCOPE CORRECTION banner at the head of `docs/CHECKPOINT.md`**, which still describes hexes, an 80% prevalence rule, `analysis.hex_gaps` and "726 gap hexes". That banner is dead framing in the first file every session opens; delete it when this lands.
 **Owner:** Avi Benmayor
-
-Loci measures how completely the *daily-needs bundle* of small businesses is reachable on
-foot across New York City, identifies places that have materially less of it than
-comparable places, and tests whether that gap predicts subsequent residential growth.
-
-This document is the single source of truth for the thesis, the data, the method, and the
-things that could make the whole thing wrong. Read it before writing code.
+**Scope:** New York City, Manhattan and Brooklyn only for the screen and its calibration (D48, D78). The data foundation covers five boroughs; `address-gaps` refuses any other borough.
+**Status:** shipped instrument. 114 recorded decisions (ids run to D117) over 33 sessions. State lives in `docs/CHECKPOINT.md`, work in `docs/TICKETS.md`, research questions in `docs/QUESTIONS.md`.
 
 ---
 
-## 0. Headline finding (2026-09-01)
+## 1. Purpose
 
-**The causal thesis is not supported by the data.** The descriptive tool works — it measures
-walkable daily-needs retail completeness and, via the residual, identifies where retail is thin
-relative to comparable places (top-20: Jamaica, the Rockaways, East New York, and a surprise at
-UES-Lenox Hill). But the investment claim — that these gaps represent latent demand that will
-*drive future residents* — fails its test:
+Loci shortlists addresses in New York where the market is most likely to act, and grades the evidence on each one. At the grain of a single address it measures what daily-needs retail is reachable on foot, how that supply compares to the Manhattan and Brooklyn baseline, what is filed with the city but not yet open, and, with a stated evidence grade, whether a candidate address is worth hand-diligence. It is a present-day instrument. It does not forecast appreciation, and a thin category is not evidence of unmet demand (§3).
 
-- **P2 (underserved → subsequent growth): REJECTED, wrong sign.** Regressing 2013→2023 population
-  growth on the 2013 retail gap gives β = **+0.069 (p=4.7e-16)** — over-retailed hexes grew MORE,
-  under-retailed hexes grew LESS. The placebo is a clean null, so the reversal is real.
-- **Pre-trend test: parallel trends BROKEN.** The 2013 gap also predicts *prior* (2002→2013) retail
-  growth (β=+0.27), so the gap marks neighborhoods already in a development cycle. Retail and
-  residents co-move; the gap does not identify latent opportunity.
+Two modes, in order.
 
-This is the endogeneity §7.2 and the whole residual design were built to detect, and the rigor
-(residualization + temporal ordering + pre-trend + placebo) is what caught it rather than
-shipping a confident-but-wrong thesis. **Loci is a valid descriptive instrument; its investment
-inference is not confirmed.** The honest product is the map + the method + this null.
+| Order | Mode | What it means | Status |
+|---|---|---|---|
+| **First** | **Take it** | The owner acts on a candidate address himself. | Primary. Owner ruling 2026-09-16. |
+| Fallback | Help someone fill it | The owner sells or advises a third party into a candidate address. | Secondary, and the reason external customer work (AC-2) ranks below AC-1. |
+
+Both modes use the same instrument and the same honesty. They differ in who carries the downside.
 
 ---
 
-## 1. Thesis
+## 2. Who it is for
 
-### 1.1 The naive hypothesis
+**First user: the owner, acting for himself.** Every delivery to date was to him or by him: the Lion's Milk and El Punto revenue pre-registrations (D91), the 379 Broome and Stone Street memos, the second El Punto site search (D117), the Gowanus cards and the first full allocator memo (D115). The instrument was built without a named external buyer.
 
-> Parts of New York are highly walkable — laundromats, nail salons, restaurants and
-> grocery stores all within a few blocks. Other parts lack these core small businesses.
-> Where transit access already exists, that missing retail infrastructure is a barrier to
-> attracting new residents.
+The owner's own statement, 2026-09-16, governs this section:
 
-### 1.2 Why the naive version fails
+> "I am not sure yet. Originally I built this without a customer in mind so I do need to do market research. I built this as a test to see if there is indeed a market opportunity that exists then to either go in to that myself or help someone else fill it. I think I need to reorient and validate this with a customer. In fact, almost model aside, I am very bullish on there needing to be a bathhouse in gowanus and I am not sure if I should try to tackle that myself."
 
-The naive hypothesis is **endogenous**. Retail follows rooftops. Laundromats, salons and
-bodegas locate where there are already enough residents with enough disposable income to
-support them. Tested as stated, this project would produce the finding:
+**External segments are a market-research question, not an assumption.** `docs/GTM.md` §4 ranks four candidate buyers (tenant-rep brokers; lenders and feasibility shops; BID and SBS grant writers; 3 to 30-unit operators) and prices them against published competitor contracts. None of that rests on a conversation.
 
-> *Dense, higher-income neighborhoods have more small businesses.*
+**The disclosure that governs §2:** no buyer has seen Loci and zero discovery calls have been held. `docs/GTM.md:7` (paraphrased) records that every price derives from a published competitor contract rather than a quote Loci has issued. GTM's own top risk names the fix: three discovery calls, one broker, one feasibility shop, one operator, one week (`docs/GTM.md:148`). That is AC-2, and under the take-it-first ruling it ranks below AC-1.
 
-Which is true, already known, and commercially worthless. Worse, it would invert the
-causal arrow the thesis depends on: the correlation would be read as "build the shops and
-the residents come," when the data generating process is "the residents came, so the shops
-opened."
+**Explicitly not a customer segment:** chains and franchisors. They buy models calibrated on their own store P&Ls, which Loci can never hold (`docs/GTM.md:72`). The 902-brand watchlist is a broker-facing lead list and a logo channel (D109, D113).
 
-Any version of this project that scores hexes on **raw business counts** and ranks the
-bottom of that distribution is producing a poverty map with extra steps.
+---
 
-### 1.3 The refined thesis
+## 3. What Loci may claim today, and what it is for
 
-The defensible reformulation replaces the raw count with a **residual**:
+**The claim earned today**, verbatim:
 
-> **Conditional on population density, household income, transit access, and commercial
-> zoning capacity, some NYC hexes have materially less daily-needs retail than otherwise
-> comparable hexes. That residual gap — not the raw count — is the opportunity signal, and
-> it should predict subsequent residential growth.**
+> "What we sell is cost of search, not better decisions." (`docs/GTM.md:17`)
 
-The residual is what makes this an investment thesis rather than a description. A hex with
-few businesses because it is a low-density industrial zone is *explained*. A hex with few
-businesses despite matching density, income, transit and zoning of well-served peers is
-**unexplained**, and unexplained undersupply is where a market opportunity can live.
+Assembling fifteen categories, walk-network distances, borough baselines, seven filing feeds, zoning legality and character for one address takes an analyst days and takes Loci minutes, on auditable public data a buyer can re-derive.
 
-### 1.4 Falsifiable predictions
+**The guardrail**, verbatim, from the 2026-09-14 retrodiction (D88):
 
-The thesis generates three predictions. Each can fail.
+> "the screen ranks retail streets, not unmet demand" (`docs/GTM.md:19`)
 
-| # | Prediction | Fails if |
+Openings clustered where supply was already thick. Two results carry this, and the second is the sharper one:
+
+| Result | Value | Reading |
 |---|---|---|
-| **P1** | The residual has meaningful spread after controls — i.e. retail supply is *not* fully determined by density, income, transit and zoning. | R² of the supply model is so high (>0.9) that nothing is left to explain. The thesis has no room to be true. |
-| **P2** | A negative residual at t0 predicts above-average growth in population, households, rents and permitted units over t0→t1, with controls and borough fixed effects. | Coefficient is null, or signed the wrong way (gaps persist because they reflect durable demand suppression, not latent opportunity). |
-| **P3** | The measured gap is real, not an artifact of data coverage — the ranked underserved list survives validation against ground truth. | Google Places validation shows the POI undercount is concentrated in exactly the hexes flagged as underserved. **This would invalidate the entire finding.** See §7.1. |
+| Own-category supply coefficient | +1.17 [0.87, 1.47] after NTA fixed effects **and conditioning on other-category supply** | Thickness predicts entry. Agglomeration or herding, not unmet demand |
+| Restaurant own-category **gap** coefficient | **−0.89 [−1.44, −0.33], p = 0.0018, the only per-category coefficient to survive Bonferroni** | No restaurant within 400 m in 2023 predicted **fewer** restaurant openings. The strongest single piece of evidence against "thin equals opportunity" |
 
-P3 is not a robustness check bolted on at the end. It is the load-bearing one, and it is
-scheduled in Week 4 with budget attached.
+**The goal** is the owner's answer of 2026-09-16, verbatim: **"Decision value is the goal."** Cost of search is where the evidence stops. Decision value is what the project is trying to reach.
 
----
+### 3.1 The gate, with dates
 
-## 2. Definitions
+Loci may claim decision value only when it carries a survival or viability label that clears a pre-registered numeric floor on a named out-of-sample vintage, ratified by the `statistician` agent **before** the result is seen. This copies D111 exactly, where a Citi Bike growth feature was tested against a +0.005 delta-AUC floor set in advance and was recorded as a null.
 
-### 2.1 The daily-needs bundle
+**The source list is closed at three.** Adding a fourth is itself a decision (below).
 
-Fifteen categories in four weighted tiers. Tier weights are judgment calls, stated
-explicitly so a reader can disagree with them precisely (see §9).
-
-| Tier | w | # | Category | OSM tags | NAICS |
+| # | Source | What it is | Pre-registered floor | Date | Status |
 |---|---|---|---|---|---|
-| **T1 Necessities** | **0.40** | 1 | Grocery / supermarket | `shop=supermarket\|greengrocer\|grocery` | 4451 |
-| | | 2 | Bodega / convenience | `shop=convenience` | 445131 |
-| | | 3 | Pharmacy | `amenity=pharmacy`, `shop=chemist` | 4461 |
-| | | 4 | Laundromat / dry cleaner | `shop=laundry\|dry_cleaning` | 8123 |
-| **T2 Personal services** | **0.20** | 5 | Hair / barber | `shop=hairdresser` | 8121 |
-| | | 6 | Nail / beauty | `shop=beauty`, `beauty=nails` | 8121 |
-| | | 7 | Tailor / repair | `shop=tailor\|shoe_repair\|clothes_repair` | 8114 |
-| **T3 Food & gathering** | **0.25** | 8 | Restaurant | `amenity=restaurant\|fast_food` | 7225 |
-| | | 9 | Cafe / bakery | `amenity=cafe`, `shop=bakery` | 7225, 311811 |
-| | | 10 | Bar / pub | `amenity=bar\|pub` | 7224 |
-| **T4 Civic & wellness** | **0.15** | 11 | Childcare | `amenity=kindergarten\|childcare` | 6244 |
-| | | 12 | Clinic / urgent care | `amenity=clinic\|doctors` | 6211, 6214 |
-| | | 13 | Fitness | `leisure=fitness_centre` | 713940 |
-| | | 14 | Bank branch | `amenity=bank` | 5221 |
-| | | 15 | Hardware / home supply | `shop=hardware\|doityourself` | 4441 |
+| 1 | Foursquare pre-ledger closure panel | 54,190 venues that opened and closed before the snapshot (`docs/GTM.md:122`); raw ascertainment ~3% of closures, categorically non-random | An ascertainment-corrected survival label with out-of-sample AUC ≥ 0.65 against realized closures, the correction itself ratified before fitting | 2027-03-31 | Unbuilt |
+| 2 | LL157 go-dark | The one survival-adjacent outcome the city publishes | ≥ +0.02 AUC over the same model without the score, sign stable across both outcome definitions | 2027-06-30 (one re-run, on the next full-universe filing) | **Failed once.** AUC 0.549 vs 0.535; sign flips (+0.42 / −0.20) |
+| 3 | `analysis.address_observation` | The human ground-truth ledger. Per C5 it may **score** a label but may never be a feature in the screen, so it enters as a scoring and labelling source only | ≥ 200 observed storefronts across ≥ 60 anchors, and a pre-registered label reaching AUC ≥ 0.65 out of sample against observed closure | 2027-06-30 | 103 observations, 19 anchors (D107) |
 
-**Deliberate exclusion.** Libraries and parks were considered for T4 and are **excluded
-from the DNCI**. They are public goods, not small businesses, and including them would
-dilute the index away from the thesis. They are carried as separate **context layers** —
-rendered on the map, available as model controls, never scored into the bundle.
+**The stop rule, and it is revisitable.** If all three sources fail by their dates, then on **2027-07-01** Loci claims cost of search, and this charter amends itself on that date to say so. "Exhausted" means the dates passed, not that effort ran out. The rule reopens only when a **new** closure source is admitted to `src/loci/registry.yaml` by its own CHECKPOINT decision naming that source's floor and its date. A source added without a floor and a date does not reopen it.
 
-### 2.2 Walkable
-
-**Network distance along the pedestrian graph**, never Euclidean. Straight-line buffers
-are wrong in NYC specifically: waterfronts, rail cuts, expressways, and superblock NYCHA
-campuses all create places where 300 m of separation is a 20-minute walk.
-
-Walking speed **4.8 km/h (80 m/min)**. Three thresholds:
-
-| Threshold | Network distance | Role |
-|---|---|---|
-| 5 min | 400 m | "on my block" — sensitivity check |
-| **10 min** | **800 m** | **primary** — the headline DNCI |
-| 15 min | 1200 m | "15-minute city" comparability with the literature |
-
-### 2.3 Spatial unit
-
-**H3 resolution 9** hexagons (~174 m edge, ~0.105 km² each), clipped to the NYC shoreline.
-NYC's ~778 km² of land yields **≈7,400 cells**.
-
-Hexes over tracts because they are uniform in area (tracts vary ~100× in NYC, so "per
-tract" means something different in Midtown than in Tottenville) and because they are
-city-agnostic, which serves the eventual second-city goal. The cost is that ACS
-demographics must be interpolated onto them — see §4.2.
-
-### 2.4 Study period
-
-- **Cross-section:** 2026 (current Overture / DOHMH / DCWP snapshots).
-- **Panel:** 2002–2023 annual (LODES WAC availability).
-- **Main growth spec:** t0 = 2013 → t1 = 2023.
-
----
-
-## 3. Data source registry
-
-Costs verified 2026-09-01; SNAP and SLA sources verified 2026-09-02. Machine-readable mirror: [`src/loci/registry.yaml`](../src/loci/registry.yaml).
-
-### 3.1 Business locations — present day
-
-| Source | Geography | Temporal | Refresh | Cost | Known bias |
-|---|---|---|---|---|---|
-| **Overture Maps Places** — GeoParquet on S3, `overturemaps-py` | point | 2023– | monthly | **$0** (CDLA-Permissive-2.0) | Inherits OSM/Meta/Microsoft coverage gaps; category schema is coarse for personal services |
-| **Foursquare OS Places** — 100M+ POI | point | 2024– | monthly | **$0** (Apache-2.0) | Skews toward venues with consumer check-in history — i.e. away from laundromats. **Access is gated since 2025-10** (Hugging Face terms + `HF_TOKEN`; public S3 retired). Loaded 2026-09-02. **Ghost venues:** rows last refreshed before 2019 are corroborated <10% of the time, so the adapter keeps only rows refreshed since 2024 (109k of 191k mapped) |
-| **OpenStreetMap** via Overpass | point/poly | live | continuous | **$0** (ODbL) | **Undercounts small business in lower-income and immigrant neighborhoods.** The project's most dangerous bias — see §7.1 |
-| **NYC DOHMH Restaurant Inspections** `43nn-pn8j` | address + lat/lon | 3-yr rolling | daily | **$0** | **Near-census of food service** — every establishment is inspected. Effectively unbiased. The project's best asset. |
-| **NYC DCWP Legally Operating Businesses** `w7w3-xahh` | point | issuance-dated | daily (rowsUpdatedAt 2026-08-20 — **not stale**) | **$0** | **Contributes ~nothing to the daily-needs bundle:** consumer "Laundries" has *zero* active licenses (all active laundry licenses are industrial B2B linen suppliers, excluded). No pharmacies licensed. Retained only for the E5 license-history panel. |
-| **NYS DOS Appearance Enhancement & Barber** `y3u4-jbgh` | address | **active only** | periodic | **$0** | **Survivorship-biased** — closed salons absent entirely. Snapshot enrichment only, never panel input |
-| **USDA SNAP Retailer Locator** — ArcGIS feature service | point | current | snapshot | **$0** | **Near-census of stores that accept SNAP** — anchor for grocery/convenience (tier 1). Misses non-SNAP stores, which skews *toward* affluent areas, the opposite of OSM's bias. Verified 2026-09-02 |
-| **NYS Liquor Authority Active Licenses** `9s3h-dpkz` | point (98.5% georef.) | current | snapshot | **$0** | **Anchor for bars.** Companion inactive file `6dg3-2z7i` makes closures recoverable. License descriptions don't say "bar"; mapped conservatively (QUESTIONS.md H-D9). Verified 2026-09-02 |
-| **NYC DCWP Inspections** (Retail Laundry / Dry Cleaners) `jzhd-m6uv` | point | 2023-07– | daily | **$0** | **Anchor for laundry** (the only retail-laundry category; DCWP licences are all industrial). Enforcement-driven, so never-inspected establishments are indistinguishable from real gaps. One row per inspection; deduped to one POI per business. Verified 2026-09-09 |
-| **NYC DOHMH Child Care Programs** `gy3q-4tzp` | point (lat/lon published) | daily-refreshed roster | daily | **$0** | **Anchor for childcare** (coverage 0.85 vs ZBP; was 0.000). Group settings only — Art. 47 GCC + Art. 43 school-based; OCFS home-based family day care is in no NYC feed, so this is a supply FLOOR. Active at source (preliminary/suspended/closed excluded). 2,755 programs, 99.56% geocoded. Verified 2026-09-10; supersedes the frozen 2019 snapshot `dsg6-ifza` |
-| **NYS Medicaid Enrolled Provider Listing** `keti-qx5t` | point (lat/lon published) | weekly active roster | weekly (file date 2026-09-07) | **$0** | **Anchor for pharmacy** (coverage 0.90 vs ZBP; was 0.000). Active Medicaid FFS enrolments only — defensible as a pharmacy roster in NY because the NYRx carve-out (2023-04-01) routes the pharmacy benefit for *all* Medicaid members through FFS, and enrolment requires a current NYSED establishment registration. `profession_or_service='PHARMACY'` only; hospital (1,270), clinic (142), specialty/mail-order (11) and individual supervising-pharmacist (2,911) enrolments excluded. 2,424 NYC rows, 100% geocoded by the State, 8 (0,0) null-island dropped. `mmis_id` is per-provider not per-storefront, so the key is `mmis_id@address`. `mmis_name` is the legal entity, not the awning: 516 corroborated aggregator clusters sit within 40 m of a registry cluster and are counted twice. Verified 2026-09-11 |
-| **NYC Street Centerline (CSCL)** `inkn-q76z` | line (segment geometry) | weekly | weekly (extract 2026-09-13) | **$0** | **THE STREET SAMPLING FRAME (D84).** `shape_length` is Web Mercator metres (×1.32 at NYC latitude), not a length; `segmentlength` is US feet and disagrees with the geometry in the tails; length is computed from the geometry reprojected to EPSG:2263. `segment_type` is 100% NULL in MN+BK; `physicalid` is near-unique (3 duplicates). Keep rule `status='2' AND rw_type=1 AND nonped<>'V' AND at-grade` keeps 32,291 of 41,784 MN+BK rows (3,480.9 km); excluded: paper streets (`rw_type=12`), pedestrian-prohibited roadway (`nonped='V'`), park/greenway drives and paths (`rw_type=6`); kept: pedestrian malls (`trafdir='NV'`). Not a POI source; never joined into `staging.poi`. Verified 2026-09-13 |
-| *Planned:* **FDIC BankFind locations** | point | annual 1994– | — | **$0** | Census of bank branches; closures dated. Tier 4, low priority |
-| *Excluded:* **NYSED registered pharmacies** | address | current | — | **$0** | Bulk access verified **absent** 2026-09-11 — one-record verification form only, no export/API, `op.nysed.gov/data` 404s, nothing on data.ny.gov or health.data.ny.gov. Superseded by `keti-qx5t`. *Also rejected:* CMS NPPES `3336C0003X` — no coordinates, 1,200-record API enumeration cap, lifetime enumeration with `status='A'` on 100% of returns |
-| **Google Places Nearby Search** | point | current | live | **~$32/1k** (Pro SKU); 5k/mo free | Ground truth for validation. **Budgeted: 3–5k calls ≈ $0–100** |
-
-### 3.2 Longitudinal business panel
-
-| Source | Geography | Temporal | Cost | Known bias |
-|---|---|---|---|---|
-| **LEHD LODES WAC** (LODES8) | **census block** | **annual 2002–2023** | **$0** | Counts *jobs*, not establishments. Census-applied noise infusion at block level. Excludes most self-employed |
-
-This is the panel backbone. Target NAICS groups:
-`4451` grocery · `4461` pharmacy · `7224` bars · `7225` restaurants · `8121` personal care ·
-`8123` laundry/dry cleaning · `4441` hardware · `6244` childcare.
-
-Two other panel routes were evaluated and **rejected**:
-- *Overture / Foursquare historical* — snapshots only from ~2023. No backfill exists.
-- *NYS DOS license reconstruction* — active-only file, so any "opening" series built from
-  it is survivorship-biased by construction.
-
-A third route, **DCWP license issue/expiry reconstruction**, is viable but expensive and is
-deferred to Phase 5.
-
-### 3.3 Outcome variables
-
-| Source | Geography | Temporal | Cost | Known bias |
-|---|---|---|---|---|
-| **Census ACS 5-year** — population, households, income, tenure | tract | 2013–2024 | **$0** | 5-year smoothing damps recent change; tract-level MOEs are large and must be carried |
-| **Zillow ZORI / ZHVI** | **ZIP** | monthly 2000– | **$0** | ZORI covers ~8.4k ZIPs nationally (a third of ZHVI's) — asking-rent index, listing-density dependent. ZIP is coarser than hex; requires crosswalk (§9) |
-| **NYC DCP Housing Database — Project-Level Files** `br6q-ssj3` | point (building), BBL + BIN | 2010-01–2026-01 (version 25Q4), job-dated | **$0** | **The residential development pipeline** (`analysis.dev_pipeline`, one row per DOB job). Supersedes the never-built "DOB job filings + HPD Housing DB" placeholder: DCP is the same universe already QA'd, geocoded and unit-recoded. **Published semiannually**, so everything filed or permitted since 2026-01-21 is missing — the forward pipeline is a floor, never a ceiling. Permits ≠ completions: 259 MN+BK jobs (4,338 net units) were permitted and then withdrawn. Geocoded per BUILDING, so a masterplan is several jobs at several points. Verified 2026-09-09 |
-| **NYC DOB Certificates of Occupancy** `bs8b-p36w` (BIS) + `pkdm-hqz6` (DOB NOW) | point (building), BBL + BIN | 2012-07– / 2021-03–, CO-dated, **daily** | **$0** | **Freshness supplement** joined to DCP on the DOB job number — not a spine (no filing date, no net unit count). 436 MN+BK jobs / 11,407 net units are "Permitted" in DCP 25Q4 but already hold a CO. A job has **many** CO rows (initial TCO + a renewal every 90 days; 24,579 pkdm rows are "Renewal Without Change") and the same CO can appear in both feeds — collapsed to one row per job by min/max, **never summed**. A temporary CO is occupancy, not a finished building. bs8b carries out-of-range date typos (a literal `2105-11-05`), dropped not clamped. Verified 2026-09-09 |
-| **NYC DOB Permit Issuance** `ipu4-2q9a` (BIS) + **DOB NOW: Build – Approved Permits** `rbx6-tga4` | point (building), BBL + BIN | 1989– / 2016-06–, permit-dated, **daily** | **$0** | **Activity supplement** joined to DCP on the DOB job number — the CONSTRUCTION-PROGRESS axis (`activity_status`), which closes D62 caveat 9 (no `under_construction` stage) and dates caveat 3's zombie permits per job. 7,317 of 7,364 MN+BK permitted jobs matched; the 47 that did not are `n/a`, **never stalled** — absence of evidence is not evidence of abandonment. **A renewal is not a shovel:** `active` means a fee was paid, so this separates abandoned from not-abandoned and is deliberately not a construction stage. A job has many permit rows (one per **work type** in DOB NOW plus one per renewal) and ipu4 repeats rows byte-identically — collapsed by min/max, **never summed**. DOB NOW's key carries a work-type suffix (`M00528469-I1`), joined on the 9-char prefix. ipu4's date columns are TEXT in **two formats in the same column**. No construction-start date exists in either feed (`job_start_date` is the declared start, copied onto every renewal); a sign-off precursor does exist (`permit_status='Signed-off'`) and is deliberately not ingested — sign-off is per work type. Verified 2026-09-11 |
-| **NYC DOF Storefront Registry — "Storefronts Reported Vacant or Not"** `92iy-9c3n` (Local Law 157 of 2019) | point (storefront), BBL + BIN + NTA + tract | 2019-12-31–2025-12-31, annual + semiannual supplements (11 filings) | **$0** | **The storefront-vacancy layer** (`analysis.storefront`, one row per storefront per filing) — turns "this block is missing a bodega" into "and this ground floor 120 m away is empty". **Self-reported, and non-filing is invisible**: no vacancy near an address and nobody near it filing are the same observation, which is why the registered-storefront denominator is carried alongside the count. **Tax Class 1 is essentially absent** (679 of 253,519 MN+BK filings, 0.27%, sit on a 1–3 family lot) — the rowhouse-base corner store, exactly the typology a bodega gap sits in, is under-covered. **Five of the eleven filings are vacant-only supplements**; pooled with the four full-universe filings they read as a 100% vacancy rate, so `universe` is derived per filing. `Reporting Year` is a text label ('2019 and 2020'), not a year. **No storefront identifier exists** and `unit` is blank on 87% of rows, so nothing is deduplicated on ingest — identical rows are distinct ground floors. Lease expiry appears only from the 2024-06-03 filing and DOF then stopped publishing it annually. **No rent and no square footage anywhere**; an annual 12/31 snapshot is not an availability listing. Verified 2026-09-10 |
-| **NYS SLA Current Pending Licenses** `f8i8-k2gm` | point (georeference) + free-text premises address; **no BBL, no BIN** | 2023-05–current, application-dated (24-month ingest window) | **$0** | **The earliest go-live signal the state publishes** (`staging.storefront_filing`, stage `liquor_application`) — an SLA application needs a signed lease and a 30-day community-board notice, and it names the **tenant**, not the landlord. **A live queue, not a history:** a row leaves the file the moment the licence issues or the application is withdrawn, so absence next month is not a withdrawal. Statewide (2,925 rows, 1,574 NYC on the 2026-09-13 extract), filtered server-side on `premises_county` in Kings/New York/Bronx/Queens/Richmond. Covers only businesses that want to serve alcohol. No BBL and no house/street split, so every row reaches a BBL through the 30 m nearest-lot rung — structurally the lowest match rate of the seven lifecycle feeds. Verified 2026-09-13 |
-| **NYC DOB NOW: Build – Job Application Filings** `w9ak-ipjd` | point (building), BBL + BIN + house/street | 2016-06–current, filing-dated (24-month ingest window) | **$0** | **The fit-out signal** (stage `fitout_filing`), and the noisiest of the seven. A **storefront filter** is applied server-side and is a judgement call: drop `job_type` in (New Building, Full Demolition, No Work, ALT-CO – New Building with Existing Elements to Remain), drop `building_type` in (1/2/3 Family), require ≥1 of general construction / **sign** / place of assembly. On the 2026-09-13 extract that keeps **68,678 of 314,822** filings and drops **246,144 (78.2%)** — 39,051 on job type, 72,385 on building type, 134,708 on work type. **It cannot isolate commercial work:** `building_type` has four values and mixed-use falls in `Other`, so a lobby renovation survives. **And the name is the wrong name** — `owner_s_business_name` is the owner, i.e. the landlord on a commercial fit-out (a literal `N/A` is common), so this stage is a *place* signal, not a business-identity one. Verified 2026-09-13 |
-| **NYC DCWP License Applications** `ptev-4hud` | point, BBL + BIN + building number/street | 2022–current, application-dated (24-month ingest window) | **$0** | **The application side of `w7w3-xahh`** (stage `license_application`), which publishes only issued licences. Names the operator and carries a real category — the best name-bearing early signal for the non-alcohol trades. **Covers only DCWP-licensed categories** (laundries, garages, newsstands, sidewalk cafés, second-hand dealers) and *not* groceries, pharmacies or restaurants: used here for its **dates**, never as coverage (D13/D55). `address_type` is not filtered — a mailing address geocodes to the wrong lot, flagged by `match_method` rather than dropped, because filtering would delete every home-based applicant. 65,932 rows. Verified 2026-09-13 |
-| **Census County Business Patterns (CBP), national** — `api.census.gov/data/2023/cbp` at `for=county:*`, `for=zipcode:*` and metro geography, plus the OMB delineation file and the 2023 Gazetteer | county, metro, **ZCTA** | annual 1986–2023 (2023 is the latest published; 2024 404s) | **$0** | **The external frame for carrying capacity** (`loci capacity`, docs/carrying-capacity-2026-09.md): establishments per 1,000 residents against density, on 10,197 ZCTAs in 106 metros of ≥500k, with New York held out of the fit so its position is an out-of-sample statement. Same endpoint as the `census_zbp` row above but the opposite pull shape — the whole country at the all-establishments band rather than NYC's ZIPs at every size band — and the SAME NAICS crosswalk (`src/loci/zbp_naics.yaml`, D42), never a second one. **PAYROLL establishments only**, so every rate under-counts owner-operated formats, and it does so UNEVENLY: the NYC POI-to-CBP ratio runs 2–8× in the licence-anchored categories and near 1 elsewhere (D40/D47), which is why that ratio ships as a published portability parameter instead of being divided away. NAICS is self-classified and bleeds between formats. A missing (geography, NAICS) row is read as a zero **by choice**, with the drop-them universe reported as a sensitivity. The `CBSA` variable is returnable on county rows but comes back NULL, so the county→metro crosswalk is the delineation file. Density is a LAND density from Gazetteer `ALAND_SQMI`, so every metro comparison uses a POPULATION-WEIGHTED density — a simple pop/area figure ranks metros by how much desert their counties enclose. Cached under `data/raw/cbp/` and `data/raw/zbp/`; nothing is written to the warehouse. Verified 2026-09-14 |
-| **IRS SOI county migration** | **county** | annual | **$0** | Only 5 units in NYC. **Too coarse — documented and dropped.** Recorded here so the exclusion is deliberate, not an oversight |
-| *Planned:* **HUD aggregated USPS vacancy** | tract | quarterly 2005– | **$0** (registration) | Faster-moving than ACS 5-year, cleaner than permits. Candidate fifth outcome |
-
-### 3.4 Controls and context
-
-| Source | Purpose | Cost |
-|---|---|---|
-| **NYC MapPLUTO 26v1/26v2** | **Commercial zoning capacity — required control (§1.3).** Also `ResidFAR`/`BuiltFAR` for development capacity, `UnitsRes` as dasymetric ancillary, `YearBuilt` | **$0** |
-| **MTA Subway Stations** `39hk-dx4f` / **Entrances & Exits: 2024** `i9wp-a4ja` (the map view `68hr-j2j7` publishes no columns — use the tabular id) | Transit access. Entrances matter more than station centroids — a station can be 400 m of walking from its own far entrance. 2,120 rows, 2,006 of them `entry_allowed = YES`, covering all 424 ridership complexes | **$0** |
-| **MTA Subway Hourly Ridership 2020–2024** `wujg-7c2s` | Transit *quality*, not mere presence. A station with 12 routes ≠ a station with one | **$0** |
-| **MTA Subway Hourly Ridership: Beginning 2025** `5wq4-mkjj` | The CURRENT ridership feed; `wujg-7c2s` stops at 2024-12-31 and the two have disjoint date coverage (never sum them). Source of `analysis.address.transit_entries_400m` — average weekday daily **entries** at complexes within a 400 m walk, split evenly across `i9wp-a4ja` entrances. `ridership` is entries; `transfers` is never added (a transfer is a rider already counted at their entry complex); `transit_mode` pinned to subway (the feed also carries SIR and the Roosevelt Island tram). **Entries are not footfall** — at a residential complex they are the morning-outbound direction, and the evening arrival flow is not published per station anywhere | **$0** |
-| **NYC DOT Bi-Annual Pedestrian Counts** `cqsj-cfgu` (the map view `2de2-6x2h` publishes no columns) | **Ingested since 2026-09-13 (role validation → control), and still never an input to a score.** The whole history is stored long-form in `staging.dot_pedestrian_count` — one row per (point × round × period), 37 rounds 2007-05…2026-05, 114 points, 12,312 observations. The feed is **wide** (three new *columns* per round, spelled inconsistently: `may_07_am`, `may_22_p_m`, `oct24_md`, `may26_pm`) so the column names are **parsed, never typed**. A null cell yields no row (342 of 12,654 cells absent); a **zero yields a row** (12 exist, and they are observations). Rounds are **not evenly spaced** — no September 2019, no May 2020 (COVID), and 2024's spring round is June — so trends are fitted on decimal years. **PM is a three-hour window and AM/MD are two**; the whole-round total is seven counted hours and is **not a daily volume** (DOT publishes no expansion factor). `loc` 1–100 are on-street, 101–114 are bridge midpoints (ingested, excluded downstream). Still the external check on whether `transit_entries_400m`, `jobs_400m` and `homes_400m` rank real sidewalk volume — `loci validate-demand` now reads the table instead of re-pulling — where N = 100 supports only a rank correlation on a **restricted range**, because DOT chose these points for traffic engineering on busy commercial corridors. Also `analysis.address.dot_point_id / dot_point_m / dot_latest_round / dot_latest_am|md|pm` | **$0** |
-| **Citi Bike System Data** `citibike-tripdata` (public S3 bucket `s3.amazonaws.com/tripdata/`, zipped CSV; monthly from 2024-01, annual archives 2013–2023) | **The first two-directional movement series in the registry, and the answer to two named defects of `transit_entries_400m`.** Subway entries publish only the morning tap-*in* and read zero for 65% of Brooklyn addresses; a bike trip publishes both a **start** and an **end**, and the dock network reaches Bay Ridge, Greenpoint and Red Hook. Ingested long-form into `staging.citibike_station_month` — one row per (dock × month × `day_type` × `daypart`) — plus `staging.citibike_station`, the dock roster with first/last active month. **Ends are dated by the *arrival* time**, which is what makes `bike_ends_400m` an arrival-side measure. **The schema cutoff is 2021-02 and pre-2021 is refused, not mapped**: legacy station ids are small integers on a different scheme from the modern `'5905.14'` ids with no published crosswalk, so joining the panels would either split one dock in two (inventing an opening and a gap) or fuse two docks. `JC-*` keys are the Jersey City system and are never fetched; every ingest re-checks against a NY bounding box rather than trusting the file name. Day types and dayparts are **imported from `mta_ridership`**, not restated, so a bike cell, a subway cell and a DOT count window line up without interpolation. `days_in_cell` is the **calendar** count of non-holiday dates, never the observed count, and an incomplete month raises. **Not a pedestrian count**: dock placement is the operator's capital plan and is correlated with income, dock capacity censors the busiest station-hours, and 72% of 2026-04 trips were electric — so the address measures use the latest 12 months only. Licence: **NYCBS Data Use Policy** — analysis and derived measures permitted, raw dataset not redistributed, attribution required. Feeds `analysis.address.bike_starts_400m / bike_ends_400m / bike_evening_ends_share_400m / bike_casual_share_400m` and `analysis.address_bike_station`; validated against the DOT counts by `loci validate-bike`. **Card context only** (D76 footing): it enters no score, grade or ranking | **$0** |
-| **NYC DOT traffic cameras (NYCTMC)** `https://webcams.nyctmc.org/api/cameras` (a plain JSON array, not Socrata — no dataset id) | **The camera registry, not the frames.** `staging.dot_camera`: 969 cameras (MN 376 / QN 208 / BK 204 / SI 100 / BX 81), verified 2026-09-13 — keys `{id, name, latitude, longitude, area, isOnline, imageUrl}`, ids unique, and the image URL fetchable with **no auth** (200 `image/jpeg`, ~23 KB, `Cache-Control: no-store`, no `Last-Modified`/ETag; nine fetches 5 s apart returned nine different payloads, so it serves a near-live frame per request with no published cadence). **The siting is the bias**: signalised intersections on arterials, chosen to watch vehicle queues, so a quiet residential block has no camera and the borough gradient is DOT's operational one. **Angles vary and are unpublished** — no bearing, field of view, height or lens, so a person count from a frame is a count on an unknown, non-constant catchment, and the published point is the *pole*, not the view. **`isOnline` read `'true'` on 969/969**, which is not a plausible steady state for 969 outdoor cameras: treat it as "published", never "returning frames". A frame sampler is built separately against this contract; its per-frame rows are camera × timestamp and get their own table. Also `analysis.address.camera_id / camera_m` | **$0** |
-| **OSM walk network** via OSMnx | Isochrone routing graph | **$0** |
-| *Planned:* **MTA Bus GTFS stops** | Transit access beyond the subway — matters most in outer-borough hexes | **$0** |
-| **NYC NTAs / Community Districts** | Human-legible reporting geography | **$0** |
-| **NYC shoreline / borough boundaries** | Grid clipping | **$0** |
-| **NYC Local Law 84 benchmarking data** — Energy and Water Disclosure `[5zyy-y8am, 7x5e-2fxh, usc3-8zwd, wcm8-aq5w, 4tys-3tzj, 4t62-jm4m, 77q4-nkfh, r6ub-zhff]` (annual 2013–2024) | In-building laundry supply (hookups in common area and units). Size-filtered: ≥25k sq ft buildings only. Blank non-random (owner non-response) and "hookups" is plumbing, not machines | **$0** |
-| **StreetEasy listing pages** — advertised in-building laundry via Tavily | In-building laundry annotation source. Advertising, not inspection; silence is not absence. Size-selected toward larger rentals and away from stabilized/owner-occupied; archival (213/222 Bay Ridge pilot pages dated 2014–2026). Tavily-extracted | **$0** (pilot) / **~$294** (full MN+BK sweep) |
-
-### 3.5 Budget
-
-| | |
-|---|---|
-| Projected spend | **$0–100** |
-| Stated budget | $100–500 |
-| **Headroom** | **~$400** |
-
-Everything except the Google validation sample is free. If the headroom is spent, spend it
-in this order:
-
-1. **Enlarge the Google validation sample** ($100–200). Directly strengthens P3, the
-   prediction most likely to kill the project. Highest marginal value.
-2. **Foot-traffic data** (SafeGraph/Placekey-class, $200–400). Would let the outcome shift
-   from "did people move here" to "did people start going here," strengthening the causal
-   half. Nice-to-have, not load-bearing.
-
-Everything Loci would buy if the budget were not $100 — 35 paid sources surveyed
-2026-09-13, priced, licence-checked and mapped to the nine named gaps — is kept out of
-this section and generated into [`docs/PAID-SOURCES.md`](./PAID-SOURCES.md) from the
-`status: wishlist` entries in `src/loci/registry.yaml`; none of it counts against the
-budget above, because none of it is spend today.
+**Survival and viability are therefore in scope as a gated commitment.** That is the owner's own label, 2026-09-16: "In scope as a gated commitment."
 
 ---
 
 ## 4. Method
 
-### 4.1 Grid construction
+### 4.1 The pipeline, present tense
 
-Engine: **DuckDB** with the `spatial` and community `h3` extensions, applied per
-connection via `src/loci/sql/001_bootstrap.sql`. One caveat that matters for correctness: DuckDB
-`GEOMETRY` carries **no SRID**. Everything stored is EPSG:4326 by convention and metric
-work reprojects explicitly — the database will not catch a violation, so the convention
-must be held in code.
+Canonical order is in `docs/CHECKPOINT.md` under "How to resume". Every step is a `loci` subcommand; there are no loose scripts.
 
-H3 res 9 over the NYC boundary, clipped to shoreline. Water-only hexes dropped; partial
-hexes retained with a `land_fraction` column used to normalize densities.
-
-### 4.2 Demographics onto hexes
-
-ACS tract variables → hexes via `tobler`, using **dasymetric** interpolation with PLUTO
-`UnitsRes` (residential units per tax lot) as the ancillary surface. Plain areal weighting
-would spread a tract's population uniformly across parks, rail yards and cemeteries; PLUTO
-tells us where the housing actually is. This is strictly better and cheap, because PLUTO is
-already being loaded for the zoning control.
-
-Extensive variables (counts) apportioned; intensive variables (median income) assigned by
-dominant-source weighting. ACS margins of error carried through, not discarded.
-
-### 4.3 Access scoring — the performance-critical decision
-
-**Do not compute ~7,400 isochrones.** For each of the 15 categories, run **one
-multi-source Dijkstra** on the OSMnx walk graph, seeded simultaneously from every POI in
-that category, cut off at the threshold distance. Every graph node within cutoff is
-"served" by that category.
-
-```
-for category in 15 categories:
-    dist = multi_source_dijkstra(walk_graph, sources=pois[category], cutoff=800m)
-    served_nodes[category] = set(dist.keys())
-```
-
-A hex's category access is then (a) the population-weighted share of its graph nodes that
-are served, and (b) the count of distinct POIs reachable from the hex's weighted centroid.
-
-**Persisted, as of 2026-09-02:** the primary access artifact is `analysis.hex_poi_distance`
-— one row per (hex, canonical business) pair within a 30-minute walk, with the network
-distance. `hex_access` (counts per hex, category and threshold) is *derived* from it in SQL,
-so any walk time, nearest-distance, spacing or coverage question is a query rather than a
-recompute. ~16.2M rows for NYC; `loci score` rebuilds it in about three minutes.
-
-**15 graph traversals instead of 7,400 isochrone computations.** Minutes, not hours, and
-it makes the 5/10/15-minute sensitivity sweep affordable (45 traversals total).
-
-### 4.4 Daily Needs Completeness Index (DNCI)
-
-Per category, a **saturating** score — the twelfth bodega is worth far less than the first:
-
-```
-s_c = 1 - exp(-n_c / k_c)
-```
-
-`k_c` is calibrated per category so that the first reachable establishment scores ≈0.55.
-Essentials get `k ≈ 1.25` (one grocery is nearly sufficient); restaurants get a higher `k`
-(one restaurant within a 10-minute walk is thin, not complete).
-
-Categories combine by **weighted geometric mean**, not arithmetic:
-
-```
-DNCI = Π (s_c + ε)^(w_c)        ε = 0.01
-```
-
-**This is the methodological crux of the project.** An arithmetic mean lets a hex with
-fifty restaurants and no grocery store, pharmacy or laundromat score well — which is
-precisely the failure mode the thesis exists to detect. Only the geometric form punishes
-zeros. A missing essential category should drag the whole index down, because in lived
-experience it does.
-
-`ε` prevents `log(0)` from annihilating the score entirely while preserving a severe
-penalty.
-
-### 4.4b Cross-source dedup (precision-first)
-
-The POI base unions several sources, so the same establishment recurs (a salon in
-Overture + NYS DOS + OSM). Counting duplicates inflates the DNCI wherever coverage
-overlaps — and overlap is denser in richer/better-mapped areas, so it biases the residual.
-
-Dedup runs **per category**: block candidates by H3 res-11 cell + neighbors, then merge any
-pair within 40 m whose **distinctive** name tokens match (category-generic words like
-"restaurant"/"pizza"/"nails" and corporate suffixes are stripped first — this both finds
-true twins named differently across sources and keeps "Kennedy Fried Chicken" apart from
-"Crown Fried Chicken"). One canonical per cluster, preferring the near-census anchor
-(DOHMH for food, NYS DOS for salons).
-
-**Deliberately precision-first.** In dense NYC blocks the *nearest* same-category POI is
-usually a genuinely different business next door, so proximity-only merging would fuse
-distinct establishments and **manufacture fake retail gaps — the one error this thesis must
-never make**. Merging therefore requires a name match; the cost is some missed true
-duplicates in dense areas, which the saturating DNCI (`1-exp(-n/k)`) largely absorbs — gaps,
-where the finding lives, are where sources agree and dedup matters least. Measured collapse:
-177,783 → 161,092 (9.4%); a spot-check of merged multi-source clusters showed no false merges.
-
-### 4.5 The supply model and the residual
-
-```
-DNCI_h = f(pop_density, median_hh_income, transit_access,
-           commercial_zoning_capacity, land_fraction, borough_FE) + u_h
-```
-
-`u_h` — the residual — is the signal. Strongly negative = **underserved relative to
-comparable places**.
-
-Commercial zoning capacity is non-negotiable in this specification. Without it, the
-bottom of the residual distribution fills with park edges, industrial zones and
-cemetery-adjacent blocks — places with no retail because retail is *not legal there* — and
-the top-20 list becomes indefensible on first inspection.
-
-**Spatial autocorrelation must be tested, not assumed away.** Compute Moran's I on `u_h`.
-If significant (it almost certainly will be), re-estimate with a spatial error/lag model
-(`pysal.spreg`) and report both. OLS standard errors on gridded urban data are otherwise
-wrong.
-
-**Opportunity Score** combines the residual with the capacity to act on it:
-
-```
-opportunity = (-u_h)⁺  ×  transit_access  ×  (ResidFAR - BuiltFAR)⁺
-```
-
-A hex must be underserved **and** transit-connected **and** have room to build.
-
-### 4.6 The panel test
-
-From LODES WAC, build annual per-hex retail employment 2002–2023 (block → hex via areal
-apportionment). Main specification:
-
-```
-Δy_{h, t0→t1} = β·u_{h,t0} + γ'X_{h,t0} + α_borough + ε_h
-```
-
-with `y ∈ {log population, log households, log ZORI, permitted residential units}`,
-t0 = 2013, t1 = 2023. **P2 predicts β < 0** (more negative residual → more growth).
-
-Three checks the result must survive:
-
-1. **Pre-trend test.** Estimate the same spec on 2003→2013. If `u_2013` also "predicts"
-   the *prior* decade's growth, the parallel-trends assumption is broken and the causal
-   reading is unavailable. Report it either way.
-2. **Placebo outcome.** An outcome with no plausible mechanism (e.g. change in share of
-   population aged 65+) should return a null. If it doesn't, the specification is picking
-   up something generic about neighborhood trajectory.
-3. **MAUP sweep.** Re-run at H3 res 8 and res 10. Report coefficient stability.
-
-### 4.7 Four layers
-
-Four layers. Loci's claims sort into four layers, and every new claim should say which one
-it belongs to. MODELED: computed from public data — gap score, supply ratio, character,
-recommendations, the forecast ledger's p_opening. REALIZED: observed in the world — the
-first-seen ledger, closures, filings lifecycle, chain snapshots, DOT counts. SCORED: where
-modeled meets realized on a schedule — retrodiction, recommendation fill checks, forecast
-outcomes. LEARNED: what survived a test against realized data and travels — FINDINGS.md,
-carrying capacity, portability, planner verdicts. The scoreboard, not any single map, is the
-compounding asset.
-
-Approved by the owner 2026-09-14; decision D95.
-
----
-
-## 5. Visualization plan
-
-Every view answers one named question. No chart without a question.
-
-| View | Question | Encoding | Tech |
+| # | Command | Module | What it does |
 |---|---|---|---|
-| H3 choropleth — **DNCI** | Where is the daily-needs bundle complete? | Sequential palette | MapLibre GL + **PMTiles** (static hosting, no server) |
-| H3 choropleth — **residual** | Where is it *worse than it should be*? | **Diverging** — zero is meaningful | same tileset, layer toggle |
-| **Bivariate: transit × residual** | Where do transit-rich and underserved overlap? | 3×3 bivariate palette | MapLibre |
-| **Top-20 opportunity table** | Which specific places? | ranked, linked to map | HTML, map-linked |
-| **Per-category radar, small multiples** | *What* is missing here — grocery, or salons? | 15-spoke radar per top hex | static SVG |
-| **Scatter: residual@t0 vs. growth t0→t1** | Does P2 hold? | fitted line + CI, borough-colored | static |
-| **Coverage-bias chart** | Does P3 hold? | POI undercount rate by income decile | static |
-| **4–6 neighborhood evidence cards** | Does the mechanism look real on the ground? | narrative + inset map + photo | HTML |
+| 1 | `street-frame` | `geo/` | Refreshes the street-midpoint sampling frame from CSCL (D84) |
+| 2 | `address-gaps` | `model/address_gaps.py` | Scores every MN+BK residential lot and street midpoint against per-category reach thresholds (D41). Continuous, no eligibility filter (D75) |
+| 3 | `address-demand`, `pipeline`, `storefronts`, `age-fit apply` | `address_demand.py`, `dev_pipeline.py`, `storefronts.py`, `age_fit.py` | Demand class, development pipeline, storefront vacancy, age curves |
+| 4 | `supply-ratio` | `supply_ratio.py` | Supply within 400 m network distance against the MN+BK baseline, per address and category (D73) |
+| 5 | `address-access`, `transit-profile`, `citibike address-measures`, `dot-counts` | `address_access.py`, `address_transit_profile.py`, `address_bike.py`, `address_dot_context.py` | Movement context. Card context only, never a grade input and never the supply-ratio denominator (D76, D111) |
+| 6 | `address-character build`, `address-legality build`, `storefront-pipeline openings` | `address_character.py`, `address_legality.py`, `storefront_pipeline.py` | Character label (D82); PLUTO zoning legality (D97, D104); filing lifecycle from seven feeds (D80) |
+| 7 | `revenue` | `revenue.py` | Site-revenue model. Restaurant is the only category that passes its backtest (D91) |
+| 8 | `recommend` | `recommend.py` | Evidence-graded card and allocator memo. Fail-closed: a card may not say *act* while any load-bearing claim is grade D (D74) |
+| 9 | `forecast issue` / `forecast score` | `forecast.py` | Dated p_opening vintages and their realized outcomes (D92, D96) |
+| 10 | `chains candidates / admit / auto-admit / render` | `chains/` | The 902-brand watchlist and its page (D109, D110, D113, D114) |
+| 11 | `ground-truth` | `ground_truth.py` | Supervised browser verification at named anchors. Scores and verifies; never a screen feature (C5, D105) |
+| 12 | `export-webmap` | `viz/webmap_export.py` | Publishes address state to the public map |
 
-**Palette rules:** sequential for DNCI; **diverging for the residual** (a zero residual is
-a real midpoint, not an arbitrary one); bivariate for the overlap map. Load the `dataviz`
-skill before writing any chart code.
+### 4.2 Definitions, and the three radii kept apart
 
-The coverage-bias chart is not optional and not an appendix item. If the finding survives
-it, that chart is the most persuasive thing in the deck.
+**The daily-needs bundle** is fifteen categories defined in `src/loci/categories.yaml`, the single source of truth for OSM, Overture, NAICS and licence mappings. Two are demoted from headline claims by owner ruling (2026-09-14, D30 precedent): `tailor_repair`, whose measured true-coverage-hole rate is 37.5% [31.1 to 44.4] **and a floor**, and `hair_barber`. New categories enter only through the fail-closed expansion checklist (GTM-112).
 
----
+**Walkable** is network distance along the pedestrian graph, never Euclidean. Straight-line buffers are wrong in NYC specifically: waterfronts, rail cuts, expressways and NYCHA superblocks create places where 300 m of separation is a 20-minute walk.
 
-## 6. Acceptance criteria
+**Three different radii are in play and must never be conflated.**
 
-The project succeeds if **all four** hold.
-
-**A. Statistically significant finding**
-- [ ] `β` in the §4.6 main spec is signed as P2 predicts, `p < 0.05`
-- [ ] Survives ≥3 robustness specifications (spatial error model, res 8/10, alternate t0)
-- [ ] Placebo outcome returns a null
-- [ ] Pre-trend test reported, and its implications stated honestly
-
-**B. Named, checkable predictions**
-- [ ] A top-20 ranked list of transit-rich, underserved hexes
-- [ ] It passes the owner's own local-knowledge gut check
-- [ ] It contains ≥3 genuine surprises — places not nameable in advance
-- [ ] It contains **zero** park edges, industrial zones or cemetery blocks (a zoning-control failure)
-- [ ] Each entry has a one-paragraph evidence card
-
-**C. Working reusable tool**
-- [ ] Fresh clone → `make nyc` → outputs in <30 min on a laptop
-- [ ] `src/loci/score/` contains no NYC-specific column names or assumptions
-- [ ] Pinned dependencies, documented data lineage, tests on the index math
-
-**D. Communicable artifact**
-- [ ] Public interactive map
-- [ ] Methodology memo a skeptic can attack and the owner can defend
-- [ ] 4–6 neighborhood evidence cards
-
----
-
-## 7. Threats to validity
-
-Ordered by how badly each could damage the finding. Do not soften these; the audience for
-this project is an investment reader, and an unlisted threat found by the reader is worth
-far less than a listed one.
-
-### 7.1 POI measurement bias correlated with the outcome — **CRITICAL**
-
-OSM and Overture undercount small businesses in lower-income and immigrant neighborhoods.
-Those are **precisely the areas the thesis flags as underserved**. If the undercount is
-strong there and weak in Park Slope, the project will *manufacture* its own finding: the
-"retail gap" will be a data gap wearing a costume.
-
-This single threat can invalidate everything. It is prediction P3.
-
-**Mitigation:**
-1. Stratified **Google Places validation sample** across income deciles — draw hexes at
-   random within each decile, enumerate ground truth, measure the undercount rate per
-   stratum. Budgeted, scheduled Week 4.
-2. Use **DOHMH restaurant inspections as an unbiased anchor.** It is a near-census of food
-   establishments, so within the food tier the true count is known. Calibrate the other
-   tiers' expected undercount against the OSM-vs-DOHMH discrepancy per hex.
-3. Report the undercount curve as a published chart (§5), whichever way it comes out.
-
-### 7.2 Reverse causality and endogeneity
-The residual formulation and temporal ordering *reduce* this; they do not eliminate it.
-Unobserved neighborhood trajectory could drive both retail supply and residential growth.
-No instrument is proposed within the 4-week scope (see §9). **State this plainly in the
-memo rather than implying a cleaner identification than exists.**
-
-### 7.3 Modifiable Areal Unit Problem (MAUP)
-Results can shift with hex resolution and grid offset. *Mitigation:* re-run at res 8 and
-res 10; report coefficient stability. If conclusions flip, say so.
-
-### 7.4 LODES is jobs, not establishments — and pre-2020 years are retro-allocated
-Two distinct problems, the second discovered 2026-09-01 and more serious than expected.
-
-**(a) Jobs, not storefronts.** Ten-employee supermarkets and one-employee laundromats are
-not comparable units. Census also applies noise infusion at block level. *Mitigation:*
-document the proxy explicitly; validate the 2023 LODES cross-section against 2023
-establishment counts from DOHMH/DCWP and report the correlation.
-
-**(b) Pre-2020 years were stochastically re-allocated into 2020 blocks.** LODES8 puts every
-year on 2020 blocks, which is convenient — but historical data got there by allocation, not
-by observation. Per the Census OnTheMap 2020 Geography method: when a 2010 block splits,
-each job is assigned to a child block **at random, with probability proportional to AREA
-share** — *"Fractional job counts are not allowed"* — and the doc states plainly that
-*"the allocation is a statistical process and may not result in a distribution of jobs that
-exactly matches the areal distribution."*
-
-Area-proportional allocation is a poor assumption in New York. A block that splits into a
-park half and a commercial-strip half has its jobs spread by area, placing employment in
-the park.
-
-**Why this is bias and not merely noise:** the error is concentrated where blocks were
-split, and blocks get split where development happened — which is the outcome variable.
-The measurement error is therefore correlated with the thing being predicted.
-
-*Mitigation:* H3 res 9 cells (~0.105 km²) are larger than most NYC census blocks, so
-aggregation absorbs much of the within-neighborhood allocation error. That is an argument,
-not a measurement — quantify the residual leakage across hex boundaries before trusting
-pre-2020 panel values, and consider restricting the strongest claims to 2020+ observed data
-with the earlier years as supporting evidence only.
-
-### 7.5 Survivorship bias in license data
-NYS DOS Appearance Enhancement is active-only. Never use it to construct openings/closings.
-Snapshot enrichment only.
-
-### 7.6 Zoning artifacts
-Mitigated by the PLUTO commercial-capacity control. **Verification:** manually inspect the
-top-20 list for park edges, industrial zones and cemeteries. Their presence means the
-control failed.
-
-### 7.7 Edge effects
-Hexes on the shoreline and at borough boundaries have artificially small reachable areas —
-half their walkshed is water. *Mitigation:* `land_fraction` normalization; extend the walk
-graph beyond the city boundary so New Jersey and Westchester businesses are reachable where
-they genuinely are.
-
-### 7.8 ACS margins of error
-Tract-level ACS estimates have wide MOEs, and they propagate through interpolation. Carry
-them; do not silently treat point estimates as exact.
-
----
-
-## 8. Phase plan
-
-Four weeks, focused. Each week ends in something demoable — the schedule is designed so
-that abandoning the project at any week boundary still leaves a usable artifact.
-
-| Week | Work | Ships |
+| Radius | Where it applies | Source |
 |---|---|---|
-| **W1 — Ingest + grid** | DuckDB initialized; Overture, FSQ, DOHMH, DCWP, DOS loaded; H3 grid built and clipped; ACS dasymetrically interpolated; PLUTO + MTA loaded | Queryable database; first crude POI-density map |
-| **W2 — Access engine** | OSMnx walk graph; multi-source Dijkstra scoring; `k_c` calibration; DNCI at 5/10/15 min | **The DNCI map** — first genuinely interesting artifact |
-| **W3 — Residual + panel** | Zoning/transit controls; supply model; Moran's I + spatial model; LODES annual panel 2002–2023; growth regression; pre-trend and placebo | The empirical result and the top-20 list |
-| **W4 — Artifact** | Google validation sample and coverage-bias chart; PMTiles export; charts; evidence cards; methodology memo; packaging | **The public artifact** |
+| **320 to 1200 m**, per category | The screen's reach thresholds and the gap flag. 400 m applies to 4 of the 15 categories | `src/loci/reach_tiers.yaml` (D41); candidate tier set 400 / 800 / 1200 |
+| **400 m network** | The supply-ratio CLI default, and the catchment every card quotes | D73 |
+| **649 m straight-line disc** | The Google coverage audit only. Google Nearby Search accepts a circle, so the disc radius is derived as the 800 m network threshold divided by NYC's measured 1.233 circuity | D53, `reach_tiers.yaml` validation block |
 
-**Phase 5 — deferred (post-week-4)**
-- DCWP license issue/expiry establishment-level panel reconstruction
-- Second-city generalization: extract `sources/universal/` behind a stable interface,
-  run `loci run --city chicago`
-- Foot-traffic outcome, if budget headroom is spent
+D90's 7.6% hole rate, the whole answer to §9.1, was measured at the 649 m disc approximating an **800 m** network threshold. It is not a validation of the 400 m readings the cards print. See §9.12.
 
----
+**The spatial unit is the address**, a residential tax lot or a street midpoint. Hexes are frozen history (D38, D56). **The study period is the present**, plus the dated ledgers of §4.5's REALIZED layer. There is no growth panel in the live pipeline.
 
-## 9. Open questions and deferred decisions
+### 4.3 Access scoring
 
-> This table holds *decisions* still to be made. The project's **research questions** — what
-> it is trying to find out, tiered by rigor and mapped to tickets — live in
-> [`docs/QUESTIONS.md`](QUESTIONS.md), together with the pre-build homework list.
+One multi-source Dijkstra per category on the walk graph, seeded from every POI in that category and cut off at the threshold. The persisted artifact is one row per (point, canonical business) pair within reach with its network distance, so walk-time, nearest-distance, spacing and coverage questions are queries, not recomputes. Fifteen traversals, not one isochrone per point. `src/loci/score/access.py`, `README.md:49`.
 
-| # | Question | Current position | Decide by |
-|---|---|---|---|
-| 1 | **Tier weights** (0.40 / 0.20 / 0.25 / 0.15) are judgment, not derived. | Stated explicitly so a reader can disagree precisely. Run sensitivity across plausible weightings and report whether the top-20 is stable. | W3 |
-| 2 | **`k_c` calibration** per category | Anchor at "first establishment ≈ 0.55", tune essentials tighter than food. Revisit against observed count distributions. | W2 |
-| 3 | **Staten Island inclusion.** Low density and car-oriented; may act as leverage in the supply model. | Include, but check Cook's distance; report with and without. | W1 |
-| 4 | **ZORI ZIP → hex crosswalk.** ZIP is much coarser than hex. | Population-weighted apportionment; treat rent as the weakest of the four outcomes and say so. | W3 |
-| 5 | **LODES block vintage.** | **RESOLVED 2026-09-01 — no crosswalk needed.** LODES8 tech doc §Geography Vintage: *"The data are enumerated with 2020 census blocks. LODES Version 7 and 6 used 2010 census blocks."* All 22 NY vintages (2002–2023) confirmed present. Corroborated empirically: 5,328 of 5,334 tracts present in the 2002 file are also in 2023. **But see the new caveat in §7.4 — historical years were retro-allocated, and that allocation is not innocent.** | settled |
-| 6 | **DCWP dataset freshness.** | **RESOLVED 2026-09-01 — not stale** (rowsUpdatedAt 2026-08-20). But a bigger problem surfaced: DCWP has no consumer laundromats at all (active "Laundries" = 0; only industrial linen suppliers), so it contributes nothing to the bundle regardless of freshness. Laundromats come from OSM/Overture. | settled |
-| 7 | **No instrument for §7.2.** | Out of scope at 4 weeks. Candidate for Phase 5: historic zoning changes or L-train-shutdown-style shocks as quasi-experimental variation. | Phase 5 |
-| 8 | **PostGIS vs. DuckDB.** At ~7,400 hexes and ~400k POIs the workload fits comfortably in DuckDB. | **Settled: DuckDB.** Originally PostGIS for a hypothetical service path, but the only available image ran emulated (amd64 on arm64) and the service path is speculative. DuckDB removes the container, the daemon and the emulation penalty, and its `spatial` + community `h3` extensions cover every operation the method needs. Revisit only if Loci genuinely becomes a service. | settled 2026-09-01 |
+### 4.4 Cross-source dedup
+
+The POI base unions several sources, so establishments recur, and overlap is denser where mapping is better. Dedup blocks candidates by cell and neighbours, then merges pairs within 40 m whose distinctive name tokens match, category-generic words and corporate suffixes stripped first. It is deliberately precision-first: in dense NYC blocks the nearest same-category POI is usually a different business next door, so proximity-only merging would manufacture fake retail gaps, the one error this instrument must never make. Cross-category dedup runs first as one global union-find, then per-category (D101: 12,928 merges, clusters down 3.7%). `src/loci/score/dedup.py`.
+
+### 4.5 The four layers
+
+*Carried unchanged from v1 §4.7. Approved by the owner 2026-09-14; decision D95.*
+
+Four layers. Loci's claims sort into four layers, and every new claim should say which one it belongs to. MODELED: computed from public data, gap score, supply ratio, character, recommendations, the forecast ledger's p_opening. REALIZED: observed in the world, the first-seen ledger, closures, filings lifecycle, chain snapshots, DOT counts. SCORED: where modeled meets realized on a schedule, retrodiction, recommendation fill checks, forecast outcomes. LEARNED: what survived a test against realized data and travels, FINDINGS.md, carrying capacity, portability, planner verdicts. The scoreboard, not any single map, is the compounding asset.
+
+### 4.6 Data sources
+
+`src/loci/registry.yaml` is the machine-readable registry, drift-checked by `make check`: **44 sources classed**, universal 7, national 10, state 6, city open data 15, city-unique 6. Per-source geography, temporal coverage, refresh, cost, licence, portability and known bias live there, not here, so the drift check can catch an error. The post-raise wishlist generates separately into `docs/PAID-SOURCES.md` (D86: 35 sources, $301,565/yr, none of it spend today).
+
+Everything in the live set is free except Google Places. The call ledger stands at **8,963 of 9,113**; the D90 coverage validation alone was **5,985 calls, about $190**, against a stated budget of $100 to $500.
 
 ---
 
-## 10. Architecture note — portability
+## 5. Binding constraints
 
-The project is **NYC-first**: NYC-only sources (DOHMH, DCWP, NYS DOS, PLUTO, MTA) are used
-because they are the best data available and defensibility is the priority.
+Owner rulings and standing engineering rules. A session that wants to reverse one asks the owner; it does not reverse it in code.
 
-But "NYC-first" is a data decision, not a code decision. To keep the v2 generalization
-reachable:
-
-- City-specific loaders live **only** in `src/loci/sources/cities/nyc/` behind a common
-  adapter interface.
-- Nationally-available sources live in `src/loci/sources/universal/` (Overture, LODES, ACS,
-  OSM network, GTFS, Zillow).
-- **`src/loci/score/` and `src/loci/model/` contain no NYC-specific column names or assumptions.**
-  They consume the normalized schema, not raw source columns.
-
-This costs roughly half a day now. Without it, the "generalize later" refactor is the one
-that never happens.
+| # | Constraint | Owner's words | Date | Decision |
+|---|---|---|---|---|
+| C1 | The unit of analysis is the address. No hex work. | "why do we keep talking about hexes?????" then "do it, no more hex work" | 2026-09-09 | D38, D56 |
+| C2 | No eligibility gate. Every address stays in the universe. | "I 100% vehemently disagree with 'which addresses count at all'. If an address is truly in a super underdeveloped area, this would completely not count it." | 2026-09-13 | D75 |
+| C3 | Two or more POIs at one address trigger a closure check before either is counted. | "any time we have 2 businesses in the same address, we should do a check if one of them closed down" | 2026-09-14 | D94 |
+| C4 | The screen ranks retail streets, not unmet demand. No decision-value claim in any deliverable until §3.1's gate passes. A card may say *act* in the D74 sense of **worth hand-diligence**; it may never say an opening is likely to survive. | | 2026-09-14 | D88, D74 |
+| C5 | `analysis.address_observation` verifies and scores. It may never be a feature in the screen. | | 2026-09-14 | D105 |
+| C6 | Screen scope is Manhattan and Brooklyn. | | 2026-09-12 | D78 |
+| C7 | Inventory before adding a table. Pivots and subsets are views; a new measure extends the grain. | | 2026-09-11 | D61 (34 objects to 26) |
+| C8 | Spend budgets enforced in code, with call ledgers and a `--dry-run` path on anything that costs money or writes externally. | | 2026-09-13 | D86 |
+| C9 | Supply-hash freeze discipline. A `poi_status`-changing write moves the shared hash; announce to peers first, and a declared "final" hash is a freeze. A new `sql/*.sql` is itself a hash-moving event. | | 2026-09-15 | D106 |
+| C10 | The canonical order is re-baselined as one pass, currently on supply `ba944e18c57b`. | | 2026-09-15 | D112 |
+| C11 | The supply hash proved clock-dependent and is pinned to a stored as-of in `analysis.supply_asof` (2026-09-15). `loci supply-asof advance` is itself a hash-moving event: announce it, then run the canonical order behind it. | | 2026-09-16 | D115 |
+| C12 | Every question to the owner goes through buttons, not prose. | | 2026-09-14 | operating rule |
 
 ---
 
-## 11. Premium amenities — the destination-amenity axis (Axis 3)
+## 6. Validation gates and their latest results
 
-*Added 2026-09-02 at the owner's request. This is a third analytical axis, parallel to
-Axis 1 (Investability, `model/invest.py`) and Axis 2 (Rising trajectory, `model/rising.py`),
-and like them it is **not** a return to the rejected residual-growth thesis (§0 / D1).*
+"Licenses" is what the result permits Loci to say. "Does not license" is the sentence a reader will try to infer and must not.
 
-### 11.1 The question
+| Gate | Test | Result | Licenses | Does not license | Decision |
+|---|---|---|---|---|---|
+| Coverage bias (P3) | Stratified Google Places sample on the address frame, 5,633 rows, 137 strata, 649 m disc, missing arm vs present control | 7.6% [6.5 to 8.8] of MN+BK MISSING flags are real coverage holes, about 40k of 523k; no income gradient distinguishable from zero | The gap is mostly real, not a data hole, **at an 800 m network threshold** | Bias-free measurement; validity at 400 m; `tailor_repair` and `hair_barber` demoted; fitness's apparent 35.6% hole rate was a type-map defect | D90 |
+| Retrodiction, entry | Frozen 2023-01-01 screen ranking 12,572 dated 2023 to 2024 openings out of sample, NTA-blocked folds | AUC 0.866 [0.851, 0.881] vs 0.854 without the score; supply coefficient +1.17 [0.87, 1.47] after NTA fixed effects and conditioning on other-category supply | Cost of search | Decision value. The sign is agglomeration, not undersupply | D88 |
+| Retrodiction, per category | Own-category **gap** coefficients, Bonferroni-corrected | Restaurant −0.89 [−1.44, −0.33], p = 0.0018, the only one to survive: no restaurant within 400 m predicted fewer restaurant openings | Nothing positive | Any reading of a thin category as latent demand | D88 |
+| Legality vs herding | Planner's challenge that the lift is merely zoning | Legality sets the level (16% of addresses with no commercially zoned lot within 400 m saw a same-category opening vs 72% on a 20-lot commercial block) but absorbs 0.0002 of the +0.0126 AUC lift; other-category retail density absorbs about 48%. Own-category coefficient net of legality +1.18 [0.88, 1.49] | That the screen ranks inside the legal retail set | That its marginal information is unmet demand | D92 |
+| Survival, LL157 go-dark | Registry go-dark, strict n = 12,713 / 1,074 events | AUC 0.549 vs 0.535; sign flips with the outcome definition | Nothing | Any survival or viability claim | D88 |
+| Ground truth | Supervised browser check at recommendation anchors | 19 anchors: 12 supply_missed, 7 confirmed_gap, 103 observations, 5 warehouse POIs found permanently closed. Caveats: convenience at 410 m and laundry at 405 m sit inside measurement error of the 400 m cutoff, and 4 East 8th's 0.00x proved a status-coverage hole, not a gap | A P3 falsifier at named anchors | Catchment-wide validity at n = 19, or model integration | D107 |
+| Age fit | F2 gate per category | bar and childcare carry curves; pharmacy was fitted and refused at every re-fit; **twelve categories have no curve at all** | Two demand curves | A demand curve anywhere else | D69, D71, D106, D112 |
+| Revenue | Leave-one-ZIP-out backtest against baselines and a placebo | restaurant passes, ρ 0.82, v0.2 on supply `467cd5969200` at ε 0.6 → 0.4 (D91, commits 44fca62, e61c239); café passes only at ε = 0, which is the degenerate fit; nine categories fail placebo or baselines | A grade-C restaurant revenue band | Any revenue number outside restaurant. Economics is grade C restaurant, D elsewhere | D81, D91 |
+| Forecast ledger | Dated p_opening vintages scored at 12 months | 2023-01 vintage AUC 0.899 vs 0.860 without the score | One scored data point | A track record. The 2026-09 live vintage scores 2027-09 | D92, D96 |
+| Citi Bike activity growth | Pre-registered delta-AUC on two vintages against a +0.005 floor | −0.0004 (2023-01), +0.0000 (2025-01) | Context only | Any score, grade or ranking input | D111 |
+| Operator prediction | Pre-registered rent and revenue bands sent to real operators | First scored datum 2026-09-16: El Punto rent $4,000/mo, a **hit** on the pre-registered $3,500 to $6,500 (central $4,800, log error 0.18). Sales, staff and orders still unanswered | One rent-band hit | A revenue result. The revenue half is unanswered | D91, D117 |
 
-Where in NYC could a **premium, destination amenity** open and be underserved today —
-starting with **padel courts** and **spa / wellness studios**? The owner's premise: people
-will travel materially longer for these than for daily needs, *and there is still
-opportunity* — i.e. real catchments of qualifying demand with no nearby supply.
+---
 
-### 11.2 Why this inverts the daily-needs gap screen (do not reuse it)
+## 7. Acceptance criteria
 
-The daily-needs bundle (§2.1) and the present-day gap screen work because those are
-**convenience goods**: consumed often, near-zero willingness to travel, so the relevant
-geography is the 800 m walk and a category counts as a conspicuous gap when it is present in
-≥80% of walkable peers yet absent here. Premium amenities behave oppositely on both axes:
+Each states how it resolves and by when. Four of the six resolve on an outcome with a deadline (AC-1, AC-3, AC-5, AC-6).
 
-| | Daily needs | Premium amenities |
+### AC-1. The Gowanus bathhouse: admit the category, then pre-register the decision
+
+The owner is bullish that Gowanus needs a bathhouse. Under the take-it-first ruling this is the project's first acceptance criterion. It is deliberately a case Loci cannot currently measure, and the first resolvable step is fixing that.
+
+**Step 1, and the first checkpoint: admit `bathhouse_sauna` through the GTM-112 fail-closed category-expansion checklist.** Owner ruling 2026-09-16. The checklist's own pass or fail is the checkpoint: a named anchor source, a coverage-validation plan, a reach tier, and a Google type map. If the checklist fails, AC-1 resolves as "not measurable by Loci" and the question moves to hand analysis, which is a real resolution. A category that appears in `categories.yaml` without passing the checklist does not resolve anything.
+
+**Why the warehouse holds nothing today.**
+
+1. No bathhouse category exists. `day_spa` and `health_spa` appear only as Overture sub-tags inside `nails_beauty` (`src/loci/categories.yaml:169-170`), so a bathhouse that appears at all is counted as a nail or beauty POI.
+2. The pipeline is structurally blind to it. GTM-192 found that of 40,691 one-or-two-location brand keys in MN+BK, all 22 with a not-yet-open filing enter at `liquor_application`: the pool is food-and-drink by construction, and **no gym, spa or padel club can appear in it at any threshold**.
+3. The one bathhouse row in the repo is unchecked. `docs/CHAINS.md:355` carries the Bathhouse chain under `loci_category` restaurant, 5 locations, 2 new in 12 months, `sales_role: prospect`, `confidence: auto`, `decided_on` 2026-09-15. It sits under "Auto-admitted this snapshot (nobody has looked yet)". `decided_on` is not a verification date.
+4. The D110 retrospective shows what the feeds can and cannot see for exactly this brand: Bathhouse's second site (Flatiron) was **invisible**, because every filing feed except DOHMH begins 2024-09-13 and press hits span 45 days; the third site (540 Atlantic Ave) **was** visible 86 days ahead through the SLA pending application, dated 2026-02-04 against a 2026-05-01 activation. The tier-3 `watch` row was designed for this case. Mink Padel, West Harlem, has zero rows anywhere.
+5. A bathhouse is a destination amenity, not a daily need. The prevalence-gap screen works because daily needs are consumed often with near-zero willingness to travel. Applied to a category almost nowhere has, it flags the whole city. The right instrument is the trade-area method in Appendix A8.
+6. C4 applies regardless. Even a correct thinness reading is not a viability statement.
+
+**What Loci can say about Gowanus today**, from the card of record, `docs/recommendations/gowanus-core-2026-09-13.md`, 1,831 addresses, supply hash `767b28674e30`:
+
+| Fact | Value |
+|---|---|
+| Categories at or above the MN+BK baseline | **8 of 15** (9 of 15 on the 2026-09-11 card; the difference is bank, see below) |
+| Thinnest | pharmacy 0.00x, **tailor_repair 0.00x** (headline-demoted, 37.5% hole-rate floor, so read as unmeasured rather than thin), convenience 0.41x, hardware 0.78x |
+| Verdict "do not act on this data" | 12 of 15, every one set by economics |
+| Verdict "diligence" | 3: tailor_repair, hardware, restaurant |
+| Homes within 400 m, median address | 3,646 |
+| 18 to 34 share / renter share | 24.6% / 62.4% |
+
+**Unreconciled, do not quote either value.** Bank reads **1.97x** on the 2026-09-11 card and **0.67x** on the 2026-09-13 card, on the same 1,831 addresses and the same supply hash `767b28674e30`; restaurant flips D to C in the same window and median household income moves 1.94x to 1.93x. No decision entry explains a three-fold move on a frozen hash. Both cards are cited; neither bank figure may be printed in a deliverable until a CHECKPOINT decision reconciles them.
+
+**Step 2, at t0 plus two weeks: a hand-built trade-area sheet**, so the criterion says something to the owner now rather than in a year. Built by the Appendix A8 method, not the daily-needs screen: a stated travel-time catchment around one named Gowanus address, a hand enumeration of bathhouse, sauna and banya supply reachable inside it, a premium demand pool over that catchment, a floorplate and zoning feasibility gate from PLUTO, the ranking swept at 10 / 15 / 20 / 30 minutes, and the three A8 threats answered explicitly.
+
+**Step 3: the pre-registration.** Registered in the recommendation ledger, dated and frozen before any lease or build decision.
+
+| Field | Registered at t0 |
+|---|---|
+| Site | One named Gowanus address |
+| Supply at t0 | Hand enumeration under `docs/ground-truth-protocol.md`, since no Loci layer holds it |
+| Baseline | The citywide rate of new bathhouse, sauna and banya openings per catchment-year, enumerated by hand at t0. Every §6 row carries a "vs"; this is AC-1's |
+| Prediction A | Number of new such venues opening inside the catchment within 12 months, and whether that **beats the baseline**. Predicting zero against a near-zero base rate resolves nothing |
+| Prediction B | The owner's own operator diligence (rent, fit-out, licensing) confirms or contradicts the desk reading |
+
+Rent comparables are hand-pulled. The restaurant revenue model is not used: §6 says it licenses no revenue number outside restaurant, and labelling an output an analogy does not make it a measurement.
+
+**Resolution.** At t0 plus 12 months, re-enumerate under the same protocol, record it as an `address_observation` session, and write the outcome into the ledger whichever way it lands. AC-1 resolves on the **outcome against the baseline**, not on having filed the registration. **It does not decide whether the owner should build a bathhouse.** It decides whether Loci's method, extended to a category it does not currently carry, produces a statement that beats a base rate over twelve months.
+
+### AC-2. External customer conversations, with written outcomes and a consequence
+
+Three conversations: one tenant-rep broker, one lender or feasibility shop, one 3 to 30-unit operator (`docs/GTM.md:148`). Each produces a dated written record in `docs/` naming what was shown, what was asked, what price was named, and what the person said they would pay for. **Deadline 2026-12-31.** Secondary to AC-1 under the take-it-first ruling.
+
+**Consequence branch, the twin of §3.1's stop rule.** If all three decline to pay at any price, the "help someone fill it" mode is closed for the segments tested, this charter records that, and `docs/GTM.md` §4's ICP ranking is retired rather than re-ranked. Three written no's is a result, not a null session.
+
+### AC-3. A survival or viability label, or the stop rule fires
+
+Either a label clears one of §3.1's three pre-registered floors on its named date, or on **2027-07-01** the stop rule fires and this charter amends itself to say Loci claims cost of search until a new closure source is admitted with its own floor and date. Both branches resolve AC-3; silence does not.
+
+### AC-4. A card reaching *act* with economics above grade D
+
+*Act* means **worth hand-diligence**, never *likely to survive* (C4). The governing rule is D74's fail-closed one: a card may not say *act* while any load-bearing claim is grade D.
+
+The first full allocator memo already renders at **grade C**, on Gowanus-core hardware, `docs/recommendations/3004260001-2026-09-16.md` (D115, GTM-172 Done); the other three 2026-09-16 reports grade D with lead category convenience. So AC-4 is no longer "reach C"; it is **reach a state where economics is not the binding grade**. Today economics is grade C for restaurant only and D everywhere else, and the portability audit says an *act* grade needs a paid economics input in every city including NYC (D93).
+
+Resolves when a card carries economics at C or better for a non-restaurant category, generated from a purchased or operator-supplied input rather than a model prior. **Deadline 2027-03-31**, tied to the P1 economics buy. The path from C to B is real P&Ls, collected under `docs/recommendations/predictions/`.
+
+### AC-5. A forecast track record, and what it does not buy
+
+Three consecutive scored vintages whose AUC beats the same model without the score. One is scored (2023-01, 0.899 vs 0.860); the 2026-09 live vintage scores 2027-09. Resolves 2027-09 at the earliest and fails if any of the three misses.
+
+**Stated plainly: passing AC-5 alone re-proves D88.** Entry AUC measures where the market acted, not whether acting was right. AC-5 is a test of the instrument's ranking stability. It does not upgrade cost of search to decision value; only AC-3 can.
+
+### AC-6. The operator predictions answered
+
+The Lion's Milk and El Punto revenue pre-registrations (D91) resolve against the operators' real numbers. One datum is in: El Punto rent $4,000/mo, a hit on the pre-registered $3,500 to $6,500 (D117). Sales, staff and order counts are outstanding. **Deadline 2026-12-31**, after which unanswered questions resolve as **unanswered** and are recorded as such, which closes the criterion rather than leaving it open.
+
+---
+
+## 8. Non-identifications and closed dead ends
+
+Do not relitigate these.
+
+| Dead end | What was found | Decision |
 |---|---|---|
-| Trip frequency | daily / weekly | occasional |
-| Willingness to travel | ~800 m walk | 15–30 min drive or transit |
-| Prevalence | common (the screen needs ≥80%) | **rare by nature** |
-| Right geography | walkable hex | **travel-time catchment / trade area** |
-| Right screen | missing what peers have | **demand pool minus supply, over the catchment** |
-
-A prevalence-gap screen applied to padel would flag almost the whole city and mean nothing,
-because almost nowhere has one. So Axis 3 uses a **classic trade-area / gravity
-site-selection model** instead: find a travel-time catchment with enough *qualifying premium
-demand* but little or no supply reachable inside it, and a feasible large-format site.
-
-### 11.3 Method sketch
-
-1. **Bundle** (judgment, tunable — a `PREMIUM` dict mirroring `invest.py`'s `ECON`): padel and
-   spa/day-spa as the named anchors, extended to the destination-amenity family that shares
-   the travel-for-it behavior — med-spa, pilates/reformer, boutique fitness/boxing, climbing
-   gym, bathhouse/sauna, golf & sports simulator. Each kept as its own category (catchment,
-   demand target and site footprint all differ).
-2. **Supply** — a new POI layer outside the 15: OSM (`sport=padel`, `leisure=spa`,
-   `sport=climbing`…), Foursquare leaves (Spa, Pilates Studio, Climbing Gym…), Google for
-   ground truth. **Google validation is load-bearing here, not optional** — padel barely
-   existed before 2022 and studios open fast, so the snapshot undercount is severe and
-   uneven; a padel "gap" is more likely a data gap than a daily-needs gap is (§7.1, worse).
-3. **Demand** — a *premium demand pool*, not raw population: population weighted toward top
-   income deciles, the category's target age band, and college share (already computed in
-   `model/momentum.py`, corr 0.72 with income — D20). Per-category demand target.
-4. **Catchment** — per-amenity **drive-time ∪ transit-time isochrones** (default 15 min),
-   the load-bearing choice. Willingness-to-travel is assumed, not measured, so sweep
-   10/15/20/30 min and report how the ranking moves — the sensitivity is the honesty.
-5. **Feasibility** — the `invest.py` gate re-tuned for large formats: lot size + floorplate +
-   a zoning district permitting commercial recreation / personal-service, plus
-   vacancy/industrial-conversion candidates. A padel court needs ~1,000+ m² and height, not a
-   ground-floor retail bay. Without this the screen recommends sites that physically or
-   legally cannot host the use — the §7.6 zoning-artifact failure in a new costume.
-6. **Deliverable** — `opportunity = qualifying demand in catchment − supply reachable in
-   catchment`, gated on a feasible site, ranked per amenity; and a map layer **"Where could a
-   padel court / spa go?"** — catchments shaded by unmet premium demand, feasible sites pinned.
-
-### 11.4 Axis-specific threats
-
-- **Supply undercount is worse than §7.1**, and concentrated in the newest categories. Every
-  top site must survive Google + a manual web check or it is presumed a data gap.
-- **Willingness-to-travel is assumed.** The catchment radius is the biggest single lever;
-  report every ranking under the travel-time sweep, never a single radius.
-- **Demand ≠ income alone.** Matching the demographic to the specific amenity (padel: affluent,
-  athletic, 25–44; med-spa: affluent women 30–55) is judgment and must be stated per category.
-- **Chain pipeline.** A "gap" may already be under LOI by a national operator (Life Time,
-  Equinox, Padel Haus…). Outside the data; flagged as manual diligence per top pick.
+| Retail gap causes residential growth | β = +0.069 (p = 4.7e-16), wrong-signed; pre-trend broken (β = +0.27); placebo clean | D1 |
+| A thin category as latent demand | Restaurant own-category gap −0.89 [−1.44, −0.33], p = 0.0018, Bonferroni-surviving: no restaurant within 400 m predicted fewer openings | D88 |
+| Business-level survival from open data | Not identified. Foursquare ascertains ~3% of closures; LL157 go-dark is a null; KM and Cox refused against a 48-event floor | D88 |
+| Hexes as the spatial unit | Replaced by the address; hex tables are frozen history | D38, D56 |
+| An eligibility gate on which addresses count | Removed by owner ruling | D75 |
+| Citi Bike activity growth as a feature | delta-AUC null against a pre-registered +0.005 floor | D111 |
+| Pharmacy age fit | Refused on its F2 gate at every re-fit | D69, D71, D106, D112 |
+| Foot traffic and transit levels as a score input | Card context only; 65% of Brooklyn addresses read zero transit entries | D76 |
+| DOT camera sidewalk counts screen-wide | Shortlist verification only | D85 |
+| Headroom backtest | No predictive power | D68, superseded by D70 |
+| Chains and franchisors as a paying segment | They buy models calibrated on their own P&Ls | `docs/GTM.md:72` |
+| DNCI as the headline index | Superseded by the per-address reach ratio, supply ratio and graded cards | D41, D74 |
+| Premium categories via government filings | All 22 not-yet-open filings enter at `liquor_application`; no gym, spa or padel club can appear at any threshold | GTM-192, D110 |
 
 ---
 
-## 12. Maturity curve and 2033 projection (Axis 4)
+## 9. Threats to validity
 
-*Added 2026-09-02 at the owner's request: (1) where is each neighborhood on its maturity curve,
-and (2) where could growth get to by 2033, and how would we project it. This is the **forward
-extension of Axis 2 (Rising)**.*
+### 9.1 POI measurement bias correlated with the finding
+OSM and Overture undercount small businesses in lower-income and immigrant neighbourhoods, which are areas the screen flags. Now **tested rather than feared**: D90 puts the true-hole rate at 7.6% [6.5 to 8.8] with no detectable income gradient. Reduced, not removed, and measured at a different radius than the cards print (§9.12). The anchors that keep it reduced (DOHMH, NYS DOS, SNAP, DCWP laundry inspections, DOHMH child care, Medicaid pharmacy) are why it survived; any new category without an anchor reopens it.
 
-### 12.1 Reconcile with §0 first — this is not the rejected thesis
+### 9.2 Reverse causality
+Supply thinness and site quality are confounded. Now **measured rather than assumed**: it is what D88 found, and it is why the claim stops at cost of search. §3.1 is the only route past it.
 
-The project's central result (§0 / D1) is that **"the retail gap at t0 predicts subsequent
-residential growth"** failed: β was wrong-signed (+0.069), and the pre-trend test broke parallel
-trends. That causal arrow — *retail undersupply causes growth* — stays **dead**, and this axis
-never uses the retail residual as a growth predictor.
+### 9.3 Revealed supply is not correct provision
+The baseline is what NYC has. 1.0x is normal for this city, never correctly provisioned, and under-provision is correlated with race net of income (Meltzer and Schuetz). Every card carries this and must keep carrying it.
 
-What is being asked is a **different** thing, and it is legitimate:
+### 9.4 Self-reported and enforcement-driven sources
+LL157 is self-reported and non-filing is invisible, so no vacancy near an address and nobody near it filing are the same observation; Tax Class 1 is 0.27% of MN+BK filings, so the rowhouse-base corner store is under-covered. DCWP laundry inspections are enforcement-driven, so a never-inspected establishment is indistinguishable from a real gap.
 
-- **Maturity (descriptive).** Locate each neighborhood on a development S-curve *from its own
-  observed multi-metric history* — income, college share, rent, permits, jobs. This is a
-  positioning statement about the present, not a causal claim.
-- **Projection (extrapolative).** Extend that trajectory to 2033. The very pre-trend finding that
-  sank the causal thesis — *these neighborhoods are on a development cycle* — is what **licenses
-  extrapolation**: a place already moving along the frontier tends to keep moving. That is
-  forecasting from momentum, not inferring causation from a gap.
+### 9.5 Survivorship in licence data
+NYS DOS Appearance Enhancement is active-only; closed salons are absent entirely. Snapshot enrichment only, never a panel input.
 
-The discipline that keeps this honest is threefold: (a) the retail signal is the **dependent**
-read, re-scored against projected demand at the very end, never an input to the projection; (b) the
-output is **scenario bands**, never a point forecast, because trajectories bend (D21 already caught
-East New York rents cooling to +1.9%/yr post-2022); (c) it ships as a forecast **only if it passes
-a backtest** (§12.4).
+### 9.6 Zoning artifacts
+Mitigated by the address-level legality build from PLUTO (D97, D104), which replaced v1's manual top-20 inspection. If legality is wrong, the screen recommends sites that cannot legally host the use.
 
-### 12.2 The maturity curve
+### 9.7 Co-located POIs double counted
+Two POIs at one address may be one business and one closure. `poi_is_open` and `analysis.poi_colocation` remove evidenced-closed POIs (2,982, 2.13%) and flag unresolved pairs rather than collapsing them. Whether they should collapse is open (QUESTIONS D24).
 
-Stage is defined by **level *and* rate *and* acceleration** (1st and 2nd derivative) of the panel
-metrics — not level alone. That distinction is the whole point: it is what separates a maturity
-model from a static wealth map. A high-income but *decelerating* neighborhood is *maturing*;
-high-income and still *accelerating* is *rising*.
+### 9.8 Edge effects
+Shoreline and borough-boundary addresses have artificially small reachable areas. The walk graph extends past the city boundary so out-of-city businesses are reachable where they genuinely are.
 
-| Stage | Signature | NYC exemplar (from D20/D21) |
+### 9.9 ACS margins of error
+Wide at tract level and they propagate. Carried, not discarded. Share MOEs can exceed 1 on near-empty denominators, so gate on population before filtering on any MOE.
+
+### 9.10 Redistribution and terms of service
+StreetEasy content is internal-analysis-only. DOT camera frames, Google Places calls and Tavily enrichment were acquired under internal-use terms; Citi Bike carries attribution conditions. One pass over every redistribution clause before a paid deliverable leaves the building (`docs/GTM.md:138`).
+
+### 9.11 Single-operator delivery
+Every deliverable routes through one person's judgment and calendar. An asset and a concentration risk at once.
+
+### 9.12 Radius choice is the live MAUP
+v1 listed hex resolution as the modifiable-areal-unit threat. The hexes are gone; the radius replaced them. Three radii are in play (§4.2), the cards are read at 400 m, the coverage audit validated an 800 m network threshold through a 649 m disc, and **no 800 to 400 m sensitivity sweep has been run**. Two of D107's seven confirmed gaps sat at 405 m and 410 m, inside measurement error of the cutoff, which is what this threat looks like in practice. Until a sweep exists, treat any count that moves across 400 m as unverified.
+
+---
+
+## 10. Open questions
+
+The full tiered set is in `docs/QUESTIONS.md`; these are the ones a session should know without opening it.
+
+| # | Question | Tracked as |
 |---|---|---|
-| Pre-frontier / dormant | low level, flat momentum, no pipeline | deep outer-borough |
-| **Emerging** | income accelerating, college still low, first permits | **East New York** (+42% income, college only 9→14%) |
-| **Rising** | income + college both climbing fast, rent + permit boom | Crown Heights / Ocean Hill recently |
-| **Maturing** | high level, growth decelerating | Williamsburg now |
-| **Mature / saturated** | high level, flat or declining | the 5 rich Manhattan NTAs in real decline |
+| 1 | Does `bathhouse_sauna` pass the GTM-112 checklist, or is the owner's question outside Loci? | AC-1 |
+| 2 | Why does Gowanus bank read 1.97x and 0.67x on the same hash two days apart? | AC-1, needs a decision entry |
+| 3 | Which buyer segment pays first, at what price, and what if none do? | O11, AC-2 |
+| 4 | What share of closures does each source ascertain, and is any survival curve recoverable? | M13, AC-3 |
+| 5 | Does the 2026-09 forecast vintage keep its ranking power scored live in 2027-09? | T13, AC-5 |
+| 6 | Does a radius sweep move the gap counts? No sweep exists. | §9.12 |
+| 7 | Do planners confirm the legality-versus-herding decomposition, and does the 20-lot threshold survive? | T12, `docs/planner-packets-2026-09.md` |
+| 8 | Should unresolved co-located POI pairs collapse or count as they are? | QUESTIONS D24 |
+| 9 | Does the method generalise beyond NYC at a usable grade? Chicago, LA and Philadelphia reach D, C at best. | C3, `docs/PORTABILITY.md` |
+| 10 | NYC TAM tops out under $1M. Consulting-funded, or a venture bet on city two? | `docs/GTM.md:132` |
 
-Spatial adjacency to the already-risen frontier is a feature — gentrification diffuses to
-neighbors, which is also the mechanism behind the projection.
+---
 
-### 12.3 Projecting to 2033
+## 11. Portability
 
-Three complementary reads, reported together:
+NYC-first is a data decision, not a code decision.
 
-1. **Frontier diffusion (spatial, most communicable).** The frontier is a datable wave —
-   Williamsburg → Bed-Stuy → Bushwick → Crown Heights → Ocean Hill → East New York (D20). Measure
-   its pace (blocks/decade); the not-yet-risen neighborhoods adjacent to today's rising edge are
-   the mechanistic next steps, and the pace sets how far it reaches by 2033.
-2. **Per-metric logistic extrapolation.** Fit each metric's trajectory with a **logistic
-   (saturating)** form, not linear — a neighborhood cannot gentrify past 100%, and linearly
-   extrapolating a hot decade is the classic forecasting error.
-3. **Stage-transition (Markov) roll-forward.** Estimate P(stage→stage per decade) from the
-   historical panel, advance each NTA one step to 2033, giving a probabilistic stage.
+- City-specific loaders live only in `src/loci/sources/cities/nyc/`, behind a common adapter interface, never referenced downstream of `staging`.
+- Nationally available sources live in `src/loci/sources/universal/`.
+- `src/loci/score/` and `src/loci/model/` contain no NYC-specific column names or assumptions.
 
-Plus an **analogue read** for interpretability: for each emerging NTA, the already-matured NTA it
-most resembles at the same stage (is 2023 East New York ≈ 2011 Bushwick?), and that analogue's
-realized path as a concrete forecast. Everything is reported as **continued-diffusion / stall /
-reversal** scenario bands.
+Validated rather than asserted (D45, D46, D93). The registry carries `portability`, `feeds` and `degrades_to` on all 44 sources; `loci gen-portability` emits `docs/PORTABILITY.md` and `make check` fails on drift. Classes: universal 7, national 10, state 6, city open data 15, city-unique 6; 17 of the 44 are judgement calls and carry their uncertainty note. The most load-bearing portable input is the OSM pedestrian network, without which every network distance reverts to a straight line; the most load-bearing portable *signal* is a permit status date. Every calibrated constant is NYC-fitted, and an *act* grade needs a paid economics input in every city including this one.
 
-### 12.4 The load-bearing check — backtest, or it is astrology
+The Citi Bike reader was proven portable by ingesting one real Chicago Divvy month (D111). That is the pattern: prove a reader on one month of a second city's data before designing around it.
 
-Fit the classifier and projection on data **through 2013 only**, project 2013→2023, and compare to
-what actually happened. If the model cannot retrodict the Bushwick / Crown Heights / East New York
-arc, it cannot forecast 2033, and the memo says so. Report out-of-sample error by stage (emerging
-neighborhoods are the hardest and the most important). This is the Axis-4 analogue of E3's
-pre-trend/placebo rigor, and it gates whether the 2033 numbers ship as a forecast or only as a
-scenario illustration.
+---
 
-### 12.5 Data
+## Appendix: Superseded
 
-momentum.py (D20) pulled only two time points. This axis needs a real per-NTA time series:
-decennial 2000/2010 + ACS 5-yr 2009/2013/2018/2023 (real income, college, tenure, age), LODES
-2002–2023 (in hand), Zillow 2000– (D21), DOB/HPD permits by year — all deflated to real dollars and
-aggregated to 2020 NTAs. Assembled once as `analysis.nta_trajectory`, feeding both the classifier
-and the projection.
+**A1. The causal growth thesis (v1 §0, §1.1 to §1.4).** The charter held that, conditional on density, income, transit and commercial zoning capacity, some places have materially less daily-needs retail than comparable places, and that this residual gap should predict subsequent residential growth. The residual was what made it an investment thesis rather than a description. Tested on 2013 to 2023 population growth it failed with the wrong sign, β = +0.069 (p = 4.7e-16): over-retailed places grew more. The placebo was a clean null, and the 2013 gap also predicted the prior decade's retail growth (β = +0.27), so parallel trends were broken and the gap marks neighbourhoods already in a development cycle. **The reasoning worth keeping:** retail follows rooftops, so any version of this project that ranks the bottom of a raw business-count distribution is producing a poverty map with extra steps. That is why the instrument grades rather than ranks, and why §9.2 exists. It is also why the D88 retrodiction was run at all: the same reverse causality reappeared in GTM clothing and was caught a second time.
+
+**A2. Predictions P1 and P2 (v1 §1.4).** Both died with A1. P3 survived, was rewritten for the address frame, and is now §9.1 and the first row of §6.
+
+**A3. Hexes (v1 §2.3, §4.1, §4.2).** H3 resolution 9, about 7,400 cells, ACS interpolated dasymetrically with PLUTO residential units. Chosen because hexes are uniform in area and city-agnostic. **The reasoning worth keeping:** the cost was that demographics had to be modelled onto them twice, tract to hex then hex to address, producing a step function at hex edges. A lot sits in exactly one tract, so there is nothing to apportion. Uniformity was not worth two layers of interpolation.
+
+**A4. The DNCI (v1 §4.4).** A saturating per-category score combined by weighted geometric mean, tier weights 0.40 / 0.20 / 0.25 / 0.15. **The reasoning worth keeping, because it governs any composite:** an arithmetic mean lets a place with fifty restaurants and no grocery, pharmacy or laundromat score well, which is precisely the failure the project exists to detect. Only the geometric form punishes zeros. Retired as a headline because one composite hid which category was thin and on what evidence.
+
+**A5. The supply model, the residual and the LODES panel (v1 §4.5, §4.6, §7.4).** Unused. LODES was never a good instrument here: it counts jobs not establishments, and LODES8 retro-allocated pre-2020 years into 2020 blocks at random in proportion to area, which places employment in parks and concentrates the error where development happened, that is, on the outcome.
+
+**A6. The four-week phase plan and the deferred-decisions table (v1 §8, §9).** Obsolete after 33 sessions. Deferred decisions live in `docs/QUESTIONS.md`.
+
+**A7. The v1 acceptance criteria (v1 §6).** Four blocks: A, a significant correctly signed growth coefficient surviving three robustness specs; B, a top-20 hex list with three genuine surprises and zero park edges; C, a working reusable tool; D, a communicable artifact. A died with the thesis, B was a hex artifact, C and D were substantially built and never formally accepted, which is why §7 states resolution conditions and dates instead of checkboxes.
+
+**A8. Axis 3, the destination-amenity method (v1 §11), carried in full because AC-1 needs it.** Axis 4 (maturity curve and 2033 projection, v1 §12) is demoted; its one durable rule is that extrapolation from observed momentum is not the rejected causal claim, but it ships only if it passes a backtest, and its output is scenario bands rather than a point forecast.
+
+Why the daily-needs screen must not be reused for a destination amenity:
+
+| | Daily needs | Destination amenity |
+|---|---|---|
+| Trip frequency | daily or weekly | occasional |
+| Willingness to travel | about an 800 m walk | 15 to 30 min drive or transit |
+| Prevalence | common, the screen needs high prevalence | rare by nature |
+| Right geography | walk catchment | travel-time catchment / trade area |
+| Right screen | missing what peers have | demand pool minus supply, over the catchment |
+
+The method, five steps:
+
+1. **Bundle.** The named category and the destination-amenity family that shares its travel-for-it behaviour: spa and day spa, bathhouse and sauna, med-spa, padel, climbing, pilates and boutique fitness, golf and sports simulator. Each stays its own category, because catchment, demand target and site footprint all differ.
+2. **Supply.** A POI layer outside the fifteen, plus Google and a manual web check. Ground truth is load-bearing here, not optional: these categories are new and open fast, so a "gap" is more likely a data gap than a daily-needs gap is.
+3. **Demand.** A premium demand pool, not raw population: population weighted toward top income deciles, the category's target age band and college share, with the demographic match stated per category as the judgment it is.
+4. **Catchment.** Drive-time union transit-time isochrones, default 15 minutes, **swept at 10 / 15 / 20 / 30** with every ranking reported under the sweep. Willingness to travel is assumed, not measured, so the sweep is the honesty.
+5. **Feasibility.** Lot size, floorplate and a zoning district permitting commercial recreation or personal service, plus vacancy and industrial-conversion candidates. Without this the screen recommends sites that physically or legally cannot host the use, which is §9.6 in a new costume.
+
+Deliverable: qualifying demand in catchment minus supply reachable in catchment, gated on a feasible site, ranked per amenity.
+
+The three axis-specific threats, all of which AC-1 must answer:
+
+- **Supply undercount is worse than §9.1** and concentrated in the newest categories. Every top site must survive a Google check plus a manual web check or it is presumed a data gap.
+- **Willingness to travel is assumed.** The catchment radius is the single biggest lever; never report one radius.
+- **Chain pipeline.** A gap may already be under LOI by a national operator. That is outside the data, and per GTM-192 the filings pool cannot see it for these categories at any threshold, so it is manual diligence per top pick.

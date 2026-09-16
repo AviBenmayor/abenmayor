@@ -719,7 +719,7 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Unblocks:** E1 · Ingest and Grid
 - **Current answer:** — (Convention is EPSG:4326 in the database; metric work reprojects explicitly. Where does the CRS get re-attached on the way out?)
 
-### Recent session decisions (D29–D54)
+### Recent session decisions (D29–D56)
 
 Logged directly by recent sessions (2026-09-14/15) rather than filed under a
 tier above; IDs continue the Tier D (Descriptive) sequence. Kept together here
@@ -894,6 +894,22 @@ decisions pending an owner ruling, not descriptive-tier research questions.
 - **Tag:** *model / economics*
 - **Session:** 2026-09-16, abenmayor-db
 - **Why it matters:** Economics caps every category without a revenue calibration or ≥5 BizBuySell comps at D, and addressable_demand caps all but laundry at C. The cheapest lever per recommend_grades.yaml's own `cheapest_check` is 3–5 P&Ls or broker set-ups per category per borough. Until that evidence exists the allocator report can only ever say "diligence" for three categories and "no" for twelve — which the owner should know before showing the report to an operator.
+- **Current answer:** —
+
+### D55 — Gowanus core bank supply ratio reads 1.97x on the 2026-09-11 card and 0.67x on the 2026-09-13 card, same supply hash 767b28674e30, same 1,831 addresses. Which is right, and why did it move?
+- **Status:** open
+- **Answered by:** — (not ticketed)
+- **Tag:** *data / rigor*
+- **Session:** 2026-09-16, abenmayor-af
+- **Why it matters:** CONTEXT.md v2 §7 (AC-1) and the Gowanus card of record both cite this unreconciled 2.9× move on a frozen hash; no CHECKPOINT decision explains it. Until resolved, no deliverable may print either bank figure (CONTEXT.md §7 standing rule).
+- **Current answer:** —
+
+### D56 — AC-1 base rate: the citywide 12-month opening rate for a `bathhouse_sauna` category is unknown until the category is admitted. Hand-enumerate it before pre-registering the Gowanus decision.
+- **Status:** open
+- **Answered by:** — (not ticketed; feeds AC-1 step 3's pre-registration)
+- **Tag:** *model / method*
+- **Session:** 2026-09-16, abenmayor-af
+- **Why it matters:** AC-1's prediction A (CONTEXT.md §7) resolves against a baseline opening rate per catchment-year; predicting zero against an unknown, possibly near-zero base rate resolves nothing (CONTEXT.md §7 “why AC-1 must not repeat the daily-needs screen”). The hand enumeration must happen before, not after, the pre-registration is frozen.
 - **Current answer:** —
 
 ---

@@ -1958,6 +1958,26 @@
       "Labels": "validation,rigor,docs",
       "Project": "Loci",
       "Milestone": "E4 \u00b7 Validation and Artifact"
+    },
+    {
+      "Title": "Charter v2: rewrite CONTEXT.md around the owner as first customer, decision value behind a dated survival gate, cost of search as the earned claim, Gowanus bathhouse as AC-1",
+      "Description": "The charter still opened with the causal residential-growth thesis rejected at D1 and its acceptance criteria were never rewritten after the scope correction, so the project had been busy without a testable point. v2 states purpose (find a candidate address worth taking and decide whether to take it; take-it first, help-fill fallback), the owner as first customer with external segments a market-research question (zero conversations to date), D88 verbatim as the earned claim, decision value as the goal behind a closed three-source survival gate with pre-registered floors (AUC \u2265 0.65) and dates (2027-03-31 / 2027-06-30 / 2027-06-30), a revisitable stop rule that self-amends 2027-07-01, six acceptance criteria of which four resolve on dated outcomes, AC-1 = admit bathhouse_sauna via GTM-112 then pre-register the Gowanus decision, the D110 Bathhouse retrospective and GTM-192 structural blindness cited, three radii separated with MAUP-as-radius restored, dead ends listed so no session relitigates them, the old thesis in a Superseded appendix. Contrarian review (redraft verdict, 14 findings) applied and verified; one open: the bank 0.67x/1.97x divergence between the two Gowanus cards (QUESTIONS). Retires CHECKPOINT's SCOPE CORRECTION banner.\n\nDone 2026-09-16 (CHECKPOINT D116). Pushed to Linear 2026-09-16 as GTM-194.",
+      "Status": "Done",
+      "Priority": 2,
+      "Estimate": 5,
+      "Labels": "docs,infra",
+      "Project": "Loci",
+      "Milestone": "E0 \u00b7 Foundations"
+    },
+    {
+      "Title": "Challenger forecast model: gradient boosting fails the pre-registered floor; `loci forecast challenge` harness shipped read-only",
+      "Description": "The owner asked whether the recommendation engine should be more intelligent; the only fitted model is the forecast logit (opening label), so a HistGradientBoosting challenger on the full t0-true feature set plus the withheld jobs/transit was judged purely predictively on the same NTA-blocked folds with six pre-declared criteria (\u0394AUC \u2265 +0.010, paired NTA-clustered bootstrap CI excluding 0, Brier and log loss lower, calibration gap \u2264 0.15, per-category no-regression, residual Moran's I not higher). Result on 2026-09 / supply ba944e18c57b / model 0.1.1+51bab17f, 360,000 rows, 12,000 addresses, 103 NTAs: rung1 logit@4 AUC 0.8768, rung2 logit+3 features 0.8787, rung3 GBM 0.8799 (with anachronistic) / 0.8794 (without); \u0394AUC +0.0031 NTA-CI [0.0015, 0.0049]; Brier 0.1214\u21920.1197; calibration 0.0245; Moran's I 0.4498\u21920.4359; FAILS on W1 and W5 (bank, childcare, hardware, laundry regress >0.02; 6/15 improve vs \u22658). Conclusion: model form and feature richness are not the ceiling, the opening label is; no session should re-run \"try XGBoost\" without a new label. Harness: src/loci/model/forecast_challenge.py (655 lines), CLI `loci forecast challenge --month [--sample-n] [--no-anachronistic] [--tune]`, opens connect_read(read_only=True), no write path to analysis.forecast*, warehouse row counts verified identical (25,365,780 / 6 / 8,455,260), JSON to data/forecast_challenge/ (gitignored), scikit-learn>=1.5 declared; 15 tests, suite 2,328 passed / 1 skipped; row-order dependence of _nta_folds pinned by test.\n\nDone 2026-09-16 (CHECKPOINT D118). Pushed to Linear 2026-09-16 as GTM-195.",
+      "Status": "Done",
+      "Priority": 2,
+      "Estimate": 5,
+      "Labels": "model,validation,rigor",
+      "Project": "Loci",
+      "Milestone": "E2 \u00b7 Access Engine"
     }
   ]
 }

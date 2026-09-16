@@ -1,12 +1,10 @@
 # Loci
 
-Walkable daily-needs retail completeness and **residual undersupply**, at H3 hex resolution.
-New York City first; the scoring engine is city-agnostic.
+A present-day, address-level investment screen for New York City daily-needs retail; the
+scoring engine is city-agnostic. Not a causal growth thesis — see `docs/CONTEXT.md` v2.
 
-> Conditional on population density, household income, transit access, and commercial
-> zoning capacity, some NYC hexes have materially less daily-needs retail than otherwise
-> comparable hexes. That residual gap — not the raw count — is the opportunity signal,
-> and it should predict subsequent residential growth.
+> "What we sell is cost of search, not better decisions." Decision value is gated behind a
+> dated, pre-registered survival label (CONTEXT.md §3.1); it is not yet claimed.
 
 | Read this | For |
 |---|---|
