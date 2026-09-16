@@ -56,6 +56,8 @@ PRESS_DOMAINS = (
     "nypost.com",
     "brooklynpaper.com",
     "amny.com",
+    "whatnow.com",
+    "franchisetimes.com",
 )
 
 #: Standing queries. Each is a way a new-store announcement is usually worded.

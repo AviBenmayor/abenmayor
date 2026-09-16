@@ -1,4 +1,4 @@
-.PHONY: help setup db-init check tickets paid-sources portability nyc chains-refresh clean
+.PHONY: help setup db-init check tickets paid-sources portability nyc chains-refresh chains-page clean
 
 help:          ## Show targets
 	@grep -E '^[a-z-]+:.*?##' $(MAKEFILE_LIST) | sed 's/:.*##/\t/' | column -t -s "$$(printf '\t')"
@@ -112,6 +112,9 @@ chains-refresh: ## Monthly: filing pipeline, first-seen ledger, detect chains, e
 	# that this month's data does not support -- and 'none' is a stored
 	# observation, not a skip, so the wrong answer would persist.
 	uv run loci recommendations check
+
+chains-page:   ## Regenerate data/chains/chains_watchlist.html + chains_data.json only
+	uv run loci chains render --html
 
 clean:         ## Drop intermediates and the database (keeps data/raw)
 	rm -rf data/interim/* data/processed/* data/loci.duckdb

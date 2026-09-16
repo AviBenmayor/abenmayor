@@ -37,9 +37,14 @@ def _fmt(value, dash: str = "—") -> str:
     return str(value)
 
 
-def render(con, *, doc: dict | None = None, month: str | None = None,
-           top_detected: int = 40, today: dt.date | None = None) -> str:
-    today = today or dt.date.today()
+def assemble(con, *, doc: dict | None = None, month: str | None = None) -> dict:
+    """The one data pull shared by docs/CHAINS.md and the html page.
+
+    Everything downstream (the markdown render, `render_html.build_data`) reads
+    off this dict rather than re-querying `chains.brand_snapshot` or
+    re-deriving the hand/auto/rejected split -- two independent
+    implementations of "what counts as auto-admitted" is exactly how the two
+    documents would quietly disagree."""
     doc = doc if doc is not None else wl.load()
     rows = list(doc.get("brands") or [])
     month = month or detect_mod.latest_month(con)
@@ -51,9 +56,24 @@ def render(con, *, doc: dict | None = None, month: str | None = None,
                 [month]).fetchdf().to_dict("records"):
             snap[r["brand_key"]] = r
 
+    pipe = _pipeline_counts(con, rows)
+    rejected = [r for r in rows if wl.tier_of(r) == "rejected"]
+    live = [r for r in rows if wl.tier_of(r) != "rejected"]
+    hand = [r for r in live if not wl.is_auto(r)]
+    auto = [r for r in live if wl.is_auto(r)]
+    return {"doc": doc, "rows": rows, "month": month, "snap": snap, "pipe": pipe,
+            "rejected": rejected, "live": live, "hand": hand, "auto": auto}
+
+
+def render(con, *, doc: dict | None = None, month: str | None = None,
+           top_detected: int = 40, today: dt.date | None = None) -> str:
+    today = today or dt.date.today()
+    asm = assemble(con, doc=doc, month=month)
+    doc, rows, month, snap = asm["doc"], asm["rows"], asm["month"], asm["snap"]
+
     out: list[str] = [HEADER, "# NYC chains to watch", ""]
-    n_auto = sum(1 for r in rows if wl.is_auto(r) and wl.tier_of(r) != "rejected")
-    n_rejected = sum(1 for r in rows if wl.tier_of(r) == "rejected")
+    n_auto = len(asm["auto"])
+    n_rejected = len(asm["rejected"])
     out.append(f"**Generated** {today.isoformat()} · "
                f"**detect snapshot** {_fmt(month)} · "
                f"**watchlist** {len(rows)} brands "
@@ -72,7 +92,7 @@ def render(con, *, doc: dict | None = None, month: str | None = None,
                "See [chains-process.md](chains-process.md).")
     out.append("")
 
-    out += _watchlist_section(rows, snap, _pipeline_counts(con, rows))
+    out += _watchlist_section(rows, snap, asm["pipe"])
     out += _newly_detected_section(con, month, snap, rows, top_detected)
     out += _press_section(con, today)
     out += _provenance_section(month, today)

@@ -197,6 +197,11 @@ row is a real lead that simply joins to no card.
 4. `loci chains auto-admit [--month YYYY-MM] [--dry-run]` — append every clear of the predicate to `watchlist.yaml` as auto-admitted rows; same hour re-run does DELETE+INSERT per month (idempotent)
 5. `loci chains render` — write `docs/CHAINS.md` showing hand-vetted rows first, auto rows in their own section, rejection count in footer
 
+**Browsable page (GTM-191):** regenerate with `loci chains render --html` (also
+part of `loci chains refresh`, unless `--no-html`) — writes
+`data/chains/chains_watchlist.html` + `chains_data.json`. Serve with
+`loci chains serve [--port 8934]`, then open http://127.0.0.1:8934/chains_watchlist.html.
+
 **Human intake:**
 - Review the auto-admit diff (printed by step 4 with reasons per row) — accept the whole month or use step below
 - `loci chains admit <key> --reason "..." [--role role] [--confidence score] [--locations count] [--dry-run]` — move a row up to hand-admitted, optionally set `sales_role`, manually override `confidence`, or preset the detect count if external data is fresher

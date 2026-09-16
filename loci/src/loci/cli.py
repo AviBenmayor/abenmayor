@@ -3742,13 +3742,20 @@ def chains_import(
 def chains_render(
     month: str = typer.Option(None, "--month", help="Snapshot to render; default newest."),
     out: Path = typer.Option(None, "--out", help="Override docs/CHAINS.md."),
+    html: bool = typer.Option(False, "--html", help="Also write "
+                              "data/chains/chains_watchlist.html + chains_data.json "
+                              "(gitignored; serve with `loci chains serve`)."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print; write nothing."),
 ) -> None:
     """Generate docs/CHAINS.md from watchlist + newest snapshot + press hits.
 
     Fails before writing if the watchlist is structurally invalid -- a
     `brand_key` that the normalizer would never produce joins to nothing, and
-    the document would report a tracked brand as undetected."""
+    the document would report a tracked brand as undetected.
+
+    `--html` writes the same data as a browsable page under `data/chains/`
+    (gitignored) alongside docs/CHAINS.md -- it never replaces the markdown,
+    which stays the reviewed, committed artefact."""
     from loci.chains import render as ren
     from loci.chains import watchlist as wl
 
@@ -3761,11 +3768,63 @@ def chains_render(
 
     con = _chains_connect(read_only=True)
     text = ren.render(con, doc=doc, month=month)
+
+    html_text = json_text = None
+    if html:
+        from loci.chains import render_html as ren_html
+        html_text, json_text = ren_html.render_html(con, doc=doc, month=month)
+
     if dry_run:
         print(text)
         console.print("[yellow]--dry-run: docs/CHAINS.md not written.[/]")
+        if html:
+            console.print("[yellow]--dry-run: html page not written.[/]")
         raise typer.Exit(0)
+
     console.print(f"[green]written[/] -> {ren.write(text, out)}")
+    if html:
+        html_path, json_path = ren_html.write(html_text, json_text)
+        console.print(f"[green]written[/] -> {html_path}, {json_path}")
+
+
+@chains_app.command("serve")
+def chains_serve(
+    port: int = typer.Option(8934, "--port", help="Port to bind on 127.0.0.1."),
+) -> None:
+    """Serve data/chains/ over plain HTTP so the watchlist page's fetch of
+    chains_data.json works (opening the file:// URL directly does not).
+
+    Rooted exactly at data/chains, so the URL is
+    http://127.0.0.1:<port>/chains_watchlist.html -- the same link every time,
+    because the filename never changes across a `chains render --html`."""
+    import functools
+    import http.server
+    import socketserver
+
+    from loci.chains import render_html as ren_html
+
+    if not (ren_html.OUT_DIR / ren_html.HTML_NAME).exists():
+        console.print(f"[red]{ren_html.OUT_DIR / ren_html.HTML_NAME} does not exist "
+                      "-- run `loci chains render --html` first.[/]")
+        raise typer.Exit(1)
+
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler,
+                                directory=str(ren_html.OUT_DIR))
+    try:
+        httpd = socketserver.TCPServer(("127.0.0.1", port), handler)
+    except OSError as exc:
+        console.print(f"[red]port {port} is busy: {exc}[/]")
+        raise typer.Exit(1) from exc
+
+    url = f"http://127.0.0.1:{port}/{ren_html.HTML_NAME}"
+    console.print(f"[green]serving[/] {ren_html.OUT_DIR} -> {url}")
+    console.print("[dim]Ctrl-C to stop.[/]")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        httpd.server_close()
 
 
 @chains_app.command("candidates")
@@ -4028,11 +4087,18 @@ def chains_refresh(
     no_auto_admit: bool = typer.Option(False, "--no-auto-admit",
                                        help="Do not admit this month's candidates; "
                                             "render the list as it stands."),
+    no_html: bool = typer.Option(False, "--no-html",
+                                 help="Skip the data/chains/ html page; write only "
+                                      "docs/CHAINS.md."),
     dry_run: bool = typer.Option(False, "--dry-run",
                                  help="Every step dry: no snapshot, no queries, no doc."),
 ) -> None:
     """poi-snapshot -> detect -> research -> auto-admit -> render. The monthly
     job (`make chains-refresh`).
+
+    The render step writes both docs/CHAINS.md and the data/chains/ html page
+    by default -- pass `--no-html` to skip the page and write only the
+    markdown.
 
     AUTO-ADMIT RUNS BEFORE RENDER, not after: the document is the artefact a
     person reads, and admitting the month's candidates after generating it
@@ -4079,7 +4145,7 @@ def chains_refresh(
             console.print(f"[yellow]auto-admit failed ({exc}) — continuing to render.[/]")
     console.rule("[bold]5/5 render")
     try:
-        chains_render(month=month, out=None, dry_run=dry_run)
+        chains_render(month=month, out=None, html=not no_html, dry_run=dry_run)
     except typer.Exit as exc:
         if exc.exit_code:
             raise

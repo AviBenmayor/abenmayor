@@ -173,6 +173,16 @@ def test_dump_round_trips_and_keeps_the_comment_header(tmp_path):
 
 # ------------------------------------------------------------------ the spend budget
 
+def test_press_domains_include_the_gtm191_additions():
+    """GTM-191: What Now NY and Franchise Times were missing; The Real Deal and
+    Commercial Observer were already there and must not be duplicated."""
+    for domain in ("whatnow.com", "commercialobserver.com", "therealdeal.com",
+                   "franchisetimes.com"):
+        assert domain in research.PRESS_DOMAINS
+    assert len(research.PRESS_DOMAINS) == len(set(research.PRESS_DOMAINS)), \
+        "PRESS_DOMAINS has a duplicate"
+
+
 class _FakeTavily:
     def __init__(self):
         self.calls = []

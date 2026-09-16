@@ -4,7 +4,7 @@
 
 # NYC chains to watch
 
-**Generated** 2026-09-15 · **detect snapshot** 2026-09 · **watchlist** 902 brands (161 hand-vetted, 741 auto-admitted, 0 rejected) · 20949 detected brands.
+**Generated** 2026-09-16 · **detect snapshot** 2026-09 · **watchlist** 902 brands (161 hand-vetted, 741 auto-admitted, 0 rejected) · 20949 detected brands.
 
 Two uses: companies to sell a site-selection product to, and — later — the "brand X is opening nearby" signal on a recommendation card. `loci_category` is the join key that will make the second possible; nothing consumes it yet.
 
@@ -1192,4 +1192,4 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 - A brand needs ≥ 2 deduped locations to appear.
 - Flag rule: ≥ 3 new locations in 12 months, OR ≥ 2 new with ≤ 8 total.
 - Manual brand collapses in force (53): `7 11` → `7 eleven`, `all antico vinaio` → `allantico vinaio`, `associated` → `associated supermarket`, `associated fresh` → `associated supermarket`, `auntie annes cinnabon carvel` → `auntie annes`, `auntie annes pretzels` → `auntie annes`, `blank street` → `blank street coffee`, `bonchon chicken` → `bonchon`, `bravo supermarket` → `bravo supermarkets`, `buffalo wild wings go` → `buffalo wild wings`, `c town supermarket` → `c town`, `chip city` → `chip city cookies`, `chopt creative salad` → `chopt`, `crumbl` → `crumbl cookies`, `cvs pharmacy` → `cvs`, `cvs photo` → `cvs`, `dominos pizza` → `dominos`, `dos toros` → `dos toros taqueria`, `duane reade by walgreens` → `duane reade`, `dunkin baskin robbins` → `dunkin`, `dunkin donuts` → `dunkin`, `dunkin donuts baskin robbins` → `dunkin`, `fine fare` → `fine fare supermarkets`, `fine fare supermarket` → `fine fare supermarkets`, `food universe` → `food universe marketplace`, `golden krust` → `golden krust caribbean restaurant`, `guac time mexican grill` → `guac time`, `guacado mexican grill` → `guacado`, `jersey mikes` → `jersey mikes subs`, `kennedy chicken` → `kennedy fried chicken`, `kennedy chicken and burger` → `kennedy fried chicken`, `kennedy chicken and pizza` → `kennedy fried chicken`, `key food stores co op` → `key food`, `key food supermarket` → `key food`, `key food supermarkets` → `key food`, `lidl` → `lidl us`, `little caesars pizza` → `little caesars`, `mcdonalds restaurant` → `mcdonalds`, `met fresh` → `met fresh supermarket`, `moka and` → `moka and co`, `panera` → `panera bread`, `pioneer` → `pioneer supermarket`, `pioneer supermarkets` → `pioneer supermarket`, `pizza hut express` → `pizza hut`, `popeyes louisiana kitchen` → `popeyes`, `pura vida` → `pura vida miami`, `raising canes chicken fingers` → `raising canes`, `sonic` → `sonic drive in`, `starbucks coffee` → `starbucks`, `subway sandwiches` → `subway`, `teriyaki one japanese grill` → `teriyaki one`, `tobys estate` → `tobys estate coffee`, `walgreens` → `walgreens duane reade`.
-- Regenerated 2026-09-15 by `loci chains render`.
+- Regenerated 2026-09-16 by `loci chains render`.
