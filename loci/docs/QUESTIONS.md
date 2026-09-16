@@ -719,7 +719,7 @@ Links for every reading live in Notion: **Projects → LOCI → Loci Reading Lis
 - **Unblocks:** E1 · Ingest and Grid
 - **Current answer:** — (Convention is EPSG:4326 in the database; metric work reprojects explicitly. Where does the CRS get re-attached on the way out?)
 
-### Recent session decisions (D29–D51)
+### Recent session decisions (D29–D54)
 
 Logged directly by recent sessions (2026-09-14/15) rather than filed under a
 tier above; IDs continue the Tier D (Descriptive) sequence. Kept together here
@@ -870,6 +870,30 @@ decisions pending an owner ruling, not descriptive-tier research questions.
 - **Tag:** *infra / method*
 - **Session:** 2026-09-15, abenmayor-cc
 - **Why it matters:** Session 28 (2026-09-15, D112) ran the D106 canonical order as a scratch zsh script with per-step timing, stop-on-failure and resume-from-step. It caught one designed non-zero exit — `age-fit fit` returns 1 when it refuses the pharmacy curve (D69/D71) — that a naive runner treats as fatal, and it recorded per-step seconds nobody had written down for eleven of the steps. A `loci rebaseline [--from STEP] [--dry-run]` command would make the order a machine-checked artefact (a drift test against the order documented in CHECKPOINT), treat the designed refusals as designed, write the per-step timings into the run's own log for the decision entry, include the post-address-gaps re-sweeps (od-measures, growth-measures) that peers otherwise forget, and give peers one process to announce and one lock to wait on. Open; needs a ticket under E2.
+- **Current answer:** —
+
+### D52 — Should the supply freeze marker bind direct evidence writes?
+- **Status:** open
+- **Answered by:** — (not ticketed)
+- **Tag:** *infra / policy*
+- **Session:** 2026-09-16, abenmayor-db
+- **Why it matters:** D115 made `supply-asof advance` honour data/SUPPLY_FREEZE / LOCI_SUPPLY_FREEZE, the first machine-enforced freeze. Direct writers of closure evidence (ground-truth record, report closure checks, chains refresh) still ignore it. Proposal: one `supply.assert_not_frozen(con)` guard in every poi_status-affecting writer, with --force for the steward.
+- **Current answer:** —
+
+### D53 — Review ask 5: should the dated-article filter reject pages without a parseable date outright?
+- **Status:** open
+- **Answered by:** — (not ticketed)
+- **Tag:** *model / reporting*
+- **Session:** 2026-09-16, abenmayor-db
+- **Why it matters:** A bare homepage and a Getty image-search page passed the web-hit filter on the 2026-09-15 notes. Cosmetic for a no-trade note; for a full memo a source with no date is not evidence. Proposed rule: require a parsed publication date within the memo's window or drop the hit and count it in the footer.
+- **Current answer:** —
+
+### D54 — Can any category other than restaurant/hardware/tailor_repair ever grade above D?
+- **Status:** open
+- **Answered by:** — (not ticketed)
+- **Tag:** *model / economics*
+- **Session:** 2026-09-16, abenmayor-db
+- **Why it matters:** Economics caps every category without a revenue calibration or ≥5 BizBuySell comps at D, and addressable_demand caps all but laundry at C. The cheapest lever per recommend_grades.yaml's own `cheapest_check` is 3–5 P&Ls or broker set-ups per category per borough. Until that evidence exists the allocator report can only ever say "diligence" for three categories and "no" for twelve — which the owner should know before showing the report to an operator.
 - **Current answer:** —
 
 ---

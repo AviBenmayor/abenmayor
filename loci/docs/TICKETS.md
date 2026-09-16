@@ -1352,6 +1352,8 @@ Opened 2026-09-14 (CHECKPOINT D99). Pushed to Linear 2026-09-14 as GTM-171.
 
 Opened 2026-09-14 (CHECKPOINT D100). Pushed to Linear 2026-09-14 as GTM-172.
 
+Done 2026-09-16 (CHECKPOINT D115, commit 8674c1b): same-BBL conflict refuses to render (exit 3), NO CALL vs NO TRADE with a dated re-look, falsification + closure disclosure + legality strings on the note path, --category override (demoted refused), forecast_latest ordered by frozen_at; first full memo Gowanus-core hardware at grade C (docs/recommendations/3004260001-2026-09-16.md), two notes regenerated as NO CALL, 376 Graham refused. Prose via the claude CLI fallback; closure checks off. Exposed the clock-dependent supply hash (owner: pin the as-of, D115).
+
 ### Fitness type map: remove sports_club and marina from GOOGLE_TYPES (validator-only)
 `Medium` · `1 pts` · `validation,score`
 
