@@ -436,3 +436,9 @@ Storefront Registry) · `analysis.dev_pipeline` (D62/D72) · `chains.brand_lates
 Brooklyn).
 
 - **2026-09-14:** owner-facing page "Graham Avenue, on paper" (artifact b176da82) sent to the operator via the owner: shed demographics as people counts, hour-of-day table, cuisine-slot verdict, the Sophie's Cuban alert, 318 Graham vacancy, nine ranked menu/price moves and three do-nots. Nothing requested from him on this page.
+
+---
+
+## CORRECTION (2026-09-16): straight-line distances in this memo used ST_Point(lon, lat) without ST_FlipCoordinates
+
+DuckDB spatial's ST_Distance_Sphere reads ST_Point(x, y) as (lat, lon); the project guards this with METRES_SQL in db.py (D16), the scratchpad scripts behind this memo did not. Every "within 400 m straight-line" figure here was measured on a 1.44 km × 0.30 km north–south sliver (~2.7× the disc's area). The warehouse columns (homes_400m, supply_400m, storefront_*, pipeline_*) are unaffected — they come from the walk graph. Corrected at 376 Graham on a true 400 m disc: on-premises licences 39 (was 92; 1 bar, not 3); Roebling 112 (was 211); Cuban/Caribbean/Latin/Spanish DOHMH venues within 400 m: 2 (Caribbean 0 — Los Primos is 456 m); the vacant FOOD-SERVICES storefront at 318 Graham is 240 m (was 77 m). Unit-weighted shed demographics on the true disc: under-18 13.6% (was 16.2), 18–34 42.9% (35.4), Spanish at home 13.9% (22.0), WFH 30.4% (25.2), under $50k 21.4% (31.4), over $200k 31.2% (19.4), persons/HH 2.06 (2.11). Directions of every conclusion survive; levels do not: the Spanish-signage lever and the low-price-tier argument weaken, the lunch-plate (WFH) lever strengthens, family/evening/delivery levers stand. The owner-facing pages were corrected and republished the same day. Source of the correction: the second-site search (docs/recommendations/el-punto-second-site-2026-09-16.md).
