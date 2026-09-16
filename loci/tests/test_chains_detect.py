@@ -291,3 +291,156 @@ def test_brand_location_is_keyed_on_the_ledger_not_on_cluster_id(con):
     ledger = {r[0] for r in con.execute(
         "SELECT location_key FROM analysis.poi_presence").fetchall()}
     assert set(keys) <= ledger
+
+
+# ===================== the sql/039 derived signals: filings, coverage, press
+#
+# Three columns whose whole purpose is to keep a ZERO honest (GTM-189, D109).
+# `pipeline_filings_12m = 0` means "the filing channel can see this trade and
+# saw nothing" for a café and "the filing channel is blind to this trade" for a
+# gym, and nothing in the number tells them apart -- `pipeline_coverage` is the
+# column that does. So what is asserted here is mostly about the DIFFERENCE
+# BETWEEN 0 AND NULL, in both directions.
+
+def _with_pipeline(con, rows):
+    """A minimal analysis.storefront_pipeline. `rows` is
+    (business_name_key, entry_date, is_open)."""
+    con.execute("CREATE TABLE analysis.storefront_pipeline ("
+                "business_name_key VARCHAR, entry_date DATE, is_open BOOLEAN)")
+    for key, entry, is_open in rows:
+        con.execute("INSERT INTO analysis.storefront_pipeline VALUES (?, CAST(? AS DATE), ?)",
+                    [key, entry, is_open])
+
+
+def test_the_twelve_month_window_is_the_snapshots_calendar_months_not_the_clock():
+    """Anchored on the snapshot, not on `today`: the month is this table's unit
+    of idempotence, so a re-run of 2026-09 next March has to produce the number
+    September produced."""
+    assert detect.month_window_12m("2026-09") == (dt.date(2025, 10, 1),
+                                                  dt.date(2026, 10, 1))
+    # ... and the year boundary, in both directions.
+    assert detect.month_window_12m("2026-01") == (dt.date(2025, 2, 1),
+                                                  dt.date(2026, 2, 1))
+    assert detect.month_window_12m("2026-12") == (dt.date(2026, 1, 1),
+                                                  dt.date(2027, 1, 1))
+
+
+def test_filing_real_categories_is_derived_from_the_feed_map_not_typed():
+    """The five categories NYC's filing feeds can attribute a licence to. Read
+    out of model/filing_categories.yaml, so adding a feed moves it. Pinned here
+    so it moving is a VISIBLE event: every `structural_zero` in the warehouse
+    depends on this set, and a silent widening would turn blind spots into
+    measured zeroes with nobody deciding it."""
+    assert detect.filing_real_categories() == frozenset(
+        {"restaurant", "bar", "cafe_bakery", "grocery", "pharmacy"})
+
+
+def test_a_covered_category_counts_filings_inside_the_window(con):
+    """ALL filings, open and not-yet-open alike. This measures how much
+    paperwork the brand generated; the candidate predicate's `pipeline_open` is
+    a different measure and deliberately excludes open rows."""
+    _with_pipeline(con, [
+        ("fastbrand", "2026-08-01", False),      # in window, not yet open
+        ("fastbrand", "2026-01-15", True),       # in window, OPEN -- still counts
+        ("fastbrand", "2024-03-01", False),      # older than the window
+        ("flatbrand", "2026-09-30", False),      # last day of the snapshot month
+    ])
+    _, rows = detect.build(con, month="2026-09", dry_run=True, today=TODAY)
+    by = _by_key(rows)
+    assert by["fastbrand"]["pipeline_filings_12m"] == 2
+    assert by["flatbrand"]["pipeline_filings_12m"] == 1
+    assert by["fastbrand"]["pipeline_coverage"] == "real"
+
+
+def test_a_brand_the_pipeline_never_names_gets_a_real_zero(con):
+    """0 here IS a measurement: the channel can see cafés and this café filed
+    nothing. That is exactly why `pipeline_coverage` has to travel with it."""
+    _with_pipeline(con, [("someone else", "2026-08-01", False)])
+    _, rows = detect.build(con, month="2026-09", dry_run=True, today=TODAY)
+    fast = _by_key(rows)["fastbrand"]
+    assert fast["pipeline_filings_12m"] == 0
+    assert fast["pipeline_coverage"] == "real"
+
+
+def test_a_category_the_feeds_cannot_see_is_marked_structural_zero(con):
+    """SmallBrand is a gym. No NYC filing feed carries a trade field that would
+    attribute a filing to fitness (GTM-152, D80), so its zero is a blind spot
+    and the render prints words instead of the digit."""
+    _with_pipeline(con, [("fastbrand", "2026-08-01", False)])
+    _, rows = detect.build(con, month="2026-09", dry_run=True, today=TODAY)
+    small = _by_key(rows)["smallbrand"]
+    assert small["loci_category"] == "fitness"
+    assert small["pipeline_coverage"] == "structural_zero"
+    assert small["pipeline_filings_12m"] == 0, \
+        "the count is still measured; it is the COVERAGE that says what it means"
+    assert _by_key(rows)["glow nails"]["pipeline_coverage"] == "structural_zero"
+
+
+def test_a_missing_pipeline_table_leaves_the_count_null_never_zero(con):
+    """A warehouse without the filing pipeline is a normal state -- the table
+    is built by a separate command. "We did not measure that channel" must not
+    be recorded as "that channel saw nothing"; the coverage label is a fact
+    about the CATEGORY and survives either way."""
+    import pandas as pd
+
+    _, rows = detect.build(con, month="2026-09", dry_run=True, today=TODAY)
+    fast = _by_key(rows)["fastbrand"]
+    assert pd.isna(fast["pipeline_filings_12m"])
+    assert fast["pipeline_coverage"] == "real"
+
+
+def test_press_hits_are_counted_in_the_same_window(con):
+    con.execute(
+        "INSERT INTO chains.press_hits VALUES "
+        "('fastbrand', 'https://ny.eater.com/1', 'Opening', DATE '2026-08-01', "
+        " 's', 0.9, 'q', 'brand', now()), "
+        "('fastbrand', 'https://ny.eater.com/2', 'Old news', DATE '2024-02-01', "
+        " 's', 0.9, 'q', 'brand', now())")
+    _, rows = detect.build(con, month="2026-09", dry_run=True, today=TODAY)
+    by = _by_key(rows)
+    assert by["fastbrand"]["press_hits_12m"] == 1
+    assert by["flatbrand"]["press_hits_12m"] == 0, \
+        "the table exists and says nothing about this brand — a real zero"
+
+
+def test_a_missing_press_table_leaves_the_column_null_never_zero(con):
+    import pandas as pd
+
+    con.execute("DROP TABLE chains.press_hits")
+    _, rows = detect.build(con, month="2026-09", dry_run=True, today=TODAY)
+    assert pd.isna(_by_key(rows)["fastbrand"]["press_hits_12m"])
+
+
+def test_the_signals_survive_the_write_and_reach_brand_latest(con):
+    """The columns are only worth anything if they are IN the snapshot: the
+    reason a brand was admitted has to be reproducible from the month it was
+    admitted in, not re-derived against a press table that has moved since."""
+    _with_pipeline(con, [("fastbrand", "2026-08-01", False)])
+    con.execute(
+        "INSERT INTO chains.press_hits VALUES "
+        "('smallbrand', 'https://ny.eater.com/3', 'A gym', DATE '2026-07-01', "
+        " 's', 0.9, 'q', 'brand', now())")
+    detect.build(con, month="2026-09", today=TODAY)
+
+    got = dict(con.execute(
+        "SELECT brand_key, pipeline_filings_12m FROM chains.brand_snapshot"
+    ).fetchall())
+    assert got["fastbrand"] == 1
+
+    # chains.brand_latest is `SELECT s.*` and DuckDB binds a view's columns at
+    # CREATE time -- sql/039 re-creates it for exactly this reason.
+    coverage, press = con.execute(
+        "SELECT pipeline_coverage, press_hits_12m FROM chains.brand_latest "
+        "WHERE brand_key = 'smallbrand'").fetchone()
+    assert (coverage, press) == ("structural_zero", 1)
+
+
+def test_re_running_a_month_rewrites_the_signals_rather_than_duplicating(con):
+    """The month is a DELETE+INSERT. This is also the reason the hand-entered
+    evidence block lives in watchlist.yaml and not here."""
+    detect.build(con, month="2026-09", today=TODAY)
+    _with_pipeline(con, [("fastbrand", "2026-08-01", False)])
+    detect.build(con, month="2026-09", today=TODAY)
+    rows = con.execute("SELECT pipeline_filings_12m FROM chains.brand_snapshot "
+                       "WHERE brand_key = 'fastbrand'").fetchall()
+    assert rows == [(1,)]

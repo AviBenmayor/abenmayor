@@ -412,7 +412,7 @@ Opened 2026-09-15 (CHECKPOINT D109). Pushed to Linear 2026-09-15 as GTM-188.
 
 Extends the existing grain rather than adding a table (D61: new measures extend the grain). New brand_snapshot columns: pipeline_filings_12m (filings matching the brand name key in analysis.storefront_pipeline, entry_date in 12m), pipeline_coverage ('real'/'structural_zero' — filings are real only for restaurant/bar/cafe/grocery/pharmacy, and publishing that beside the count is the only way a zero for a fitness brand doesn't read as a lie), press_hits_12m (count from chains.press_hits). New watchlist.yaml fields, all hand-entered and never written by detect (whose --month re-run is a DELETE+INSERT that would destroy a hand fact): tier, sales_role, admission_reason/rejection_reason, decided_on, trajectory_state (hand override), capital_events (list of {kind, date, counterparty, amount, url}), signed_leases (list of {address, signed_on, expected_open, url} — the three-store-with-leases case detect structurally cannot see), store_count_source (locator/press/filing/hand_count — only hand_count or locator may support verified), expansion_contact_url. Needs a CHECKPOINT decision because it is two ALTERs plus a change to the curated file's field set — this ticket IS that decision (D109).
 
-Opened 2026-09-15 (CHECKPOINT D109). Pushed to Linear 2026-09-15 as GTM-189.
+Opened 2026-09-15 (CHECKPOINT D109). Pushed to Linear 2026-09-15 as GTM-189. Done 2026-09-16 (CHECKPOINT D114): five hand-evidence fields + verified gate on the YAML, sql/039 three snapshot signals + brand_latest re-bind, capital-event escape hatch armed, +56 tests.
 
 ### trajectory_state derived from snapshot deltas, unmeasured until four snapshots exist
 `Medium` · `5 pts` · `model,score`

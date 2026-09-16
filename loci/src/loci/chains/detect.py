@@ -62,13 +62,19 @@ the next. Comparing two months of that table is only valid with the ledger key.
 from __future__ import annotations
 
 import datetime as dt
+import functools
 import pathlib
 from dataclasses import dataclass
 
 from loci.chains.normalize import ALIASES, brand_key
 from loci.model.poi_presence import FIRST_SEEN_FIELDS, first_seen_sql  # noqa: F401
 
-SQL_015 = pathlib.Path(__file__).resolve().parents[1] / "sql" / "015_chains.sql"
+SQL_DIR = pathlib.Path(__file__).resolve().parents[1] / "sql"
+SQL_015 = SQL_DIR / "015_chains.sql"
+#: The three derived signal columns (GTM-189). Applied by `ensure_schema`
+#: alongside 015 so any path that can write a snapshot can write them; also
+#: applied by `db.init_schema` with every other migration.
+SQL_039 = SQL_DIR / "039_chains_pipeline_signals.sql"
 
 #: A brand needs at least this many deduped locations to be a chain at all.
 #: Below it the table would be every sole proprietor in New York.
@@ -109,10 +115,67 @@ def current_month(today: dt.date | None = None) -> str:
     return (today or dt.date.today()).strftime("%Y-%m")
 
 
+#: Columns sql/039 adds to chains.brand_snapshot, in the order it adds them.
+SIGNAL_COLUMNS = ("pipeline_filings_12m", "pipeline_coverage", "press_hits_12m")
+
+#: Every column `_write` puts into chains.brand_snapshot, NAMED. It used to be
+#: a positional `INSERT ... SELECT *`, which is a write that silently breaks
+#: the first time the table is widened -- and sql/039 widens it.
+SNAPSHOT_COLUMNS = (
+    "snapshot_month", "brand_key", "display_name", "loci_category",
+    "locations_total", "locations_dated", "locations_new_12m",
+    "locations_new_3m", "n_boroughs", "boroughs", "categories",
+    "n_sources", "flagged", "flag_reason", "detected_at",
+) + SIGNAL_COLUMNS
+
+#: The two `pipeline_coverage` values. NULL is the third state and means the
+#: brand has no `loci_category`, so which regime applies is unknown.
+COVERAGE_REAL = "real"
+COVERAGE_STRUCTURAL_ZERO = "structural_zero"
+
+
 def ensure_schema(con) -> None:
-    """Apply sql/015_chains.sql. Idempotent; safe on a warehouse whose
-    init-db predates the chains schema."""
+    """Apply sql/015_chains.sql and sql/039_chains_pipeline_signals.sql.
+    Idempotent; safe on a warehouse whose init-db predates the chains schema."""
     con.execute(SQL_015.read_text())
+    con.execute(SQL_039.read_text())
+
+
+@functools.lru_cache(maxsize=1)
+def filing_real_categories() -> frozenset[str]:
+    """The Loci categories a government filing feed can actually see.
+
+    DERIVED, never typed: it is every category any feed in
+    model/filing_categories.yaml maps a licence type onto. On the 2026-09
+    vocabulary that is restaurant, bar, cafe_bakery, grocery and pharmacy --
+    the other ten are licensed by NYS DOS, NYS Education or NYS OCFS, or are
+    not licensed at all, and no DOB feed carries a trade field that would
+    attribute a filing to them (GTM-152, D80).
+
+    A hand-copied list here would be a second definition of the same fact, and
+    the first feed anybody adds is the moment the two disagree while both look
+    right. `tests/test_chains_detect.py` pins today's five so the set moving is
+    a visible event rather than a silent one."""
+    from loci.model.storefront_pipeline import load_category_map
+
+    doc = load_category_map()
+    out: set[str] = set()
+    for block in doc["sources"].values():
+        out |= set((block.get("map") or {}).values())
+    return frozenset(out)
+
+
+def coverage_for(loci_category) -> str | None:
+    """`real` | `structural_zero` | None for one brand's category.
+
+    None (not `structural_zero`) for a brand with NO category: `structural_zero`
+    is a CLAIM -- "the filing channel is blind to this trade" -- and nobody
+    established it for a brand whose trade is unknown. NULL is this project's
+    standing "not measured" (D79), and the render prints it as such."""
+    if not loci_category or (isinstance(loci_category, float)):
+        return None
+    return (COVERAGE_REAL if loci_category in filing_real_categories()
+            else COVERAGE_STRUCTURAL_ZERO)
 
 
 def location_rows_sql() -> str:
@@ -276,6 +339,8 @@ def build(con, *, month: str | None = None, dry_run: bool = False,
 
     # A list comprehension, NOT DataFrame.apply: apply coerces a returned None
     # to NaN, and `nan is not None` is True, which silently flagged every brand.
+    _attach_signals(con, brands, month)
+
     flags = [flag_for(int(n), int(t))
              for n, t in zip(brands["locations_new_12m"],
                              brands["locations_total"], strict=True)]
@@ -307,6 +372,82 @@ def build(con, *, month: str | None = None, dry_run: bool = False,
 
     _write(con, month, brands, loc)
     return result, rows
+
+
+def month_window_12m(month: str) -> tuple[dt.date, dt.date]:
+    """(start, end_exclusive) for the twelve CALENDAR months ending with
+    `month`.
+
+    Anchored on the snapshot, not on `today`: the month is the unit of
+    idempotence for this table, and a re-run of 2026-09 next March has to
+    produce the number September produced. A rolling 365 days off the clock
+    would quietly make the snapshot un-reproducible."""
+    year, mon = (int(x) for x in month.split("-"))
+    start_year, start_month = divmod((year * 12 + (mon - 1)) - 11, 12)
+    end_year, end_month = divmod((year * 12 + (mon - 1)) + 1, 12)
+    return (dt.date(start_year, start_month + 1, 1),
+            dt.date(end_year, end_month + 1, 1))
+
+
+def _table_exists(con, schema: str, name: str) -> bool:
+    return bool(con.execute(
+        "SELECT count(*) FROM information_schema.tables "
+        "WHERE table_schema = ? AND table_name = ?", [schema, name]).fetchone()[0])
+
+
+def _count_by_key(con, sql: str, params: list) -> dict[str, int]:
+    return {k: int(n) for k, n in con.execute(sql, params).fetchall() if k}
+
+
+def _attach_signals(con, brands, month: str) -> None:
+    """Write `pipeline_filings_12m`, `pipeline_coverage` and `press_hits_12m`
+    onto the month's brand frame (GTM-189; sql/039 carries the rationale).
+
+    THE MISSING-TABLE RULE, copied from candidates.py rather than re-invented:
+    a warehouse without `analysis.storefront_pipeline` or `chains.press_hits`
+    is a normal state -- both are built by other commands -- and the column
+    then stays NULL for every brand. It must never be 0. "We did not measure
+    that channel" and "that channel saw nothing" are different facts, and this
+    column is the only place the difference survives the month.
+
+    A brand the table HAS but never names gets a real 0, which is a
+    measurement, and `pipeline_coverage` says whether that 0 could ever have
+    been anything else."""
+    import pandas as pd
+
+    start, end = month_window_12m(month)
+    keys = brands["brand_key"]
+
+    if _table_exists(con, "analysis", "storefront_pipeline"):
+        # `business_name_key` IS chains.normalize.brand_key -- model/
+        # storefront_pipeline.py imports the same function -- so this is an
+        # exact match, not a fuzzy one. ALL filings, open and not: this
+        # measures paperwork, not the candidate predicate's `pipeline_open`.
+        counts = _count_by_key(con, """
+            SELECT business_name_key, count(*)
+            FROM analysis.storefront_pipeline
+            WHERE business_name_key IS NOT NULL
+              AND entry_date >= ? AND entry_date < ?
+            GROUP BY 1
+        """, [start.isoformat(), end.isoformat()])
+        brands["pipeline_filings_12m"] = keys.map(counts).fillna(0).astype("Int64")
+    else:
+        brands["pipeline_filings_12m"] = pd.Series(pd.NA, index=brands.index,
+                                                   dtype="Int64")
+
+    if _table_exists(con, "chains", "press_hits"):
+        counts = _count_by_key(con, """
+            SELECT brand_key, count(*)
+            FROM chains.press_hits
+            WHERE brand_key <> '' AND published_on IS NOT NULL
+              AND published_on >= ? AND published_on < ?
+            GROUP BY 1
+        """, [start.isoformat(), end.isoformat()])
+        brands["press_hits_12m"] = keys.map(counts).fillna(0).astype("Int64")
+    else:
+        brands["press_hits_12m"] = pd.Series(pd.NA, index=brands.index, dtype="Int64")
+
+    brands["pipeline_coverage"] = [coverage_for(c) for c in brands["loci_category"]]
 
 
 def flag_for(new_12m: int, total: int) -> str | None:
@@ -350,10 +491,7 @@ def _validate_month(month: str) -> None:
 
 def _write(con, month: str, brands, loc) -> None:
     ensure_schema(con)
-    snap = brands[["snapshot_month", "brand_key", "display_name", "loci_category",
-                   "locations_total", "locations_dated", "locations_new_12m",
-                   "locations_new_3m", "n_boroughs", "boroughs", "categories",
-                   "n_sources", "flagged", "flag_reason", "detected_at"]].copy()
+    snap = brands[list(SNAPSHOT_COLUMNS)].copy()
     for col in ("locations_total", "locations_dated", "locations_new_12m",
                 "locations_new_3m", "n_boroughs", "n_sources"):
         snap[col] = snap[col].astype(int)
@@ -377,7 +515,9 @@ def _write(con, month: str, brands, loc) -> None:
         con.execute("DELETE FROM chains.brand_location WHERE snapshot_month = ?", [month])
         con.register("_chain_snap", snap)
         con.register("_chain_loc", detail)
-        con.execute("INSERT INTO chains.brand_snapshot SELECT * FROM _chain_snap")
+        cols = ", ".join(SNAPSHOT_COLUMNS)
+        con.execute(f"INSERT INTO chains.brand_snapshot ({cols}) "
+                    f"SELECT {cols} FROM _chain_snap")
         con.execute("INSERT INTO chains.brand_location SELECT * FROM _chain_loc")
         con.execute("COMMIT")
     except Exception:

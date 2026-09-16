@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json as json_mod
-import math
 import pathlib
 
 from loci.chains import render as ren
@@ -39,21 +38,44 @@ CAVEAT_TEXT = (
     "shown. See docs/chains-process.md.")
 
 
+def caveat_text() -> str:
+    """The footer caveat, with the coverage sentence appended.
+
+    Built at call time rather than at import: the category list is derived from
+    model/filing_categories.yaml (`detect.filing_real_categories`), and reading
+    a file to compute a module constant makes importing this module do work,
+    which is how an import cycle or a slow CLI start-up arrives."""
+    reach = ", ".join(sorted(ren.detect_mod.filing_real_categories()))
+    return (CAVEAT_TEXT[:-len(" See docs/chains-process.md.")]
+            + f" A pipeline cell reading “{ren.NO_COVERAGE_CELL}” is a BLIND SPOT, "
+              f"not an absence: NYC's filing feeds reach only {reach}, and the other "
+              "ten categories are licensed by the state or not at all. Press counts "
+              "are measured with the snapshot and are a floor while chains.press_hits "
+              "holds a 45-day queue. See docs/chains-process.md.")
+
+
 def _clean(value):
     """JSON-safe scalar: NaN and pandas Timestamp become None/str, everything
     else passes through. Never a dash string -- that is a JS presentation
     choice, not a fact about the data."""
-    if value is None:
+    if ren._missing(value):
+        # None, NaN and pandas' NA (which a nullable INTEGER column read back
+        # through fetchdf produces) are all "no value" and all serialize null.
         return None
-    if isinstance(value, float) and math.isnan(value):
-        return None
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
     if isinstance(value, (int, float, str, bool)):
         return value
     return str(value)[:10] if hasattr(value, "isoformat") else str(value)
 
 
-def _pipe_value(pipe_row) -> str | None:
-    cell = ren._pipe_cell(pipe_row)
+def _pipe_value(pipe_row, coverage: str | None = None) -> str | None:
+    """The pipeline cell, or None where there is genuinely nothing to say.
+
+    `coverage == 'structural_zero'` is NOT nothing to say -- it is the one
+    case where the absence of a number is itself the finding, so that text
+    reaches the page rather than an empty cell (see `render.NO_COVERAGE_CELL`)."""
+    cell = ren._pipe_cell(pipe_row, coverage)
     return None if cell == "—" else cell
 
 
@@ -111,7 +133,9 @@ def build_data(con, *, doc: dict | None = None, month: str | None = None,
             "nyc_locations_now": _clean(r.get("nyc_locations_now")),
             "detected_total": _clean(d.get("locations_total")),
             "detected_new_12m": _clean(d.get("locations_new_12m")),
-            "pipeline": _pipe_value(pipe.get(bk)),
+            "pipeline": _pipe_value(pipe.get(bk), d.get("pipeline_coverage")),
+            "pipeline_coverage": _clean(d.get("pipeline_coverage")),
+            "press_hits_12m": _clean(d.get("press_hits_12m")),
             "confidence": _clean(r.get("confidence")),
             "last_verified": _clean(r.get("last_verified")),
             "sales_role": _clean(r.get("sales_role")),
@@ -127,7 +151,9 @@ def build_data(con, *, doc: dict | None = None, month: str | None = None,
             "loci_category": _clean(r.get("loci_category")),
             "detected_total": _clean(d.get("locations_total")),
             "detected_new_12m": _clean(d.get("locations_new_12m")),
-            "pipeline": _pipe_value(pipe.get(bk)),
+            "pipeline": _pipe_value(pipe.get(bk), d.get("pipeline_coverage")),
+            "pipeline_coverage": _clean(d.get("pipeline_coverage")),
+            "press_hits_12m": _clean(d.get("press_hits_12m")),
             "sales_role": _clean(r.get("sales_role")),
             "admission_reason": _clean(r.get("admission_reason")),
             "decided_on": _clean(r.get("decided_on")),
@@ -146,7 +172,7 @@ def build_data(con, *, doc: dict | None = None, month: str | None = None,
         },
         "watchlist": watchlist_out,
         "auto_admitted": auto_out,
-        "footer": {"caveat": CAVEAT_TEXT, "rejected_count": n_rejected},
+        "footer": {"caveat": caveat_text(), "rejected_count": n_rejected},
     }
 
 
@@ -381,6 +407,7 @@ PAGE_HTML = """<!DOCTYPE html>
           <th class="num" data-key="detected_total" data-type="num">Detected total</th>
           <th class="num" data-key="detected_new_12m" data-type="num">Detected new 12m</th>
           <th data-key="pipeline" data-type="text">Pipeline (gov filings)</th>
+          <th class="num" data-key="press_hits_12m" data-type="num">Press 12m</th>
           <th data-key="sales_role" data-type="text">Sales role</th>
           <th data-key="admission_reason" data-type="text">Admitted because</th>
           <th data-key="decided_on" data-type="text">Decided on</th>
@@ -530,6 +557,7 @@ PAGE_HTML = """<!DOCTYPE html>
           + '<td class="num tnum">' + escapeHtml(fmt(r.detected_total)) + "</td>"
           + '<td class="num tnum">' + escapeHtml(fmt(r.detected_new_12m)) + "</td>"
           + "<td>" + escapeHtml(fmt(r.pipeline)) + "</td>"
+          + '<td class="num tnum">' + escapeHtml(fmt(r.press_hits_12m)) + "</td>"
           + "<td>" + pillCell(r.sales_role) + "</td>"
           + "<td>" + escapeHtml(fmt(r.admission_reason)) + "</td>"
           + "<td>" + escapeHtml(fmt(r.decided_on)) + "</td>"

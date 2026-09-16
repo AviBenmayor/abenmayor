@@ -172,10 +172,31 @@ row is a real lead that simply joins to no card.
 |---|---|---|---|
 | `locations_total`, `locations_new_12m/3m`, `n_boroughs`, `n_sources`, `flagged` | `brand_snapshot` | monthly | derived |
 | `locations_delta_since` — cross-snapshot delta | `brand_latest` | monthly | derived; NULL until 2 snapshots |
-| `pipeline_filings_12m`, `pipeline_coverage` (`real`/`structural_zero`) *(not built)* | `storefront_pipeline` | monthly | derived |
-| `press_hits_12m` *(not built)* | `press_hits` | monthly | derived |
+| `pipeline_filings_12m`, `pipeline_coverage` (`real`/`structural_zero`/null) | `storefront_pipeline` → `brand_snapshot` (sql/039) | monthly | derived |
+| `press_hits_12m` | `press_hits` → `brand_snapshot` (sql/039) | monthly | derived |
 | `trajectory_state` — `unmeasured` until 4 snapshots exist, else accelerating/steady/decelerating/declining/static from `d3`/`d12` *(not built)* | `brand_snapshot` deltas | monthly | derived |
-| `tier`, `sales_role`, `*_reason`, `decided_on`, `capital_events`, `signed_leases`, `store_count_source`, `expansion_contact_url` *(not built)* | `watchlist.yaml` | on review | hand — never in `brand_snapshot`, a DELETE+INSERT per `--month` that would destroy it |
+| `tier`, `sales_role`, `*_reason`, `decided_on`, `capital_events`, `signed_leases`, `store_count_source`, `expansion_contact_url`, `trajectory_state` | `watchlist.yaml` | on review | hand — never in `brand_snapshot`, a DELETE+INSERT per `--month` that would destroy it |
+
+**Windows and the coverage label (GTM-189, 2026-09-16).** Both 12-month counts
+are the twelve *calendar* months ending with `snapshot_month`, measured when the
+snapshot was taken and stored with it — not re-derived live, so the reason a
+brand was admitted stays reproducible against the month it was admitted in.
+`pipeline_coverage` is `real` only for the five categories a NYC filing feed can
+attribute a licence to (**restaurant, bar, cafe_bakery, grocery, pharmacy** —
+derived from `model/filing_categories.yaml` by `chains.detect.filing_real_categories`,
+never typed out in a second place), `structural_zero` for the other ten, and NULL
+where the brand has no `loci_category` at all. `docs/CHAINS.md` and the HTML page
+print "no filing coverage for this category" instead of the digit wherever it is
+`structural_zero`: a zero there is a blind spot, not a measurement. A missing
+`analysis.storefront_pipeline` or `chains.press_hits` leaves the *count* NULL and
+never 0.
+
+**`capital_events` arms the rejection escape hatch.** A rejected row re-surfaces
+as a candidate when one of its `capital_events` is dated **after** `decided_on` —
+news the rejection did not have — as well as on the count doubling. An undated
+event can never fire, so `watchlist.validate` refuses one. Only `hand_count` or
+`locator` may support `confidence: verified`, and that too is enforced in
+`validate`.
 
 ### Sources
 

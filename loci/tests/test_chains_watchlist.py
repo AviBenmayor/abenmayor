@@ -70,6 +70,154 @@ def test_duplicate_brand_keys_are_rejected():
 
 # ------------------------------------------------------------------- the merge rule
 
+# ------------------------------------------- the hand-evidence block (GTM-189)
+#
+# Five optional fields nothing but a person writes. They are checked HARD for
+# one reason each, and the reason is always that something READS them: the
+# candidates escape hatch reads `capital_events[].date`, the confidence scale
+# reads `store_count_source`, and a field nobody validates is a field that
+# silently stops working.
+
+
+def _hand(**kw):
+    return _doc(_row(brand="Super Burrito", brand_key="super burrito",
+                     confidence="auto", **kw))
+
+
+def test_a_well_formed_hand_evidence_block_validates():
+    doc = _hand(
+        capital_events=[{"kind": "fundraise", "date": "2026-05-04",
+                         "counterparty": "Enlightened Hospitality",
+                         "amount": "$21M Series B",
+                         "url": "https://example.test/round"}],
+        signed_leases=[{"address": "376 Graham Ave, Brooklyn",
+                        "signed_on": "2026-06-01", "expected_open": "2027-01-15",
+                        "url": "https://example.test/lease"}],
+        store_count_source="hand_count",
+        expansion_contact_url="https://example.test/real-estate",
+        trajectory_state="accelerating")
+    assert watchlist.validate(doc) == []
+
+
+@pytest.mark.parametrize("events,fragment", [
+    ("not a list", "must be a list"),
+    ([["kind", "fundraise"]], "must be a mapping"),
+    ([{"kind": "series_a", "date": "2026-05-04"}], "kind 'series_a' not in"),
+    ([{"kind": "fundraise", "date": "May 2026"}], "is not YYYY-MM-DD"),
+    ([{"kind": "fundraise"}], "is not YYYY-MM-DD"),
+    ([{"kind": "fundraise", "date": "2026-05-04", "amount": 21_000_000}],
+     "amount must be a string"),
+    ([{"kind": "fundraise", "date": "2026-05-04", "investor": "x"}],
+     "unknown key(s) ['investor']"),
+])
+def test_a_malformed_capital_event_is_an_error(events, fragment):
+    errors = watchlist.validate(_hand(capital_events=events))
+    assert any(fragment in e for e in errors), errors
+
+
+def test_an_undated_capital_event_is_refused_because_it_can_never_fire():
+    """The escape hatch compares the date against `decided_on`. An undated
+    event sits on the row looking armed and does nothing, which is worse than
+    not being there: nobody re-reads a rejected row by hand."""
+    errors = watchlist.validate(_hand(capital_events=[{"kind": "bankruptcy"}]))
+    assert any("can never re-surface a rejected brand" in e for e in errors)
+
+
+@pytest.mark.parametrize("leases,fragment", [
+    ("123 Main St", "must be a list"),
+    ([{"signed_on": "2026-06-01"}], "missing `address`"),
+    ([{"address": "  "}], "missing `address`"),
+    ([{"address": "1 Main St", "signed_on": "last June"}], "is not YYYY-MM-DD"),
+    ([{"address": "1 Main St", "expected_open": "soon"}], "is not YYYY-MM-DD"),
+    ([{"address": "1 Main St", "sqft": 1200}], "unknown key(s) ['sqft']"),
+])
+def test_a_malformed_signed_lease_is_an_error(leases, fragment):
+    errors = watchlist.validate(_hand(signed_leases=leases))
+    assert any(fragment in e for e in errors), errors
+
+
+def test_a_lease_needs_only_an_address():
+    """The other three are optional on purpose: a broker mentions a signed
+    lease on a corner long before anyone knows the opening date, and refusing
+    the row would lose the only signal detect structurally cannot see."""
+    assert watchlist.validate(_hand(signed_leases=[{"address": "1 Main St"}])) == []
+
+
+def test_store_count_source_is_an_enum():
+    assert any("store_count_source 'guess' not in" in e
+               for e in watchlist.validate(_hand(store_count_source="guess")))
+    for value in watchlist.STORE_COUNT_SOURCE_VALUES:
+        assert watchlist.validate(_hand(store_count_source=value)) == []
+
+
+@pytest.mark.parametrize("source", ["press", "filing", None])
+def test_verified_needs_a_counted_source(source):
+    """`verified` means somebody here counted the stores. A press number is a
+    journalist's count and a filing count is a floor off open data; promoting
+    either to `verified` is the exact laundering the confidence scale exists to
+    stop (docs/chains-process.md, quarterly re-verification)."""
+    doc = _doc(_row(brand="Super Burrito", brand_key="super burrito",
+                    confidence="verified", store_count_source=source,
+                    evidence=[{"url": "https://example.test/a"}]))
+    assert any("needs store_count_source in ['hand_count', 'locator']" in e
+               for e in watchlist.validate(doc))
+
+
+@pytest.mark.parametrize("source", ["hand_count", "locator"])
+def test_verified_is_allowed_where_somebody_counted(source):
+    doc = _doc(_row(brand="Super Burrito", brand_key="super burrito",
+                    confidence="verified", store_count_source=source,
+                    evidence=[{"url": "https://example.test/a"}]))
+    assert watchlist.validate(doc) == []
+
+
+def test_the_verified_gate_does_not_touch_any_other_confidence():
+    for conf in ("reported", "unverified", "auto"):
+        doc = _doc(_row(brand="Super Burrito", brand_key="super burrito",
+                        confidence=conf,
+                        evidence=[{"url": "https://example.test/a"}]))
+        assert watchlist.validate(doc) == [], conf
+
+
+def test_trajectory_state_is_an_enum():
+    assert any("trajectory_state 'growing' not in" in e
+               for e in watchlist.validate(_hand(trajectory_state="growing")))
+    for value in watchlist.TRAJECTORY_STATE_VALUES:
+        assert watchlist.validate(_hand(trajectory_state=value)) == []
+
+
+def test_expansion_contact_url_must_be_a_string():
+    assert any("expansion_contact_url must be a string" in e
+               for e in watchlist.validate(_hand(expansion_contact_url=12)))
+
+
+def test_the_hand_evidence_fields_are_all_optional_on_every_shipped_row():
+    """All 902 rows predate the block and must still validate untouched: the
+    fields are additive, and a required one would have invalidated the file the
+    day it was added."""
+    doc = watchlist.load()
+    assert watchlist.validate(doc) == []
+    for field in ("capital_events", "signed_leases", "store_count_source",
+                  "expansion_contact_url", "trajectory_state"):
+        assert field in watchlist.FIELDS
+        assert all(r.get(field) is None for r in doc["brands"]), \
+            f"{field} is hand-entered; nothing should have written it yet"
+
+
+def test_nothing_machine_written_carries_a_hand_evidence_field():
+    """`auto-admit` writes the DECISION block and never this one. The whole
+    point of the split is that a `--month` re-run of detect cannot destroy a
+    hand fact; a machine that started writing here would put the fact back in
+    reach of the DELETE."""
+    _, added, _ = watchlist.auto_admit(
+        {"version": 1, "brands": []},
+        [{"brand_key": "super burrito", "display_name": "Super Burrito",
+          "locations_total": 9, "locations_new_12m": 3}], today=TODAY)
+    for field in ("capital_events", "signed_leases", "store_count_source",
+                  "expansion_contact_url", "trajectory_state"):
+        assert added[0][field] is None
+
+
 def test_import_never_clobbers_a_curated_field():
     doc = _doc(_row(brand="Apollo Bagels", brand_key="apollo bagels",
                     nyc_locations_now=7, confidence="verified",

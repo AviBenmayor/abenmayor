@@ -226,3 +226,7 @@ def test_stoplisted_ambiguous_keys_are_not_renamed_by_brand_key(raw):
     test_chains_exclusions.py); brand_key itself must leave them alone -- it
     is not brand_key's job to rewrite an ambiguous key onto another brand."""
     assert brand_key(raw) == raw
+
+
+def test_pure_gym_spaced_filing_collapses_to_the_brand_spelling():
+    assert brand_key("Pure Gym") == brand_key("PureGym") == "puregym"

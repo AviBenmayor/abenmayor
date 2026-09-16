@@ -70,8 +70,57 @@
 #                         rejection written without it cannot re-surface on
 #                         that arm at all.
 #
+# THE HAND-EVIDENCE BLOCK -- added 2026-09-16 (GTM-189, D109). Every field is
+# optional and NOTHING WRITES THEM BUT A PERSON. `loci chains detect` re-runs a
+# month as a DELETE+INSERT, so a hand fact kept in chains.brand_snapshot would
+# be destroyed by the next `--month` re-run; this file is the only artefact in
+# the chain a machine never rewrites, which is why they live here.
+#
+#   capital_events        list of {kind, date, counterparty, amount, url}.
+#                         The events that change what a company IS, which no
+#                         location count can show: the round that funds twenty
+#                         stores, the acquisition that freezes expansion, the
+#                         bankruptcy that starts a closure programme.
+#                           kind         fundraise | acquisition | pe_minority |
+#                                        franchise_rights | bankruptcy |
+#                                        closure_program
+#                           date         YYYY-MM-DD, REQUIRED. THE ESCAPE HATCH
+#                                        READS IT: a rejected brand re-surfaces
+#                                        as a candidate when an event is dated
+#                                        AFTER `decided_on`. An undated event
+#                                        can never re-open a row, so validate()
+#                                        refuses one rather than letting it sit
+#                                        there looking like it works.
+#                           amount       free text ("$21M Series B", "undisclosed")
+#                           counterparty, url   strings
+#   signed_leases         list of {address, signed_on, expected_open, url}.
+#                         The three-stores-with-leases case detect
+#                         STRUCTURALLY cannot see: a lease is not a filing, not
+#                         a POI and not a press hit, and the brand reads at its
+#                         old count until the doors open. `address` is
+#                         required -- it is what makes the entry checkable.
+#   store_count_source    locator | press | filing | hand_count -- where
+#                         `nyc_locations_now` came from. ONLY `hand_count` or
+#                         `locator` may support `confidence: verified`; a press
+#                         number is a journalist's count and a filing count is
+#                         a floor off open data, and neither is "somebody here
+#                         counted the stores". validate() enforces it.
+#   expansion_contact_url the page naming the person who owns site selection --
+#                         the sales target behind `expansion_role_title`.
+#   trajectory_state      accelerating | steady | decelerating | declining |
+#                         static | unmeasured. A HAND OVERRIDE of the derived
+#                         label (GTM-190), for the case the deltas cannot see:
+#                         an acquired chain frozen at its count reads `static`,
+#                         which is true of the number and false about the
+#                         company.
+#
 #   first_added           YYYY-MM-DD
 #   last_verified         YYYY-MM-DD or null
+#
+# THREE DERIVED SIGNALS ARE DELIBERATELY NOT IN THIS FILE: pipeline_filings_12m,
+# pipeline_coverage and press_hits_12m live on chains.brand_snapshot (sql/039),
+# because they are re-measured every month and a curated copy would be stale
+# the day after it was typed. docs/CHAINS.md joins them in.
 # ---------------------------------------------------------------------------
 version: 1
 updated_on: '2026-09-15'

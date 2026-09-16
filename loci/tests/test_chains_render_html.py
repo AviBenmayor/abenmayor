@@ -50,6 +50,9 @@ def _doc() -> dict:
         _row(brand="Blank Street Coffee", brand_key="blank street coffee",
              category="coffee", loci_category="cafe_bakery",
              net_new_12m=20, nyc_locations_now=45, confidence="verified",
+             # `verified` requires a counted source (GTM-189) -- a store
+             # locator or a hand count, never a press or filing number.
+             store_count_source="locator",
              sales_role="prospect", last_verified="2026-08-01",
              evidence=[{"url": "https://x.example"}]),
         _row(brand="Dunkin'", brand_key="dunkin",
@@ -78,22 +81,29 @@ def _doc() -> dict:
 def con():
     c = locidb.connect(":memory:")
     detect_mod.ensure_schema(c)
+    # (key, total, new_12m, loci_category, pipeline_filings_12m,
+    #  pipeline_coverage, press_hits_12m). `some new brand` is a FITNESS brand:
+    # the filing feeds cannot see that category at all, so its pipeline cell
+    # must read the blind-spot sentence and never a zero (sql/039).
     specs = [
-        ("blank street coffee", 50, 20),
-        ("dunkin", 905, 6),
-        ("some new brand", 10, 4),
-        ("key food", 40, 1),
+        ("blank street coffee", 50, 20, "cafe_bakery", 3, "real", 2),
+        ("dunkin", 905, 6, "restaurant", 0, "real", 0),
+        ("some new brand", 10, 4, "fitness", 0, "structural_zero", 1),
+        ("key food", 40, 1, "grocery", 1, "real", 0),
     ]
     frame = pd.DataFrame([{
         "snapshot_month": MONTH, "brand_key": bk, "display_name": bk.title(),
-        "loci_category": "restaurant", "locations_total": total,
+        "loci_category": cat, "locations_total": total,
         "locations_dated": total, "locations_new_12m": new12,
         "locations_new_3m": 1, "n_boroughs": 3, "boroughs": "Brooklyn,Manhattan",
-        "categories": "restaurant", "n_sources": 2, "flagged": True,
+        "categories": cat, "n_sources": 2, "flagged": True,
         "flag_reason": "test fixture", "detected_at": dt.datetime(2026, 9, 15, 12, 0),
-    } for bk, total, new12 in specs])
+        "pipeline_filings_12m": filings, "pipeline_coverage": coverage,
+        "press_hits_12m": press,
+    } for bk, total, new12, cat, filings, coverage, press in specs])
     c.register("_rows", frame)
-    c.execute("INSERT INTO chains.brand_snapshot SELECT * FROM _rows")
+    cols = ", ".join(detect_mod.SNAPSHOT_COLUMNS)
+    c.execute(f"INSERT INTO chains.brand_snapshot ({cols}) SELECT {cols} FROM _rows")
     c.unregister("_rows")
     yield c
     c.close()
@@ -232,3 +242,62 @@ def test_live_render_matches_the_watchlists_own_counts():
     assert len(data["watchlist"]) == n_hand
     assert len(data["auto_admitted"]) == n_auto
     assert n_hand + n_auto + n_rejected == len(doc["brands"])
+
+
+# --------------------------------------- the sql/039 signals on the page
+
+def test_the_page_carries_the_coverage_label_beside_the_pipeline_cell(data):
+    """`Some New Brand` is fitness in the snapshot fixture -- a category no NYC
+    filing feed can attribute a licence to. The cell has to say so; an empty
+    cell or a 0 would be read as "nothing is coming"."""
+    from loci.chains import render as ren
+
+    row = next(r for r in data["auto_admitted"] if r["brand_key"] == "some new brand")
+    assert row["pipeline_coverage"] == "structural_zero"
+    assert row["pipeline"] == ren.NO_COVERAGE_CELL
+
+
+def test_a_covered_category_keeps_an_ordinary_pipeline_cell(data):
+    from loci.chains import render as ren
+
+    row = next(r for r in data["watchlist"] if r["brand_key"] == "blank street coffee")
+    assert row["pipeline_coverage"] == "real"
+    assert row["pipeline"] != ren.NO_COVERAGE_CELL
+
+
+def test_every_row_carries_its_press_count(data):
+    """A NUMBER, not a string: the column sorts numerically on the page."""
+    auto = {r["brand_key"]: r["press_hits_12m"] for r in data["auto_admitted"]}
+    hand = {r["brand_key"]: r["press_hits_12m"] for r in data["watchlist"]}
+    assert auto["some new brand"] == 1 and auto["key food"] == 0
+    assert hand["blank street coffee"] == 2 and hand["dunkin"] == 0
+    assert all(isinstance(v, int) for v in {**auto, **hand}.values())
+
+
+def test_a_press_count_the_snapshot_never_measured_serializes_null(con):
+    """NULL is "we did not measure that channel" and must reach the page as
+    null, never as 0 -- JSON has no other way to keep the distinction."""
+    con.execute("UPDATE chains.brand_snapshot SET press_hits_12m = NULL, "
+                "pipeline_coverage = NULL WHERE brand_key = 'dunkin'")
+    payload = rh.build_data(con, doc=_doc(), month=MONTH, today=TODAY)
+    row = next(r for r in payload["watchlist"] if r["brand_key"] == "dunkin")
+    assert row["press_hits_12m"] is None
+    assert row["pipeline_coverage"] is None
+
+
+def test_the_auto_table_has_a_press_column_the_body_fills():
+    """Header and body are written in two different places in the page shell;
+    a column added to one and not the other shifts every cell after it."""
+    assert '<th class="num" data-key="press_hits_12m" data-type="num">Press 12m</th>' \
+        in rh.PAGE_HTML
+    assert "fmt(r.press_hits_12m)" in rh.PAGE_HTML
+
+
+def test_the_footer_caveat_explains_the_blind_spot():
+    from loci.chains import render as ren
+
+    text = rh.caveat_text()
+    assert ren.NO_COVERAGE_CELL in text
+    for category in ren.detect_mod.filing_real_categories():
+        assert category in text
+    assert "BLIND SPOT, not an absence" in text

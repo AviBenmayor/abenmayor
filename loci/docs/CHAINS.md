@@ -4,7 +4,7 @@
 
 # NYC chains to watch
 
-**Generated** 2026-09-16 · **detect snapshot** 2026-09 · **watchlist** 902 brands (161 hand-vetted, 741 auto-admitted, 0 rejected) · 20949 detected brands.
+**Generated** 2026-09-16 · **detect snapshot** 2026-09 · **watchlist** 902 brands (161 hand-vetted, 741 auto-admitted, 0 rejected) · 20948 detected brands.
 
 Two uses: companies to sell a site-selection product to, and — later — the "brand X is opening nearby" signal on a recommendation card. `loci_category` is the join key that will make the second possible; nothing consumes it yet.
 
@@ -23,10 +23,10 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 | CAVA | fast casual Mediterranean bowls | restaurant | 6 | 15 | 29 | 2 | — | reported | — |
 | MYKA Greek Frozen Yogurt | Premium Greek frozen yogurt (Madrid-founded franchise) | — | 6 | 6 | — | — | — | reported | — |
 | Apollo Bagels | bagels | cafe_bakery | 5 | 9 | 12 | 5 | — | reported | — |
-| The Learning Experience | childcare - daycare & early education franchise | childcare | 5 | 6 | 54 | 0 | — | reported | — |
+| The Learning Experience | childcare - daycare & early education franchise | childcare | 5 | 6 | 54 | 0 | no filing coverage for this category | reported | — |
 | Bluestone Lane | Australian-style café | cafe_bakery | 5 | 25 | 23 | 0 | — | reported | — |
 | Los Tacos No. 1 | Tijuana-style tacos | restaurant | 5 | 10 | 17 | 3 | — | reported | — |
-| Chase (JPMorganChase) | bank branches | bank | 5 | 425 | 47 | 0 | — | reported | — |
+| Chase (JPMorganChase) | bank branches | bank | 5 | 425 | 47 | 0 | no filing coverage for this category | reported | — |
 | Chipotle Mexican Grill | fast casual Mexican | restaurant | 5 | 45 | 220 | 17 | 16 in BK,MN,QN, from 2025-10-03 | reported | — |
 | HeyTea | boba/tea | cafe_bakery | 5 | 15 | 20 | 1 | — | reported | — |
 | Mixue | ice cream & bubble tea | — | 5 | 5 | 4 | 3 | — | reported | — |
@@ -34,40 +34,40 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 | Insomnia Cookies | late-night cookies/bakery | cafe_bakery | 4 | 24 | 25 | 4 | — | reported | — |
 | Uniqlo | apparel | — | 4 | 10 | — | — | — | reported | — |
 | Aldi | Hard-discount grocery | grocery | 4 | 16 | 70 | 5 | — | reported | — |
-| LaundryBee | 24/7 staffed self-service laundromat chain | laundry | 4 | 20 | 8 | 0 | — | reported | — |
+| LaundryBee | 24/7 staffed self-service laundromat chain | laundry | 4 | 20 | 8 | 0 | no filing coverage for this category | reported | — |
 | Dave's Hot Chicken | Nashville-style hot chicken | restaurant | 4 | 7 | 24 | 5 | — | reported | — |
 | Teapulse | Shanghai tea chain (extension of the Jidong brand) — milk tea, fruit tea, cheese tea | cafe_bakery | 4 | 4 | 9 | 6 | — | reported | — |
 | Bonchon | Korean fried chicken | restaurant | 4 | 11 | 26 | 2 | — | reported | — |
 | Chip City Cookies | cookies | cafe_bakery | 4 | 20 | 30 | 1 | — | reported | — |
 | Crumbl Cookies | cookies | cafe_bakery | 4 | 8 | 16 | 1 | — | reported | — |
 | Dos Toros Taqueria | California/Bay Area-style taqueria | restaurant | 4 | 18 | 37 | 3 | — | reported | — |
-| Sugared + Bronzed | beauty - sugaring hair removal & sunless/airbrush tanning | — | 4 | 14 | 11 | 1 | — | reported | — |
+| Sugared + Bronzed | beauty - sugaring hair removal & sunless/airbrush tanning | — | 4 | 14 | 11 | 1 | no filing coverage for this category | reported | — |
 | The Flowery NY | cannabis dispensary (multi-site adult-use retailer) | — | 4 | 10 | — | — | 1 in QN, from 2026-05-21 | reported | — |
-| Vivvi | childcare - infant & toddler early learning campuses | childcare | 4 | 13 | 7 | 0 | — | reported | — |
+| Vivvi | childcare - infant & toddler early learning campuses | childcare | 4 | 13 | 7 | 0 | no filing coverage for this category | reported | — |
 | NaiSnow | tea and bakery | cafe_bakery | 4 | 4 | 5 | 5 | — | reported | — |
 | Goop Kitchen | chef-driven, delivery-first prepared meals (ghost-kitchen model transitioning to storefronts) | restaurant | 4 | 4 | 6 | 4 | — | reported | — |
 | Skinny Louie | smash burgers and shakes | restaurant | 4 | 5 | 5 | 4 | — | reported | — |
 | Lidl US | discount grocery | grocery | 3 | 9 | 59 | 4 | 7 in BK,MN,QN, from 2024-10-28 | reported | — |
 | Miznon | Israeli pita / street food | restaurant | 3 | 6 | 10 | 3 | 1 in MN, from 2025-09-23 | reported | — |
 | 7th Street Burger | smash burger | restaurant | 3 | 10 | 29 | 5 | 1 in MN, from 2026-08-20 | reported | — |
-| Glowbar | beauty - membership-based facials/skincare studios | — | 3 | 12 | 11 | 1 | — | reported | — |
+| Glowbar | beauty - membership-based facials/skincare studios | — | 3 | 12 | 11 | 1 | no filing coverage for this category | reported | — |
 | Haidilao | Sichuan hot pot | restaurant | 3 | 4 | — | — | — | reported | — |
-| LaserAway | dermatology / laser hair removal / medspa aesthetics | clinic | 3 | 15 | 6 | 0 | 2 in MN, from 2026-07-08 | reported | — |
+| LaserAway | dermatology / laser hair removal / medspa aesthetics | clinic | 3 | 15 | 6 | 0 | no filing coverage for this category | reported | — |
 | Panda Express | Chinese-American fast casual | restaurant | 3 | 8 | 43 | 2 | — | reported | — |
 | Quality Branded | multi-concept restaurant group (steakhouse, Italian, Mexican, Southeast Asian) | restaurant | 3 | 11 | — | — | — | reported | — |
 | %Arabica | specialty coffee | cafe_bakery | 3 | 6 | 6 | 2 | — | reported | — |
 | Ever/Body | cosmetic dermatology / medical aesthetics | clinic | 3 | 10 | — | — | — | reported | — |
 | Möge Tee | boba/tea | cafe_bakery | 3 | 11 | 18 | 0 | 1 in QN, from 2025-01-16 | reported | — |
-| Peachy | preventative Botox / wrinkle-relaxer studio | clinic | 3 | 8 | 3 | 0 | — | reported | — |
+| Peachy | preventative Botox / wrinkle-relaxer studio | clinic | 3 | 8 | 3 | 0 | no filing coverage for this category | reported | — |
 | Select by Kung Fu Tea | boba/tea (new premium concept) | cafe_bakery | 3 | 3 | — | — | — | reported | — |
 | Carrot Express | healthy fast-casual restaurant | restaurant | 3 | 6 | 7 | 3 | — | reported | — |
 | PopUp Bagels | bagels | cafe_bakery | 2 | 8 | 11 | 3 | — | reported | — |
 | Miniso | international variety/lifestyle retail | — | 2 | 0 | — | — | — | reported | — |
 | Tatte Bakery & Café | Israeli-inspired all-day bakery-cafe (Boston/DC chain entering NY) | cafe_bakery | 2 | 2 | 2 | 2 | — | reported | — |
-| Chelsea Piers Fitness | Large-format premium fitness and sports clubs | fitness | 2 | 9 | 6 | 0 | — | reported | — |
+| Chelsea Piers Fitness | Large-format premium fitness and sports clubs | fitness | 2 | 9 | 6 | 0 | no filing coverage for this category | reported | — |
 | Maman | French-American bakery-cafe | cafe_bakery | 2 | 20 | 35 | 3 | — | reported | — |
-| Beanstalk Academy | Kindergarten-prep / early childhood education | childcare | 2 | 4 | 5 | 0 | — | reported | — |
-| Blo Blow Dry Bar | beauty - blowout/hair styling bar | — | 2 | 6 | 9 | 0 | — | reported | — |
+| Beanstalk Academy | Kindergarten-prep / early childhood education | childcare | 2 | 4 | 5 | 0 | no filing coverage for this category | reported | — |
+| Blo Blow Dry Bar | beauty - blowout/hair styling bar | — | 2 | 6 | 9 | 0 | no filing coverage for this category | reported | — |
 | Goodland Pickleball | Indoor pickleball club | fitness | 2 | 3 | — | — | — | reported | — |
 | Bespoke Physical Therapy | physical therapy (boutique 1-on-1 PT clinics) | clinic | 2 | 5 | — | — | — | reported | — |
 | Nowon | Korean-American gastropub / fried chicken | restaurant | 2 | 3 | 2 | 0 | — | reported | — |
@@ -79,9 +79,9 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 | Cafe Landwer | Israeli/Mediterranean all-day cafe | restaurant | 2 | 2 | 2 | 1 | — | reported | — |
 | Devoción | specialty coffee roaster | cafe_bakery | 2 | 6 | 12 | 1 | — | reported | — |
 | Emmy Squared Pizza | pizza + burger | restaurant | 2 | 8 | 5 | 0 | — | reported | — |
-| Heyday | beauty - custom facials/skincare studios | — | 2 | 9 | 9 | 1 | — | reported | — |
+| Heyday | beauty - custom facials/skincare studios | — | 2 | 9 | 9 | 1 | no filing coverage for this category | reported | — |
 | Jollibee | Filipino fast food / fried chicken | restaurant | 2 | 4 | 19 | 2 | — | reported | — |
-| Lenox Hill Radiology (RadNet) | outpatient diagnostic imaging | clinic | 2 | 27 | 21 | 0 | — | reported | — |
+| Lenox Hill Radiology (RadNet) | outpatient diagnostic imaging | clinic | 2 | 27 | 21 | 0 | no filing coverage for this category | reported | — |
 | New Balance | athletic footwear/apparel | — | 2 | 3 | — | — | — | reported | — |
 | Prince St. Pizza | Sicilian-style square-slice pizza | restaurant | 2 | 3 | — | — | — | reported | — |
 | Sauce Pizzeria (Everyday Hospitality) | pizzeria | restaurant | 2 | 3 | 5 | 0 | — | reported | — |
@@ -94,8 +94,8 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 | Slap Burger | halal smash burgers, hot chicken, shakes | restaurant | 2 | 4 | 7 | 4 | — | reported | — |
 | SweatHouz | contrast therapy (private infrared sauna + cold plunge suites), franchise | — | 1 | 1 | — | — | — | reported | — |
 | Small Door Veterinary | veterinary (membership-based primary + urgent care) | — | 1 | 5 | — | — | — | reported | — |
-| New York Pilates | reformer Pilates | fitness | 1 | 2 | 4 | 0 | — | reported | — |
-| Life Time | luxury athletic country club / big-box gym | fitness | 1 | 11 | 15 | 0 | — | reported | — |
+| New York Pilates | reformer Pilates | fitness | 1 | 2 | 4 | 0 | no filing coverage for this category | reported | — |
+| Life Time | luxury athletic country club / big-box gym | fitness | 1 | 11 | 15 | 0 | no filing coverage for this category | reported | — |
 | CTown Supermarkets | Independent-cooperative supermarket banner (Krasdale) | grocery | 1 | 90 | 115 | 4 | — | reported | — |
 | Golden Age Hospitality | multi-venue bar/restaurant nightlife group (Jon Neidich) | bar | 1 | 9 | — | — | 2 in MN, from 2025-08-18 | reported | — |
 | Socceroof (rebranding to UNLMTD Soccer) | Indoor soccer / multi-sport clubs (also half-court basketball and pickleball) | fitness | 1 | 3 | 4 | 3 | — | reported | — |
@@ -104,21 +104,21 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 | Atlantic Market | New independent supermarket | grocery | 1 | 1 | — | — | — | reported | — |
 | Barnes & Noble | Bookstores | — | 1 | 11 | 4 | 0 | — | reported | — |
 | Big Night | Home goods / 'dinner and party shop' | — | 1 | 3 | — | — | — | reported | — |
-| Callen-Lorde Community Health Center | LGBTQ+ community health / FQHC | clinic | 1 | 4 | 2 | 0 | — | reported | — |
+| Callen-Lorde Community Health Center | LGBTQ+ community health / FQHC | clinic | 1 | 4 | 2 | 0 | no filing coverage for this category | reported | — |
 | CVS Pharmacy | pharmacy/drugstore | pharmacy | 1 | 0 | 436 | 15 | 2 in BK,SI, from 2026-07-31 | reported | — |
 | Erudite Preschool | Preschool | childcare | 1 | 2 | — | — | — | reported | — |
-| FaceGym | beauty - facial fitness/facial workout studios | — | 1 | 3 | 2 | 0 | — | reported | — |
-| Fitness Factory | Value gym | fitness | 1 | 2 | 6 | 1 | — | reported | — |
+| FaceGym | beauty - facial fitness/facial workout studios | — | 1 | 3 | 2 | 0 | no filing coverage for this category | reported | — |
+| Fitness Factory | Value gym | fitness | 1 | 2 | 6 | 1 | no filing coverage for this category | reported | — |
 | Five Iron Golf | indoor golf simulator bar / entertainment venue chain | — | 1 | 7 | 7 | 0 | — | reported | — |
 | Gowanus Golf Club | Indoor golf / social club | fitness | 1 | 3 | — | — | — | reported | — |
 | House of Spells | Fantasy collectibles retail (UK entrant) | — | 1 | 1 | — | — | — | reported | — |
 | Hydrogen Fitness | Boutique gym | fitness | 1 | 1 | — | — | — | reported | — |
-| Ivy Prep Early Learning Academy | Day care centers | childcare | 1 | 3 | 4 | 0 | — | reported | — |
+| Ivy Prep Early Learning Academy | Day care centers | childcare | 1 | 3 | 4 | 0 | no filing coverage for this category | reported | — |
 | Kings Co Imperial | Chinese restaurant mini-chain | restaurant | 1 | 3 | 2 | 1 | — | reported | — |
 | L'Industrie Pizzeria | Slice shop | restaurant | 1 | 3 | 3 | 1 | — | reported | — |
 | Mariscos El Submarino | Fast-casual Mexican seafood | restaurant | 1 | 4 | 5 | 1 | — | reported | — |
 | Muji | Japanese home goods and apparel | — | 1 | 8 | — | — | 1 in BX, from 2025-08-25 | reported | — |
-| Municipal Credit Union | Credit union branches | bank | 1 | 23 | 18 | 0 | 6 in BK,BX,MN,QN, from 2024-11-13 | reported | — |
+| Municipal Credit Union | Credit union branches | bank | 1 | 23 | 18 | 0 | no filing coverage for this category | reported | — |
 | Quantum Physical Therapy & Chiropractic Care | Physical therapy and chiropractic clinics | clinic | 1 | 4 | — | — | — | reported | — |
 | Salomon | outdoor/athletic footwear | — | 1 | 2 | — | — | — | reported | — |
 | Sunday Hospitality | multi-concept restaurant/hotel group (Sunday in Brooklyn, Rule of Thirds, El Quijote, Lobby Bar, Cafe Chelsea, Bedford Post Inn, Dynamo Room) | restaurant | 1 | 6 | — | — | — | reported | — |
@@ -130,7 +130,7 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 | Somedays Bakery | bakery | cafe_bakery | 1 | 4 | 7 | 3 | — | reported | — |
 | Xi'an Famous Foods | Shaanxi-style Chinese noodle restaurant | restaurant | 1 | 19 | 32 | 6 | — | reported | — |
 | Toby's Estate Coffee | specialty coffee roaster and cafe | cafe_bakery | 1 | 2 | 10 | 4 | — | reported | — |
-| Vital Climbing Gym | climbing gym | fitness | 0 | 4 | 4 | 0 | — | reported | — |
+| Vital Climbing Gym | climbing gym | fitness | 0 | 4 | 4 | 0 | no filing coverage for this category | reported | — |
 | Gong Cha | boba/tea | cafe_bakery | 0 | 0 | 66 | 1 | — | reported | — |
 | Tide Cleaners | laundry & dry cleaning franchise (in-store drop-off, drive-thru, and kiosk formats) | laundry | 0 | 0 | — | — | — | reported | — |
 | H Mart | Korean/Asian specialty grocery | grocery | 0 | 0 | 25 | 1 | 1 in QN, from 2026-02-27 | reported | — |
@@ -138,13 +138,13 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 | Aritzia | apparel | — | 0 | 2 | 3 | 0 | — | reported | — |
 | CityPickle | pickleball club | fitness | 0 | 2 | — | — | 1 in BK, from 2026-02-17 | reported | — |
 | Gracious Hospitality Management | multi-concept restaurant group | restaurant | 0 | 0 | — | — | — | reported | — |
-| Othership | social sauna / contrast therapy club | fitness | 0 | 1 | 2 | 0 | — | reported | — |
+| Othership | social sauna / contrast therapy club | fitness | 0 | 1 | 2 | 0 | no filing coverage for this category | reported | — |
 | Reserve Padel | indoor padel club (members-only) | fitness | 0 | 1 | — | — | — | reported | — |
 | Sushiro | conveyor-belt sushi | restaurant | 0 | 0 | 2 | 1 | — | reported | — |
 | Stout NYC | sports bar / pub | bar | 0 | 4 | 7 | 3 | — | reported | — |
 | Amazon Fresh / Amazon Go | grocery / tech-enabled convenience | grocery | -2 | 0 | — | — | — | reported | — |
 | Walgreens / Duane Reade | pharmacy/drugstore | pharmacy | -8 | 0 | 326 | 1 | — | reported | — |
-| Rite Aid | pharmacy/drugstore | pharmacy | -35 | 0 | 258 | 0 | — | reported | — |
+| Rite Aid | pharmacy/drugstore | pharmacy | -35 | 0 | 258 | 0 | no filing coverage for this category | reported | — |
 | All'Antico Vinaio | sandwich shop | restaurant | — | 8 | 10 | 0 | — | reported | — |
 | 101 Chicken | Korean fried chicken shop | restaurant | — | 2 | 5 | 4 | — | reported | — |
 | Taco Tek Mexican Grill | Mexican grill (build-your-own tacos/burritos/bowls) | restaurant | — | 4 | 5 | 4 | — | reported | — |
@@ -154,7 +154,7 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 | Zhengxin Chicken Steak | fried chicken steak shop | restaurant | — | — | 8 | 3 | — | reported | — |
 | Guacado | Mexican grill | restaurant | — | 11 | 14 | 12 | — | reported | — |
 | Juici Patties | Jamaican patty shop | restaurant | — | 12 | 10 | 8 | — | reported | — |
-| Club Pilates | Pilates studio | fitness | — | 15 | 71 | 7 | — | reported | — |
+| Club Pilates | Pilates studio | fitness | — | 15 | 71 | 7 | no filing coverage for this category | reported | — |
 | Teriyaki One | Japanese grill | restaurant | — | 6 | 40 | 10 | — | reported | — |
 | Halal Munchies | halal fast food | restaurant | — | 7 | 27 | 7 | — | reported | — |
 | Moka & Co | Yemeni coffee shop | cafe_bakery | — | 10 | 15 | 6 | — | reported | — |
@@ -170,7 +170,7 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 | Wonder | multi-restaurant food hall / delivery | restaurant | — | — | 36 | 12 | — | reported | — |
 | Gristedes | supermarket | grocery | — | 17 | 27 | 11 | 2 in MN, from 2025-03-25 | reported | — |
 | Jimmy John's | sandwich shop | restaurant | — | 12 | 21 | 11 | — | reported | — |
-| PureGym | budget 24/7 gym | fitness | — | — | 17 | 11 | 1 in MN, from 2026-04-27 | reported | — |
+| PureGym | budget 24/7 gym | fitness | — | — | 19 | 13 | no filing coverage for this category | reported | — |
 | Cotti Coffee | Chinese coffee chain | cafe_bakery | — | — | 14 | 10 | — | reported | — |
 | Just Salad | fast-casual salad restaurant | restaurant | — | 49 | 67 | 9 | — | reported | — |
 | Baya Bar | acai & smoothie bar | cafe_bakery | — | 27 | 36 | 8 | — | reported | — |
@@ -178,753 +178,757 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 
 `Pipeline (gov filings)` counts rows in `analysis.storefront_pipeline` that are filed under this brand's key and are **not yet open** — a lease signed, a build-out permitted or a licence applied for, with no regulator having seen a business yet. It is a FLOOR: a franchisee files under its own operating company (`PRIYA FOODS INC` running a Dunkin'), so an empty cell is as often "files under another name" as it is "nothing coming". A filing is also not a store — applications are withdrawn and permits lapse.
 
+Where that column reads **"no filing coverage for this category"**, the brand's `loci_category` is one of the ten the city's filing feeds cannot see at all — laundry, hair, nails, childcare, clinic, fitness, bank, hardware, convenience and tailor are licensed by NYS DOS, NYS Education or NYS OCFS, or not licensed at all, and no DOB feed carries a trade field that would attribute a filing to them. A blank there is a BLIND SPOT, not an absence of activity; only `bar`, `cafe_bakery`, `grocery`, `pharmacy`, `restaurant` have real coverage (`chains.brand_snapshot.pipeline_coverage`).
+
 ## Auto-admitted this snapshot (nobody has looked yet)
 
 741 brands admitted by `loci chains auto-admit` because they cleared the D109 candidate predicate and no exclusion rule fired. **Nobody has checked any of them.** `NYC now` is deliberately empty — the machine has a detect count, which is a floor off open data, and writing it into the curated column would manufacture a count nobody produced. Reject one with `loci chains reject <brand_key> --reason "..."`; promote one with `loci chains admit`.
 
-| Brand | loci_category | Detected total | Detected new 12m | Pipeline (gov filings) | Sales role | Admitted because | Decided on |
-|---|---|---:|---:|---|---|---|---|
-| Dunkin' | cafe_bakery | 1529 | 43 | — | incumbent | 1529 locations (5+ floor); 43 new locations in 12 months; detect 2026-09: 1529 locations, 43 new 12m | 2026-09-15 |
-| Starbucks | cafe_bakery | 874 | 17 | — | incumbent | 874 locations (5+ floor); 17 new locations in 12 months; detect 2026-09: 874 locations, 17 new 12m | 2026-09-15 |
-| Pizza Hut | restaurant | 140 | 14 | — | incumbent | 140 locations (5+ floor); 14 new locations in 12 months; detect 2026-09: 140 locations, 14 new 12m | 2026-09-15 |
-| Wendy's | restaurant | 180 | 12 | — | incumbent | 180 locations (5+ floor); 12 new locations in 12 months; detect 2026-09: 180 locations, 12 new 12m | 2026-09-15 |
-| Food Universe Marketplace | grocery | 55 | 12 | — | incumbent | 55 locations (5+ floor); 12 new locations in 12 months; co-op banner: no single site-selector; detect 2026-09: 55 locations, 12 new 12m | 2026-09-15 |
-| Stop & Shop | grocery | 114 | 11 | — | incumbent | 114 locations (5+ floor); 11 new locations in 12 months; detect 2026-09: 114 locations, 11 new 12m | 2026-09-15 |
-| Auntie Anne's | cafe_bakery | 106 | 11 | 1 in QN, from 2025-08-06 | incumbent | 106 locations (5+ floor); 11 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 106 locations, 11 new 12m | 2026-09-15 |
-| Taco Bell | restaurant | 200 | 10 | — | incumbent | 200 locations (5+ floor); 10 new locations in 12 months; detect 2026-09: 200 locations, 10 new 12m | 2026-09-15 |
-| Baskin-Robbins | cafe_bakery | 186 | 10 | — | incumbent | 186 locations (5+ floor); 10 new locations in 12 months; detect 2026-09: 186 locations, 10 new 12m | 2026-09-15 |
-| Kennedy Fried Chicken | restaurant | 176 | 9 | — | incumbent | 176 locations (5+ floor); 9 new locations in 12 months; detect 2026-09: 176 locations, 9 new 12m | 2026-09-15 |
-| Guac Time | restaurant | 26 | 8 | — | prospect | 26 locations (5+ floor); 8 new locations in 12 months; detect 2026-09: 26 locations, 8 new 12m | 2026-09-15 |
-| McDonald's | restaurant | 450 | 7 | — | incumbent | 450 locations (5+ floor); 7 new locations in 12 months; detect 2026-09: 450 locations, 7 new 12m | 2026-09-15 |
-| Fine Fare | grocery | 71 | 7 | — | incumbent | 71 locations (5+ floor); 7 new locations in 12 months; co-op banner: no single site-selector; detect 2026-09: 71 locations, 7 new 12m | 2026-09-15 |
-| SuperFresh | grocery | 19 | 7 | 2 in BK,QN, from 2025-03-03 | incumbent | 19 locations (5+ floor); 7 new locations in 12 months; 2 not-yet-open filings; co-op banner: no single site-selector; detect 2026-09: 19 locations, 7 new 12m | 2026-09-15 |
-| Key Food | grocery | 150 | 6 | 5 in BK,MN,QN, from 2025-12-18 | incumbent | 150 locations (5+ floor); 6 new locations in 12 months; 5 not-yet-open filings; co-op banner: no single site-selector; detect 2026-09: 150 locations, 6 new 12m | 2026-09-15 |
-| Shake Shack | restaurant | 86 | 6 | 1 in QN, from 2026-04-23 | prospect | 86 locations (5+ floor); 6 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 86 locations, 6 new 12m | 2026-09-15 |
-| Chop'T | restaurant | 63 | 6 | — | prospect | 63 locations (5+ floor); 6 new locations in 12 months; detect 2026-09: 63 locations, 6 new 12m | 2026-09-15 |
-| Sweetgreen | restaurant | 62 | 6 | — | prospect | 62 locations (5+ floor); 6 new locations in 12 months; detect 2026-09: 62 locations, 6 new 12m | 2026-09-15 |
-| Buffalo Wild Wings | restaurant | 61 | 6 | — | prospect | 61 locations (5+ floor); 6 new locations in 12 months; detect 2026-09: 61 locations, 6 new 12m | 2026-09-15 |
-| Subway | restaurant | 503 | 5 | — | incumbent | 503 locations (5+ floor); 5 new locations in 12 months; detect 2026-09: 503 locations, 5 new 12m | 2026-09-15 |
-| Associated Supermarket | grocery | 66 | 5 | 1 in QN, from 2025-12-31 | incumbent | 66 locations (5+ floor); 5 new locations in 12 months; 1 not-yet-open filing; co-op banner: no single site-selector; detect 2026-09: 66 locations, 5 new 12m | 2026-09-15 |
-| Van Leeuwen Ice Cream | cafe_bakery | 36 | 5 | — | prospect | 36 locations (5+ floor); 5 new locations in 12 months; detect 2026-09: 36 locations, 5 new 12m | 2026-09-15 |
-| Atomic Wings | restaurant | 23 | 5 | 1 in BX, from 2025-02-06 | prospect | 23 locations (5+ floor); 5 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 23 locations, 5 new 12m | 2026-09-15 |
-| Adobo Mexican Grill | restaurant | 17 | 5 | — | prospect | 17 locations (5+ floor); 5 new locations in 12 months; detect 2026-09: 17 locations, 5 new 12m | 2026-09-15 |
-| Doner Haus | restaurant | 10 | 5 | — | prospect | 10 locations (5+ floor); 5 new locations in 12 months; detect 2026-09: 10 locations, 5 new 12m | 2026-09-15 |
-| ASAP Dry Cleaning & Laundry Pick Up and Delivery | laundry | 7 | 5 | — | prospect | 7 locations (5+ floor); 5 new locations in 12 months; detect 2026-09: 7 locations, 5 new 12m | 2026-09-15 |
-| European Wax Center | nails_beauty | 107 | 4 | — | incumbent | 107 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 107 locations, 4 new 12m | 2026-09-15 |
-| Planet Fitness | fitness | 107 | 4 | 1 in MN, from 2025-06-24 | incumbent | 107 locations (5+ floor); 4 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 107 locations, 4 new 12m | 2026-09-15 |
-| Panera Bread | cafe_bakery | 106 | 4 | — | incumbent | 106 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 106 locations, 4 new 12m | 2026-09-15 |
-| Five Guys | restaurant | 80 | 4 | — | prospect | 80 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 80 locations, 4 new 12m | 2026-09-15 |
-| Ihop | restaurant | 77 | 4 | — | prospect | 77 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 77 locations, 4 new 12m | 2026-09-15 |
-| Pret A Manger | cafe_bakery | 68 | 4 | — | prospect | 68 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 68 locations, 4 new 12m | 2026-09-15 |
-| Jersey Mike's Subs | restaurant | 67 | 4 | — | prospect | 67 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 67 locations, 4 new 12m | 2026-09-15 |
-| Kung Fu Tea | cafe_bakery | 59 | 4 | — | prospect | 59 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 59 locations, 4 new 12m | 2026-09-15 |
-| Food Bazaar | grocery | 37 | 4 | 1 in MN, from 2026-08-27 | incumbent | 37 locations (5+ floor); 4 new locations in 12 months; 1 not-yet-open filing; co-op banner: no single site-selector; detect 2026-09: 37 locations, 4 new 12m | 2026-09-15 |
-| Ideal Food Basket | grocery | 32 | 4 | 2 in BK,QN, from 2025-04-07 | incumbent | 32 locations (5+ floor); 4 new locations in 12 months; 2 not-yet-open filings; co-op banner: no single site-selector; detect 2026-09: 32 locations, 4 new 12m | 2026-09-15 |
-| Charleys Cheesesteaks | restaurant | 16 | 4 | — | prospect | 16 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 16 locations, 4 new 12m | 2026-09-15 |
-| Gnocchi On 9Th | restaurant | 12 | 4 | — | prospect | 12 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 12 locations, 4 new 12m | 2026-09-15 |
-| The Gyro Project | restaurant | 11 | 4 | — | prospect | 11 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 11 locations, 4 new 12m | 2026-09-15 |
-| Melt Shop | restaurant | 10 | 4 | — | prospect | 10 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 10 locations, 4 new 12m | 2026-09-15 |
-| Supreme Pizza | restaurant | 10 | 4 | — | prospect | 10 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 10 locations, 4 new 12m | 2026-09-15 |
-| Dragon King | restaurant | 9 | 4 | — | prospect | 9 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 9 locations, 4 new 12m | 2026-09-15 |
-| Taco Mix | restaurant | 9 | 4 | — | prospect | 9 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 9 locations, 4 new 12m | 2026-09-15 |
-| Met Fresh Supermarket | grocery | 9 | 4 | 1 in BX, from 2025-12-18 | incumbent | 9 locations (5+ floor); 4 new locations in 12 months; 1 not-yet-open filing; co-op banner: no single site-selector; detect 2026-09: 9 locations, 4 new 12m | 2026-09-15 |
-| Burger Spot | restaurant | 8 | 4 | — | prospect | 8 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 8 locations, 4 new 12m | 2026-09-15 |
-| Pop's Pizza | restaurant | 6 | 4 | — | prospect | 6 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 6 locations, 4 new 12m | 2026-09-15 |
-| Sweet & Favorite Cake Shop | cafe_bakery | 4 | 4 | — | prospect | 4 new locations in 12 months; detect 2026-09: 4 locations, 4 new 12m | 2026-09-15 |
-| Popeyes | restaurant | 312 | 3 | 3 in QN, from 2024-12-11 | incumbent | 312 locations (5+ floor); 3 new locations in 12 months; 3 not-yet-open filings; detect 2026-09: 312 locations, 3 new 12m | 2026-09-15 |
-| Burger King | restaurant | 231 | 3 | — | incumbent | 231 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 231 locations, 3 new 12m | 2026-09-15 |
-| Chick-fil-A | restaurant | 70 | 3 | — | prospect | 70 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 70 locations, 3 new 12m | 2026-09-15 |
-| Carvel | cafe_bakery | 49 | 3 | — | prospect | 49 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 49 locations, 3 new 12m | 2026-09-15 |
-| True Value | hardware | 49 | 3 | — | prospect | 49 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 49 locations, 3 new 12m | 2026-09-15 |
-| Tex's Chicken & Burgers | restaurant | 46 | 3 | — | prospect | 46 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 46 locations, 3 new 12m | 2026-09-15 |
-| QQ Nails & Spa | nails_beauty | 39 | 3 | — | prospect | 39 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 39 locations, 3 new 12m | 2026-09-15 |
-| Matto Espresso | cafe_bakery | 34 | 3 | — | prospect | 34 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 34 locations, 3 new 12m | 2026-09-15 |
-| Sarku Japan | restaurant | 32 | 3 | — | prospect | 32 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 32 locations, 3 new 12m | 2026-09-15 |
-| Ulta Beauty | hair_barber | 32 | 3 | — | prospect | 32 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 32 locations, 3 new 12m | 2026-09-15 |
-| Moe's Southwest Grill | restaurant | 31 | 3 | — | prospect | 31 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 31 locations, 3 new 12m | 2026-09-15 |
-| Tous Les Jours | cafe_bakery | 31 | 3 | — | prospect | 31 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 31 locations, 3 new 12m | 2026-09-15 |
-| WFM Coffee Bar | cafe_bakery | 29 | 3 | — | prospect | 29 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 29 locations, 3 new 12m | 2026-09-15 |
-| Le Cafe Coffee | cafe_bakery | 25 | 3 | — | prospect | 25 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 25 locations, 3 new 12m | 2026-09-15 |
-| Poke Bowl | restaurant | 25 | 3 | — | prospect | 25 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 25 locations, 3 new 12m | 2026-09-15 |
-| Wetzel's Pretzels | cafe_bakery | 25 | 3 | — | prospect | 25 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 25 locations, 3 new 12m | 2026-09-15 |
-| Sonic Drive-In | restaurant | 23 | 3 | — | prospect | 23 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 23 locations, 3 new 12m | 2026-09-15 |
-| The Food Emporium | grocery | 23 | 3 | — | incumbent | 23 locations (5+ floor); 3 new locations in 12 months; co-op banner: no single site-selector; detect 2026-09: 23 locations, 3 new 12m | 2026-09-15 |
-| KPOT Korean BBQ & Hot Pot | restaurant | 21 | 3 | 1 in QN, from 2026-01-12 | prospect | 21 locations (5+ floor); 3 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 21 locations, 3 new 12m | 2026-09-15 |
-| City Fresh Market | grocery | 16 | 3 | 2 in BX,MN, from 2024-11-14 | prospect | 16 locations (5+ floor); 3 new locations in 12 months; 2 not-yet-open filings; detect 2026-09: 16 locations, 3 new 12m | 2026-09-15 |
-| NetCost Market | grocery | 13 | 3 | — | prospect | 13 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 13 locations, 3 new 12m | 2026-09-15 |
-| Le Botaniste | restaurant | 11 | 3 | — | prospect | 11 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 11 locations, 3 new 12m | 2026-09-15 |
-| Oasis Cafe | cafe_bakery | 11 | 3 | — | prospect | 11 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 11 locations, 3 new 12m | 2026-09-15 |
-| Mikado | restaurant | 11 | 3 | 1 in MN, from 2026-03-19 | prospect | 11 locations (5+ floor); 3 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 11 locations, 3 new 12m | 2026-09-15 |
-| Chop & Go | restaurant | 10 | 3 | — | prospect | 10 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 10 locations, 3 new 12m | 2026-09-15 |
-| Simò Pizza | restaurant | 10 | 3 | — | prospect | 10 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 10 locations, 3 new 12m | 2026-09-15 |
-| Liberty Bagels | cafe_bakery | 9 | 3 | — | prospect | 9 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 9 locations, 3 new 12m | 2026-09-15 |
-| Eataly | restaurant | 9 | 3 | 1 in QN, from 2026-02-05 | prospect | 9 locations (5+ floor); 3 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 9 locations, 3 new 12m | 2026-09-15 |
-| Sushi Counter | restaurant | 7 | 3 | — | prospect | 7 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 7 locations, 3 new 12m | 2026-09-15 |
-| Twentyonegrains | restaurant | 7 | 3 | — | prospect | 7 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 7 locations, 3 new 12m | 2026-09-15 |
-| Joe'S Steam Rice Roll | restaurant | 6 | 3 | — | prospect | 6 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 6 locations, 3 new 12m | 2026-09-15 |
-| Metcare Rx | pharmacy | 6 | 3 | — | prospect | 6 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 6 locations, 3 new 12m | 2026-09-15 |
-| Barney Brown | restaurant | 6 | 3 | — | prospect | 6 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 6 locations, 3 new 12m | 2026-09-15 |
-| Dumbo Market | grocery | 6 | 3 | — | prospect | 6 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 6 locations, 3 new 12m | 2026-09-15 |
-| Taco Express | restaurant | 6 | 3 | — | prospect | 6 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 6 locations, 3 new 12m | 2026-09-15 |
-| Aramark Services Inc | restaurant | 6 | 3 | 2 in MN, from 2026-04-02 | prospect | 6 locations (5+ floor); 3 new locations in 12 months; 2 not-yet-open filings; detect 2026-09: 6 locations, 3 new 12m | 2026-09-15 |
-| Maya Mexican Grill | restaurant | 5 | 3 | — | prospect | 5 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 5 locations, 3 new 12m | 2026-09-15 |
-| The Nest | restaurant | 4 | 3 | — | prospect | 3 new locations in 12 months; detect 2026-09: 4 locations, 3 new 12m | 2026-09-15 |
-| Frankie's Brooklyn Pizza | restaurant | 4 | 3 | — | prospect | 3 new locations in 12 months; detect 2026-09: 4 locations, 3 new 12m | 2026-09-15 |
-| 2788 Bagels | cafe_bakery | 3 | 3 | — | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
-| Bun & Bone | restaurant | 3 | 3 | — | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
-| Catalyst Market Bar | bar | 3 | 3 | — | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
-| Psta New York | restaurant | 3 | 3 | — | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
-| Dong Bei | restaurant | 3 | 3 | — | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
-| Double Knot | restaurant | 3 | 3 | — | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
-| Flavor Taste | convenience | 3 | 3 | — | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
-| Gogyo Gramercy | restaurant | 3 | 3 | — | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
-| Joah Kitchen | restaurant | 3 | 3 | 1 in QN, from 2026-06-12 | prospect | 3 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
-| Domino's | restaurant | 227 | 2 | — | incumbent | 227 locations (5+ floor); 2 new in 12m; detect 2026-09: 227 locations, 2 new 12m | 2026-09-15 |
-| Duane Reade | pharmacy | 219 | 2 | 7 in MN, from 2026-07-22 | incumbent | 219 locations (5+ floor); 2 new in 12m; 7 not-yet-open filings; detect 2026-09: 219 locations, 2 new 12m | 2026-09-15 |
-| Crown Fried Chicken | restaurant | 158 | 2 | — | incumbent | 158 locations (5+ floor); 2 new in 12m; detect 2026-09: 158 locations, 2 new 12m | 2026-09-15 |
-| Little Caesars Pizza | restaurant | 89 | 2 | — | prospect | 89 locations (5+ floor); 2 new in 12m; detect 2026-09: 89 locations, 2 new 12m | 2026-09-15 |
-| Foodtown | grocery | 68 | 2 | — | incumbent | 68 locations (5+ floor); 2 new in 12m; co-op banner: no single site-selector; detect 2026-09: 68 locations, 2 new 12m | 2026-09-15 |
-| Bravo Supermarkets | grocery | 60 | 2 | — | incumbent | 60 locations (5+ floor); 2 new in 12m; co-op banner: no single site-selector; detect 2026-09: 60 locations, 2 new 12m | 2026-09-15 |
-| Krispy Krunchy Chicken | restaurant | 48 | 2 | — | prospect | 48 locations (5+ floor); 2 new in 12m; detect 2026-09: 48 locations, 2 new 12m | 2026-09-15 |
-| Sephora | nails_beauty | 45 | 2 | — | prospect | 45 locations (5+ floor); 2 new in 12m; detect 2026-09: 45 locations, 2 new 12m | 2026-09-15 |
-| C-Town | grocery | 45 | 2 | 3 in BK,QN, from 2026-02-12 | incumbent | 45 locations (5+ floor); 2 new in 12m; 3 not-yet-open filings; co-op banner: no single site-selector; detect 2026-09: 45 locations, 2 new 12m | 2026-09-15 |
-| Pioneer Supermarket | grocery | 37 | 2 | 1 in MN, from 2026-01-17 | incumbent | 37 locations (5+ floor); 2 new in 12m; 1 not-yet-open filing; co-op banner: no single site-selector; detect 2026-09: 37 locations, 2 new 12m | 2026-09-15 |
-| Qdoba Mexican Eats | restaurant | 34 | 2 | — | prospect | 34 locations (5+ floor); 2 new in 12m; detect 2026-09: 34 locations, 2 new 12m | 2026-09-15 |
-| Tim Hortons | cafe_bakery | 33 | 2 | — | prospect | 33 locations (5+ floor); 2 new in 12m; detect 2026-09: 33 locations, 2 new 12m | 2026-09-15 |
-| StretchLab | fitness | 30 | 2 | — | prospect | 30 locations (5+ floor); 2 new in 12m; detect 2026-09: 30 locations, 2 new 12m | 2026-09-15 |
-| Bubbakoo's Burritos | restaurant | 26 | 2 | — | prospect | 26 locations (5+ floor); 2 new in 12m; detect 2026-09: 26 locations, 2 new 12m | 2026-09-15 |
-| 787 Coffee | cafe_bakery | 25 | 2 | — | prospect | 25 locations (5+ floor); 2 new in 12m; detect 2026-09: 25 locations, 2 new 12m | 2026-09-15 |
-| Birch Coffee | cafe_bakery | 24 | 2 | — | prospect | 24 locations (5+ floor); 2 new in 12m; detect 2026-09: 24 locations, 2 new 12m | 2026-09-15 |
-| Phenix Salon Suites | hair_barber | 21 | 2 | — | prospect | 21 locations (5+ floor); 2 new in 12m; detect 2026-09: 21 locations, 2 new 12m | 2026-09-15 |
-| Homemade Taqueria | restaurant | 20 | 2 | — | prospect | 20 locations (5+ floor); 2 new in 12m; detect 2026-09: 20 locations, 2 new 12m | 2026-09-15 |
-| Harbor Freight Tools | hardware | 18 | 2 | — | prospect | 18 locations (5+ floor); 2 new in 12m; detect 2026-09: 18 locations, 2 new 12m | 2026-09-15 |
-| Body & Brain Yoga Tai Chi | fitness | 18 | 2 | — | prospect | 18 locations (5+ floor); 2 new in 12m; detect 2026-09: 18 locations, 2 new 12m | 2026-09-15 |
-| Champion Pizza | restaurant | 18 | 2 | — | prospect | 18 locations (5+ floor); 2 new in 12m; detect 2026-09: 18 locations, 2 new 12m | 2026-09-15 |
-| Cold Stone Creamery | cafe_bakery | 18 | 2 | — | prospect | 18 locations (5+ floor); 2 new in 12m; detect 2026-09: 18 locations, 2 new 12m | 2026-09-15 |
-| Patsy'S Pizzeria | restaurant | 16 | 2 | — | prospect | 16 locations (5+ floor); 2 new in 12m; detect 2026-09: 16 locations, 2 new 12m | 2026-09-15 |
-| Black Seed Bagels | cafe_bakery | 15 | 2 | — | prospect | 15 locations (5+ floor); 2 new in 12m; detect 2026-09: 15 locations, 2 new 12m | 2026-09-15 |
-| Powerhouse Gym | fitness | 14 | 2 | — | prospect | 14 locations (5+ floor); 2 new in 12m; detect 2026-09: 14 locations, 2 new 12m | 2026-09-15 |
-| Shop Fair Supermarket | grocery | 14 | 2 | 2 in MN, from 2026-01-17 | prospect | 14 locations (5+ floor); 2 new in 12m; 2 not-yet-open filings; detect 2026-09: 14 locations, 2 new 12m | 2026-09-15 |
-| Madman Espresso | cafe_bakery | 12 | 2 | — | prospect | 12 locations (5+ floor); 2 new in 12m; detect 2026-09: 12 locations, 2 new 12m | 2026-09-15 |
-| Cap't Loui | restaurant | 12 | 2 | — | prospect | 12 locations (5+ floor); 2 new in 12m; detect 2026-09: 12 locations, 2 new 12m | 2026-09-15 |
-| NHS Hardware | hardware | 12 | 2 | — | prospect | 12 locations (5+ floor); 2 new in 12m; detect 2026-09: 12 locations, 2 new 12m | 2026-09-15 |
-| Wing Stop | restaurant | 12 | 2 | — | prospect | 12 locations (5+ floor); 2 new in 12m; detect 2026-09: 12 locations, 2 new 12m | 2026-09-15 |
-| Serafina | restaurant | 12 | 2 | 1 in QN, from 2026-02-13 | prospect | 12 locations (5+ floor); 2 new in 12m; 1 not-yet-open filing; detect 2026-09: 12 locations, 2 new 12m | 2026-09-15 |
-| Angelina Bakery | cafe_bakery | 11 | 2 | — | prospect | 11 locations (5+ floor); 2 new in 12m; detect 2026-09: 11 locations, 2 new 12m | 2026-09-15 |
-| Rokstar Chicken | restaurant | 11 | 2 | — | prospect | 11 locations (5+ floor); 2 new in 12m; detect 2026-09: 11 locations, 2 new 12m | 2026-09-15 |
-| Super Fresh | grocery | 11 | 2 | — | prospect | 11 locations (5+ floor); 2 new in 12m; detect 2026-09: 11 locations, 2 new 12m | 2026-09-15 |
-| AMG Holdings | convenience | 11 | 2 | 2 in BK,BX, from 2025-08-11 | prospect | 11 locations (5+ floor); 2 new in 12m; 2 not-yet-open filings; detect 2026-09: 11 locations, 2 new 12m | 2026-09-15 |
-| 375 Chicken 'N Fries | restaurant | 10 | 2 | — | prospect | 10 locations (5+ floor); 2 new in 12m; detect 2026-09: 10 locations, 2 new 12m | 2026-09-15 |
-| For Five Coffee Roasters | cafe_bakery | 10 | 2 | — | prospect | 10 locations (5+ floor); 2 new in 12m; detect 2026-09: 10 locations, 2 new 12m | 2026-09-15 |
-| La Pecora Bianca | restaurant | 10 | 2 | 1 in MN, from 2024-11-21 | prospect | 10 locations (5+ floor); 2 new in 12m; 1 not-yet-open filing; detect 2026-09: 10 locations, 2 new 12m | 2026-09-15 |
-| Boca Pharmacy | pharmacy | 9 | 2 | — | prospect | 9 locations (5+ floor); 2 new in 12m; detect 2026-09: 9 locations, 2 new 12m | 2026-09-15 |
-| Peet's Coffee | cafe_bakery | 9 | 2 | — | prospect | 9 locations (5+ floor); 2 new in 12m; detect 2026-09: 9 locations, 2 new 12m | 2026-09-15 |
-| Compton'S | restaurant | 9 | 2 | — | prospect | 9 locations (5+ floor); 2 new in 12m; detect 2026-09: 9 locations, 2 new 12m | 2026-09-15 |
-| Simply Sushi | restaurant | 9 | 2 | — | prospect | 9 locations (5+ floor); 2 new in 12m; detect 2026-09: 9 locations, 2 new 12m | 2026-09-15 |
-| Honeybrains | cafe_bakery | 8 | 2 | — | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
-| Laduree | cafe_bakery | 8 | 2 | — | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
-| Lobby Bar | bar | 8 | 2 | — | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
-| 8 Bit Bites | restaurant | 8 | 2 | — | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
-| Bora Bora | cafe_bakery | 8 | 2 | — | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
-| Bora Bora Smoothie Cafe | cafe_bakery | 8 | 2 | — | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
-| Crispy Burger | restaurant | 8 | 2 | — | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
-| U Best Bakery | cafe_bakery | 8 | 2 | — | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
-| Ayat | restaurant | 8 | 2 | 2 in BK,SI, from 2025-01-24 | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); 2 not-yet-open filings; detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
-| Grab & Go | convenience | 8 | 2 | 1 in BX, from 2026-08-03 | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
-| Pita Yeero | restaurant | 8 | 2 | 1 in MN, from 2024-12-11 | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
-| Holy Burger | restaurant | 7 | 2 | — | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
-| Buunni Coffee | cafe_bakery | 7 | 2 | — | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
-| Shaxian Snacks | restaurant | 7 | 2 | — | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
-| Tarallucci E Vino | restaurant | 7 | 2 | — | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
-| Threes Brewing | bar | 7 | 2 | — | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
-| Ugly Dumpling | restaurant | 7 | 2 | — | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
-| Blazin Chicken & Gyro | restaurant | 7 | 2 | 1 in MN, from 2025-08-14 | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
-| Mini Mart | convenience | 7 | 2 | 5 in BK,QN, from 2024-09-16 | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); 5 not-yet-open filings; detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
-| The Greats Of Craft | bar | 6 | 2 | — | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
-| Honeygrow | restaurant | 6 | 2 | — | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
-| Natural Blend | restaurant | 6 | 2 | — | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
-| PEP Bakehouse and Coffee Shop | cafe_bakery | 6 | 2 | — | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
-| Pizza Mia | restaurant | 6 | 2 | — | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
-| Chama Mama | restaurant | 6 | 2 | — | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
-| Taqueria Al Pastor | restaurant | 6 | 2 | — | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
-| Ten Seconds Yunnan Rice Noodle | restaurant | 6 | 2 | — | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
-| All My Children Day Care and Nursery Schools | childcare | 5 | 2 | — | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
-| Molly Tea | cafe_bakery | 5 | 2 | — | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
-| Bathhouse | restaurant | 5 | 2 | — | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
-| Brasa Peruvian Kitchen | restaurant | 5 | 2 | — | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
-| Office Hours | cafe_bakery | 5 | 2 | — | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
-| The Consulate | restaurant | 5 | 2 | — | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
-| SkyCare Rx Pharmacy | pharmacy | 5 | 2 | — | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
-| Taco Express Mexican Grill | restaurant | 5 | 2 | — | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
-| Taste - Kitchen & Cocktails | restaurant | 5 | 2 | — | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
-| Teppanyaki One Japanese Grill | restaurant | 5 | 2 | — | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
-| Thisbowl | restaurant | 5 | 2 | — | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
-| Fellini Coffee | cafe_bakery | 5 | 2 | 1 in MN, from 2026-02-24 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
-| The View | restaurant | 5 | 2 | — | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
-| Hunan Noodle | restaurant | 5 | 2 | 1 in QN, from 2026-09-11 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
-| The Station | restaurant | 5 | 2 | 1 in QN, from 2026-04-29 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
-| Halal Stop | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Hong Kong Cafe | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Ideal Fresh Market | grocery | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Isla & Co | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| $1.50 Pizza | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Atl Wing Spot | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Makina Cafe | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Milk & Honey Cafe | cafe_bakery | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Millie's | cafe_bakery | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Mirror Bar | bar | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Moonburger | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Natural Pilates | fitness | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Banh Mi Cafe | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Barachou | cafe_bakery | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Buddha Bar Queens | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Casa Louie | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Casita Of Brooklyn | cafe_bakery | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| New York Pho House | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Noribar | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Olio E Piu | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Coffee & Chisme | cafe_bakery | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Corner 28 | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Danny's Chinese Kitchen | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Dosa Royale | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Sauteed | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Duke Eatery | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| El Greco | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Tacos Azteca | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Temakase | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| That's a Wrap | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Tracks Raw Bar & Grill | bar | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Tradisyon | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Twig'M | restaurant | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Castle Chicken | restaurant | 4 | 2 | 1 in QN, from 2026-08-27 | prospect | 2 new of only 4 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| World Of Wonders | childcare | 4 | 2 | — | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Sweet Hospitality Group, Llc | bar | 4 | 2 | 1 in MN, from 2026-01-28 | prospect | 2 new of only 4 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
-| Golden Farms Supermarket | grocery | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Good Days | cafe_bakery | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Gooey On The Inside Cookies | cafe_bakery | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Grab & Go Convenience Llc | convenience | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Great Performances/Artists As Waitresses, Inc. | bar | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Hampton Chutney Company | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Hero Farm | grocery | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Jaba | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Jays Pizza | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Koo Thai | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Ledo Pizza | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Little Scholars at East 18th Street | childcare | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| 260‘S New York | cafe_bakery | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| A-Force Brazilian Jiu Jitsu | fitness | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Ann’s Roti Shop #2 | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Mango Biche Mia | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Barberino Nyc Llc | hair_barber | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Bebecitas Sports Bar | bar | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Breakfast by Salt's Cure | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Breezy Point Surf Club | bar | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Brown Bag Sandwich Co. | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Butter Beans Kitchen | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Cafe Essx | cafe_bakery | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Capitol Diner | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Original Brother’s Pizza | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Ouris Market 1160 | grocery | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Panajachel Solola | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Pizza Yard | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Poke Sushi | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Power Moves Gymnastics and Fitness | fitness | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Chubby Skewers | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Cocotazo | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Dear Coffee | cafe_bakery | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Rustic Pizza & Pasteria | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Saxbys | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Shaji Bbq | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Shinjuku Ramen | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Siberia | bar | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Space Market | convenience | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| El Mercadito | grocery | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Equal Care Pharmacy | pharmacy | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Falafel Tanami | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Fine Food Cuisine | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Giulietta | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Go Bagels | cafe_bakery | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Sushi Yoshi | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Tacos Del Barrio | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| The Trim Lounge L.L.C. | hair_barber | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Virtual Cravings | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Viva La Dough | cafe_bakery | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Yono Sushi | restaurant | 3 | 2 | — | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Yamadaya | grocery | 3 | 2 | 1 in MN, from 2026-06-24 | prospect | 2 new of only 3 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
-| Golden Steer At One Fifth | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Gotham Speakeasy | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Grandma'S Dumpling House | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Greka By Montuno Coffee | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Halal Havën | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Hed nyc | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Human Resources (Bergamos) | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Hướng Xuân | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Ikon New York | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Inverse By CR7 | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Jack'S Market 2751 | grocery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Jade Bamboo Chinese Cuisine | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Jazzcultural | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Joys' Cafe | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Kajiken | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Khalo Cantina | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Kk Nail Studio Llc | nails_beauty | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| La Hueca Manabita | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| La Perla Nascosta | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| La Presion Deli Grocery Corp | grocery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Lalaon | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Latte Da | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Le Bistroquet | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Legacy Coffee | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| LenLen | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Leslie | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Lety'S Sport Bar | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Loaded | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Longacre Theatre | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Loong Ramen | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| L'oro Espresso Bar | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Los Dos Carnales Corp | convenience | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| A.Lounge | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Amber Room | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Andamiro | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Anor Restaurant | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Ariana’s Cucina | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Aris Pizza | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Arthur | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Bagel Station Express | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Madam Tang | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Maddie's Boba Lab | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Mali Healing Spa | nails_beauty | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Manhatto | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Marino’s Pizza House | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Mash Inn | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Maya'S Pizza | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Michelandia Botanera Corp. | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Mixly | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| mộc mạc | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Mondo Sushi | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Monkey Thief | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Montoya's | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Mora Ny Inc. | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Motin Sweets And Masala | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Mr. Mo 馍先生 | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Musica | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Nancy Blake’s Tavern + Tap | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| New Five Star Kacchi Biryani House | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Bar Petra | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Bar Rêve | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Bar Rocco | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Bar Zakh Café | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Beatbox | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| beem Light Sauna - Park Slope | nails_beauty | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Best Damn Breakfast Burrito | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Big Blue Seafood & Grill | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Bitcoin New York Steakhouse | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Blacksmith | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Blake'S Tavern Nyc | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Bleecker Street Cafe | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Boobliq | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Boong's Grab & Go | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Brooklyn Counter - F & B Kiosks And Support Spaces(A1, A5 & A6) | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Brooklyn Game Knight | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Brothers Market Corp | grocery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| by Antidote | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Cafe Coco | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Cafe St. Mark's | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Caffetto | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Calaveras Social | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Cattle | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Nidhi Convenience | convenience | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Ny Axe Throwing Range - Brooklyn | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| NY Coffee Bar | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Odo East Village | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Old Bukhara | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Olia | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Parrot Coffee | grocery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Partake | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Patisserie Des Ambassades | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Pattin' | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Peek In Cafe | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Posners Food Center Inc | grocery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Potwah Jerk Patty | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Chachi'S Halal | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Chatti by Regi Mathew | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Cheese Wheel Pastas | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Chef Chang Express 张哥经济小炒 | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Chim Chim | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Chojí | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Chubby TAN｜New York | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Chyelle | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Classic Barbershop 5 Corporation | hair_barber | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| The Collector's Bar | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Compound Art & Sound Gallery | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Cookies By Jackie | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Culture Lab Lic | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Dahla New York | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Danny's | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Dbh Brooklyn Concessions, Llc | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Decatur Beauty Lounge Inc. | nails_beauty | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Dj's At Bayside | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Dorado Pharmacy | pharmacy | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Red Spa Nail Iii Inc. | nails_beauty | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Rockaway Beach Pickleball Llc | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Sahrá | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Salt Bread Ko | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Santiagos Deli & Bagels Inc | convenience | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Saverne | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Savoré | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Savour - Healthy Asian Bowl | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Sawaan Thai | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Seirēn | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Sena Cafe & Co. | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Se'or Pizza | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| ShuZiXiang HotPot | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Siam Thai Express (Jacx & Co Food Court) | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Silver Crust | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Skin Kneads, Llc | nails_beauty | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Sofia Bar & Grill | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Sofia'S Bar | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Soho Pizza | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Soto Mini Market Corp | convenience | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Dugoutbx - Yankee Stadium | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Durar Cafe | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Elevated At Partake | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Empire Beer Garden | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Farina On 2nd | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| First Cup Cafe | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Fried Rice King | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Frita Batidos | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Fuji Teriyaki Sushi | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Ginger Ristorante | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Gloss Nail Bar | nails_beauty | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Gnihton | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Suki Station | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Sunnyside Up Cafe | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Sushi Aozora | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Tachi | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Tacos Don Jose | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Tagua Restaurant | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Taishoken New York | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Täzà drizzle | cafe_bakery | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Teriyaki Go (Inside Boogie Down Food Hall) | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Thread & Glow Ny Corp. | nails_beauty | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Titán | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Tribe Nyc Corp | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Turbine Cafe | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Union Bistro Steakhouse And Sushi | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Broadway Care Pharmacy Inc. | pharmacy | 2 | 2 | 1 in BK, from 2024-12-12 | prospect | 2 new of only 2 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Broadways Bar & Grill Corp. | restaurant | 2 | 2 | 1 in SI, from 2026-06-03 | prospect | 2 new of only 2 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Verde New York | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Victory Convenience Llc - Family Shoppe | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Wanglang | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Willets Point Brewery | bar | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Yemeni Socotra Restaurant | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| You Fu Happy Breakfast Inc | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Zambrano’s Mexican Store Corp. | convenience | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Zara Austin | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Zaxby's | restaurant | 2 | 2 | — | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
-| Papa John's Pizza | restaurant | 163 | 1 | — | incumbent | 163 locations (5+ floor); 1 new in 12m; detect 2026-09: 163 locations, 1 new 12m | 2026-09-15 |
-| Kfc | restaurant | 122 | 1 | — | incumbent | 122 locations (5+ floor); 1 new in 12m; detect 2026-09: 122 locations, 1 new 12m | 2026-09-15 |
-| Blimpie | restaurant | 110 | 1 | — | incumbent | 110 locations (5+ floor); 1 new in 12m; detect 2026-09: 110 locations, 1 new 12m | 2026-09-15 |
-| Golden Krust Caribbean Restaurant | restaurant | 73 | 1 | — | prospect | 73 locations (5+ floor); 1 new in 12m; detect 2026-09: 73 locations, 1 new 12m | 2026-09-15 |
-| Orangetheory Fitness | fitness | 55 | 1 | — | prospect | 55 locations (5+ floor); 1 new in 12m; detect 2026-09: 55 locations, 1 new 12m | 2026-09-15 |
-| Fitness Center | fitness | 55 | 1 | — | prospect | 55 locations (5+ floor); 1 new in 12m; detect 2026-09: 55 locations, 1 new 12m | 2026-09-15 |
-| Nathan's Famous | restaurant | 52 | 1 | — | prospect | 52 locations (5+ floor); 1 new in 12m; detect 2026-09: 52 locations, 1 new 12m | 2026-09-15 |
-| Trader Joe's | grocery | 47 | 1 | — | prospect | 47 locations (5+ floor); 1 new in 12m; detect 2026-09: 47 locations, 1 new 12m | 2026-09-15 |
-| Playa Bowls | restaurant | 46 | 1 | — | prospect | 46 locations (5+ floor); 1 new in 12m; detect 2026-09: 46 locations, 1 new 12m | 2026-09-15 |
-| Sherwin-Williams | hardware | 43 | 1 | — | prospect | 43 locations (5+ floor); 1 new in 12m; detect 2026-09: 43 locations, 1 new 12m | 2026-09-15 |
-| Crunch Fitness | fitness | 41 | 1 | — | prospect | 41 locations (5+ floor); 1 new in 12m; detect 2026-09: 41 locations, 1 new 12m | 2026-09-15 |
-| Joe Coffee | cafe_bakery | 38 | 1 | — | prospect | 38 locations (5+ floor); 1 new in 12m; detect 2026-09: 38 locations, 1 new 12m | 2026-09-15 |
-| Ace Hardware | hardware | 38 | 1 | — | prospect | 38 locations (5+ floor); 1 new in 12m; detect 2026-09: 38 locations, 1 new 12m | 2026-09-15 |
-| Pure Barre | fitness | 30 | 1 | — | prospect | 30 locations (5+ floor); 1 new in 12m; detect 2026-09: 30 locations, 1 new 12m | 2026-09-15 |
-| China Wok | restaurant | 28 | 1 | — | prospect | 28 locations (5+ floor); 1 new in 12m; detect 2026-09: 28 locations, 1 new 12m | 2026-09-15 |
-| Singas Famous Pizza | restaurant | 28 | 1 | 1 in QN, from 2026-02-13 | prospect | 28 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 28 locations, 1 new 12m | 2026-09-15 |
-| Vivi Bubble Tea | cafe_bakery | 27 | 1 | — | prospect | 27 locations (5+ floor); 1 new in 12m; detect 2026-09: 27 locations, 1 new 12m | 2026-09-15 |
-| Little Italy Pizza | restaurant | 26 | 1 | — | prospect | 26 locations (5+ floor); 1 new in 12m; detect 2026-09: 26 locations, 1 new 12m | 2026-09-15 |
-| Farmer's Fridge | convenience | 26 | 1 | — | prospect | 26 locations (5+ floor); 1 new in 12m; detect 2026-09: 26 locations, 1 new 12m | 2026-09-15 |
-| Hale & Hearty | restaurant | 24 | 1 | — | prospect | 24 locations (5+ floor); 1 new in 12m; detect 2026-09: 24 locations, 1 new 12m | 2026-09-15 |
-| Joe's Pizza | restaurant | 23 | 1 | — | prospect | 23 locations (5+ floor); 1 new in 12m; detect 2026-09: 23 locations, 1 new 12m | 2026-09-15 |
-| Alts | tailor_repair | 21 | 1 | — | prospect | 21 locations (5+ floor); 1 new in 12m; detect 2026-09: 21 locations, 1 new 12m | 2026-09-15 |
-| The Studio | fitness | 21 | 1 | — | prospect | 21 locations (5+ floor); 1 new in 12m; detect 2026-09: 21 locations, 1 new 12m | 2026-09-15 |
-| Laundry Room | laundry | 20 | 1 | — | prospect | 20 locations (5+ floor); 1 new in 12m; detect 2026-09: 20 locations, 1 new 12m | 2026-09-15 |
-| Tropical Smoothie Cafe | cafe_bakery | 20 | 1 | — | prospect | 20 locations (5+ floor); 1 new in 12m; detect 2026-09: 20 locations, 1 new 12m | 2026-09-15 |
-| Magnolia Bakery | cafe_bakery | 20 | 1 | 1 in QN, from 2024-11-07 | prospect | 20 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 20 locations, 1 new 12m | 2026-09-15 |
-| Juicy King Crab Express | restaurant | 19 | 1 | — | prospect | 19 locations (5+ floor); 1 new in 12m; detect 2026-09: 19 locations, 1 new 12m | 2026-09-15 |
-| Morton Williams | grocery | 19 | 1 | — | prospect | 19 locations (5+ floor); 1 new in 12m; detect 2026-09: 19 locations, 1 new 12m | 2026-09-15 |
-| Costco Wholesale Corporation | grocery | 19 | 1 | 3 in BK,QN,SI, from 2024-09-16 | prospect | 19 locations (5+ floor); 1 new in 12m; 3 not-yet-open filings; detect 2026-09: 19 locations, 1 new 12m | 2026-09-15 |
-| Jamaican Flavors | restaurant | 18 | 1 | — | prospect | 18 locations (5+ floor); 1 new in 12m; detect 2026-09: 18 locations, 1 new 12m | 2026-09-15 |
-| Rosa's Pizza | restaurant | 18 | 1 | — | prospect | 18 locations (5+ floor); 1 new in 12m; detect 2026-09: 18 locations, 1 new 12m | 2026-09-15 |
-| Daily Provisions | cafe_bakery | 17 | 1 | — | prospect | 17 locations (5+ floor); 1 new in 12m; detect 2026-09: 17 locations, 1 new 12m | 2026-09-15 |
-| Sophie'S Cuban Cuisine | restaurant | 16 | 1 | — | prospect | 16 locations (5+ floor); 1 new in 12m; detect 2026-09: 16 locations, 1 new 12m | 2026-09-15 |
-| Lightbridge Academy | childcare | 15 | 1 | — | prospect | 15 locations (5+ floor); 1 new in 12m; detect 2026-09: 15 locations, 1 new 12m | 2026-09-15 |
-| Breads Bakery | cafe_bakery | 15 | 1 | — | prospect | 15 locations (5+ floor); 1 new in 12m; detect 2026-09: 15 locations, 1 new 12m | 2026-09-15 |
-| Brooklyn Roasting Company | cafe_bakery | 15 | 1 | — | prospect | 15 locations (5+ floor); 1 new in 12m; detect 2026-09: 15 locations, 1 new 12m | 2026-09-15 |
-| Caridad Restaurant | restaurant | 15 | 1 | — | prospect | 15 locations (5+ floor); 1 new in 12m; detect 2026-09: 15 locations, 1 new 12m | 2026-09-15 |
-| Potbelly | restaurant | 15 | 1 | — | prospect | 15 locations (5+ floor); 1 new in 12m; detect 2026-09: 15 locations, 1 new 12m | 2026-09-15 |
-| Coffee Project New York | cafe_bakery | 15 | 1 | — | prospect | 15 locations (5+ floor); 1 new in 12m; detect 2026-09: 15 locations, 1 new 12m | 2026-09-15 |
-| Health Mart Pharmacy | pharmacy | 14 | 1 | — | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
-| King's Kitchen | restaurant | 14 | 1 | — | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
-| Alidoro | restaurant | 14 | 1 | — | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
-| Mad For Chicken | restaurant | 14 | 1 | — | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
-| Matchaful | cafe_bakery | 14 | 1 | — | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
-| Napoli Pizza | restaurant | 14 | 1 | — | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
-| Banana King | restaurant | 14 | 1 | — | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
-| Pizza Plus | restaurant | 14 | 1 | — | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
-| Great Wall Restaurant | restaurant | 13 | 1 | — | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
-| Ground Central Coffee Company | cafe_bakery | 13 | 1 | — | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
-| Bagel Pub | cafe_bakery | 13 | 1 | — | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
-| Pelicana Chicken | restaurant | 13 | 1 | — | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
-| CorePower Yoga | fitness | 13 | 1 | — | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
-| Real Fruit Bubble Tea | cafe_bakery | 13 | 1 | — | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
-| Sakura | restaurant | 13 | 1 | — | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
-| Springbone Kitchen | restaurant | 13 | 1 | — | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
-| Sushi By Bou | restaurant | 13 | 1 | — | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
-| Tsaocaa | cafe_bakery | 13 | 1 | — | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
-| Sugaring Usa Llc | nails_beauty | 13 | 1 | 1 in QN, from 2025-09-11 | prospect | 13 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
-| Laundry Mart | laundry | 12 | 1 | — | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
-| The Local | restaurant | 12 | 1 | — | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
-| Mighty Quinn'S Barbeque | restaurant | 12 | 1 | — | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
-| Princess Nails | nails_beauty | 12 | 1 | — | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
-| Super Laundromat | laundry | 12 | 1 | — | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
-| UNO Pizzeria & Grill | restaurant | 12 | 1 | — | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
-| Variety Coffee Roasters | cafe_bakery | 12 | 1 | — | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
-| Wafels & Dinges | restaurant | 12 | 1 | — | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
-| Levain Bakery | cafe_bakery | 11 | 1 | — | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
-| Living Room | bar | 11 | 1 | — | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
-| New York Fried Chicken | restaurant | 11 | 1 | — | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
-| Blooming Nails | nails_beauty | 11 | 1 | — | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
-| Bondi Sushi | restaurant | 11 | 1 | — | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
-| Chirping Chicken | restaurant | 11 | 1 | — | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
-| Dig | restaurant | 11 | 1 | — | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
-| The Room | bar | 11 | 1 | — | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
-| Famous Original Ray's Pizza | restaurant | 11 | 1 | — | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
-| Fornino | restaurant | 11 | 1 | — | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
-| The Terrace | bar | 11 | 1 | — | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
-| United Taekwondo Center | fitness | 11 | 1 | — | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
-| Rosa Mexicano | restaurant | 11 | 1 | 1 in MN, from 2026-04-02 | prospect | 11 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
-| Imagine Early Learning Centers, Llc | childcare | 10 | 1 | — | prospect | 10 locations (5+ floor); 1 new in 12m; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
-| King's Chef | restaurant | 10 | 1 | — | prospect | 10 locations (5+ floor); 1 new in 12m; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
-| The Little Gym | fitness | 10 | 1 | — | prospect | 10 locations (5+ floor); 1 new in 12m; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
-| Marinara Pizza | restaurant | 10 | 1 | — | prospect | 10 locations (5+ floor); 1 new in 12m; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
-| The Nail Bar | nails_beauty | 10 | 1 | — | prospect | 10 locations (5+ floor); 1 new in 12m; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
-| F45 Training | fitness | 10 | 1 | — | prospect | 10 locations (5+ floor); 1 new in 12m; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
-| Tartinery | restaurant | 10 | 1 | — | prospect | 10 locations (5+ floor); 1 new in 12m; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
-| Joju | restaurant | 10 | 1 | 1 in MN, from 2026-06-05 | prospect | 10 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
-| Luigi's Pizza | restaurant | 10 | 1 | 1 in BK, from 2025-02-28 | prospect | 10 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
-| Intoxx Fitness | fitness | 9 | 1 | — | prospect | 9 locations (5+ floor); 1 new in 12m; detect 2026-09: 9 locations, 1 new 12m | 2026-09-15 |
-| Joey Bats Cafe | cafe_bakery | 9 | 1 | — | prospect | 9 locations (5+ floor); 1 new in 12m; detect 2026-09: 9 locations, 1 new 12m | 2026-09-15 |
-| Cafe D'Avignon | cafe_bakery | 9 | 1 | — | prospect | 9 locations (5+ floor); 1 new in 12m; detect 2026-09: 9 locations, 1 new 12m | 2026-09-15 |
-| The Rooftop @ The Gem Hotel | bar | 9 | 1 | — | prospect | 9 locations (5+ floor); 1 new in 12m; detect 2026-09: 9 locations, 1 new 12m | 2026-09-15 |
-| Taqueria | restaurant | 9 | 1 | — | prospect | 9 locations (5+ floor); 1 new in 12m; detect 2026-09: 9 locations, 1 new 12m | 2026-09-15 |
-| Ess-A-Bagel | cafe_bakery | 9 | 1 | 1 in MN, from 2024-10-01 | prospect | 9 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 9 locations, 1 new 12m | 2026-09-15 |
-| The Grey Dog | cafe_bakery | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| Halal Cart | restaurant | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| Hotworx | fitness | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| In The Cut | hair_barber | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| The Kati Roll Company | restaurant | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| Knights Of Columbus | bar | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| Lady M Cake Boutique | cafe_bakery | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| Medicine Shoppe | pharmacy | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| Mighty Quinn's BBQ | restaurant | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| Pink Nails | nails_beauty | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| Poetica Coffee | cafe_bakery | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| Clinton Hall | bar | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| Counter Service | restaurant | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| Cutting Edge | hair_barber | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| El Gallo Taqueria | restaurant | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| El Quetzalito | restaurant | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| Family Pharmacy | pharmacy | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| Tropical Restaurant | restaurant | 8 | 1 | — | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| Friendly Pharmacy | pharmacy | 8 | 1 | 2 in BX,QN, from 2025-02-16 | prospect | 8 locations (5+ floor); 1 new in 12m; 2 not-yet-open filings; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
-| Gourmet Garage | grocery | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Jacob'S Pickles | restaurant | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| La Dolce Vita | restaurant | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Bagel Boss | cafe_bakery | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Made In New York Pizza | restaurant | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Modern Bread & Bagel | cafe_bakery | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Mr. Wonton | restaurant | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Birria Landia | restaurant | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Birria LES | restaurant | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| BK Pilates | fitness | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Black Star Bakery & Cafe | cafe_bakery | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Blaze Pizza | restaurant | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Casa Toscana | cafe_bakery | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Nosh | restaurant | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Prime No 7 | restaurant | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| CIBO Express Gourmet Market | grocery | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Downtown Pharmacy | pharmacy | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Drip Coffee Makers | cafe_bakery | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| QuickRx Pharmacy | pharmacy | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Famous Pizza | restaurant | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Fogo De Chao | restaurant | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Superior Market | grocery | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Supremo Food Market | grocery | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Tacos El Bronco | restaurant | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Tulcingo Bakery | cafe_bakery | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| The District | restaurant | 7 | 1 | 1 in BK, from 2025-04-11 | prospect | 7 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| VFW Post 5195 | bar | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Wing Boss | restaurant | 7 | 1 | — | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| solidcore | fitness | 7 | 1 | 3 in BK,MN, from 2026-06-11 | prospect | 7 locations (5+ floor); 1 new in 12m; 3 not-yet-open filings; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
-| Ground Central | cafe_bakery | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Hokkaido Baked Cheese Tart | cafe_bakery | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Il Mulino | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Imperial Barbershop Inc | hair_barber | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| JETSET Pilates - Park Avenue | fitness | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Kaffe Are | cafe_bakery | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Kong Dog | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Leon'S Bagels | cafe_bakery | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| LongHorn Steakhouse | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| 98K Hamburger | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| 99 Cent Supreme Pizza | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Mamasushi | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Mr. Pizza | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Nail Lounge | nails_beauty | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Brooklyn Bagel | cafe_bakery | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Burmese Bites | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Butter | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Nino's | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Pho Today | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Chickies | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| CIBO Express | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Country Donuts | cafe_bakery | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Dim Sum Sam | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| The Dojo | fitness | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Dominican Beauty Salon | nails_beauty | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Regina’s Grocery | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Sakura Japan | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Samurai Sushi | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Save A Lot | grocery | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Due Fratelli | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Fatima Hair Braiding | hair_barber | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Felice | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| The Fresh Grocer | grocery | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| The Goat | bar | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| VIP Nails | nails_beauty | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Wayback Burgers | restaurant | 6 | 1 | — | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Mito | restaurant | 6 | 1 | 1 in QN, from 2026-08-17 | prospect | 6 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Yaaas Tea | cafe_bakery | 6 | 1 | 1 in MN, from 2025-10-14 | prospect | 6 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
-| Great Wall Supermarket | grocery | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Halal-N-Out | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Hawa Smoothies & Bubble Tea | cafe_bakery | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Hunny | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| The Izakaya | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Jack's Barbershop | hair_barber | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Kansas Chicken & Burger | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Kati Shop | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Kijitora | cafe_bakery | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| King Falafel | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Laankee | cafe_bakery | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Levels Barbershop | hair_barber | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| $1.50 Hot Pizza | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| 3 Times | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Ace'S Pizza | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| The Ainsworth | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Alex Shoe Repair | tailor_repair | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| American Laundromat | laundry | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Angel'S Cafe | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Aria | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Artisan | cafe_bakery | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| ARVACI Coffee | cafe_bakery | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Madras Dosa Co | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Market Fresh | grocery | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Metro Drugs | pharmacy | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| The Migrant Kitchen | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Miriam | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Ms. Lam Montessori Llc | childcare | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| The Best Sichuan | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Bridges | bar | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Broadway Deli | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Bronx Burger Co. | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Brooklyn Bread Cafe | cafe_bakery | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Cafe 28 | cafe_bakery | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Cafe Bravo | cafe_bakery | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Caribbean Spa New York | nails_beauty | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Ny Pizza | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Olde City Cheesesteaks & Brew | bar | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| One L Professional | nails_beauty | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| The Palace | bar | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| The Parlor | hair_barber | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| The Perch | bar | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Pho Bang | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Picky Barista | cafe_bakery | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Pinas Locas Quetzaly | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| The Pit Stop | convenience | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Plaza M Spa | nails_beauty | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Poke Time | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| QQ Nail Spa | nails_beauty | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Charlie's Pizza | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Cinnabon / Carvel | cafe_bakery | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Convenience Store | convenience | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Dancing Crane Cafe | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Danny's Szechuan Garden | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Dragon City | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Riviera | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Russian Manicure | nails_beauty | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| San Wei | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Sangria | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Spanglish | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| East River Pilates | fitness | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| El Gallo Negro | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Essen | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Express Brows | nails_beauty | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Fitrition | cafe_bakery | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Five Star Barbershop | hair_barber | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Fluffies Hot Chicken | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Sugarfish | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Taco Loco | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Tang | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Teriyaki Bowl | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Teriyaki Madness | restaurant | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Tompkins Square Bagels | cafe_bakery | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Utopia Bagels | cafe_bakery | 5 | 1 | — | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Apna Bazar Farmers Market | grocery | 5 | 1 | 1 in QN, from 2025-12-26 | prospect | 5 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Good Health Pharmacy | pharmacy | 5 | 1 | 1 in QN, from 2024-12-13 | prospect | 5 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Gopuff | convenience | 5 | 1 | 7 in BK,BX,QN, from 2025-01-24 | prospect | 5 locations (5+ floor); 1 new in 12m; 7 not-yet-open filings; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Health Care Pharmacy | pharmacy | 5 | 1 | 1 in MN, from 2025-02-12 | prospect | 5 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Hibachi | restaurant | 5 | 1 | 1 in MN, from 2025-03-07 | prospect | 5 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Hudson News | convenience | 5 | 1 | 5 in MN,QN, from 2025-10-14 | prospect | 5 locations (5+ floor); 1 new in 12m; 5 not-yet-open filings; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| Net Cost Market | grocery | 5 | 1 | 3 in BK, from 2024-10-04 | prospect | 5 locations (5+ floor); 1 new in 12m; 3 not-yet-open filings; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
-| 7-Eleven | convenience | 420 | 0 | 7 in BK,MN,QN,SI, from 2024-09-25 | incumbent | 420 locations (5+ floor); 7 not-yet-open filings; detect 2026-09: 420 locations, 0 new 12m | 2026-09-15 |
-| Blink Fitness | fitness | 71 | 0 | 2 in MN, from 2025-10-14 | prospect | 71 locations (5+ floor); 2 not-yet-open filings; detect 2026-09: 71 locations, 0 new 12m | 2026-09-15 |
-| Crossfit | fitness | 68 | 0 | 1 in QN, from 2025-08-01 | prospect | 68 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 68 locations, 0 new 12m | 2026-09-15 |
-| The Home Depot | hardware | 60 | 0 | 27 in BK,BX,MN,QN,SI, from 2024-09-18 | prospect | 60 locations (5+ floor); 27 not-yet-open filings; detect 2026-09: 60 locations, 0 new 12m | 2026-09-15 |
-| Whole Foods Market | grocery | 58 | 0 | 8 in BK,MN, from 2024-10-29 | prospect | 58 locations (5+ floor); 8 not-yet-open filings; detect 2026-09: 58 locations, 0 new 12m | 2026-09-15 |
-| Target | grocery | 40 | 0 | 2 in BX,SI, from 2024-10-31 | prospect | 40 locations (5+ floor); 2 not-yet-open filings; detect 2026-09: 40 locations, 0 new 12m | 2026-09-15 |
-| Great Wall | restaurant | 32 | 0 | 1 in QN, from 2024-10-17 | prospect | 32 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 32 locations, 0 new 12m | 2026-09-15 |
-| Hot Bagels | cafe_bakery | 16 | 0 | 1 in BK, from 2025-02-20 | prospect | 16 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 16 locations, 0 new 12m | 2026-09-15 |
-| Equinox | fitness | 15 | 0 | 1 in MN, from 2024-10-23 | prospect | 15 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 15 locations, 0 new 12m | 2026-09-15 |
-| Fairway Market | grocery | 12 | 0 | 1 in MN, from 2026-02-06 | prospect | 12 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 12 locations, 0 new 12m | 2026-09-15 |
-| Met Food | grocery | 10 | 0 | 2 in BK,QN, from 2024-09-27 | incumbent | 10 locations (5+ floor); 2 not-yet-open filings; co-op banner: no single site-selector; detect 2026-09: 10 locations, 0 new 12m | 2026-09-15 |
-| Restaurant Associates Llc | restaurant | 10 | 0 | 6 in MN, from 2025-07-18 | prospect | 10 locations (5+ floor); 6 not-yet-open filings; detect 2026-09: 10 locations, 0 new 12m | 2026-09-15 |
-| Compare Foods | grocery | 9 | 0 | 1 in QN, from 2026-03-19 | incumbent | 9 locations (5+ floor); 1 not-yet-open filing; co-op banner: no single site-selector; detect 2026-09: 9 locations, 0 new 12m | 2026-09-15 |
-| Lincoln Market | grocery | 9 | 0 | 1 in MN, from 2026-08-20 | prospect | 9 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 9 locations, 0 new 12m | 2026-09-15 |
-| Bread & Butter | cafe_bakery | 8 | 0 | 1 in MN, from 2025-10-29 | prospect | 8 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 8 locations, 0 new 12m | 2026-09-15 |
-| Delicias Calenas | restaurant | 8 | 0 | 1 in QN, from 2024-11-18 | prospect | 8 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 8 locations, 0 new 12m | 2026-09-15 |
-| Felix Roasting Co | cafe_bakery | 8 | 0 | 1 in MN, from 2026-04-24 | prospect | 8 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 8 locations, 0 new 12m | 2026-09-15 |
-| La Bella Pizza | restaurant | 8 | 0 | 1 in QN, from 2025-10-01 | prospect | 8 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 8 locations, 0 new 12m | 2026-09-15 |
-| Quick Stop | convenience | 8 | 0 | 5 in BK,MN,QN, from 2024-10-22 | prospect | 8 locations (5+ floor); 5 not-yet-open filings; detect 2026-09: 8 locations, 0 new 12m | 2026-09-15 |
-| Rodriguez Grocery | grocery | 8 | 0 | 2 in BK,QN, from 2024-10-29 | prospect | 8 locations (5+ floor); 2 not-yet-open filings; detect 2026-09: 8 locations, 0 new 12m | 2026-09-15 |
-| Westside Market | grocery | 8 | 0 | 7 in BK,MN, from 2024-10-07 | prospect | 8 locations (5+ floor); 7 not-yet-open filings; detect 2026-09: 8 locations, 0 new 12m | 2026-09-15 |
-| American Grill | restaurant | 7 | 0 | 1 in BK, from 2026-07-30 | prospect | 7 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 7 locations, 0 new 12m | 2026-09-15 |
-| Empire | restaurant | 7 | 0 | 1 in MN, from 2025-02-25 | prospect | 7 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 7 locations, 0 new 12m | 2026-09-15 |
-| The Gallery | bar | 7 | 0 | 1 in MN, from 2025-07-23 | prospect | 7 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 7 locations, 0 new 12m | 2026-09-15 |
-| Gyu-Kaku Japanese BBQ | restaurant | 7 | 0 | 1 in BK, from 2025-03-24 | prospect | 7 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 7 locations, 0 new 12m | 2026-09-15 |
-| Patel Brothers | grocery | 7 | 0 | 1 in QN, from 2025-12-23 | prospect | 7 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 7 locations, 0 new 12m | 2026-09-15 |
-| Sunrise | restaurant | 7 | 0 | 1 in BK, from 2024-10-29 | prospect | 7 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 7 locations, 0 new 12m | 2026-09-15 |
-| Tower Cleaners | laundry | 7 | 0 | 1 in QN, from 2025-12-23 | prospect | 7 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 7 locations, 0 new 12m | 2026-09-15 |
-| Burger Village | restaurant | 6 | 0 | 1 in QN, from 2026-05-06 | prospect | 6 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 6 locations, 0 new 12m | 2026-09-15 |
-| Chikurin | restaurant | 6 | 0 | 1 in BK, from 2026-06-24 | prospect | 6 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 6 locations, 0 new 12m | 2026-09-15 |
-| Hilton Garden Inn | fitness | 6 | 0 | 1 in MN, from 2026-03-26 | prospect | 6 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 6 locations, 0 new 12m | 2026-09-15 |
-| Junior's Restaurant | restaurant | 6 | 0 | 1 in BK, from 2026-07-22 | prospect | 6 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 6 locations, 0 new 12m | 2026-09-15 |
-| PlantShed | cafe_bakery | 6 | 0 | 1 in MN, from 2026-02-03 | prospect | 6 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 6 locations, 0 new 12m | 2026-09-15 |
-| Sushi Lin | restaurant | 6 | 0 | 1 in MN, from 2024-10-01 | prospect | 6 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 6 locations, 0 new 12m | 2026-09-15 |
-| Best Care Pharmacy | pharmacy | 5 | 0 | 1 in BK, from 2024-12-30 | prospect | 5 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
-| Create | restaurant | 5 | 0 | 1 in BX, from 2025-01-07 | prospect | 5 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
-| Fortune | restaurant | 5 | 0 | 3 in BX,MN, from 2025-01-24 | prospect | 5 locations (5+ floor); 3 not-yet-open filings; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
-| Jack'S Coffee | cafe_bakery | 5 | 0 | 1 in MN, from 2026-01-08 | prospect | 5 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
-| Nios | nails_beauty | 5 | 0 | 1 in QN, from 2024-09-19 | prospect | 5 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
-| Sco Family Of Services | childcare | 5 | 0 | 2 in QN, from 2025-03-28 | prospect | 5 locations (5+ floor); 2 not-yet-open filings; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
-| Super Health Pharmacy | pharmacy | 5 | 0 | 1 in SI, from 2025-02-20 | prospect | 5 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
-| TALEA Beer Co. | bar | 5 | 0 | 1 in MN, from 2026-09-02 | prospect | 5 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
+| Brand | loci_category | Detected total | Detected new 12m | Pipeline (gov filings) | Press 12m | Sales role | Admitted because | Decided on |
+|---|---|---:|---:|---|---:|---|---|---|
+| Dunkin' | cafe_bakery | 1529 | 43 | — | 0 | incumbent | 1529 locations (5+ floor); 43 new locations in 12 months; detect 2026-09: 1529 locations, 43 new 12m | 2026-09-15 |
+| Starbucks | cafe_bakery | 874 | 17 | — | 0 | incumbent | 874 locations (5+ floor); 17 new locations in 12 months; detect 2026-09: 874 locations, 17 new 12m | 2026-09-15 |
+| Pizza Hut | restaurant | 140 | 14 | — | 0 | incumbent | 140 locations (5+ floor); 14 new locations in 12 months; detect 2026-09: 140 locations, 14 new 12m | 2026-09-15 |
+| Wendy's | restaurant | 180 | 12 | — | 0 | incumbent | 180 locations (5+ floor); 12 new locations in 12 months; detect 2026-09: 180 locations, 12 new 12m | 2026-09-15 |
+| Food Universe Marketplace | grocery | 55 | 12 | — | 0 | incumbent | 55 locations (5+ floor); 12 new locations in 12 months; co-op banner: no single site-selector; detect 2026-09: 55 locations, 12 new 12m | 2026-09-15 |
+| Stop & Shop | grocery | 114 | 11 | — | 0 | incumbent | 114 locations (5+ floor); 11 new locations in 12 months; detect 2026-09: 114 locations, 11 new 12m | 2026-09-15 |
+| Auntie Anne's | cafe_bakery | 106 | 11 | 1 in QN, from 2025-08-06 | 0 | incumbent | 106 locations (5+ floor); 11 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 106 locations, 11 new 12m | 2026-09-15 |
+| Taco Bell | restaurant | 200 | 10 | — | 0 | incumbent | 200 locations (5+ floor); 10 new locations in 12 months; detect 2026-09: 200 locations, 10 new 12m | 2026-09-15 |
+| Baskin-Robbins | cafe_bakery | 186 | 10 | — | 0 | incumbent | 186 locations (5+ floor); 10 new locations in 12 months; detect 2026-09: 186 locations, 10 new 12m | 2026-09-15 |
+| Kennedy Fried Chicken | restaurant | 176 | 9 | — | 0 | incumbent | 176 locations (5+ floor); 9 new locations in 12 months; detect 2026-09: 176 locations, 9 new 12m | 2026-09-15 |
+| Guac Time | restaurant | 26 | 8 | — | 0 | prospect | 26 locations (5+ floor); 8 new locations in 12 months; detect 2026-09: 26 locations, 8 new 12m | 2026-09-15 |
+| McDonald's | restaurant | 450 | 7 | — | 0 | incumbent | 450 locations (5+ floor); 7 new locations in 12 months; detect 2026-09: 450 locations, 7 new 12m | 2026-09-15 |
+| Fine Fare | grocery | 71 | 7 | — | 0 | incumbent | 71 locations (5+ floor); 7 new locations in 12 months; co-op banner: no single site-selector; detect 2026-09: 71 locations, 7 new 12m | 2026-09-15 |
+| SuperFresh | grocery | 19 | 7 | 2 in BK,QN, from 2025-03-03 | 0 | incumbent | 19 locations (5+ floor); 7 new locations in 12 months; 2 not-yet-open filings; co-op banner: no single site-selector; detect 2026-09: 19 locations, 7 new 12m | 2026-09-15 |
+| Key Food | grocery | 150 | 6 | 5 in BK,MN,QN, from 2025-12-18 | 0 | incumbent | 150 locations (5+ floor); 6 new locations in 12 months; 5 not-yet-open filings; co-op banner: no single site-selector; detect 2026-09: 150 locations, 6 new 12m | 2026-09-15 |
+| Shake Shack | restaurant | 86 | 6 | 1 in QN, from 2026-04-23 | 0 | prospect | 86 locations (5+ floor); 6 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 86 locations, 6 new 12m | 2026-09-15 |
+| Chop'T | restaurant | 63 | 6 | — | 0 | prospect | 63 locations (5+ floor); 6 new locations in 12 months; detect 2026-09: 63 locations, 6 new 12m | 2026-09-15 |
+| Sweetgreen | restaurant | 62 | 6 | — | 0 | prospect | 62 locations (5+ floor); 6 new locations in 12 months; detect 2026-09: 62 locations, 6 new 12m | 2026-09-15 |
+| Buffalo Wild Wings | restaurant | 61 | 6 | — | 0 | prospect | 61 locations (5+ floor); 6 new locations in 12 months; detect 2026-09: 61 locations, 6 new 12m | 2026-09-15 |
+| Subway | restaurant | 503 | 5 | — | 0 | incumbent | 503 locations (5+ floor); 5 new locations in 12 months; detect 2026-09: 503 locations, 5 new 12m | 2026-09-15 |
+| Associated Supermarket | grocery | 66 | 5 | 1 in QN, from 2025-12-31 | 0 | incumbent | 66 locations (5+ floor); 5 new locations in 12 months; 1 not-yet-open filing; co-op banner: no single site-selector; detect 2026-09: 66 locations, 5 new 12m | 2026-09-15 |
+| Van Leeuwen Ice Cream | cafe_bakery | 36 | 5 | — | 0 | prospect | 36 locations (5+ floor); 5 new locations in 12 months; detect 2026-09: 36 locations, 5 new 12m | 2026-09-15 |
+| Atomic Wings | restaurant | 23 | 5 | 1 in BX, from 2025-02-06 | 0 | prospect | 23 locations (5+ floor); 5 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 23 locations, 5 new 12m | 2026-09-15 |
+| Adobo Mexican Grill | restaurant | 17 | 5 | — | 0 | prospect | 17 locations (5+ floor); 5 new locations in 12 months; detect 2026-09: 17 locations, 5 new 12m | 2026-09-15 |
+| Doner Haus | restaurant | 10 | 5 | — | 0 | prospect | 10 locations (5+ floor); 5 new locations in 12 months; detect 2026-09: 10 locations, 5 new 12m | 2026-09-15 |
+| ASAP Dry Cleaning & Laundry Pick Up and Delivery | laundry | 7 | 5 | no filing coverage for this category | 0 | prospect | 7 locations (5+ floor); 5 new locations in 12 months; detect 2026-09: 7 locations, 5 new 12m | 2026-09-15 |
+| European Wax Center | nails_beauty | 107 | 4 | no filing coverage for this category | 0 | incumbent | 107 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 107 locations, 4 new 12m | 2026-09-15 |
+| Planet Fitness | fitness | 107 | 4 | no filing coverage for this category | 0 | incumbent | 107 locations (5+ floor); 4 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 107 locations, 4 new 12m | 2026-09-15 |
+| Panera Bread | cafe_bakery | 106 | 4 | — | 0 | incumbent | 106 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 106 locations, 4 new 12m | 2026-09-15 |
+| Five Guys | restaurant | 80 | 4 | — | 0 | prospect | 80 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 80 locations, 4 new 12m | 2026-09-15 |
+| Ihop | restaurant | 77 | 4 | — | 0 | prospect | 77 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 77 locations, 4 new 12m | 2026-09-15 |
+| Pret A Manger | cafe_bakery | 68 | 4 | — | 0 | prospect | 68 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 68 locations, 4 new 12m | 2026-09-15 |
+| Jersey Mike's Subs | restaurant | 67 | 4 | — | 0 | prospect | 67 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 67 locations, 4 new 12m | 2026-09-15 |
+| Kung Fu Tea | cafe_bakery | 59 | 4 | — | 0 | prospect | 59 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 59 locations, 4 new 12m | 2026-09-15 |
+| Food Bazaar | grocery | 37 | 4 | 1 in MN, from 2026-08-27 | 0 | incumbent | 37 locations (5+ floor); 4 new locations in 12 months; 1 not-yet-open filing; co-op banner: no single site-selector; detect 2026-09: 37 locations, 4 new 12m | 2026-09-15 |
+| Ideal Food Basket | grocery | 32 | 4 | 2 in BK,QN, from 2025-04-07 | 0 | incumbent | 32 locations (5+ floor); 4 new locations in 12 months; 2 not-yet-open filings; co-op banner: no single site-selector; detect 2026-09: 32 locations, 4 new 12m | 2026-09-15 |
+| Charleys Cheesesteaks | restaurant | 16 | 4 | — | 0 | prospect | 16 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 16 locations, 4 new 12m | 2026-09-15 |
+| Gnocchi On 9Th | restaurant | 12 | 4 | — | 0 | prospect | 12 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 12 locations, 4 new 12m | 2026-09-15 |
+| The Gyro Project | restaurant | 11 | 4 | — | 0 | prospect | 11 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 11 locations, 4 new 12m | 2026-09-15 |
+| Melt Shop | restaurant | 10 | 4 | — | 0 | prospect | 10 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 10 locations, 4 new 12m | 2026-09-15 |
+| Supreme Pizza | restaurant | 10 | 4 | — | 0 | prospect | 10 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 10 locations, 4 new 12m | 2026-09-15 |
+| Dragon King | restaurant | 9 | 4 | — | 0 | prospect | 9 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 9 locations, 4 new 12m | 2026-09-15 |
+| Taco Mix | restaurant | 9 | 4 | — | 0 | prospect | 9 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 9 locations, 4 new 12m | 2026-09-15 |
+| Met Fresh Supermarket | grocery | 9 | 4 | 1 in BX, from 2025-12-18 | 0 | incumbent | 9 locations (5+ floor); 4 new locations in 12 months; 1 not-yet-open filing; co-op banner: no single site-selector; detect 2026-09: 9 locations, 4 new 12m | 2026-09-15 |
+| Burger Spot | restaurant | 8 | 4 | — | 0 | prospect | 8 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 8 locations, 4 new 12m | 2026-09-15 |
+| Pop's Pizza | restaurant | 6 | 4 | — | 0 | prospect | 6 locations (5+ floor); 4 new locations in 12 months; detect 2026-09: 6 locations, 4 new 12m | 2026-09-15 |
+| Sweet & Favorite Cake Shop | cafe_bakery | 4 | 4 | — | 0 | prospect | 4 new locations in 12 months; detect 2026-09: 4 locations, 4 new 12m | 2026-09-15 |
+| Popeyes | restaurant | 312 | 3 | 3 in QN, from 2024-12-11 | 0 | incumbent | 312 locations (5+ floor); 3 new locations in 12 months; 3 not-yet-open filings; detect 2026-09: 312 locations, 3 new 12m | 2026-09-15 |
+| Burger King | restaurant | 231 | 3 | — | 0 | incumbent | 231 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 231 locations, 3 new 12m | 2026-09-15 |
+| Chick-fil-A | restaurant | 70 | 3 | — | 0 | prospect | 70 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 70 locations, 3 new 12m | 2026-09-15 |
+| Carvel | cafe_bakery | 49 | 3 | — | 0 | prospect | 49 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 49 locations, 3 new 12m | 2026-09-15 |
+| True Value | hardware | 49 | 3 | no filing coverage for this category | 0 | prospect | 49 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 49 locations, 3 new 12m | 2026-09-15 |
+| Tex's Chicken & Burgers | restaurant | 46 | 3 | — | 0 | prospect | 46 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 46 locations, 3 new 12m | 2026-09-15 |
+| QQ Nails & Spa | nails_beauty | 39 | 3 | no filing coverage for this category | 0 | prospect | 39 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 39 locations, 3 new 12m | 2026-09-15 |
+| Matto Espresso | cafe_bakery | 34 | 3 | — | 0 | prospect | 34 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 34 locations, 3 new 12m | 2026-09-15 |
+| Sarku Japan | restaurant | 32 | 3 | — | 0 | prospect | 32 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 32 locations, 3 new 12m | 2026-09-15 |
+| Ulta Beauty | hair_barber | 32 | 3 | no filing coverage for this category | 0 | prospect | 32 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 32 locations, 3 new 12m | 2026-09-15 |
+| Moe's Southwest Grill | restaurant | 31 | 3 | — | 0 | prospect | 31 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 31 locations, 3 new 12m | 2026-09-15 |
+| Tous Les Jours | cafe_bakery | 31 | 3 | — | 0 | prospect | 31 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 31 locations, 3 new 12m | 2026-09-15 |
+| WFM Coffee Bar | cafe_bakery | 29 | 3 | — | 0 | prospect | 29 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 29 locations, 3 new 12m | 2026-09-15 |
+| Le Cafe Coffee | cafe_bakery | 25 | 3 | — | 0 | prospect | 25 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 25 locations, 3 new 12m | 2026-09-15 |
+| Poke Bowl | restaurant | 25 | 3 | — | 0 | prospect | 25 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 25 locations, 3 new 12m | 2026-09-15 |
+| Wetzel's Pretzels | cafe_bakery | 25 | 3 | — | 0 | prospect | 25 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 25 locations, 3 new 12m | 2026-09-15 |
+| Sonic Drive-In | restaurant | 23 | 3 | — | 0 | prospect | 23 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 23 locations, 3 new 12m | 2026-09-15 |
+| The Food Emporium | grocery | 23 | 3 | — | 0 | incumbent | 23 locations (5+ floor); 3 new locations in 12 months; co-op banner: no single site-selector; detect 2026-09: 23 locations, 3 new 12m | 2026-09-15 |
+| KPOT Korean BBQ & Hot Pot | restaurant | 21 | 3 | 1 in QN, from 2026-01-12 | 0 | prospect | 21 locations (5+ floor); 3 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 21 locations, 3 new 12m | 2026-09-15 |
+| City Fresh Market | grocery | 16 | 3 | 2 in BX,MN, from 2024-11-14 | 0 | prospect | 16 locations (5+ floor); 3 new locations in 12 months; 2 not-yet-open filings; detect 2026-09: 16 locations, 3 new 12m | 2026-09-15 |
+| NetCost Market | grocery | 13 | 3 | — | 0 | prospect | 13 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 13 locations, 3 new 12m | 2026-09-15 |
+| Le Botaniste | restaurant | 11 | 3 | — | 0 | prospect | 11 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 11 locations, 3 new 12m | 2026-09-15 |
+| Oasis Cafe | cafe_bakery | 11 | 3 | — | 0 | prospect | 11 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 11 locations, 3 new 12m | 2026-09-15 |
+| Mikado | restaurant | 11 | 3 | 1 in MN, from 2026-03-19 | 0 | prospect | 11 locations (5+ floor); 3 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 11 locations, 3 new 12m | 2026-09-15 |
+| Chop & Go | restaurant | 10 | 3 | — | 0 | prospect | 10 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 10 locations, 3 new 12m | 2026-09-15 |
+| Simò Pizza | restaurant | 10 | 3 | — | 0 | prospect | 10 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 10 locations, 3 new 12m | 2026-09-15 |
+| Liberty Bagels | cafe_bakery | 9 | 3 | — | 0 | prospect | 9 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 9 locations, 3 new 12m | 2026-09-15 |
+| Eataly | restaurant | 9 | 3 | 1 in QN, from 2026-02-05 | 0 | prospect | 9 locations (5+ floor); 3 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 9 locations, 3 new 12m | 2026-09-15 |
+| Sushi Counter | restaurant | 7 | 3 | — | 0 | prospect | 7 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 7 locations, 3 new 12m | 2026-09-15 |
+| Twentyonegrains | restaurant | 7 | 3 | — | 0 | prospect | 7 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 7 locations, 3 new 12m | 2026-09-15 |
+| Joe'S Steam Rice Roll | restaurant | 6 | 3 | — | 0 | prospect | 6 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 6 locations, 3 new 12m | 2026-09-15 |
+| Metcare Rx | pharmacy | 6 | 3 | — | 0 | prospect | 6 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 6 locations, 3 new 12m | 2026-09-15 |
+| Barney Brown | restaurant | 6 | 3 | — | 0 | prospect | 6 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 6 locations, 3 new 12m | 2026-09-15 |
+| Dumbo Market | grocery | 6 | 3 | — | 0 | prospect | 6 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 6 locations, 3 new 12m | 2026-09-15 |
+| Taco Express | restaurant | 6 | 3 | — | 0 | prospect | 6 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 6 locations, 3 new 12m | 2026-09-15 |
+| Aramark Services Inc | restaurant | 6 | 3 | 2 in MN, from 2026-04-02 | 0 | prospect | 6 locations (5+ floor); 3 new locations in 12 months; 2 not-yet-open filings; detect 2026-09: 6 locations, 3 new 12m | 2026-09-15 |
+| Maya Mexican Grill | restaurant | 5 | 3 | — | 0 | prospect | 5 locations (5+ floor); 3 new locations in 12 months; detect 2026-09: 5 locations, 3 new 12m | 2026-09-15 |
+| The Nest | restaurant | 4 | 3 | — | 0 | prospect | 3 new locations in 12 months; detect 2026-09: 4 locations, 3 new 12m | 2026-09-15 |
+| Frankie's Brooklyn Pizza | restaurant | 4 | 3 | — | 0 | prospect | 3 new locations in 12 months; detect 2026-09: 4 locations, 3 new 12m | 2026-09-15 |
+| 2788 Bagels | cafe_bakery | 3 | 3 | — | 0 | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
+| Bun & Bone | restaurant | 3 | 3 | — | 0 | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
+| Catalyst Market Bar | bar | 3 | 3 | — | 0 | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
+| Psta New York | restaurant | 3 | 3 | — | 0 | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
+| Dong Bei | restaurant | 3 | 3 | — | 0 | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
+| Double Knot | restaurant | 3 | 3 | — | 0 | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
+| Flavor Taste | convenience | 3 | 3 | no filing coverage for this category | 0 | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
+| Gogyo Gramercy | restaurant | 3 | 3 | — | 0 | prospect | 3 new locations in 12 months; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
+| Joah Kitchen | restaurant | 3 | 3 | 1 in QN, from 2026-06-12 | 0 | prospect | 3 new locations in 12 months; 1 not-yet-open filing; detect 2026-09: 3 locations, 3 new 12m | 2026-09-15 |
+| Domino's | restaurant | 227 | 2 | — | 0 | incumbent | 227 locations (5+ floor); 2 new in 12m; detect 2026-09: 227 locations, 2 new 12m | 2026-09-15 |
+| Duane Reade | pharmacy | 219 | 2 | 7 in MN, from 2026-07-22 | 0 | incumbent | 219 locations (5+ floor); 2 new in 12m; 7 not-yet-open filings; detect 2026-09: 219 locations, 2 new 12m | 2026-09-15 |
+| Crown Fried Chicken | restaurant | 158 | 2 | — | 0 | incumbent | 158 locations (5+ floor); 2 new in 12m; detect 2026-09: 158 locations, 2 new 12m | 2026-09-15 |
+| Little Caesars Pizza | restaurant | 89 | 2 | — | 0 | prospect | 89 locations (5+ floor); 2 new in 12m; detect 2026-09: 89 locations, 2 new 12m | 2026-09-15 |
+| Foodtown | grocery | 68 | 2 | — | 0 | incumbent | 68 locations (5+ floor); 2 new in 12m; co-op banner: no single site-selector; detect 2026-09: 68 locations, 2 new 12m | 2026-09-15 |
+| Bravo Supermarkets | grocery | 60 | 2 | — | 0 | incumbent | 60 locations (5+ floor); 2 new in 12m; co-op banner: no single site-selector; detect 2026-09: 60 locations, 2 new 12m | 2026-09-15 |
+| Krispy Krunchy Chicken | restaurant | 48 | 2 | — | 0 | prospect | 48 locations (5+ floor); 2 new in 12m; detect 2026-09: 48 locations, 2 new 12m | 2026-09-15 |
+| Sephora | nails_beauty | 45 | 2 | no filing coverage for this category | 0 | prospect | 45 locations (5+ floor); 2 new in 12m; detect 2026-09: 45 locations, 2 new 12m | 2026-09-15 |
+| C-Town | grocery | 45 | 2 | 3 in BK,QN, from 2026-02-12 | 0 | incumbent | 45 locations (5+ floor); 2 new in 12m; 3 not-yet-open filings; co-op banner: no single site-selector; detect 2026-09: 45 locations, 2 new 12m | 2026-09-15 |
+| Pioneer Supermarket | grocery | 37 | 2 | 1 in MN, from 2026-01-17 | 0 | incumbent | 37 locations (5+ floor); 2 new in 12m; 1 not-yet-open filing; co-op banner: no single site-selector; detect 2026-09: 37 locations, 2 new 12m | 2026-09-15 |
+| Qdoba Mexican Eats | restaurant | 34 | 2 | — | 0 | prospect | 34 locations (5+ floor); 2 new in 12m; detect 2026-09: 34 locations, 2 new 12m | 2026-09-15 |
+| Tim Hortons | cafe_bakery | 33 | 2 | — | 0 | prospect | 33 locations (5+ floor); 2 new in 12m; detect 2026-09: 33 locations, 2 new 12m | 2026-09-15 |
+| StretchLab | fitness | 30 | 2 | no filing coverage for this category | 0 | prospect | 30 locations (5+ floor); 2 new in 12m; detect 2026-09: 30 locations, 2 new 12m | 2026-09-15 |
+| Bubbakoo's Burritos | restaurant | 26 | 2 | — | 0 | prospect | 26 locations (5+ floor); 2 new in 12m; detect 2026-09: 26 locations, 2 new 12m | 2026-09-15 |
+| 787 Coffee | cafe_bakery | 25 | 2 | — | 0 | prospect | 25 locations (5+ floor); 2 new in 12m; detect 2026-09: 25 locations, 2 new 12m | 2026-09-15 |
+| Birch Coffee | cafe_bakery | 24 | 2 | — | 0 | prospect | 24 locations (5+ floor); 2 new in 12m; detect 2026-09: 24 locations, 2 new 12m | 2026-09-15 |
+| Phenix Salon Suites | hair_barber | 21 | 2 | no filing coverage for this category | 0 | prospect | 21 locations (5+ floor); 2 new in 12m; detect 2026-09: 21 locations, 2 new 12m | 2026-09-15 |
+| Homemade Taqueria | restaurant | 20 | 2 | — | 0 | prospect | 20 locations (5+ floor); 2 new in 12m; detect 2026-09: 20 locations, 2 new 12m | 2026-09-15 |
+| Harbor Freight Tools | hardware | 18 | 2 | no filing coverage for this category | 0 | prospect | 18 locations (5+ floor); 2 new in 12m; detect 2026-09: 18 locations, 2 new 12m | 2026-09-15 |
+| Body & Brain Yoga Tai Chi | fitness | 18 | 2 | no filing coverage for this category | 0 | prospect | 18 locations (5+ floor); 2 new in 12m; detect 2026-09: 18 locations, 2 new 12m | 2026-09-15 |
+| Champion Pizza | restaurant | 18 | 2 | — | 0 | prospect | 18 locations (5+ floor); 2 new in 12m; detect 2026-09: 18 locations, 2 new 12m | 2026-09-15 |
+| Cold Stone Creamery | cafe_bakery | 18 | 2 | — | 0 | prospect | 18 locations (5+ floor); 2 new in 12m; detect 2026-09: 18 locations, 2 new 12m | 2026-09-15 |
+| Patsy'S Pizzeria | restaurant | 16 | 2 | — | 0 | prospect | 16 locations (5+ floor); 2 new in 12m; detect 2026-09: 16 locations, 2 new 12m | 2026-09-15 |
+| Black Seed Bagels | cafe_bakery | 15 | 2 | — | 0 | prospect | 15 locations (5+ floor); 2 new in 12m; detect 2026-09: 15 locations, 2 new 12m | 2026-09-15 |
+| Powerhouse Gym | fitness | 14 | 2 | no filing coverage for this category | 0 | prospect | 14 locations (5+ floor); 2 new in 12m; detect 2026-09: 14 locations, 2 new 12m | 2026-09-15 |
+| Shop Fair Supermarket | grocery | 14 | 2 | 2 in MN, from 2026-01-17 | 0 | prospect | 14 locations (5+ floor); 2 new in 12m; 2 not-yet-open filings; detect 2026-09: 14 locations, 2 new 12m | 2026-09-15 |
+| Madman Espresso | cafe_bakery | 12 | 2 | — | 0 | prospect | 12 locations (5+ floor); 2 new in 12m; detect 2026-09: 12 locations, 2 new 12m | 2026-09-15 |
+| Cap't Loui | restaurant | 12 | 2 | — | 0 | prospect | 12 locations (5+ floor); 2 new in 12m; detect 2026-09: 12 locations, 2 new 12m | 2026-09-15 |
+| NHS Hardware | hardware | 12 | 2 | no filing coverage for this category | 0 | prospect | 12 locations (5+ floor); 2 new in 12m; detect 2026-09: 12 locations, 2 new 12m | 2026-09-15 |
+| Wing Stop | restaurant | 12 | 2 | — | 0 | prospect | 12 locations (5+ floor); 2 new in 12m; detect 2026-09: 12 locations, 2 new 12m | 2026-09-15 |
+| Serafina | restaurant | 12 | 2 | 1 in QN, from 2026-02-13 | 0 | prospect | 12 locations (5+ floor); 2 new in 12m; 1 not-yet-open filing; detect 2026-09: 12 locations, 2 new 12m | 2026-09-15 |
+| Angelina Bakery | cafe_bakery | 11 | 2 | — | 0 | prospect | 11 locations (5+ floor); 2 new in 12m; detect 2026-09: 11 locations, 2 new 12m | 2026-09-15 |
+| Rokstar Chicken | restaurant | 11 | 2 | — | 0 | prospect | 11 locations (5+ floor); 2 new in 12m; detect 2026-09: 11 locations, 2 new 12m | 2026-09-15 |
+| Super Fresh | grocery | 11 | 2 | — | 0 | prospect | 11 locations (5+ floor); 2 new in 12m; detect 2026-09: 11 locations, 2 new 12m | 2026-09-15 |
+| AMG Holdings | convenience | 11 | 2 | no filing coverage for this category | 0 | prospect | 11 locations (5+ floor); 2 new in 12m; 2 not-yet-open filings; detect 2026-09: 11 locations, 2 new 12m | 2026-09-15 |
+| 375 Chicken 'N Fries | restaurant | 10 | 2 | — | 0 | prospect | 10 locations (5+ floor); 2 new in 12m; detect 2026-09: 10 locations, 2 new 12m | 2026-09-15 |
+| For Five Coffee Roasters | cafe_bakery | 10 | 2 | — | 0 | prospect | 10 locations (5+ floor); 2 new in 12m; detect 2026-09: 10 locations, 2 new 12m | 2026-09-15 |
+| La Pecora Bianca | restaurant | 10 | 2 | 1 in MN, from 2024-11-21 | 0 | prospect | 10 locations (5+ floor); 2 new in 12m; 1 not-yet-open filing; detect 2026-09: 10 locations, 2 new 12m | 2026-09-15 |
+| Boca Pharmacy | pharmacy | 9 | 2 | — | 0 | prospect | 9 locations (5+ floor); 2 new in 12m; detect 2026-09: 9 locations, 2 new 12m | 2026-09-15 |
+| Peet's Coffee | cafe_bakery | 9 | 2 | — | 0 | prospect | 9 locations (5+ floor); 2 new in 12m; detect 2026-09: 9 locations, 2 new 12m | 2026-09-15 |
+| Compton'S | restaurant | 9 | 2 | — | 0 | prospect | 9 locations (5+ floor); 2 new in 12m; detect 2026-09: 9 locations, 2 new 12m | 2026-09-15 |
+| Simply Sushi | restaurant | 9 | 2 | — | 0 | prospect | 9 locations (5+ floor); 2 new in 12m; detect 2026-09: 9 locations, 2 new 12m | 2026-09-15 |
+| Honeybrains | cafe_bakery | 8 | 2 | — | 0 | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
+| Laduree | cafe_bakery | 8 | 2 | — | 0 | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
+| Lobby Bar | bar | 8 | 2 | — | 0 | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
+| 8 Bit Bites | restaurant | 8 | 2 | — | 0 | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
+| Bora Bora | cafe_bakery | 8 | 2 | — | 0 | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
+| Bora Bora Smoothie Cafe | cafe_bakery | 8 | 2 | — | 0 | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
+| Crispy Burger | restaurant | 8 | 2 | — | 0 | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
+| U Best Bakery | cafe_bakery | 8 | 2 | — | 0 | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
+| Ayat | restaurant | 8 | 2 | 2 in BK,SI, from 2025-01-24 | 0 | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); 2 not-yet-open filings; detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
+| Grab & Go | convenience | 8 | 2 | no filing coverage for this category | 0 | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
+| Pita Yeero | restaurant | 8 | 2 | 1 in MN, from 2024-12-11 | 0 | prospect | 8 locations (5+ floor); 2 new of only 8 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 8 locations, 2 new 12m | 2026-09-15 |
+| Holy Burger | restaurant | 7 | 2 | — | 0 | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
+| Buunni Coffee | cafe_bakery | 7 | 2 | — | 0 | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
+| Shaxian Snacks | restaurant | 7 | 2 | — | 0 | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
+| Tarallucci E Vino | restaurant | 7 | 2 | — | 0 | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
+| Threes Brewing | bar | 7 | 2 | — | 0 | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
+| Ugly Dumpling | restaurant | 7 | 2 | — | 0 | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
+| Blazin Chicken & Gyro | restaurant | 7 | 2 | 1 in MN, from 2025-08-14 | 0 | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
+| Mini Mart | convenience | 7 | 2 | no filing coverage for this category | 0 | prospect | 7 locations (5+ floor); 2 new of only 7 locations (fast small chain); 5 not-yet-open filings; detect 2026-09: 7 locations, 2 new 12m | 2026-09-15 |
+| The Greats Of Craft | bar | 6 | 2 | — | 0 | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
+| Honeygrow | restaurant | 6 | 2 | — | 0 | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
+| Natural Blend | restaurant | 6 | 2 | — | 0 | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
+| PEP Bakehouse and Coffee Shop | cafe_bakery | 6 | 2 | — | 0 | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
+| Pizza Mia | restaurant | 6 | 2 | — | 0 | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
+| Chama Mama | restaurant | 6 | 2 | — | 0 | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
+| Taqueria Al Pastor | restaurant | 6 | 2 | — | 0 | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
+| Ten Seconds Yunnan Rice Noodle | restaurant | 6 | 2 | — | 0 | prospect | 6 locations (5+ floor); 2 new of only 6 locations (fast small chain); detect 2026-09: 6 locations, 2 new 12m | 2026-09-15 |
+| All My Children Day Care and Nursery Schools | childcare | 5 | 2 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
+| Molly Tea | cafe_bakery | 5 | 2 | — | 0 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
+| Bathhouse | restaurant | 5 | 2 | — | 0 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
+| Brasa Peruvian Kitchen | restaurant | 5 | 2 | — | 0 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
+| Office Hours | cafe_bakery | 5 | 2 | — | 0 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
+| The Consulate | restaurant | 5 | 2 | — | 0 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
+| SkyCare Rx Pharmacy | pharmacy | 5 | 2 | — | 0 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
+| Taco Express Mexican Grill | restaurant | 5 | 2 | — | 0 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
+| Taste - Kitchen & Cocktails | restaurant | 5 | 2 | — | 0 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
+| Teppanyaki One Japanese Grill | restaurant | 5 | 2 | — | 0 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
+| Thisbowl | restaurant | 5 | 2 | — | 0 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
+| Fellini Coffee | cafe_bakery | 5 | 2 | 1 in MN, from 2026-02-24 | 0 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
+| The View | restaurant | 5 | 2 | — | 0 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
+| Hunan Noodle | restaurant | 5 | 2 | 1 in QN, from 2026-09-11 | 0 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
+| The Station | restaurant | 5 | 2 | 1 in QN, from 2026-04-29 | 0 | prospect | 5 locations (5+ floor); 2 new of only 5 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 5 locations, 2 new 12m | 2026-09-15 |
+| Halal Stop | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Hong Kong Cafe | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Ideal Fresh Market | grocery | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Isla & Co | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| $1.50 Pizza | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Atl Wing Spot | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Makina Cafe | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Milk & Honey Cafe | cafe_bakery | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Millie's | cafe_bakery | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Mirror Bar | bar | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Moonburger | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Natural Pilates | fitness | 4 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Banh Mi Cafe | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Barachou | cafe_bakery | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Buddha Bar Queens | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Casa Louie | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Casita Of Brooklyn | cafe_bakery | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| New York Pho House | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Noribar | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Olio E Piu | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Coffee & Chisme | cafe_bakery | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Corner 28 | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Danny's Chinese Kitchen | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Dosa Royale | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Sauteed | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Duke Eatery | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| El Greco | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Tacos Azteca | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Temakase | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| That's a Wrap | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Tracks Raw Bar & Grill | bar | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Tradisyon | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Twig'M | restaurant | 4 | 2 | — | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Castle Chicken | restaurant | 4 | 2 | 1 in QN, from 2026-08-27 | 0 | prospect | 2 new of only 4 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| World Of Wonders | childcare | 4 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 4 locations (fast small chain); detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Sweet Hospitality Group, Llc | bar | 4 | 2 | 1 in MN, from 2026-01-28 | 0 | prospect | 2 new of only 4 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 4 locations, 2 new 12m | 2026-09-15 |
+| Golden Farms Supermarket | grocery | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Good Days | cafe_bakery | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Gooey On The Inside Cookies | cafe_bakery | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Grab & Go Convenience Llc | convenience | 3 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Great Performances/Artists As Waitresses, Inc. | bar | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Hampton Chutney Company | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Hero Farm | grocery | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Jaba | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Jays Pizza | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Koo Thai | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Ledo Pizza | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Little Scholars at East 18th Street | childcare | 3 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| 260‘S New York | cafe_bakery | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| A-Force Brazilian Jiu Jitsu | fitness | 3 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Ann’s Roti Shop #2 | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Mango Biche Mia | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Barberino Nyc Llc | hair_barber | 3 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Bebecitas Sports Bar | bar | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Breakfast by Salt's Cure | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Breezy Point Surf Club | bar | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Brown Bag Sandwich Co. | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Butter Beans Kitchen | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Cafe Essx | cafe_bakery | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Capitol Diner | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Original Brother’s Pizza | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Ouris Market 1160 | grocery | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Panajachel Solola | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Pizza Yard | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Power Moves Gymnastics and Fitness | fitness | 3 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Chubby Skewers | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Cocotazo | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Dear Coffee | cafe_bakery | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Rustic Pizza & Pasteria | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Saxbys | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Shaji Bbq | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Shinjuku Ramen | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Siberia | bar | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Space Market | convenience | 3 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| El Mercadito | grocery | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Equal Care Pharmacy | pharmacy | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Falafel Tanami | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Fine Food Cuisine | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Giulietta | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Go Bagels | cafe_bakery | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Sushi Yoshi | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Tacos Del Barrio | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| The Trim Lounge L.L.C. | hair_barber | 3 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Virtual Cravings | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Viva La Dough | cafe_bakery | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Yono Sushi | restaurant | 3 | 2 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Yamadaya | grocery | 3 | 2 | 1 in MN, from 2026-06-24 | 0 | prospect | 2 new of only 3 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| Golden Steer At One Fifth | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Gotham Speakeasy | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Grandma'S Dumpling House | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Greka By Montuno Coffee | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Halal Havën | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Hed nyc | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Human Resources (Bergamos) | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Hướng Xuân | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Ikon New York | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Inverse By CR7 | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Jack'S Market 2751 | grocery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Jade Bamboo Chinese Cuisine | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Jazzcultural | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Joys' Cafe | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Kajiken | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Khalo Cantina | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Kk Nail Studio Llc | nails_beauty | 2 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| La Hueca Manabita | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| La Perla Nascosta | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| La Presion Deli Grocery Corp | grocery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Lalaon | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Latte Da | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Le Bistroquet | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Legacy Coffee | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| LenLen | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Leslie | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Lety'S Sport Bar | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Loaded | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Longacre Theatre | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Loong Ramen | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| L'oro Espresso Bar | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Los Dos Carnales Corp | convenience | 2 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| A.Lounge | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Amber Room | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Andamiro | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Anor Restaurant | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Ariana’s Cucina | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Aris Pizza | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Arthur | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Bagel Station Express | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Madam Tang | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Maddie's Boba Lab | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Mali Healing Spa | nails_beauty | 2 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Manhatto | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Marino’s Pizza House | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Mash Inn | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Maya'S Pizza | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Michelandia Botanera Corp. | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Mixly | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| mộc mạc | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Mondo Sushi | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Monkey Thief | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Montoya's | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Mora Ny Inc. | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Motin Sweets And Masala | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Mr. Mo 馍先生 | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Musica | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Nancy Blake’s Tavern + Tap | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| New Five Star Kacchi Biryani House | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Bar Petra | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Bar Rêve | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Bar Rocco | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Bar Zakh Café | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Beatbox | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| beem Light Sauna - Park Slope | nails_beauty | 2 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Best Damn Breakfast Burrito | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Big Blue Seafood & Grill | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Bitcoin New York Steakhouse | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Blacksmith | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Blake'S Tavern Nyc | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Bleecker Street Cafe | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Boobliq | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Boong's Grab & Go | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Brooklyn Counter - F & B Kiosks And Support Spaces(A1, A5 & A6) | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Brooklyn Game Knight | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Brothers Market Corp | grocery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| by Antidote | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Cafe Coco | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Cafe St. Mark's | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Caffetto | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Calaveras Social | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Cattle | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Nidhi Convenience | convenience | 2 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Ny Axe Throwing Range - Brooklyn | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| NY Coffee Bar | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Odo East Village | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Old Bukhara | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Olia | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Parrot Coffee | grocery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Partake | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Patisserie Des Ambassades | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Pattin' | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Peek In Cafe | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Posners Food Center Inc | grocery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Potwah Jerk Patty | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Chachi'S Halal | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Chatti by Regi Mathew | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Cheese Wheel Pastas | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Chef Chang Express 张哥经济小炒 | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Chim Chim | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Chojí | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Chubby TAN｜New York | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Chyelle | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Classic Barbershop 5 Corporation | hair_barber | 2 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| The Collector's Bar | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Compound Art & Sound Gallery | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Cookies By Jackie | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Culture Lab Lic | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Dahla New York | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Danny's | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Dbh Brooklyn Concessions, Llc | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Decatur Beauty Lounge Inc. | nails_beauty | 2 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Dj's At Bayside | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Dorado Pharmacy | pharmacy | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Red Spa Nail Iii Inc. | nails_beauty | 2 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Rockaway Beach Pickleball Llc | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Sahrá | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Salt Bread Ko | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Santiagos Deli & Bagels Inc | convenience | 2 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Saverne | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Savoré | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Savour - Healthy Asian Bowl | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Sawaan Thai | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Seirēn | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Sena Cafe & Co. | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Se'or Pizza | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| ShuZiXiang HotPot | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Siam Thai Express (Jacx & Co Food Court) | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Silver Crust | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Skin Kneads, Llc | nails_beauty | 2 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Sofia Bar & Grill | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Sofia'S Bar | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Soho Pizza | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Soto Mini Market Corp | convenience | 2 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Dugoutbx - Yankee Stadium | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Durar Cafe | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Elevated At Partake | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Empire Beer Garden | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Farina On 2nd | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| First Cup Cafe | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Fried Rice King | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Frita Batidos | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Fuji Teriyaki Sushi | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Ginger Ristorante | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Gloss Nail Bar | nails_beauty | 2 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Gnihton | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Suki Station | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Sunnyside Up Cafe | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Sushi Aozora | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Tachi | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Tacos Don Jose | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Tagua Restaurant | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Taishoken New York | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Täzà drizzle | cafe_bakery | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Teriyaki Go (Inside Boogie Down Food Hall) | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Thread & Glow Ny Corp. | nails_beauty | 2 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Titán | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Tribe Nyc Corp | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Turbine Cafe | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Union Bistro Steakhouse And Sushi | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Broadway Care Pharmacy Inc. | pharmacy | 2 | 2 | 1 in BK, from 2024-12-12 | 0 | prospect | 2 new of only 2 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Broadways Bar & Grill Corp. | restaurant | 2 | 2 | 1 in SI, from 2026-06-03 | 0 | prospect | 2 new of only 2 locations (fast small chain); 1 not-yet-open filing; detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Verde New York | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Victory Convenience Llc - Family Shoppe | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Wanglang | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Willets Point Brewery | bar | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Yemeni Socotra Restaurant | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| You Fu Happy Breakfast Inc | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Zambrano’s Mexican Store Corp. | convenience | 2 | 2 | no filing coverage for this category | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Zara Austin | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Zaxby's | restaurant | 2 | 2 | — | 0 | prospect | 2 new of only 2 locations (fast small chain); detect 2026-09: 2 locations, 2 new 12m | 2026-09-15 |
+| Papa John's Pizza | restaurant | 163 | 1 | — | 0 | incumbent | 163 locations (5+ floor); 1 new in 12m; detect 2026-09: 163 locations, 1 new 12m | 2026-09-15 |
+| Kfc | restaurant | 122 | 1 | — | 0 | incumbent | 122 locations (5+ floor); 1 new in 12m; detect 2026-09: 122 locations, 1 new 12m | 2026-09-15 |
+| Blimpie | restaurant | 110 | 1 | — | 0 | incumbent | 110 locations (5+ floor); 1 new in 12m; detect 2026-09: 110 locations, 1 new 12m | 2026-09-15 |
+| Golden Krust Caribbean Restaurant | restaurant | 73 | 1 | — | 0 | prospect | 73 locations (5+ floor); 1 new in 12m; detect 2026-09: 73 locations, 1 new 12m | 2026-09-15 |
+| Orangetheory Fitness | fitness | 55 | 1 | no filing coverage for this category | 0 | prospect | 55 locations (5+ floor); 1 new in 12m; detect 2026-09: 55 locations, 1 new 12m | 2026-09-15 |
+| Fitness Center | fitness | 55 | 1 | no filing coverage for this category | 0 | prospect | 55 locations (5+ floor); 1 new in 12m; detect 2026-09: 55 locations, 1 new 12m | 2026-09-15 |
+| Nathan's Famous | restaurant | 52 | 1 | — | 0 | prospect | 52 locations (5+ floor); 1 new in 12m; detect 2026-09: 52 locations, 1 new 12m | 2026-09-15 |
+| Trader Joe's | grocery | 47 | 1 | — | 0 | prospect | 47 locations (5+ floor); 1 new in 12m; detect 2026-09: 47 locations, 1 new 12m | 2026-09-15 |
+| Playa Bowls | restaurant | 46 | 1 | — | 0 | prospect | 46 locations (5+ floor); 1 new in 12m; detect 2026-09: 46 locations, 1 new 12m | 2026-09-15 |
+| Sherwin-Williams | hardware | 43 | 1 | no filing coverage for this category | 0 | prospect | 43 locations (5+ floor); 1 new in 12m; detect 2026-09: 43 locations, 1 new 12m | 2026-09-15 |
+| Crunch Fitness | fitness | 41 | 1 | no filing coverage for this category | 0 | prospect | 41 locations (5+ floor); 1 new in 12m; detect 2026-09: 41 locations, 1 new 12m | 2026-09-15 |
+| Joe Coffee | cafe_bakery | 38 | 1 | — | 0 | prospect | 38 locations (5+ floor); 1 new in 12m; detect 2026-09: 38 locations, 1 new 12m | 2026-09-15 |
+| Ace Hardware | hardware | 38 | 1 | no filing coverage for this category | 0 | prospect | 38 locations (5+ floor); 1 new in 12m; detect 2026-09: 38 locations, 1 new 12m | 2026-09-15 |
+| Pure Barre | fitness | 30 | 1 | no filing coverage for this category | 0 | prospect | 30 locations (5+ floor); 1 new in 12m; detect 2026-09: 30 locations, 1 new 12m | 2026-09-15 |
+| China Wok | restaurant | 28 | 1 | — | 0 | prospect | 28 locations (5+ floor); 1 new in 12m; detect 2026-09: 28 locations, 1 new 12m | 2026-09-15 |
+| Singas Famous Pizza | restaurant | 28 | 1 | 1 in QN, from 2026-02-13 | 0 | prospect | 28 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 28 locations, 1 new 12m | 2026-09-15 |
+| Vivi Bubble Tea | cafe_bakery | 27 | 1 | — | 0 | prospect | 27 locations (5+ floor); 1 new in 12m; detect 2026-09: 27 locations, 1 new 12m | 2026-09-15 |
+| Little Italy Pizza | restaurant | 26 | 1 | — | 0 | prospect | 26 locations (5+ floor); 1 new in 12m; detect 2026-09: 26 locations, 1 new 12m | 2026-09-15 |
+| Farmer's Fridge | convenience | 26 | 1 | no filing coverage for this category | 0 | prospect | 26 locations (5+ floor); 1 new in 12m; detect 2026-09: 26 locations, 1 new 12m | 2026-09-15 |
+| Hale & Hearty | restaurant | 24 | 1 | — | 0 | prospect | 24 locations (5+ floor); 1 new in 12m; detect 2026-09: 24 locations, 1 new 12m | 2026-09-15 |
+| Joe's Pizza | restaurant | 23 | 1 | — | 0 | prospect | 23 locations (5+ floor); 1 new in 12m; detect 2026-09: 23 locations, 1 new 12m | 2026-09-15 |
+| Alts | tailor_repair | 21 | 1 | no filing coverage for this category | 0 | prospect | 21 locations (5+ floor); 1 new in 12m; detect 2026-09: 21 locations, 1 new 12m | 2026-09-15 |
+| The Studio | fitness | 21 | 1 | no filing coverage for this category | 0 | prospect | 21 locations (5+ floor); 1 new in 12m; detect 2026-09: 21 locations, 1 new 12m | 2026-09-15 |
+| Laundry Room | laundry | 20 | 1 | no filing coverage for this category | 0 | prospect | 20 locations (5+ floor); 1 new in 12m; detect 2026-09: 20 locations, 1 new 12m | 2026-09-15 |
+| Tropical Smoothie Cafe | cafe_bakery | 20 | 1 | — | 0 | prospect | 20 locations (5+ floor); 1 new in 12m; detect 2026-09: 20 locations, 1 new 12m | 2026-09-15 |
+| Magnolia Bakery | cafe_bakery | 20 | 1 | 1 in QN, from 2024-11-07 | 0 | prospect | 20 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 20 locations, 1 new 12m | 2026-09-15 |
+| Juicy King Crab Express | restaurant | 19 | 1 | — | 0 | prospect | 19 locations (5+ floor); 1 new in 12m; detect 2026-09: 19 locations, 1 new 12m | 2026-09-15 |
+| Morton Williams | grocery | 19 | 1 | — | 0 | prospect | 19 locations (5+ floor); 1 new in 12m; detect 2026-09: 19 locations, 1 new 12m | 2026-09-15 |
+| Costco Wholesale Corporation | grocery | 19 | 1 | 3 in BK,QN,SI, from 2024-09-16 | 0 | prospect | 19 locations (5+ floor); 1 new in 12m; 3 not-yet-open filings; detect 2026-09: 19 locations, 1 new 12m | 2026-09-15 |
+| Jamaican Flavors | restaurant | 18 | 1 | — | 0 | prospect | 18 locations (5+ floor); 1 new in 12m; detect 2026-09: 18 locations, 1 new 12m | 2026-09-15 |
+| Rosa's Pizza | restaurant | 18 | 1 | — | 0 | prospect | 18 locations (5+ floor); 1 new in 12m; detect 2026-09: 18 locations, 1 new 12m | 2026-09-15 |
+| Daily Provisions | cafe_bakery | 17 | 1 | — | 0 | prospect | 17 locations (5+ floor); 1 new in 12m; detect 2026-09: 17 locations, 1 new 12m | 2026-09-15 |
+| Sophie'S Cuban Cuisine | restaurant | 16 | 1 | — | 0 | prospect | 16 locations (5+ floor); 1 new in 12m; detect 2026-09: 16 locations, 1 new 12m | 2026-09-15 |
+| Lightbridge Academy | childcare | 15 | 1 | no filing coverage for this category | 0 | prospect | 15 locations (5+ floor); 1 new in 12m; detect 2026-09: 15 locations, 1 new 12m | 2026-09-15 |
+| Breads Bakery | cafe_bakery | 15 | 1 | — | 0 | prospect | 15 locations (5+ floor); 1 new in 12m; detect 2026-09: 15 locations, 1 new 12m | 2026-09-15 |
+| Brooklyn Roasting Company | cafe_bakery | 15 | 1 | — | 0 | prospect | 15 locations (5+ floor); 1 new in 12m; detect 2026-09: 15 locations, 1 new 12m | 2026-09-15 |
+| Caridad Restaurant | restaurant | 15 | 1 | — | 0 | prospect | 15 locations (5+ floor); 1 new in 12m; detect 2026-09: 15 locations, 1 new 12m | 2026-09-15 |
+| Potbelly | restaurant | 15 | 1 | — | 0 | prospect | 15 locations (5+ floor); 1 new in 12m; detect 2026-09: 15 locations, 1 new 12m | 2026-09-15 |
+| Coffee Project New York | cafe_bakery | 15 | 1 | — | 0 | prospect | 15 locations (5+ floor); 1 new in 12m; detect 2026-09: 15 locations, 1 new 12m | 2026-09-15 |
+| Health Mart Pharmacy | pharmacy | 14 | 1 | — | 0 | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
+| King's Kitchen | restaurant | 14 | 1 | — | 0 | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
+| Alidoro | restaurant | 14 | 1 | — | 0 | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
+| Mad For Chicken | restaurant | 14 | 1 | — | 0 | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
+| Matchaful | cafe_bakery | 14 | 1 | — | 0 | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
+| Napoli Pizza | restaurant | 14 | 1 | — | 0 | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
+| Banana King | restaurant | 14 | 1 | — | 0 | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
+| Pizza Plus | restaurant | 14 | 1 | — | 0 | prospect | 14 locations (5+ floor); 1 new in 12m; detect 2026-09: 14 locations, 1 new 12m | 2026-09-15 |
+| Great Wall Restaurant | restaurant | 13 | 1 | — | 0 | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
+| Ground Central Coffee Company | cafe_bakery | 13 | 1 | — | 0 | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
+| Bagel Pub | cafe_bakery | 13 | 1 | — | 0 | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
+| Pelicana Chicken | restaurant | 13 | 1 | — | 0 | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
+| CorePower Yoga | fitness | 13 | 1 | no filing coverage for this category | 0 | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
+| Real Fruit Bubble Tea | cafe_bakery | 13 | 1 | — | 0 | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
+| Sakura | restaurant | 13 | 1 | — | 0 | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
+| Springbone Kitchen | restaurant | 13 | 1 | — | 0 | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
+| Sushi By Bou | restaurant | 13 | 1 | — | 0 | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
+| Tsaocaa | cafe_bakery | 13 | 1 | — | 0 | prospect | 13 locations (5+ floor); 1 new in 12m; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
+| Sugaring Usa Llc | nails_beauty | 13 | 1 | no filing coverage for this category | 0 | prospect | 13 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 13 locations, 1 new 12m | 2026-09-15 |
+| Laundry Mart | laundry | 12 | 1 | no filing coverage for this category | 0 | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
+| The Local | restaurant | 12 | 1 | — | 0 | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
+| Mighty Quinn'S Barbeque | restaurant | 12 | 1 | — | 0 | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
+| Princess Nails | nails_beauty | 12 | 1 | no filing coverage for this category | 0 | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
+| Super Laundromat | laundry | 12 | 1 | no filing coverage for this category | 0 | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
+| UNO Pizzeria & Grill | restaurant | 12 | 1 | — | 0 | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
+| Variety Coffee Roasters | cafe_bakery | 12 | 1 | — | 0 | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
+| Wafels & Dinges | restaurant | 12 | 1 | — | 0 | prospect | 12 locations (5+ floor); 1 new in 12m; detect 2026-09: 12 locations, 1 new 12m | 2026-09-15 |
+| Levain Bakery | cafe_bakery | 11 | 1 | — | 0 | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
+| Living Room | bar | 11 | 1 | — | 0 | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
+| New York Fried Chicken | restaurant | 11 | 1 | — | 0 | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
+| Blooming Nails | nails_beauty | 11 | 1 | no filing coverage for this category | 0 | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
+| Bondi Sushi | restaurant | 11 | 1 | — | 0 | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
+| Chirping Chicken | restaurant | 11 | 1 | — | 0 | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
+| Dig | restaurant | 11 | 1 | — | 0 | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
+| The Room | bar | 11 | 1 | — | 0 | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
+| Famous Original Ray's Pizza | restaurant | 11 | 1 | — | 0 | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
+| Fornino | restaurant | 11 | 1 | — | 0 | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
+| The Terrace | bar | 11 | 1 | — | 0 | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
+| United Taekwondo Center | fitness | 11 | 1 | no filing coverage for this category | 0 | prospect | 11 locations (5+ floor); 1 new in 12m; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
+| Rosa Mexicano | restaurant | 11 | 1 | 1 in MN, from 2026-04-02 | 0 | prospect | 11 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 11 locations, 1 new 12m | 2026-09-15 |
+| Imagine Early Learning Centers, Llc | childcare | 10 | 1 | no filing coverage for this category | 0 | prospect | 10 locations (5+ floor); 1 new in 12m; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
+| King's Chef | restaurant | 10 | 1 | — | 0 | prospect | 10 locations (5+ floor); 1 new in 12m; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
+| The Little Gym | fitness | 10 | 1 | no filing coverage for this category | 0 | prospect | 10 locations (5+ floor); 1 new in 12m; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
+| Marinara Pizza | restaurant | 10 | 1 | — | 0 | prospect | 10 locations (5+ floor); 1 new in 12m; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
+| The Nail Bar | nails_beauty | 10 | 1 | no filing coverage for this category | 0 | prospect | 10 locations (5+ floor); 1 new in 12m; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
+| F45 Training | fitness | 10 | 1 | no filing coverage for this category | 0 | prospect | 10 locations (5+ floor); 1 new in 12m; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
+| Tartinery | restaurant | 10 | 1 | — | 0 | prospect | 10 locations (5+ floor); 1 new in 12m; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
+| Joju | restaurant | 10 | 1 | 1 in MN, from 2026-06-05 | 0 | prospect | 10 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
+| Luigi's Pizza | restaurant | 10 | 1 | 1 in BK, from 2025-02-28 | 0 | prospect | 10 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 10 locations, 1 new 12m | 2026-09-15 |
+| Intoxx Fitness | fitness | 9 | 1 | no filing coverage for this category | 0 | prospect | 9 locations (5+ floor); 1 new in 12m; detect 2026-09: 9 locations, 1 new 12m | 2026-09-15 |
+| Joey Bats Cafe | cafe_bakery | 9 | 1 | — | 0 | prospect | 9 locations (5+ floor); 1 new in 12m; detect 2026-09: 9 locations, 1 new 12m | 2026-09-15 |
+| Cafe D'Avignon | cafe_bakery | 9 | 1 | — | 0 | prospect | 9 locations (5+ floor); 1 new in 12m; detect 2026-09: 9 locations, 1 new 12m | 2026-09-15 |
+| The Rooftop @ The Gem Hotel | bar | 9 | 1 | — | 0 | prospect | 9 locations (5+ floor); 1 new in 12m; detect 2026-09: 9 locations, 1 new 12m | 2026-09-15 |
+| Taqueria | restaurant | 9 | 1 | — | 0 | prospect | 9 locations (5+ floor); 1 new in 12m; detect 2026-09: 9 locations, 1 new 12m | 2026-09-15 |
+| Ess-A-Bagel | cafe_bakery | 9 | 1 | 1 in MN, from 2024-10-01 | 0 | prospect | 9 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 9 locations, 1 new 12m | 2026-09-15 |
+| The Grey Dog | cafe_bakery | 8 | 1 | — | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| Halal Cart | restaurant | 8 | 1 | — | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| Hotworx | fitness | 8 | 1 | no filing coverage for this category | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| In The Cut | hair_barber | 8 | 1 | no filing coverage for this category | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| The Kati Roll Company | restaurant | 8 | 1 | — | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| Knights Of Columbus | bar | 8 | 1 | — | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| Lady M Cake Boutique | cafe_bakery | 8 | 1 | — | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| Medicine Shoppe | pharmacy | 8 | 1 | — | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| Mighty Quinn's BBQ | restaurant | 8 | 1 | — | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| Pink Nails | nails_beauty | 8 | 1 | no filing coverage for this category | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| Poetica Coffee | cafe_bakery | 8 | 1 | — | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| Clinton Hall | bar | 8 | 1 | — | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| Counter Service | restaurant | 8 | 1 | — | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| Cutting Edge | hair_barber | 8 | 1 | no filing coverage for this category | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| El Gallo Taqueria | restaurant | 8 | 1 | — | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| El Quetzalito | restaurant | 8 | 1 | — | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| Family Pharmacy | pharmacy | 8 | 1 | — | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| Tropical Restaurant | restaurant | 8 | 1 | — | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| Friendly Pharmacy | pharmacy | 8 | 1 | 2 in BX,QN, from 2025-02-16 | 0 | prospect | 8 locations (5+ floor); 1 new in 12m; 2 not-yet-open filings; detect 2026-09: 8 locations, 1 new 12m | 2026-09-15 |
+| Gourmet Garage | grocery | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Jacob'S Pickles | restaurant | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| La Dolce Vita | restaurant | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Bagel Boss | cafe_bakery | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Made In New York Pizza | restaurant | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Modern Bread & Bagel | cafe_bakery | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Mr. Wonton | restaurant | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Birria Landia | restaurant | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Birria LES | restaurant | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| BK Pilates | fitness | 7 | 1 | no filing coverage for this category | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Black Star Bakery & Cafe | cafe_bakery | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Blaze Pizza | restaurant | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Casa Toscana | cafe_bakery | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Nosh | restaurant | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Prime No 7 | restaurant | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| CIBO Express Gourmet Market | grocery | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Downtown Pharmacy | pharmacy | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Drip Coffee Makers | cafe_bakery | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| QuickRx Pharmacy | pharmacy | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Famous Pizza | restaurant | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Fogo De Chao | restaurant | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Superior Market | grocery | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Supremo Food Market | grocery | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Tacos El Bronco | restaurant | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Tulcingo Bakery | cafe_bakery | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| The District | restaurant | 7 | 1 | 1 in BK, from 2025-04-11 | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| VFW Post 5195 | bar | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Wing Boss | restaurant | 7 | 1 | — | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| solidcore | fitness | 7 | 1 | no filing coverage for this category | 0 | prospect | 7 locations (5+ floor); 1 new in 12m; 3 not-yet-open filings; detect 2026-09: 7 locations, 1 new 12m | 2026-09-15 |
+| Ground Central | cafe_bakery | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Hokkaido Baked Cheese Tart | cafe_bakery | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Il Mulino | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Imperial Barbershop Inc | hair_barber | 6 | 1 | no filing coverage for this category | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| JETSET Pilates - Park Avenue | fitness | 6 | 1 | no filing coverage for this category | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Kaffe Are | cafe_bakery | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Kong Dog | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Leon'S Bagels | cafe_bakery | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| LongHorn Steakhouse | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| 98K Hamburger | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| 99 Cent Supreme Pizza | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Mamasushi | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Mr. Pizza | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Nail Lounge | nails_beauty | 6 | 1 | no filing coverage for this category | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Brooklyn Bagel | cafe_bakery | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Burmese Bites | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Butter | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Nino's | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Pho Today | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Chickies | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| CIBO Express | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Country Donuts | cafe_bakery | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Dim Sum Sam | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| The Dojo | fitness | 6 | 1 | no filing coverage for this category | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Dominican Beauty Salon | nails_beauty | 6 | 1 | no filing coverage for this category | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Regina’s Grocery | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Sakura Japan | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Samurai Sushi | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Save A Lot | grocery | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Due Fratelli | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Fatima Hair Braiding | hair_barber | 6 | 1 | no filing coverage for this category | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Felice | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| The Fresh Grocer | grocery | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| The Goat | bar | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| VIP Nails | nails_beauty | 6 | 1 | no filing coverage for this category | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Wayback Burgers | restaurant | 6 | 1 | — | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Mito | restaurant | 6 | 1 | 1 in QN, from 2026-08-17 | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Yaaas Tea | cafe_bakery | 6 | 1 | 1 in MN, from 2025-10-14 | 0 | prospect | 6 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 6 locations, 1 new 12m | 2026-09-15 |
+| Great Wall Supermarket | grocery | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Halal-N-Out | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Hawa Smoothies & Bubble Tea | cafe_bakery | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Hunny | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| The Izakaya | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Jack's Barbershop | hair_barber | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Kansas Chicken & Burger | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Kati Shop | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Kijitora | cafe_bakery | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| King Falafel | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Laankee | cafe_bakery | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Levels Barbershop | hair_barber | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| $1.50 Hot Pizza | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| 3 Times | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Ace'S Pizza | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| The Ainsworth | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Alex Shoe Repair | tailor_repair | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| American Laundromat | laundry | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Angel'S Cafe | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Aria | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Artisan | cafe_bakery | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| ARVACI Coffee | cafe_bakery | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Madras Dosa Co | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Market Fresh | grocery | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Metro Drugs | pharmacy | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| The Migrant Kitchen | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Miriam | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Ms. Lam Montessori Llc | childcare | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| The Best Sichuan | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Bridges | bar | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Broadway Deli | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Bronx Burger Co. | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Brooklyn Bread Cafe | cafe_bakery | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Cafe 28 | cafe_bakery | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Cafe Bravo | cafe_bakery | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Caribbean Spa New York | nails_beauty | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Ny Pizza | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Olde City Cheesesteaks & Brew | bar | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| One L Professional | nails_beauty | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| The Palace | bar | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| The Parlor | hair_barber | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| The Perch | bar | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Pho Bang | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Picky Barista | cafe_bakery | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Pinas Locas Quetzaly | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| The Pit Stop | convenience | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Plaza M Spa | nails_beauty | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Poke Time | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| QQ Nail Spa | nails_beauty | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Charlie's Pizza | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Cinnabon / Carvel | cafe_bakery | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Convenience Store | convenience | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Dancing Crane Cafe | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Danny's Szechuan Garden | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Dragon City | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Riviera | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Russian Manicure | nails_beauty | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| San Wei | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Sangria | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Spanglish | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| East River Pilates | fitness | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| El Gallo Negro | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Essen | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Express Brows | nails_beauty | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Fitrition | cafe_bakery | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Five Star Barbershop | hair_barber | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Fluffies Hot Chicken | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Sugarfish | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Taco Loco | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Tang | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Teriyaki Bowl | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Teriyaki Madness | restaurant | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Tompkins Square Bagels | cafe_bakery | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Utopia Bagels | cafe_bakery | 5 | 1 | — | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Apna Bazar Farmers Market | grocery | 5 | 1 | 1 in QN, from 2025-12-26 | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Good Health Pharmacy | pharmacy | 5 | 1 | 1 in QN, from 2024-12-13 | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Gopuff | convenience | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; 7 not-yet-open filings; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Health Care Pharmacy | pharmacy | 5 | 1 | 1 in MN, from 2025-02-12 | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Hibachi | restaurant | 5 | 1 | 1 in MN, from 2025-03-07 | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; 1 not-yet-open filing; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Hudson News | convenience | 5 | 1 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; 5 not-yet-open filings; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Net Cost Market | grocery | 5 | 1 | 3 in BK, from 2024-10-04 | 0 | prospect | 5 locations (5+ floor); 1 new in 12m; 3 not-yet-open filings; detect 2026-09: 5 locations, 1 new 12m | 2026-09-15 |
+| Poke Sushi | restaurant | 3 | 1 | — | 0 | prospect | 2 new of only 3 locations (fast small chain); detect 2026-09: 3 locations, 2 new 12m | 2026-09-15 |
+| 7-Eleven | convenience | 420 | 0 | no filing coverage for this category | 0 | incumbent | 420 locations (5+ floor); 7 not-yet-open filings; detect 2026-09: 420 locations, 0 new 12m | 2026-09-15 |
+| Blink Fitness | fitness | 71 | 0 | no filing coverage for this category | 0 | prospect | 71 locations (5+ floor); 2 not-yet-open filings; detect 2026-09: 71 locations, 0 new 12m | 2026-09-15 |
+| Crossfit | fitness | 68 | 0 | no filing coverage for this category | 0 | prospect | 68 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 68 locations, 0 new 12m | 2026-09-15 |
+| The Home Depot | hardware | 60 | 0 | no filing coverage for this category | 0 | prospect | 60 locations (5+ floor); 27 not-yet-open filings; detect 2026-09: 60 locations, 0 new 12m | 2026-09-15 |
+| Whole Foods Market | grocery | 58 | 0 | 8 in BK,MN, from 2024-10-29 | 0 | prospect | 58 locations (5+ floor); 8 not-yet-open filings; detect 2026-09: 58 locations, 0 new 12m | 2026-09-15 |
+| Target | grocery | 40 | 0 | 2 in BX,SI, from 2024-10-31 | 0 | prospect | 40 locations (5+ floor); 2 not-yet-open filings; detect 2026-09: 40 locations, 0 new 12m | 2026-09-15 |
+| Great Wall | restaurant | 32 | 0 | 1 in QN, from 2024-10-17 | 0 | prospect | 32 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 32 locations, 0 new 12m | 2026-09-15 |
+| Hot Bagels | cafe_bakery | 16 | 0 | 1 in BK, from 2025-02-20 | 0 | prospect | 16 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 16 locations, 0 new 12m | 2026-09-15 |
+| Equinox | fitness | 15 | 0 | no filing coverage for this category | 0 | prospect | 15 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 15 locations, 0 new 12m | 2026-09-15 |
+| Fairway Market | grocery | 12 | 0 | 1 in MN, from 2026-02-06 | 0 | prospect | 12 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 12 locations, 0 new 12m | 2026-09-15 |
+| Met Food | grocery | 10 | 0 | 2 in BK,QN, from 2024-09-27 | 0 | incumbent | 10 locations (5+ floor); 2 not-yet-open filings; co-op banner: no single site-selector; detect 2026-09: 10 locations, 0 new 12m | 2026-09-15 |
+| Restaurant Associates Llc | restaurant | 10 | 0 | 6 in MN, from 2025-07-18 | 0 | prospect | 10 locations (5+ floor); 6 not-yet-open filings; detect 2026-09: 10 locations, 0 new 12m | 2026-09-15 |
+| Compare Foods | grocery | 9 | 0 | 1 in QN, from 2026-03-19 | 0 | incumbent | 9 locations (5+ floor); 1 not-yet-open filing; co-op banner: no single site-selector; detect 2026-09: 9 locations, 0 new 12m | 2026-09-15 |
+| Lincoln Market | grocery | 9 | 0 | 1 in MN, from 2026-08-20 | 0 | prospect | 9 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 9 locations, 0 new 12m | 2026-09-15 |
+| Bread & Butter | cafe_bakery | 8 | 0 | 1 in MN, from 2025-10-29 | 0 | prospect | 8 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 8 locations, 0 new 12m | 2026-09-15 |
+| Delicias Calenas | restaurant | 8 | 0 | 1 in QN, from 2024-11-18 | 0 | prospect | 8 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 8 locations, 0 new 12m | 2026-09-15 |
+| Felix Roasting Co | cafe_bakery | 8 | 0 | 1 in MN, from 2026-04-24 | 0 | prospect | 8 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 8 locations, 0 new 12m | 2026-09-15 |
+| La Bella Pizza | restaurant | 8 | 0 | 1 in QN, from 2025-10-01 | 0 | prospect | 8 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 8 locations, 0 new 12m | 2026-09-15 |
+| Quick Stop | convenience | 8 | 0 | no filing coverage for this category | 0 | prospect | 8 locations (5+ floor); 5 not-yet-open filings; detect 2026-09: 8 locations, 0 new 12m | 2026-09-15 |
+| Rodriguez Grocery | grocery | 8 | 0 | 2 in BK,QN, from 2024-10-29 | 0 | prospect | 8 locations (5+ floor); 2 not-yet-open filings; detect 2026-09: 8 locations, 0 new 12m | 2026-09-15 |
+| Westside Market | grocery | 8 | 0 | 7 in BK,MN, from 2024-10-07 | 0 | prospect | 8 locations (5+ floor); 7 not-yet-open filings; detect 2026-09: 8 locations, 0 new 12m | 2026-09-15 |
+| American Grill | restaurant | 7 | 0 | 1 in BK, from 2026-07-30 | 0 | prospect | 7 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 7 locations, 0 new 12m | 2026-09-15 |
+| Empire | restaurant | 7 | 0 | 1 in MN, from 2025-02-25 | 0 | prospect | 7 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 7 locations, 0 new 12m | 2026-09-15 |
+| The Gallery | bar | 7 | 0 | 1 in MN, from 2025-07-23 | 0 | prospect | 7 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 7 locations, 0 new 12m | 2026-09-15 |
+| Gyu-Kaku Japanese BBQ | restaurant | 7 | 0 | 1 in BK, from 2025-03-24 | 0 | prospect | 7 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 7 locations, 0 new 12m | 2026-09-15 |
+| Patel Brothers | grocery | 7 | 0 | 1 in QN, from 2025-12-23 | 0 | prospect | 7 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 7 locations, 0 new 12m | 2026-09-15 |
+| Sunrise | restaurant | 7 | 0 | 1 in BK, from 2024-10-29 | 0 | prospect | 7 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 7 locations, 0 new 12m | 2026-09-15 |
+| Tower Cleaners | laundry | 7 | 0 | no filing coverage for this category | 0 | prospect | 7 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 7 locations, 0 new 12m | 2026-09-15 |
+| Burger Village | restaurant | 6 | 0 | 1 in QN, from 2026-05-06 | 0 | prospect | 6 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 6 locations, 0 new 12m | 2026-09-15 |
+| Chikurin | restaurant | 6 | 0 | 1 in BK, from 2026-06-24 | 0 | prospect | 6 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 6 locations, 0 new 12m | 2026-09-15 |
+| Hilton Garden Inn | fitness | 6 | 0 | no filing coverage for this category | 0 | prospect | 6 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 6 locations, 0 new 12m | 2026-09-15 |
+| Junior's Restaurant | restaurant | 6 | 0 | 1 in BK, from 2026-07-22 | 0 | prospect | 6 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 6 locations, 0 new 12m | 2026-09-15 |
+| PlantShed | cafe_bakery | 6 | 0 | 1 in MN, from 2026-02-03 | 0 | prospect | 6 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 6 locations, 0 new 12m | 2026-09-15 |
+| Sushi Lin | restaurant | 6 | 0 | 1 in MN, from 2024-10-01 | 0 | prospect | 6 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 6 locations, 0 new 12m | 2026-09-15 |
+| Best Care Pharmacy | pharmacy | 5 | 0 | 1 in BK, from 2024-12-30 | 0 | prospect | 5 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
+| Create | restaurant | 5 | 0 | 1 in BX, from 2025-01-07 | 0 | prospect | 5 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
+| Fortune | restaurant | 5 | 0 | 3 in BX,MN, from 2025-01-24 | 0 | prospect | 5 locations (5+ floor); 3 not-yet-open filings; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
+| Jack'S Coffee | cafe_bakery | 5 | 0 | 1 in MN, from 2026-01-08 | 0 | prospect | 5 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
+| Nios | nails_beauty | 5 | 0 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
+| Sco Family Of Services | childcare | 5 | 0 | no filing coverage for this category | 0 | prospect | 5 locations (5+ floor); 2 not-yet-open filings; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
+| Super Health Pharmacy | pharmacy | 5 | 0 | 1 in SI, from 2025-02-20 | 0 | prospect | 5 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
+| TALEA Beer Co. | bar | 5 | 0 | 1 in MN, from 2026-09-02 | 0 | prospect | 5 locations (5+ floor); 1 not-yet-open filing; detect 2026-09: 5 locations, 0 new 12m | 2026-09-15 |
+
+`Press 12m` counts `chains.press_hits` rows for the brand in the twelve calendar months ending with the snapshot, as measured WHEN THE SNAPSHOT WAS TAKEN. It is a FLOOR while that table holds only a 45-day live queue (D110), and a dash means the press channel was not measured for that month at all — never that nobody wrote about them.
 
 ### Why they grow
 
@@ -1092,23 +1096,23 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 
 ## Newly detected, not on the watchlist
 
-189 brands flagged by `loci chains detect` (2026-09); the 40 fastest are listed. These are CANDIDATES, not findings — see the caveats.
+187 brands flagged by `loci chains detect` (2026-09); the 40 fastest are listed. These are CANDIDATES, not findings — see the caveats.
 
 | Brand | loci_category | Locations | Dated | New 12m | New 3m | Boroughs | Sources | Why flagged |
 |---|---|---:|---:|---:|---:|---:|---:|---|
 | MoneyGram | bank | 69 | 69 | 67 | 11 | 5 | 1 | 67 new locations in 12 months |
 | Citizens | bank | 115 | 56 | 26 | 2 | 5 | 2 | 26 new locations in 12 months |
 | Flagstar Bank | bank | 78 | 34 | 16 | 1 | 5 | 2 | 16 new locations in 12 months |
-| Northwell Health Physician Partners Obstetrics & Gynecology at Williamsburg, Myrtle Avenue | clinic | 18 | 15 | 15 | 15 | 4 | 2 | 15 new locations in 12 months |
+| Northwell Health Physician Partners Obstetrics & Gynecology at Williamsburg, Myrtle Avenue | clinic | 18 | 15 | 15 | 13 | 4 | 2 | 15 new locations in 12 months |
 | Market Plate | grocery | 22 | 9 | 9 | 0 | 2 | 2 | 9 new locations in 12 months |
 | Cafe | cafe_bakery | 60 | 48 | 8 | 2 | 4 | 4 | 8 new locations in 12 months |
 | Northwell Labs at 170 East 77th Street | clinic | 8 | 8 | 8 | 8 | 3 | 1 | 8 new locations in 12 months |
-| Shell | convenience | 142 | 141 | 7 | 0 | 5 | 3 | 7 new locations in 12 months |
-| USA Hemorrhoid Centers | clinic | 15 | 12 | 7 | 1 | 4 | 2 | 7 new locations in 12 months |
 | Bj'S Wholesale Club Inc. 364 | grocery | 14 | 7 | 7 | 0 | 4 | 1 | 7 new locations in 12 months |
 | Complete Medical Wellness | clinic | 11 | 7 | 7 | 0 | 4 | 2 | 7 new locations in 12 months |
 | Northwell Health Physician Partners Cardiology - Upper East Side, East End Avenue | clinic | 9 | 8 | 7 | 4 | 2 | 2 | 7 new locations in 12 months |
+| Shell | convenience | 142 | 141 | 6 | 0 | 5 | 3 | 6 new locations in 12 months |
 | Sunoco | convenience | 15 | 10 | 6 | 0 | 4 | 3 | 6 new locations in 12 months |
+| USA Hemorrhoid Centers | clinic | 15 | 12 | 6 | 1 | 4 | 2 | 6 new locations in 12 months |
 | Chestnut Market | convenience | 13 | 9 | 6 | 0 | 0 | 2 | 6 new locations in 12 months |
 | The Bar | bar | 57 | 48 | 5 | 1 | 4 | 4 | 5 new locations in 12 months |
 | Krauszer's Food Store | convenience | 21 | 13 | 5 | 1 | 0 | 3 | 5 new locations in 12 months |
@@ -1124,7 +1128,7 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 | Universal Food Markets | grocery | 7 | 4 | 4 | 0 | 0 | 2 | 4 new locations in 12 months |
 | 98K Chicken & Burgers | restaurant | 5 | 4 | 4 | 0 | 3 | 1 | 4 new locations in 12 months |
 | Cohen Children's Northwell Health Physician Partners Pediatric Specialists At Lake Success, 1111 Marcus Avenue | clinic | 5 | 4 | 4 | 4 | 3 | 2 | 4 new locations in 12 months |
-| Northwell Health Physician Partners Orthopaedic Institute at Great Neck | clinic | 5 | 5 | 4 | 2 | 2 | 1 | 4 new locations in 12 months |
+| Northwell Health Physician Partners Orthopaedic Institute at Great Neck | clinic | 5 | 5 | 4 | 1 | 2 | 1 | 4 new locations in 12 months |
 | ? Tea (Question Mark Tea) | cafe_bakery | 5 | 4 | 4 | 4 | 2 | 2 | 4 new locations in 12 months |
 | Gym | fitness | 113 | 103 | 3 | 2 | 4 | 2 | 3 new locations in 12 months |
 | Wells Fargo | bank | 112 | 47 | 3 | 2 | 4 | 3 | 3 new locations in 12 months |
@@ -1191,5 +1195,5 @@ Two uses: companies to sell a site-selection product to, and — later — the "
 - Detect snapshot: `chains.brand_snapshot` at `2026-09`, built from `analysis.poi_supply` (deduped locations) with no supply-set filter.
 - A brand needs ≥ 2 deduped locations to appear.
 - Flag rule: ≥ 3 new locations in 12 months, OR ≥ 2 new with ≤ 8 total.
-- Manual brand collapses in force (53): `7 11` → `7 eleven`, `all antico vinaio` → `allantico vinaio`, `associated` → `associated supermarket`, `associated fresh` → `associated supermarket`, `auntie annes cinnabon carvel` → `auntie annes`, `auntie annes pretzels` → `auntie annes`, `blank street` → `blank street coffee`, `bonchon chicken` → `bonchon`, `bravo supermarket` → `bravo supermarkets`, `buffalo wild wings go` → `buffalo wild wings`, `c town supermarket` → `c town`, `chip city` → `chip city cookies`, `chopt creative salad` → `chopt`, `crumbl` → `crumbl cookies`, `cvs pharmacy` → `cvs`, `cvs photo` → `cvs`, `dominos pizza` → `dominos`, `dos toros` → `dos toros taqueria`, `duane reade by walgreens` → `duane reade`, `dunkin baskin robbins` → `dunkin`, `dunkin donuts` → `dunkin`, `dunkin donuts baskin robbins` → `dunkin`, `fine fare` → `fine fare supermarkets`, `fine fare supermarket` → `fine fare supermarkets`, `food universe` → `food universe marketplace`, `golden krust` → `golden krust caribbean restaurant`, `guac time mexican grill` → `guac time`, `guacado mexican grill` → `guacado`, `jersey mikes` → `jersey mikes subs`, `kennedy chicken` → `kennedy fried chicken`, `kennedy chicken and burger` → `kennedy fried chicken`, `kennedy chicken and pizza` → `kennedy fried chicken`, `key food stores co op` → `key food`, `key food supermarket` → `key food`, `key food supermarkets` → `key food`, `lidl` → `lidl us`, `little caesars pizza` → `little caesars`, `mcdonalds restaurant` → `mcdonalds`, `met fresh` → `met fresh supermarket`, `moka and` → `moka and co`, `panera` → `panera bread`, `pioneer` → `pioneer supermarket`, `pioneer supermarkets` → `pioneer supermarket`, `pizza hut express` → `pizza hut`, `popeyes louisiana kitchen` → `popeyes`, `pura vida` → `pura vida miami`, `raising canes chicken fingers` → `raising canes`, `sonic` → `sonic drive in`, `starbucks coffee` → `starbucks`, `subway sandwiches` → `subway`, `teriyaki one japanese grill` → `teriyaki one`, `tobys estate` → `tobys estate coffee`, `walgreens` → `walgreens duane reade`.
+- Manual brand collapses in force (54): `7 11` → `7 eleven`, `all antico vinaio` → `allantico vinaio`, `associated` → `associated supermarket`, `associated fresh` → `associated supermarket`, `auntie annes cinnabon carvel` → `auntie annes`, `auntie annes pretzels` → `auntie annes`, `blank street` → `blank street coffee`, `bonchon chicken` → `bonchon`, `bravo supermarket` → `bravo supermarkets`, `buffalo wild wings go` → `buffalo wild wings`, `c town supermarket` → `c town`, `chip city` → `chip city cookies`, `chopt creative salad` → `chopt`, `crumbl` → `crumbl cookies`, `cvs pharmacy` → `cvs`, `cvs photo` → `cvs`, `dominos pizza` → `dominos`, `dos toros` → `dos toros taqueria`, `duane reade by walgreens` → `duane reade`, `dunkin baskin robbins` → `dunkin`, `dunkin donuts` → `dunkin`, `dunkin donuts baskin robbins` → `dunkin`, `fine fare` → `fine fare supermarkets`, `fine fare supermarket` → `fine fare supermarkets`, `food universe` → `food universe marketplace`, `golden krust` → `golden krust caribbean restaurant`, `guac time mexican grill` → `guac time`, `guacado mexican grill` → `guacado`, `jersey mikes` → `jersey mikes subs`, `kennedy chicken` → `kennedy fried chicken`, `kennedy chicken and burger` → `kennedy fried chicken`, `kennedy chicken and pizza` → `kennedy fried chicken`, `key food stores co op` → `key food`, `key food supermarket` → `key food`, `key food supermarkets` → `key food`, `lidl` → `lidl us`, `little caesars pizza` → `little caesars`, `mcdonalds restaurant` → `mcdonalds`, `met fresh` → `met fresh supermarket`, `moka and` → `moka and co`, `panera` → `panera bread`, `pioneer` → `pioneer supermarket`, `pioneer supermarkets` → `pioneer supermarket`, `pizza hut express` → `pizza hut`, `popeyes louisiana kitchen` → `popeyes`, `pura vida` → `pura vida miami`, `pure gym` → `puregym`, `raising canes chicken fingers` → `raising canes`, `sonic` → `sonic drive in`, `starbucks coffee` → `starbucks`, `subway sandwiches` → `subway`, `teriyaki one japanese grill` → `teriyaki one`, `tobys estate` → `tobys estate coffee`, `walgreens` → `walgreens duane reade`.
 - Regenerated 2026-09-16 by `loci chains render`.

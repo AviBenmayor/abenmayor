@@ -151,11 +151,75 @@ def test_a_rejection_with_no_recorded_count_cannot_resurface_on_doubling():
                                      locations_at_decision=None)) is None
 
 
+def _event(**kw):
+    ev = {"kind": "fundraise", "date": "2026-09-20",
+          "counterparty": "Enlightened Hospitality", "amount": "$21M Series B",
+          "url": "https://example.test/round"}
+    ev.update(kw)
+    return ev
+
+
 def test_a_capital_event_resurfaces_a_rejection_regardless_of_size():
+    """The arm GTM-189 armed. A brand rejected at 5 locations that has since
+    raised a round is a different company from the one that was rejected, at
+    any size, and no count rule would ever bring it back."""
     reason = cand.candidate_reason(
         _brand("rejected brand", locations_total=6),
-        rejected=_rejected(capital_events=[{"kind": "series_a"}]))
-    assert reason is not None and "capital event" in reason
+        rejected=_rejected(capital_events=[_event()]))
+    assert reason is not None
+    assert reason.startswith("RE-SURFACED: fundraise dated 2026-09-20 since rejection")
+
+
+def test_a_capital_event_the_rejection_already_knew_about_does_not_reopen_it():
+    """SINCE, not ever. The round that was public before the rejection was part
+    of what the rejection was made on; re-surfacing on it would mean a
+    rejection never sticks at all, which is the same as having no tier."""
+    assert cand.candidate_reason(
+        _brand("rejected brand", locations_total=6),
+        rejected=_rejected(decided_on="2026-09-15",
+                           capital_events=[_event(date="2026-03-01")])) is None
+
+
+def test_an_undated_capital_event_cannot_reopen_a_rejection():
+    """There is no "since" to measure. `watchlist.validate` refuses to store
+    one, so this is the belt to that braces: a curator who edits the YAML by
+    hand cannot produce an entry that looks armed and is not."""
+    assert cand.candidate_reason(
+        _brand("rejected brand", locations_total=6),
+        rejected=_rejected(capital_events=[{"kind": "fundraise"}])) is None
+
+
+def test_a_capital_event_on_a_rejection_with_no_date_reopens_it():
+    """A rejection hand-written into the YAML without `decided_on` has nothing
+    to compare against. Re-opening is the conservative direction: the cost is
+    one row back in a review queue, against a brand that stays invisible after
+    the news that should have surfaced it."""
+    reason = cand.candidate_reason(
+        _brand("rejected brand", locations_total=6),
+        rejected=_rejected(decided_on=None, capital_events=[_event()]))
+    assert reason is not None and "fundraise dated 2026-09-20" in reason
+
+
+def test_the_capital_event_arm_beats_the_doubling_arm_in_the_reason_string():
+    """Both can fire; the reason names the event, because that is the fact a
+    curator needs to re-decide on and the count is already in the row."""
+    reason = cand.candidate_reason(
+        _brand("rejected brand", locations_total=40),
+        rejected=_rejected(capital_events=[_event(kind="acquisition")]))
+    assert "acquisition dated 2026-09-20" in reason
+
+
+def test_a_capital_event_shaped_like_the_yaml_validates():
+    """The escape hatch and `watchlist.validate` have to agree about the shape,
+    or a curator writes an entry one accepts and the other ignores."""
+    doc = {"version": 1, "brands": [{
+        "brand": "Rejected Brand", "brand_key": "rejected brand",
+        "confidence": "auto", "evidence": [], "tier": "rejected",
+        "rejection_reason": "one operator, two permits",
+        "decided_on": "2026-09-15", "capital_events": [_event()]}]}
+    assert wl.validate(doc) == []
+    assert cand.candidate_reason(_brand("rejected brand", locations_total=6),
+                                 rejected=wl.rejected_rows(doc)) is not None
 
 
 # ======================================================== sales_role, cheaply
@@ -248,13 +312,15 @@ def warehouse():
                locations_total=6),
     ]
     con.register("_rows", __import__("pandas").DataFrame(rows))
-    con.execute("INSERT INTO chains.brand_snapshot SELECT "
-                + ", ".join(c for c in (
-                    "snapshot_month", "brand_key", "display_name", "loci_category",
-                    "locations_total", "locations_dated", "locations_new_12m",
-                    "locations_new_3m", "n_boroughs", "boroughs", "categories",
-                    "n_sources", "flagged", "flag_reason", "detected_at"))
-                + " FROM _rows")
+    # Named columns, and deliberately NOT the three sql/039 signal columns:
+    # this fixture is a PRE-MIGRATION snapshot, so it is also the test that
+    # `rows_sql` still falls back to the live press join when the snapshot has
+    # nothing to say. The armed-snapshot case is `warehouse_with_signals`.
+    cols = ("snapshot_month, brand_key, display_name, loci_category, "
+            "locations_total, locations_dated, locations_new_12m, "
+            "locations_new_3m, n_boroughs, boroughs, categories, "
+            "n_sources, flagged, flag_reason, detected_at")
+    con.execute(f"INSERT INTO chains.brand_snapshot ({cols}) SELECT {cols} FROM _rows")
     con.unregister("_rows")
 
     con.execute(
@@ -600,3 +666,137 @@ def test_the_auto_section_appears_exactly_when_the_file_holds_auto_rows(warehous
     assert "| Vital Climbing Gym |" not in tail
     for row in auto[:200]:
         assert f"| {row['brand']} |" not in head, row["brand"]
+
+
+# ============ 6. the sql/039 snapshot signals, read back (GTM-189)
+#
+# `warehouse` above is a PRE-MIGRATION snapshot: its brand_snapshot rows leave
+# the three signal columns NULL, which is what proves the fallbacks still work.
+# This fixture is the armed one.
+
+@pytest.fixture()
+def warehouse_signals(warehouse):
+    """The same warehouse with sql/039's columns filled, as `detect` would.
+
+    `vital climbing gym` is FITNESS -- a category no NYC filing feed can
+    attribute a licence to -- so its `pipeline_coverage` is the blind spot the
+    render has to print in words."""
+    warehouse.execute(
+        "UPDATE chains.brand_snapshot SET "
+        "  pipeline_filings_12m = 4, pipeline_coverage = 'real', "
+        "  press_hits_12m = 7 WHERE brand_key = 'super burrito'")
+    warehouse.execute(
+        "UPDATE chains.brand_snapshot SET "
+        "  pipeline_filings_12m = 0, pipeline_coverage = 'structural_zero', "
+        "  press_hits_12m = 0 WHERE brand_key = 'vital climbing gym'")
+    return warehouse
+
+
+def test_the_snapshots_press_count_wins_over_a_live_re_join(warehouse_signals):
+    """The number that admitted a brand has to stay reproducible. Re-deriving
+    it against a press table that has moved since would mean the row's reason
+    can no longer be checked against the month it was written in."""
+    warehouse_signals.execute("DELETE FROM chains.press_hits")
+    _, rows = cand.fetch(warehouse_signals, today=TODAY)
+    assert {r["brand_key"]: r["press_hits_12m"] for r in rows}["super burrito"] == 7
+
+
+def test_a_null_snapshot_column_still_falls_back_to_the_live_join(warehouse_signals):
+    """NULL there means detect could not measure the channel that month (the
+    press table did not exist yet). Falling back is the honest read; leaving it
+    NULL would silently drop press from the movement test."""
+    _, rows = cand.fetch(warehouse_signals, today=TODAY)
+    by = {r["brand_key"]: r for r in rows}
+    assert by["paper only"]["press_hits_12m"] == 1, \
+        "this row's snapshot column was never filled"
+
+
+def test_a_pre_migration_snapshot_reads_exactly_as_before(warehouse):
+    """The fallback path, on a month written before sql/039 existed."""
+    _, rows = cand.fetch(warehouse, today=TODAY)
+    by = {r["brand_key"]: r for r in rows}
+    assert by["paper only"]["press_hits_12m"] == 1
+    assert by["dunkin"]["press_hits_12m"] == 0
+
+
+def test_pipeline_open_is_not_replaced_by_the_snapshots_filing_count(warehouse_signals):
+    """Different measures. `pipeline_filings_12m` counts ALL filings in twelve
+    months; `pipeline_open` counts only NOT-yet-open ones, because an open
+    filing is a store detect has already counted and is not movement.
+    Substituting one for the other would silently change the predicate."""
+    _, rows = cand.fetch(warehouse_signals, today=TODAY)
+    by = {r["brand_key"]: r for r in rows}
+    assert by["super burrito"]["pipeline_filings_12m"] == 4
+    assert by["super burrito"]["pipeline_open"] == 0, \
+        "its only filing is OPEN — a store that already exists"
+
+
+def test_render_prints_words_not_a_zero_where_the_feeds_are_blind(warehouse_signals):
+    from loci.chains import render as ren
+
+    doc = {"version": 1, "brands": [
+        {f: None for f in wl.FIELDS} | {
+            "brand": "Vital Climbing Gym", "brand_key": "vital climbing gym",
+            "loci_category": "fitness", "net_new_12m": 0,
+            "nyc_locations_now": 4, "confidence": "reported",
+            "evidence": [{"url": "https://x.example"}]},
+    ]}
+    text = ren.render(warehouse_signals, doc=doc, month=MONTH, today=TODAY)
+    row = next(ln for ln in text.splitlines() if ln.startswith("| Vital Climbing Gym |"))
+    pipeline_cell = row.split("|")[8].strip()
+    assert pipeline_cell == ren.NO_COVERAGE_CELL, \
+        "a zero in that cell would read as 'nothing is coming'"
+    # ... and the document says what the phrase means, once, near the table.
+    assert "BLIND SPOT, not an absence of activity" in text
+
+
+def test_render_keeps_the_count_where_the_feeds_can_see_the_category(warehouse_signals):
+    from loci.chains import render as ren
+
+    doc = {"version": 1, "brands": [
+        {f: None for f in wl.FIELDS} | {
+            "brand": "Super Burrito", "brand_key": "super burrito",
+            "loci_category": "restaurant", "confidence": "reported",
+            "evidence": [{"url": "https://x.example"}]},
+    ]}
+    text = ren.render(warehouse_signals, doc=doc, month=MONTH, today=TODAY)
+    row = next(ln for ln in text.splitlines() if ln.startswith("| Super Burrito |"))
+    assert ren.NO_COVERAGE_CELL not in row, \
+        "restaurant is one of the five categories the filing feeds can see"
+
+
+def test_the_auto_section_carries_the_press_count(warehouse_signals):
+    from loci.chains import render as ren
+
+    doc = {"version": 1, "brands": [
+        {f: None for f in wl.FIELDS} | {
+            "brand": "Super Burrito", "brand_key": "super burrito",
+            "confidence": "auto", "decided_by": "auto", "tier": "admitted",
+            "sales_role": "prospect", "evidence": [],
+            "admission_reason": "9 locations (5+ floor); 3 new in 12m"},
+    ]}
+    text = ren.render(warehouse_signals, doc=doc, month=MONTH, today=TODAY)
+    _, _, auto = text.partition(
+        "## Auto-admitted this snapshot (nobody has looked yet)")
+    assert "| Press 12m |" in auto
+    row = next(ln for ln in auto.splitlines() if ln.startswith("| Super Burrito |"))
+    assert "| 7 |" in row
+
+
+def test_an_unmeasured_press_channel_renders_as_a_dash_not_a_zero(warehouse):
+    """The pre-migration warehouse: nothing wrote `press_hits_12m` into that
+    month, so the column is NULL and the cell is a dash. A 0 would claim the
+    channel was measured and found empty."""
+    from loci.chains import render as ren
+
+    doc = {"version": 1, "brands": [
+        {f: None for f in wl.FIELDS} | {
+            "brand": "Super Burrito", "brand_key": "super burrito",
+            "confidence": "auto", "decided_by": "auto", "tier": "admitted",
+            "sales_role": "prospect", "evidence": [],
+            "admission_reason": "9 locations (5+ floor)"},
+    ]}
+    text = ren.render(warehouse, doc=doc, month=MONTH, today=TODAY)
+    row = next(ln for ln in text.splitlines()
+               if ln.startswith("| Super Burrito |") and "prospect" in ln)
+    assert "| — |" in row

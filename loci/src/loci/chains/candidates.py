@@ -20,7 +20,8 @@ brand rejected at 5 locations that is now at 20 is exactly the lead the list
 exists to produce, and nobody will ever re-read a rejected row by hand. So a
 rejected key RE-SURFACES when `locations_total` has at least DOUBLED since the
 count recorded at the decision (`locations_at_decision` in watchlist.yaml), or
-when a capital event lands. Doubling, not a fixed step, because the useful
+when a `capital_events` entry on the row is dated AFTER `decided_on` -- news
+the rejection did not have. Doubling, not a fixed step, because the useful
 signal is proportional -- 5 -> 10 and 40 -> 80 are both "this is a different
 company now", while "+5 locations" is noise on a 400-store chain.
 
@@ -106,14 +107,51 @@ def sales_role_for(row: Mapping) -> str:
     return "incumbent" if int(total) >= INCUMBENT_LOCATIONS else "prospect"
 
 
+def _as_date(value) -> dt.date | None:
+    if isinstance(value, dt.datetime):
+        return value.date()
+    if isinstance(value, dt.date):
+        return value
+    try:
+        return dt.date.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _capital_event_reason(rejected_row: Mapping) -> str | None:
+    """The capital-event arm, armed 2026-09-16 (GTM-189).
+
+    SINCE, not ever. A rejected row keeps whatever `capital_events` a curator
+    had already recorded about the brand -- the funding round that was public
+    BEFORE the rejection was part of what the rejection was made on, and
+    re-surfacing on it would mean the rejection never sticks at all. Only an
+    event dated AFTER `decided_on` is news the decision did not have.
+
+    An undated event is ignored here and rejected by `watchlist.validate`, so
+    the two halves cannot disagree about what "since" means. A rejection with
+    no `decided_on` (hand-written into the YAML rather than through
+    `loci chains reject`) has no "since" to measure against, so any dated
+    event re-opens it -- the conservative direction: the cost is one row back
+    in a review queue, against a brand that stays invisible after the news
+    that should have re-opened it."""
+    decided_on = _as_date(rejected_row.get("decided_on"))
+    for ev in rejected_row.get("capital_events") or []:
+        if not isinstance(ev, Mapping):
+            continue
+        when = _as_date(ev.get("date"))
+        if when is None:
+            continue
+        if decided_on is None or when > decided_on:
+            kind = ev.get("kind") or "capital event"
+            return f"{kind} dated {when.isoformat()} since rejection"
+    return None
+
+
 def _resurface_reason(row: Mapping, rejected_row: Mapping) -> str | None:
     """Why a rejected brand comes back, or None if the rejection still holds."""
-    if rejected_row.get("capital_events"):
-        # Dormant until GTM-189 adds `capital_events` to watchlist.FIELDS --
-        # the field cannot be present today without failing validate(). Written
-        # now so the arm exists the moment the field does, rather than being
-        # remembered later.
-        return "capital event since rejection"
+    capital = _capital_event_reason(rejected_row)
+    if capital:
+        return capital
     at_decision = rejected_row.get("locations_at_decision")
     if at_decision in (None, "", 0):
         return None
@@ -200,6 +238,19 @@ def _table_exists(con, schema: str, name: str) -> bool:
         "WHERE table_schema = ? AND table_name = ?", [schema, name]).fetchone()[0])
 
 
+def _has_column(con, relation: str, column: str) -> bool:
+    """Whether `schema.relation` exposes `column`. Views are included, and a
+    STALE view is the case this guards: chains.brand_latest is `SELECT s.*` and
+    DuckDB binds a view's columns at CREATE time, so a warehouse whose sql/039
+    has been applied to the table but whose view was never re-created would
+    otherwise be asked for a column it cannot produce."""
+    schema, _, name = relation.partition(".")
+    return bool(con.execute(
+        "SELECT count(*) FROM information_schema.columns "
+        "WHERE table_schema = ? AND table_name = ? AND column_name = ?",
+        [schema, name, column]).fetchone()[0])
+
+
 def _base_relation(con, month: str) -> str:
     """`chains.brand_latest` where it applies, `chains.brand_snapshot` otherwise.
 
@@ -222,7 +273,22 @@ def rows_sql(con, month: str, since: dt.date) -> tuple[str, list]:
 
     Params are positional and the CTEs are emitted in a fixed order (base, then
     press, then pipe), so the params list is built in that same order here and
-    nowhere else."""
+    nowhere else.
+
+    `press_hits_12m` PREFERS THE SNAPSHOT'S OWN COLUMN where sql/039 has been
+    applied (GTM-189): that number was measured with the snapshot, in the
+    snapshot's twelve calendar months, and re-deriving it live against a press
+    table that has moved since would mean the reason a brand was admitted can
+    no longer be reproduced. The live join stays as the fallback, for a
+    pre-migration snapshot and for the case where the column is NULL because
+    `chains.press_hits` did not exist when detect ran.
+
+    `pipeline_open` IS NOT REPLACED by the snapshot's `pipeline_filings_12m`.
+    They are different measures and substituting one would change the
+    predicate: `pipeline_filings_12m` counts ALL filings in twelve months,
+    `pipeline_open` counts only NOT-yet-open ones, because an open filing is a
+    store detect has already counted and is not movement. The snapshot's count
+    is carried through as a reporting column beside it."""
     params: list = [month]
     if _table_exists(con, "chains", "press_hits"):
         press = """
@@ -254,13 +320,25 @@ def rows_sql(con, month: str, since: dt.date) -> tuple[str, list]:
         pipe = """
         pipe AS (SELECT '' AS brand_key, 0 AS pipeline_open WHERE FALSE)"""
 
-    sql = f"""
-        WITH base AS (
-            SELECT * FROM {_base_relation(con, month)} WHERE snapshot_month = ?
-        ),{press},{pipe}
+    relation = _base_relation(con, month)
+    if _has_column(con, relation, "press_hits_12m"):
+        # EXCLUDE so the snapshot's column and the joined one do not collide;
+        # COALESCE so the snapshot wins where it has a value and the live join
+        # still answers for a pre-migration month.
+        select = """
+        SELECT b.* EXCLUDE (press_hits_12m),
+               COALESCE(b.press_hits_12m, p.press_hits_12m, 0) AS press_hits_12m,
+               COALESCE(q.pipeline_open, 0)  AS pipeline_open"""
+    else:
+        select = """
         SELECT b.*,
                COALESCE(p.press_hits_12m, 0) AS press_hits_12m,
-               COALESCE(q.pipeline_open, 0)  AS pipeline_open
+               COALESCE(q.pipeline_open, 0)  AS pipeline_open"""
+
+    sql = f"""
+        WITH base AS (
+            SELECT * FROM {relation} WHERE snapshot_month = ?
+        ),{press},{pipe}{select}
         FROM base b
         LEFT JOIN press p ON p.brand_key = b.brand_key
         LEFT JOIN pipe  q ON q.brand_key = b.brand_key

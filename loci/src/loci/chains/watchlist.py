@@ -37,6 +37,13 @@ PATH = pathlib.Path(__file__).resolve().parent / "watchlist.yaml"
 #: the auto-admission ruling; every field in it is optional and a row that
 #: predates it reads as `tier: admitted, decided_by: owner` (see `tier_of` /
 #: `decided_by_of`), which is what the first 161 hand-vetted rows are.
+#:
+#: The HAND-EVIDENCE block (capital_events .. trajectory_state) was added
+#: 2026-09-16 with GTM-189. Every one of those fields is OPTIONAL and is
+#: WRITTEN ONLY BY A PERSON: `detect` re-runs a month as a DELETE+INSERT, so a
+#: hand fact that lived in chains.brand_snapshot would be destroyed by the next
+#: `--month` re-run. They live here because this file is the only artefact in
+#: the chain that a machine never rewrites.
 FIELDS = (
     "brand", "brand_key", "category", "loci_category", "hq",
     "nyc_locations_now", "nyc_locations_12m_ago", "net_new_12m",
@@ -44,6 +51,8 @@ FIELDS = (
     "evidence", "confidence",
     "tier", "sales_role", "admission_reason", "rejection_reason",
     "decided_on", "decided_by", "locations_at_decision",
+    "capital_events", "signed_leases", "store_count_source",
+    "expansion_contact_url", "trajectory_state",
     "first_added", "last_verified",
 )
 
@@ -88,6 +97,43 @@ CONFIDENCE_ALIASES = {
     "high": "reported", "medium": "reported", "med": "reported",
     "moderate": "reported", "low": "unverified", "none": "unverified",
 }
+
+#: ------------------------------------------------------ the hand-evidence block
+#:
+#: `capital_events` — the events that change what a company IS, which no count
+#: can show: the round that funds twenty stores, the acquisition that freezes
+#: expansion, the bankruptcy that starts a closure programme. A rejected row
+#: re-surfaces on one (candidates._resurface_reason), which is the only reason
+#: the shape is constrained at all: the escape hatch compares `date` against
+#: `decided_on`, so an entry whose date does not parse silently disables it.
+CAPITAL_EVENT_KINDS = ("fundraise", "acquisition", "pe_minority",
+                       "franchise_rights", "bankruptcy", "closure_program")
+CAPITAL_EVENT_FIELDS = ("kind", "date", "counterparty", "amount", "url")
+
+#: `signed_leases` — the three-stores-with-leases case detect STRUCTURALLY
+#: cannot see: a lease is not a filing, not a POI and not a press hit, and the
+#: brand is at its old count until the doors open. `address` is what makes the
+#: row checkable; without it the entry is a rumour.
+SIGNED_LEASE_FIELDS = ("address", "signed_on", "expected_open", "url")
+
+#: Where `nyc_locations_now` came from. It is the PROVENANCE of the number, and
+#: `confidence` is the provenance of the row; the two have to agree or the
+#: scale means nothing.
+STORE_COUNT_SOURCE_VALUES = ("locator", "press", "filing", "hand_count")
+
+#: Only these may support `confidence: verified` (docs/chains-process.md,
+#: "Quarterly re-verification"). A press number is a journalist's count and a
+#: filing count is a floor off open data — neither is "somebody here counted
+#: the stores", which is the entire meaning of `verified`.
+VERIFIED_STORE_COUNT_SOURCES = ("hand_count", "locator")
+
+#: A HAND OVERRIDE of the derived trajectory, for the case the deltas cannot
+#: see (an acquired chain frozen at its count reads `static`, which is true of
+#: the number and false about the company). `unmeasured` is the honest default
+#: and the classifier's own answer until four snapshots exist (GTM-190); it is
+#: in the vocabulary here so a curator can assert it against a derived label.
+TRAJECTORY_STATE_VALUES = ("accelerating", "steady", "decelerating",
+                           "declining", "static", "unmeasured")
 
 #: Never overwritten by an import, even with --overwrite.
 IMMUTABLE_ON_IMPORT = frozenset({"first_added"})
@@ -275,6 +321,7 @@ def validate(doc: dict) -> list[str]:
             value = row.get(datefield)
             if value and not _is_date(value):
                 errors.append(f"{where}: {datefield} {value!r} is not YYYY-MM-DD")
+        errors += _validate_hand_evidence(row, where)
         n_at = row.get("locations_at_decision")
         if n_at is not None and not isinstance(n_at, int):
             # The doubling escape hatch reads this number. A string here would
@@ -283,6 +330,101 @@ def validate(doc: dict) -> list[str]:
         unknown = set(row) - set(FIELDS)
         if unknown:
             errors.append(f"{where}: unknown field(s) {sorted(unknown)}")
+    return errors
+
+
+def _validate_hand_evidence(row: dict, where: str) -> list[str]:
+    """The GTM-189 hand-entered block, field by field.
+
+    Every check here exists because the field is READ by something, not because
+    a schema felt tidy:
+
+      * `capital_events[].date` is compared against `decided_on` by the
+        candidates escape hatch. An unparseable date there does not raise —
+        it silently means "no capital event", which is a rejected brand
+        staying invisible after the news that should have re-opened it.
+      * `kind` is an enum so the same event is not filed as `pe_minority` on
+        one row and "PE deal" on the next; nothing can group free text.
+      * `store_count_source` gates `confidence: verified`. A `verified` row
+        with no counted source is the exact claim the confidence scale exists
+        to prevent, so this is an ERROR and not a warning.
+    """
+    errors: list[str] = []
+
+    events = row.get("capital_events")
+    if events is not None:
+        if not isinstance(events, list):
+            errors.append(f"{where}: capital_events must be a list, got "
+                          f"{type(events).__name__}")
+        else:
+            for j, ev in enumerate(events):
+                at = f"{where}: capital_events[{j}]"
+                if not isinstance(ev, dict):
+                    errors.append(f"{at}: must be a mapping, got {ev!r}")
+                    continue
+                kind = ev.get("kind")
+                if kind not in CAPITAL_EVENT_KINDS:
+                    errors.append(f"{at}: kind {kind!r} not in {CAPITAL_EVENT_KINDS}")
+                if not _is_date(ev.get("date")):
+                    # Required, not optional: an undated capital event cannot
+                    # be compared to a rejection date, so it can never re-open
+                    # a row, which is the one job the field has.
+                    errors.append(f"{at}: date {ev.get('date')!r} is not YYYY-MM-DD "
+                                  "— an undated capital event can never re-surface "
+                                  "a rejected brand")
+                for field in ("counterparty", "amount", "url"):
+                    value = ev.get(field)
+                    if value is not None and not isinstance(value, str):
+                        errors.append(f"{at}: {field} must be a string, got {value!r}")
+                unknown = set(ev) - set(CAPITAL_EVENT_FIELDS)
+                if unknown:
+                    errors.append(f"{at}: unknown key(s) {sorted(unknown)}")
+
+    leases = row.get("signed_leases")
+    if leases is not None:
+        if not isinstance(leases, list):
+            errors.append(f"{where}: signed_leases must be a list, got "
+                          f"{type(leases).__name__}")
+        else:
+            for j, lease in enumerate(leases):
+                at = f"{where}: signed_leases[{j}]"
+                if not isinstance(lease, dict):
+                    errors.append(f"{at}: must be a mapping, got {lease!r}")
+                    continue
+                if _empty(lease.get("address")):
+                    errors.append(f"{at}: missing `address` — a lease with no "
+                                  "address is a rumour, not a signed lease")
+                for field in ("signed_on", "expected_open"):
+                    value = lease.get(field)
+                    if value is not None and not _is_date(value):
+                        errors.append(f"{at}: {field} {value!r} is not YYYY-MM-DD")
+                url = lease.get("url")
+                if url is not None and not isinstance(url, str):
+                    errors.append(f"{at}: url must be a string, got {url!r}")
+                unknown = set(lease) - set(SIGNED_LEASE_FIELDS)
+                if unknown:
+                    errors.append(f"{at}: unknown key(s) {sorted(unknown)}")
+
+    src = row.get("store_count_source")
+    if src is not None and src not in STORE_COUNT_SOURCE_VALUES:
+        errors.append(f"{where}: store_count_source {src!r} not in "
+                      f"{STORE_COUNT_SOURCE_VALUES}")
+
+    if row.get("confidence") == "verified" and src not in VERIFIED_STORE_COUNT_SOURCES:
+        errors.append(
+            f"{where}: confidence 'verified' needs store_count_source in "
+            f"{list(VERIFIED_STORE_COUNT_SOURCES)}, got {src!r} — `verified` "
+            "means somebody here counted the stores, and a press or filing "
+            "number is not a count")
+
+    url = row.get("expansion_contact_url")
+    if url is not None and not isinstance(url, str):
+        errors.append(f"{where}: expansion_contact_url must be a string, got {url!r}")
+
+    state = row.get("trajectory_state")
+    if state is not None and state not in TRAJECTORY_STATE_VALUES:
+        errors.append(f"{where}: trajectory_state {state!r} not in "
+                      f"{TRAJECTORY_STATE_VALUES}")
     return errors
 
 

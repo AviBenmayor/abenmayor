@@ -205,6 +205,10 @@ ALIASES: dict[str, str] = {
     # "met food" (10 loc) is left apart from "met fresh"/"met fresh
     # supermarket" -- the owner ruling named only the "met fresh*" spellings
     # as one banner; "Met Food" is a distinct, if related, banner name.
+    # "Pure Gym" (spaced filing) vs "PureGym" (the brand's own spelling, on the
+    # watchlist since 2026-09-15) — two keys for one operator, surfaced by the
+    # 2026-09-16 snapshot re-issue (2 + 17 locations).
+    "pure gym": "puregym",
 }
 
 _SEPARATOR = re.compile(r"\s+[-–—|@]\s+|\s+\bat\b\s+(?=\w)")
