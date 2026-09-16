@@ -30,6 +30,7 @@ dependencies = [
   "spreg>=1.5",
   "esda>=2.6",
   "libpysal>=4.12",
+  "scikit-learn>=1.5",
   # cli / viz
   "typer>=0.12",
   "rich>=13.9",

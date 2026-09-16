@@ -7102,6 +7102,103 @@ def forecast_issue(
                   "Nothing here separates them.[/]")
 
 
+@forecast_app.command("challenge")
+def forecast_challenge(
+    month: str = typer.Option(..., "--month", help="Same month a `forecast "
+                              "issue` for this month would use. Features "
+                              "freeze at its FIRST day, exactly as the "
+                              "incumbent does."),
+    sample_n: int = typer.Option(12000, "--sample-n",
+                                 help="Fit/anchor sample size. Same default "
+                                      "as `forecast issue`; lower it for a "
+                                      "fast smoke test."),
+    no_anachronistic: bool = typer.Option(False, "--no-anachronistic",
+                                          help="Force the headline arm to the "
+                                               "one WITHOUT present-day jobs/"
+                                               "transit controls. Both arms "
+                                               "always run and both land in "
+                                               "the JSON either way."),
+    tune: bool = typer.Option(False, "--tune",
+                              help="Only engaged if the untuned default "
+                                   "misses the +0.010 AUC floor: an 8-point "
+                                   "grid search inside each outer fold's "
+                                   "training NTAs. Never pass this on the "
+                                   "first run of a month."),
+    out: str = typer.Option(None, "--out",
+                            help="Output directory. Default "
+                                 "data/forecast_challenge/."),
+) -> None:
+    """A challenger GBM against the shipped two-stage logit -- REPORT ONLY.
+
+    This command NEVER writes to `analysis.forecast*` and NEVER issues a
+    vintage: it opens the warehouse `connect_read(read_only=True)`, and this
+    module has no write path in it at all -- not behind any flag. It exists
+    to answer one pre-declared question against six criteria (W1-W6, design
+    memo `challenger-design.md`): a +0.010 AUC floor, a 400-draw NTA-clustered
+    paired bootstrap CI excluding 0, Brier AND log loss both lower, a
+    calibration gap within the SAME 0.15 tolerance the incumbent must pass,
+    per-category no-regression, and out-of-sample residual Moran's I not
+    higher than the logit's. A WIN opens a decision about shipping a black
+    box; it does not execute one -- see
+    `src/loci/model/forecast_challenge.py`.
+    """
+    from loci.model import forecast as fc
+    from loci.model import forecast_challenge as fchal
+
+    say = lambda m: console.print(f"[dim]{m}[/]")       # noqa: E731
+    con = fc.connect_read(read_only=True)
+    try:
+        rep = fchal.run_challenge(con, month=month, sample_n=sample_n,
+                                  no_anachronistic=no_anachronistic, tune=tune,
+                                  out_dir=out, progress=say)
+    finally:
+        con.close()
+
+    console.print(Panel.fit(
+        f"challenger run for [bold]{rep['issued_month']}[/] against model "
+        f"[bold]{rep['model_version_compared']}[/]\n"
+        f"headline arm: [bold]{rep['headline_arm']}[/]"
+        + ("" if rep["arms_agree"] else "  [yellow](the two arms disagree)[/]")
+        + "\nrows in analysis.forecast* before/after: "
+        f"{rep['forecast_row_counts_before']} / {rep['forecast_row_counts_after']}"
+        + ("" if rep["row_counts_unchanged"] else "  [red]CHANGED[/]"),
+        title="forecast challenge (report only -- never issues a vintage)"))
+
+    h = rep["both_arms"][rep["headline_arm"]]
+    t = Table(title="rung 1 (shipped logit) vs rung 3 (challenger GBM), "
+                    "out of sample, NTA-blocked")
+    t.add_column("measure"); t.add_column("value", justify="right")
+    t.add_row("rung 1 -- logit@4 AUC",
+             f"{rep['rungs']['rung1_logit_baseline']['auc']:.4f}")
+    t.add_row("rung 2 -- logit + t0-true features AUC",
+             f"{rep['rungs']['rung2_logit_plus_t0_true_features']['auc']:.4f}")
+    t.add_row("rung 3 -- pooled GBM AUC", f"{h['auc_gbm']:.4f}")
+    t.add_row("delta AUC (GBM - logit)", f"{h['delta_auc']:+.4f}")
+    t.add_row("  bootstrap CI, NTA-clustered",
+             f"[{h['bootstrap_ci_nta']['ci'][0]:.4f}, "
+             f"{h['bootstrap_ci_nta']['ci'][1]:.4f}]")
+    t.add_row("  bootstrap CI, CD-clustered (conservative)",
+             f"[{h['bootstrap_ci_cd']['ci'][0]:.4f}, "
+             f"{h['bootstrap_ci_cd']['ci'][1]:.4f}]")
+    t.add_row("Brier logit / GBM", f"{h['brier_logit']:.4f} / {h['brier_gbm']:.4f}")
+    t.add_row("log loss logit / GBM",
+             f"{h['log_loss_logit']:.4f} / {h['log_loss_gbm']:.4f}")
+    t.add_row("calibration max decile gap (GBM)", f"{h['calibration_gap_gbm']:.3f}")
+    t.add_row("residual Moran's I logit / GBM",
+             f"{h['moran_logit']:.4f} / {h['moran_gbm']:.4f}")
+    t.add_row("tuned (grid ran)", "yes" if h["tuned"] else "no")
+    t.add_row("WINS", "[green]yes[/]" if h["verdict"]["wins"] else "[red]no[/]")
+    console.print(t)
+    console.print(f"[dim]{h['verdict']['verdict_reason']}[/]")
+
+    console.print("[yellow]This forecasts ENTRY, not viability (D88). A high "
+                  "p_opening says the MARKET is likely to act near this doorway "
+                  "-- and the retrodiction found entry going where supply was "
+                  "already THICK, which is as consistent with herding into "
+                  "saturated corridors as with agglomeration being real. "
+                  "Nothing here separates them.[/]")
+
+
 @forecast_app.command("score")
 def forecast_score(
     issued_month: str = typer.Option(None, "--issued-month",
