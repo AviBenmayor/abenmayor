@@ -86,13 +86,13 @@ capacity_psf_per_year:
     p50: 175
     p75: 300
 spec_hash: 9bda94515a2e
-asof: '2026-09-15T17:47:32'
+asof: '2026-09-16T20:45:09'
 sweep:
   boroughs:
   - MN
   - BK
   supply_set: principled
-  supply_hash: ba944e18c57b
+  supply_hash: ed55301203a4
   ring_edges_m:
   - 0.0
   - 100.0
@@ -114,11 +114,11 @@ sweep:
   - pharmacy
   addresses: 281842
   home_rows_citywide: 281842
-  establishments_in_scope: 53035
-  establishments_total: 113510
-  query_nodes: 46685
-  sweep_seconds: 39.1
-  run_at: '2026-09-15T17:46:18'
+  establishments_in_scope: 53037
+  establishments_total: 113517
+  query_nodes: 46718
+  sweep_seconds: 84.4
+  run_at: '2026-09-16T20:42:43'
 ec_vintages:
   default: 2022
   pharmacy: 2017
@@ -136,24 +136,24 @@ categories:
     competition_sign: competitive
     gamma_site_capped: false
     gamma_lozo_folds:
-      '0.75': 12
-      '1.0': 54
+      '1.0': 66
     beta_lozo_folds:
-      '3.0': 66
+      '2.5': 2
+      '3.0': 64
     epsilon_lozo_folds:
       '1.0': 66
     epsilon_source: pinned by the caller (one point of the epsilon scan)
     epsilon_fitted_unconstrained: 1.0
     epsilon_profile:
-      '1.0': 0.3822
+      '1.0': 0.3829
     epsilon_profile_range: null
-    fold_score_sd_at_shipped: 0.0141
+    fold_score_sd_at_shipped: 0.0133
     epsilon_identified: null
     delta_lozo_folds:
       '0.0': 66
     price_index:
-      spearman_oos_with_delta: 0.3658
-      spearman_oos_delta_zero: 0.3658
+      spearman_oos_with_delta: 0.3833
+      spearman_oos_delta_zero: 0.3833
       min_gain_required: 0.01
       adds_skill: false
       shipped_delta: 0.0
@@ -198,123 +198,123 @@ categories:
     ec_vintage: 2022
     lambda:
       '047':
-        lambda_per_store: 1.306104
-        lambda_total: 0.880449
-        n_ours: 1255
+        lambda_per_store: 1.314745
+        lambda_total: 0.885569
+        n_ours: 1256
         n_ec: 846.0
-        estab_ratio_ours_over_ec: 1.483452
+        estab_ratio_ours_over_ec: 1.484634
         ec_rev_per_estab_usd: 260817.966903
-        mean_rhat: 199691.594389
-        median_rhat: 149419.840369
-        lambda_median: 1.783484
+        mean_rhat: 198379.086488
+        median_rhat: 147369.351853
+        lambda_median: 1.808299
         median_anchor_usd: 266487.922705
         median_anchor_usable: true
-        lambda_median_over_mean: 1.3655
+        lambda_median_over_mean: 1.3754
         fitted_on: site-capped share (the shipped predictor)
       '061':
-        lambda_per_store: 0.671174
-        lambda_total: 0.386078
-        n_ours: 1203
+        lambda_per_store: 0.671966
+        lambda_total: 0.385253
+        n_ours: 1207
         n_ec: 692.0
-        estab_ratio_ours_over_ec: 1.738439
+        estab_ratio_ours_over_ec: 1.74422
         ec_rev_per_estab_usd: 349417.630058
-        mean_rhat: 520606.994592
-        median_rhat: 417567.79494
-        lambda_median: 0.652978
+        mean_rhat: 519993.108805
+        median_rhat: 406156.596873
+        lambda_median: 0.671323
         median_anchor_usd: 272662.381597
         median_anchor_usable: true
-        lambda_median_over_mean: 0.9729
+        lambda_median_over_mean: 0.999
         fitted_on: site-capped share (the shipped predictor)
     backtest:
       n_zips: 66
-      spearman_oos: 0.3658
-      spearman_insample: 0.3798
-      r2_oos: 0.0674
+      spearman_oos: 0.3833
+      spearman_insample: 0.3833
+      r2_oos: 0.2047
       baseline_county_average_spearman: 0.4025
-      baseline_homes_only_spearman: 0.4507
+      baseline_homes_only_spearman: 0.4614
       beats_county_average: false
       beats_homes_only: false
       frac_zips_model_closer_than_county: 0.5
-      frac_zips_model_closer_than_homes: 0.5152
+      frac_zips_model_closer_than_homes: 0.5
     sigma_log:
-      lambda: 0.3329
-      beta: 0.1251
+      lambda: 0.3356
+      beta: 0.0098
     regime_flag_only: saturating
     placebo:
-      own_spearman: 0.3798
+      own_spearman: 0.3833
       best_rival: restaurant
       best_rival_spearman: 0.4426
       passes: false
       all:
-        laundry: 0.3798
+        laundry: 0.3833
         restaurant: 0.4426
         cafe_bakery: 0.4112
         bar: 0.4316
-        convenience: 0.3434
+        convenience: 0.3417
         grocery: 0.3376
         hair_barber: 0.4336
         nails_beauty: 0.3629
         pharmacy: 0.1564
-    gate_reason: 'does not beat the county-average baseline by 0.05 (0.3658 vs 0.4025); does not beat
-      the homes-only baseline by 0.05 (0.3658 vs 0.4507); placebo: restaurant''s model predicts this category''s
-      employment better (0.4426 vs 0.3798)'
+    gate_reason: 'does not beat the county-average baseline by 0.05 (0.3833 vs 0.4025); does not beat
+      the homes-only baseline by 0.05 (0.3833 vs 0.4614); placebo: restaurant''s model predicts this category''s
+      employment better (0.4426 vs 0.3833)'
     epsilon_selection: smallest_gate_passing
     epsilon_gate_scan:
       '0.0':
         gate: fail
-        spearman_oos: 0.2756
+        spearman_oos: 0.2379
         placebo: true
-        placebo_margin: 0.0236
+        placebo_margin: 0.0235
       '0.1':
         gate: fail
-        spearman_oos: 0.3657
+        spearman_oos: 0.421
         placebo: true
-        placebo_margin: 0.0341
+        placebo_margin: 0.0469
       '0.2':
         gate: fail
-        spearman_oos: 0.4097
+        spearman_oos: 0.4196
         placebo: true
-        placebo_margin: 0.0477
+        placebo_margin: 0.053
       '0.3':
         gate: fail
-        spearman_oos: 0.4258
+        spearman_oos: 0.4276
         placebo: true
-        placebo_margin: 0.0208
+        placebo_margin: 0.0221
       '0.4':
         gate: fail
-        spearman_oos: 0.381
+        spearman_oos: 0.352
         placebo: false
-        placebo_margin: -0.0306
+        placebo_margin: -0.0337
       '0.5':
         gate: fail
-        spearman_oos: 0.3583
+        spearman_oos: 0.3505
         placebo: false
-        placebo_margin: -0.0283
+        placebo_margin: -0.0305
       '0.6':
         gate: fail
-        spearman_oos: 0.3939
+        spearman_oos: 0.3937
         placebo: false
-        placebo_margin: -0.0281
+        placebo_margin: -0.0326
       '0.7':
         gate: fail
-        spearman_oos: 0.3667
+        spearman_oos: 0.3929
         placebo: false
-        placebo_margin: -0.041
+        placebo_margin: -0.0395
       '0.8':
         gate: fail
-        spearman_oos: 0.3479
+        spearman_oos: 0.3546
         placebo: false
-        placebo_margin: -0.0547
+        placebo_margin: -0.0485
       '0.9':
         gate: fail
-        spearman_oos: 0.3286
+        spearman_oos: 0.326
         placebo: false
-        placebo_margin: -0.0688
+        placebo_margin: -0.0714
       '1.0':
         gate: fail
-        spearman_oos: 0.3658
+        spearman_oos: 0.3833
         placebo: false
-        placebo_margin: -0.0628
+        placebo_margin: -0.0593
     epsilon_floor: 0.3
     epsilon_passed_below_floor: []
     epsilon_shipped_reason: no eligible epsilon passes the gate; the record shown is the largest on the
@@ -331,14 +331,14 @@ categories:
       '-0.5': 73
     beta_lozo_folds:
       '0.75': 1
-      '1.0': 32
-      '1.25': 40
+      '1.0': 33
+      '1.25': 39
     epsilon_lozo_folds:
       '0.4': 73
     epsilon_source: pinned by the caller (one point of the epsilon scan)
     epsilon_fitted_unconstrained: 0.4
     epsilon_profile:
-      '0.4': 0.8292
+      '0.4': 0.829
     epsilon_profile_range: null
     fold_score_sd_at_shipped: 0.0046
     epsilon_identified: null
@@ -405,13 +405,13 @@ categories:
         lambda_median_over_mean: 0.2961
         fitted_on: site-capped share (the shipped predictor)
       '061':
-        lambda_per_store: 2385.455458
-        lambda_total: 1468.228846
-        n_ours: 10741
+        lambda_per_store: 2385.549138
+        lambda_total: 1468.559954
+        n_ours: 10739
         n_ec: 6611.0
-        estab_ratio_ours_over_ec: 1.624716
+        estab_ratio_ours_over_ec: 1.624414
         ec_rev_per_estab_usd: 2188214.793526
-        mean_rhat: 917.315302
+        mean_rhat: 917.279279
         median_rhat: 940.589328
         lambda_median: 1778.236136
         median_anchor_usd: 1672589.932303
@@ -422,7 +422,7 @@ categories:
       n_zips: 73
       spearman_oos: 0.8253
       spearman_insample: 0.8254
-      r2_oos: 0.6878
+      r2_oos: 0.6879
       baseline_county_average_spearman: 0.5734
       baseline_homes_only_spearman: 0.6277
       beats_county_average: true
@@ -431,7 +431,7 @@ categories:
       frac_zips_model_closer_than_homes: 0.6438
     sigma_log:
       lambda: 0.2432
-      beta: 0.1036
+      beta: 0.105
     regime_flag_only: no_signal
     placebo:
       own_spearman: 0.8254
@@ -439,11 +439,11 @@ categories:
       best_rival_spearman: 0.8251
       passes: true
       all:
-        laundry: 0.7725
+        laundry: 0.7492
         restaurant: 0.8254
         cafe_bakery: 0.8251
         bar: 0.8163
-        convenience: 0.3974
+        convenience: 0.3968
         grocery: 0.6811
         hair_barber: 0.7933
         nails_beauty: 0.7977
@@ -453,14 +453,14 @@ categories:
     epsilon_gate_scan:
       '0.0':
         gate: fail
-        spearman_oos: 0.8105
+        spearman_oos: 0.8099
         placebo: false
         placebo_margin: -0.0294
       '0.1':
         gate: fail
-        spearman_oos: 0.8069
+        spearman_oos: 0.8105
         placebo: false
-        placebo_margin: -0.0266
+        placebo_margin: -0.0515
       '0.2':
         gate: fail
         spearman_oos: 0.8152
@@ -468,9 +468,9 @@ categories:
         placebo_margin: -0.0353
       '0.3':
         gate: fail
-        spearman_oos: 0.8203
+        spearman_oos: 0.822
         placebo: false
-        placebo_margin: -0.0199
+        placebo_margin: -0.0198
       '0.4':
         gate: pass
         spearman_oos: 0.8253
@@ -478,7 +478,7 @@ categories:
         placebo_margin: 0.0003
       '0.5':
         gate: pass
-        spearman_oos: 0.811
+        spearman_oos: 0.8116
         placebo: true
         placebo_margin: 0.0014
       '0.6':
@@ -488,7 +488,7 @@ categories:
         placebo_margin: -0.0158
       '0.7':
         gate: fail
-        spearman_oos: 0.8116
+        spearman_oos: 0.8117
         placebo: false
         placebo_margin: -0.0014
       '0.8':
@@ -498,12 +498,12 @@ categories:
         placebo_margin: -0.0113
       '0.9':
         gate: fail
-        spearman_oos: 0.772
+        spearman_oos: 0.7709
         placebo: false
         placebo_margin: -0.0115
       '1.0':
         gate: fail
-        spearman_oos: 0.7748
+        spearman_oos: 0.7767
         placebo: false
         placebo_margin: -0.0008
     epsilon_floor: 0.3
@@ -631,11 +631,11 @@ categories:
       best_rival_spearman: 0.6818
       passes: false
       all:
-        laundry: 0.4973
+        laundry: 0.4763
         restaurant: 0.6818
         cafe_bakery: 0.669
         bar: 0.6567
-        convenience: 0.3822
+        convenience: 0.3829
         grocery: 0.4993
         hair_barber: 0.6635
         nails_beauty: 0.6037
@@ -650,10 +650,10 @@ categories:
         placebo: true
         placebo_margin: 0.0071
       '0.1':
-        gate: fail
+        gate: pass
         spearman_oos: 0.7251
-        placebo: false
-        placebo_margin: -0.017
+        placebo: true
+        placebo_margin: 0.0089
       '0.2':
         gate: fail
         spearman_oos: 0.6956
@@ -663,7 +663,7 @@ categories:
         gate: fail
         spearman_oos: 0.6762
         placebo: false
-        placebo_margin: -0.0294
+        placebo_margin: -0.0342
       '0.4':
         gate: fail
         spearman_oos: 0.6421
@@ -702,9 +702,10 @@ categories:
     epsilon_floor: 0.3
     epsilon_passed_below_floor:
     - 0.0
+    - 0.1
     epsilon_shipped_reason: no eligible epsilon passes the gate; the record shown is the largest on the
-      grid (it DID pass at [0.0], below the structural floor, where the model has no demand pool -- refused
-      on the D1 guardrail)
+      grid (it DID pass at [0.0, 0.1], below the structural floor, where the model has no demand pool
+      -- refused on the D1 guardrail)
   bar:
     gate: fail
     beta: 1.75
@@ -830,7 +831,7 @@ categories:
       best_rival_spearman: 0.7701
       passes: false
       all:
-        laundry: 0.4343
+        laundry: 0.4154
         restaurant: 0.5882
         cafe_bakery: 0.5231
         bar: 0.7142
@@ -853,7 +854,7 @@ categories:
         gate: fail
         spearman_oos: 0.8133
         placebo: true
-        placebo_margin: 0.0597
+        placebo_margin: 0.0591
       '0.2':
         gate: fail
         spearman_oos: 0.7418
@@ -912,14 +913,14 @@ categories:
     competition_sign: agglomerative
     gamma_site_capped: true
     gamma_lozo_folds:
-      '-0.5': 30
-      '-0.25': 35
+      '-0.5': 40
+      '-0.25': 25
       '0.25': 1
       '0.5': 1
     beta_lozo_folds:
-      '0.5': 51
-      '0.75': 7
-      '1.0': 6
+      '0.5': 58
+      '0.75': 3
+      '1.0': 3
       '1.25': 1
       '2.5': 1
       '3.0': 1
@@ -928,19 +929,19 @@ categories:
     epsilon_source: pinned by the caller (one point of the epsilon scan)
     epsilon_fitted_unconstrained: 1.0
     epsilon_profile:
-      '1.0': 0.2203
+      '1.0': 0.2212
     epsilon_profile_range: null
-    fold_score_sd_at_shipped: 0.014
+    fold_score_sd_at_shipped: 0.0143
     epsilon_identified: null
     delta_lozo_folds:
       '0.0': 1
-      '0.1': 34
-      '0.3': 5
-      '0.4': 7
-      '0.5': 20
+      '0.1': 24
+      '0.3': 2
+      '0.4': 3
+      '0.5': 37
     price_index:
-      spearman_oos_with_delta: 0.0851
-      spearman_oos_delta_zero: 0.0204
+      spearman_oos_with_delta: 0.0918
+      spearman_oos_delta_zero: 0.0217
       min_gain_required: 0.01
       adds_skill: true
       shipped_delta: 0.5
@@ -999,24 +1000,24 @@ categories:
         lambda_median_over_mean: 0.7411
         fitted_on: site-capped share (the shipped predictor)
       '061':
-        lambda_per_store: 0.201577
-        lambda_total: 0.181017
-        n_ours: 451
+        lambda_per_store: 0.20188
+        lambda_total: 0.181692
+        n_ours: 450
         n_ec: 405.0
-        estab_ratio_ours_over_ec: 1.11358
+        estab_ratio_ours_over_ec: 1.111111
         ec_rev_per_estab_usd: 814412.345679
-        mean_rhat: 4040210.123757
-        median_rhat: 2757165.341251
-        lambda_median: 0.2283
+        mean_rhat: 4034131.476641
+        median_rhat: 2756948.122292
+        lambda_median: 0.228318
         median_anchor_usd: 629459.923664
         median_anchor_usable: true
-        lambda_median_over_mean: 1.1326
+        lambda_median_over_mean: 1.131
         fitted_on: site-capped share (the shipped predictor)
     backtest:
       n_zips: 67
-      spearman_oos: 0.0851
-      spearman_insample: 0.2203
-      r2_oos: -0.6563
+      spearman_oos: 0.0918
+      spearman_insample: 0.2226
+      r2_oos: -0.6567
       baseline_county_average_spearman: 0.1285
       baseline_homes_only_spearman: 0.1978
       beats_county_average: false
@@ -1024,84 +1025,84 @@ categories:
       frac_zips_model_closer_than_county: 0.3881
       frac_zips_model_closer_than_homes: 0.4776
     sigma_log:
-      lambda: 0.2453
-      beta: 0.4751
+      lambda: 0.2446
+      beta: 0.4198
     regime_flag_only: no_signal
     placebo:
-      own_spearman: 0.2203
+      own_spearman: 0.2226
       best_rival: bar
       best_rival_spearman: 0.4311
       passes: false
       all:
-        laundry: 0.1928
+        laundry: 0.2074
         restaurant: 0.1706
         cafe_bakery: 0.2071
         bar: 0.4311
-        convenience: 0.2203
+        convenience: 0.2226
         grocery: 0.2047
         hair_barber: 0.2343
         nails_beauty: 0.1399
         pharmacy: 0.2738
-    gate_reason: 'out-of-sample Spearman 0.0851 < 0.2; does not beat the county-average baseline by 0.05
-      (0.0851 vs 0.1285); does not beat the homes-only baseline by 0.05 (0.0851 vs 0.1978); placebo: bar''s
-      model predicts this category''s employment better (0.4311 vs 0.2203)'
+    gate_reason: 'out-of-sample Spearman 0.0918 < 0.2; does not beat the county-average baseline by 0.05
+      (0.0918 vs 0.1285); does not beat the homes-only baseline by 0.05 (0.0918 vs 0.1978); placebo: bar''s
+      model predicts this category''s employment better (0.4311 vs 0.2226)'
     epsilon_selection: smallest_gate_passing
     epsilon_gate_scan:
       '0.0':
         gate: fail
-        spearman_oos: -0.1221
+        spearman_oos: -0.0572
         placebo: false
         placebo_margin: -0.3368
       '0.1':
         gate: fail
-        spearman_oos: -0.2279
+        spearman_oos: -0.2254
         placebo: false
         placebo_margin: -0.444
       '0.2':
         gate: fail
-        spearman_oos: -0.2175
+        spearman_oos: -0.2528
         placebo: false
-        placebo_margin: -0.3471
+        placebo_margin: -0.3764
       '0.3':
         gate: fail
-        spearman_oos: -0.1016
+        spearman_oos: -0.0985
         placebo: false
-        placebo_margin: -0.3392
+        placebo_margin: -0.3369
       '0.4':
         gate: fail
-        spearman_oos: -0.2246
+        spearman_oos: -0.2263
         placebo: false
-        placebo_margin: -0.3328
+        placebo_margin: -0.329
       '0.5':
         gate: fail
-        spearman_oos: -0.1739
+        spearman_oos: -0.162
         placebo: false
-        placebo_margin: -0.3572
+        placebo_margin: -0.3551
       '0.6':
         gate: fail
-        spearman_oos: -0.1749
+        spearman_oos: -0.1804
         placebo: false
         placebo_margin: -0.3193
       '0.7':
         gate: fail
-        spearman_oos: -0.197
+        spearman_oos: -0.193
         placebo: false
-        placebo_margin: -0.3304
+        placebo_margin: -0.3282
       '0.8':
         gate: fail
-        spearman_oos: -0.0775
+        spearman_oos: -0.0296
         placebo: false
-        placebo_margin: -0.2537
+        placebo_margin: -0.2494
       '0.9':
         gate: fail
-        spearman_oos: -0.0441
+        spearman_oos: -0.0443
         placebo: false
-        placebo_margin: -0.2596
+        placebo_margin: -0.2554
       '1.0':
         gate: fail
-        spearman_oos: 0.0851
+        spearman_oos: 0.0918
         placebo: false
-        placebo_margin: -0.2108
+        placebo_margin: -0.2085
     epsilon_floor: 0.3
     epsilon_passed_below_floor: []
     epsilon_shipped_reason: no eligible epsilon passes the gate; the record shown is the largest on the
@@ -1232,11 +1233,11 @@ categories:
       best_rival_spearman: 0.6445
       passes: false
       all:
-        laundry: 0.3551
+        laundry: 0.3623
         restaurant: 0.4689
         cafe_bakery: 0.4617
         bar: 0.4896
-        convenience: 0.4957
+        convenience: 0.4955
         grocery: 0.39
         hair_barber: 0.4949
         nails_beauty: 0.6445
@@ -1425,11 +1426,11 @@ categories:
       best_rival_spearman: 0.7925
       passes: false
       all:
-        laundry: 0.6853
+        laundry: 0.6771
         restaurant: 0.7523
         cafe_bakery: 0.7925
         bar: 0.7097
-        convenience: 0.5209
+        convenience: 0.5242
         grocery: 0.4971
         hair_barber: 0.6983
         nails_beauty: 0.7633
@@ -1629,11 +1630,11 @@ categories:
       best_rival_spearman: 0.7908
       passes: false
       all:
-        laundry: 0.7455
+        laundry: 0.7469
         restaurant: 0.7508
         cafe_bakery: 0.7533
         bar: 0.7908
-        convenience: 0.558
+        convenience: 0.556
         grocery: 0.6185
         hair_barber: 0.73
         nails_beauty: 0.7547
@@ -1889,11 +1890,11 @@ categories:
       best_rival_spearman: 0.7614
       passes: false
       all:
-        laundry: 0.4902
+        laundry: 0.4707
         restaurant: 0.5354
         cafe_bakery: 0.6099
         bar: 0.7614
-        convenience: 0.355
+        convenience: 0.3578
         grocery: 0.3869
         hair_barber: 0.5013
         nails_beauty: 0.6186

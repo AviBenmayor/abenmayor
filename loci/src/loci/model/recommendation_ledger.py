@@ -714,7 +714,12 @@ def pipeline_candidates(con, rec: dict, *, radius_m: float, until: dt.date):
                p.is_open, p.opened_on, p.opened_on_stage, p.n_sources,
                p.category_confidence, {d} AS distance_m
         FROM analysis.storefront_pipeline p
+        -- MN+BK screen (audit finding 5). Already bounded spatially by the
+        -- distance predicate below, so this is a scope assertion rather than a
+        -- correctness fix. NULL borough is KEPT: unplaced is unknown, not
+        -- out-of-scope, and the distance bound decides it.
         WHERE p.loci_category = ?
+          AND (p.borough IS NULL OR p.borough IN ('MN', 'BK'))
           AND p.lon IS NOT NULL AND p.lat IS NOT NULL
           AND {d} <= ?
           AND ((p.is_open AND p.opened_on >= ? AND p.opened_on <= ?)

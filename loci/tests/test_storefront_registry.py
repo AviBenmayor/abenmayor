@@ -39,6 +39,7 @@ Five things under test, mirroring tests/test_dev_pipeline.py:
 from __future__ import annotations
 
 import datetime as dt
+import re
 import pathlib
 
 import networkx as nx
@@ -127,6 +128,28 @@ def _stage(con, path, boroughs=("MN", "BK")) -> pd.DataFrame:
 
 
 # ------------------------------------------- (a) the NON-dedup rule
+
+
+def _apply_storefront_year(con):
+    """Create analysis.storefront_year from sql/045, draft or applied.
+
+    The migration is staged as `045_scope_and_vocabulary.sql.draft` during
+    Phase A -- `db.init_schema` applies every *.sql on disk in every session,
+    so a migration keeps the .draft suffix until it is deliberately landed.
+    The view is still testable: read the statement out and execute it.
+    """
+    import pathlib as _pl
+
+    sql_dir = _pl.Path(locidb.SQL_DIR)
+    src = sql_dir / "045_scope_and_vocabulary.sql"
+    if not src.exists():
+        src = sql_dir / "045_scope_and_vocabulary.sql.draft"
+    # strip `--` comments first: sql/045's column comments contain semicolons.
+    text = re.sub(r"--[^\n]*", "", src.read_text())
+    stmt = re.search(r"(CREATE OR REPLACE VIEW analysis\.storefront_year.*?;)",
+                     text, re.S)
+    assert stmt, "analysis.storefront_year DDL not found in sql/045"
+    con.execute(stmt.group(1))
 
 def test_identical_rows_are_kept_because_they_are_distinct_storefronts(tmp_path):
     """350 EAST 54 STREET unit COM1 really files four rows in every filing --
@@ -563,3 +586,89 @@ def test_the_supplement_and_the_annual_filing_are_never_pooled(tmp_path):
     ], "supp.csv"), ("MN",), "v", ASOF, pluto_csv=None)
     assert snapshot_filing(con, ["MN"], dt.date(2025, 12, 31)) == (
         dt.date(2026, 2, 15), "vacant_only")
+
+
+def test_storefront_year_never_pools_a_supplement_into_a_full_filing(tmp_path):
+    """The BY-YEAR reading of the same never-pooled rule (audit finding 1).
+
+    `test_the_supplement_and_the_annual_filing_are_never_pooled` above pins the
+    rule for the ADDRESS MEASURES, which pick one filing by observation date.
+    Nothing pinned it for the BY-YEAR question, and that is where it was being
+    broken: group analysis.storefront by `reporting_year` and the 2025-06-03
+    annual filing pools with the 2025-02-15 supplement that shares its
+    reporting_year, leaving 5,534 duplicate groups / 6,354 excess rows citywide.
+
+    Measured on the live file 2026-09-16, the cost is not 1.5% on a rate:
+
+        2023   full 62,923 rows / 5,552 vacant   +  vacant_only 2,496 / 2,496
+               pooled  8,048 / 65,419 = 12.30%      true 5,552 / 62,923 = 8.82%
+
+    3.5 points of invented vacancy, and it looks entirely plausible.
+    `analysis.storefront_year` (sql/045) picks ONE filing per (premises_id,
+    reporting_year) -- the full one where it exists.
+    """
+    con = locidb.connect(":memory:")
+    locidb.init_schema(con)
+    _apply_storefront_year(con)
+    write_storefront_rows(con, _csv(tmp_path, [
+        # 2024 annual full filing: two storefronts at one premises, one vacant
+        _row(filing_due="06/03/2025", vacant_1231="NO"),
+        _row(filing_due="06/03/2025", vacant_1231="YES", unit="B"),
+        # the supplement observing the SAME 12/31/2024, re-reporting the vacancy
+        _row(filing_due="02/15/2025", vacant_1231="YES", unit="B"),
+    ]), ("MN", "BK"), "v", ASOF, pluto_csv=None)
+
+    pooled = con.execute(
+        "SELECT count(*) FROM analysis.storefront WHERE reporting_year = 2024"
+    ).fetchone()[0]
+    assert pooled == 3, "fixture should contain both filings"
+
+    rows = {r[0]: r[1:] for r in con.execute("""
+        SELECT premises_id, universe, vacant, n_storefronts
+        FROM analysis.storefront_year WHERE reporting_year = 2024
+    """).fetchall()}
+    # premises_id is BBL || '|' || unit, so the two storefronts are two
+    # PREMISES, not one. That is the identity rule sql/012 established and it
+    # is what stops the dedup-fusing-distinct-storefronts bug; the pooling this
+    # view fixes is across FILINGS, not across units.
+    assert len(rows) == 2, f"one row per (premises_id, reporting_year): {rows}"
+    vacant_premises = [p for p in rows if p.endswith("|B")]
+    assert len(vacant_premises) == 1
+    universe, vacant, n_storefronts = rows[vacant_premises[0]]
+
+    assert universe == "full", "the full filing must win -- it carries a denominator"
+    assert n_storefronts == 1, (
+        "the vacant premises filed ONE storefront in the full filing; pooling "
+        "the 02/15 supplement, which re-reports the same storefront, would "
+        "count it twice and report two")
+    assert vacant is True
+
+    # the vacancy RATE is the number this protects: 1 vacant storefront over a
+    # denominator of 2. Pooled, the denominator becomes 3 and the rate 0.33.
+    rate = con.execute("""
+        SELECT sum(CASE WHEN vacant THEN n_storefronts ELSE 0 END)::DOUBLE
+               / sum(n_storefronts)
+        FROM analysis.storefront_year WHERE reporting_year = 2024
+    """).fetchone()[0]
+    assert rate == 0.5, f"expected 1 vacant of 2 storefronts, got {rate}"
+
+
+def test_storefront_year_labels_a_supplement_only_year_as_having_no_denominator(tmp_path):
+    """2025 is supplement-only: a numerator with no denominator.
+
+    The view cannot stop a consumer dividing by it; it can only label it. That
+    label is `universe`, and this pins that it survives to the reader.
+    """
+    con = locidb.connect(":memory:")
+    locidb.init_schema(con)
+    _apply_storefront_year(con)
+    write_storefront_rows(con, _csv(tmp_path, [
+        _row(filing_due="02/15/2026", reporting_period="2025", vacant_1231="YES"),
+    ]), ("MN", "BK"), "v", ASOF, pluto_csv=None)
+
+    rows = con.execute(
+        "SELECT universe, vacant FROM analysis.storefront_year "
+        "WHERE reporting_year = 2025").fetchall()
+    assert rows and all(u == "vacant_only" for u, _ in rows), (
+        "a supplement-only year must be labelled vacant_only so a rate "
+        "computed over it is visibly meaningless")

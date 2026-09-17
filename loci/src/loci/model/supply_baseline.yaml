@@ -21,13 +21,21 @@
 # and under-provision is correlated with race net of income (Meltzer &
 # Schuetz), so a low ratio measures what is there and never proves unmet demand.
 #
+# `supply_asof` is the date the open/closed predicate was EVALUATED at
+# (analysis.supply_asof, owner ruling 2026-09-16) -- NOT `asof`, which is the
+# wall-clock day the fit ran. Licences lapse and inspection evidence ages, so
+# the same warehouse yields a different supply set at a different as-of date;
+# pinning it is what keeps `supply_hash` moving only on real evidence writes.
+# Advance it with `loci supply-asof advance`, then re-run the canonical order.
+#
 # `supply_hash` is score/supply.supply_hash at fit time. analysis.poi_supply is
 # a VIEW: it moves when dedup is re-run or an anchor is loaded, and a baseline
 # fitted on a different supply set is not comparable to a ratio computed on
 # this one. tests/test_supply_ratio.py fails when the two drift.
-supply_hash: ba944e18c57b
+supply_hash: ed55301203a4
 supply_set: principled
-asof: '2026-09-15'
+asof: '2026-09-16'
+supply_asof: '2026-09-16'
 radius_m: 400.0
 boroughs:
 - MN
@@ -47,12 +55,12 @@ categories:
     baseline: 2.9585798816568047
   convenience:
     n: 281842
-    median: 1.0649627263045793
-    p25: 0.376081233546446
+    median: 1.06439595529537
+    p25: 0.37579857196542654
     p75: 1.8885741265344667
-    aggregate_per_1k: 1.1032538156778247
+    aggregate_per_1k: 1.1028535839321372
     estimator: median
-    baseline: 1.0649627263045793
+    baseline: 1.06439595529537
   pharmacy:
     n: 281842
     median: 0.7183908045977011
@@ -63,12 +71,12 @@ categories:
     baseline: 0.7183908045977011
   laundry:
     n: 281842
-    median: 1.1775788977861517
-    p25: 0.48285852245292127
-    p75: 1.942690626517727
-    aggregate_per_1k: 1.4392883893569788
+    median: 1.1757789535567313
+    p25: 0.4786215698787492
+    p75: 1.9470404984423677
+    aggregate_per_1k: 1.4410494090380035
     estimator: median
-    baseline: 1.1775788977861517
+    baseline: 1.1757789535567313
   hair_barber:
     n: 281842
     median: 2.075406433759945
@@ -89,16 +97,16 @@ categories:
     n: 281842
     median: 0.0
     p25: 0.0
-    p75: 0.27085590465872156
-    aggregate_per_1k: 0.23400174373717397
+    p75: 0.2686727565824826
+    aggregate_per_1k: 0.23169665902685552
     estimator: aggregate_per_1k
-    baseline: 0.23400174373717397
+    baseline: 0.23169665902685552
   restaurant:
     n: 281842
     median: 5.089058524173028
     p25: 2.4834437086092715
     p75: 9.000900090009
-    aggregate_per_1k: 7.937491035512429
+    aggregate_per_1k: 7.936888186445487
     estimator: median
     baseline: 5.089058524173028
   cafe_bakery:

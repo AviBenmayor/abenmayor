@@ -14,8 +14,11 @@ import pytest
 
 from loci.model.address_access import ACCESS_COLUMNS, _guard, write_access
 from loci.sources.cities.nyc.mta_ridership import (
+    DEFAULT_MONTHS,
+    FEED_START,
     HOLIDAYS,
     entry_points,
+    last_full_month,
     latest_full_months,
     month_bounds,
     weekday_dates,
@@ -42,6 +45,63 @@ def test_latest_full_months_includes_a_month_that_ended_exactly_on_asof():
 
 def test_latest_full_months_crosses_the_year_boundary():
     assert latest_full_months(dt.date(2026, 2, 28), 3) == [(2025, 12), (2026, 1), (2026, 2)]
+
+
+# ------------------------------- CAP 6: the rolling window is gone (2026-09-16)
+
+def test_the_default_window_is_every_month_the_feed_publishes():
+    """`DEFAULT_MONTHS = 3` was a cap, not a finding. Owner rule 2026-09-16:
+    "never ever ever limit data pulls". The default is now the whole feed --
+    2025-01 through the last complete month -- and the mean it produces is over
+    all seasons rather than over whichever three happened to be latest."""
+    assert DEFAULT_MONTHS is None
+    assert FEED_START == (2025, 1)
+    w = latest_full_months(dt.date(2026, 9, 2))
+    assert w[0] == (2025, 1)
+    assert w[-1] == (2026, 8)          # September is incomplete on the 2nd
+    assert len(w) == 20
+    assert w == sorted(set(w))         # contiguous, oldest first, no repeats
+
+
+def test_the_full_window_still_refuses_the_month_the_feed_stops_inside():
+    """The reason the 3-month window took only COMPLETE months does not go away
+    when the window gets longer: two days of September averaged in is a silent
+    partial."""
+    assert latest_full_months(dt.date(2026, 9, 30))[-1] == (2026, 9)
+    assert latest_full_months(dt.date(2026, 9, 29))[-1] == (2026, 8)
+    assert last_full_month(dt.date(2026, 9, 2)) == (2026, 8)
+
+
+def test_an_explicit_month_count_still_gives_the_old_behaviour():
+    """A seasonal slice is still a legitimate question; it just has to be asked
+    for."""
+    assert latest_full_months(dt.date(2026, 9, 2), 3) == [
+        (2026, 6), (2026, 7), (2026, 8)]
+
+
+def test_a_feed_that_has_not_finished_its_first_month_raises():
+    """An empty window would divide by zero days downstream and read as a city
+    where nobody rode the subway."""
+    with pytest.raises(RuntimeError, match="no window to build"):
+        latest_full_months(dt.date(2025, 1, 15))
+
+
+def test_no_caller_still_pins_a_three_month_window():
+    """The cap lived in five signatures, not one. If any of them keeps its own
+    `3` the default is a lie wherever that entry point is used."""
+    import inspect
+
+    from loci.model import address_access, address_transit_profile
+    from loci.sources.cities.nyc import mta_ridership as mr
+    from loci.validation import pedestrian_counts
+
+    for fn in (mr.build_entry_points, mr.build_profile,
+               address_access.build_access, address_access.compute_access,
+               address_transit_profile.build_transit_profile,
+               pedestrian_counts.measure_at_points,
+               pedestrian_counts.run_validation):
+        p = inspect.signature(fn).parameters.get("months")
+        assert p is not None and p.default is None, fn.__qualname__
 
 
 def test_weekday_dates_drops_weekends_and_federal_holidays():

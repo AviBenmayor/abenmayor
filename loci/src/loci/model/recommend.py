@@ -70,6 +70,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import functools
+import hashlib
 import json
 import math
 import pathlib
@@ -401,7 +402,89 @@ def on_type_count(types_json, category: str) -> int:
     return sum(int(v) for k, v in hist.items() if k in wanted)
 
 
-def coverage_hole_rates(con) -> dict[str, dict]:
+class RunCache:
+    """The CITY-WIDE constants a card needs, computed once per driver run.
+
+    WHY THIS EXISTS. Three of `area_facts`' queries do not depend on the area
+    at all -- the coverage frame (`COVERAGE_FRAME_SQL`, a full pass over
+    `analysis.address_category`), the MN+BK reference demographics, and the
+    laundry-evidence BBL set -- and a fourth, `score.supply.supply_hash`, is a
+    citywide fingerprint by construction. A one-address `loci report` pays all
+    four; a hundred-address sweep paid them a hundred times for a hundred
+    identical answers.
+
+    IT IS CALLER-OWNED, NOT PROCESS-GLOBAL, and that is the whole safety
+    argument. `area_facts(cache=None)` -- every existing caller -- builds a
+    throwaway, so behaviour is byte-identical to before this class existed and
+    no test that writes to the warehouse mid-process can be served a stale
+    number (`tests/test_poi_colocation.py` asserts exactly that `supply_hash`
+    moves after a write). A driver that wants the win creates ONE cache and
+    passes it to every `area_facts` call in the sweep.
+
+    THE CONTRACT THE DATABASE CANNOT ENFORCE: drop the cache after ANY write
+    that can move the supply hash, change `analysis.coverage_validation`, or
+    rebuild `analysis.address` / `analysis.address_demographics` /
+    `analysis.address_laundry_evidence`. The coverage entry is additionally
+    keyed on a fingerprint (live supply hash + baseline hash + the
+    coverage_validation row count and newest `sampled_on` + the category set +
+    a digest of GOOGLE_TYPES) so the commonest of those -- a re-scored supply
+    set, a fresh validation batch, a GOOGLE_TYPES edit like the 2026-09-14
+    sports_club removal -- invalidates itself. The other three entries have no
+    such fingerprint: there is no cheap sentinel for "analysis.address was
+    rebuilt", and computing one would cost the scan the cache exists to avoid.
+    """
+
+    def __init__(self) -> None:
+        self._d: dict = {}
+        self.hits = 0
+        self.misses = 0
+
+    def get(self, key, compute):
+        if key in self._d:
+            self.hits += 1
+            return self._d[key]
+        self.misses += 1
+        value = compute()
+        self._d[key] = value
+        return value
+
+    def clear(self) -> None:
+        self._d.clear()
+
+
+@functools.cache
+def _google_types_digest() -> str:
+    """Short digest of the GOOGLE_TYPES table the on-type recount reads.
+
+    In the coverage cache key because a GOOGLE_TYPES edit changes the answer
+    without touching one row of the warehouse -- removing sports_club from
+    fitness on 2026-09-14 regraded fitness C -> A off rows already stored."""
+    return hashlib.sha256(
+        json.dumps({k: sorted(v or ()) for k, v in sorted(GOOGLE_TYPES.items())},
+                   sort_keys=True).encode()).hexdigest()[:12]
+
+
+def _coverage_fingerprint(con) -> tuple:
+    """A CHEAP sentinel for "the coverage frame's inputs moved".
+
+    Two scalars off `analysis.coverage_validation` (5,633 rows in the address
+    frame, not 5M): how many rows it has and when the newest was sampled. A
+    batch that adds rows moves the count; a re-sample that replaces rows
+    in place moves `max(sampled_on)`. It does NOT catch an edit that both
+    preserves the row count and backdates `sampled_on` -- see RunCache's
+    contract."""
+    try:
+        n, latest = con.execute(
+            "SELECT count(*), max(sampled_on) FROM analysis.coverage_validation "
+            "WHERE address_id IS NOT NULL").fetchone()
+    except Exception:                 # noqa: BLE001 -- table absent
+        return (0, None)
+    return (int(n or 0), str(latest))
+
+
+def coverage_hole_rates(con, *, cache: "RunCache | None" = None,
+                        live_hash: str | None = None,
+                        baseline_hash: str | None = None) -> dict[str, dict]:
     """Per-category true-coverage-hole rate over the whole address frame.
 
     CITY-WIDE, deliberately, and not restricted to the card's own addresses:
@@ -414,7 +497,22 @@ def coverage_hole_rates(con) -> dict[str, dict]:
     Every category in CATEGORIES gets an entry, including the ones with no
     validation data at all (clinic): a missing measurement has to be visible as
     one, not absent from the dict.
+
+    Because it is city-wide it is also a per-category CONSTANT within one run:
+    the same answer for every address. `cache` (a `RunCache`) therefore makes a
+    sweep pay for the `analysis.address_category` pass ONCE instead of once per
+    address. The frame is NOT narrowed to the card's addresses -- that would
+    change the number, which is the whole point of the paragraph above.
     """
+    if cache is not None:
+        key = ("coverage_hole_rates", live_hash, baseline_hash,
+               _coverage_fingerprint(con), tuple(CATEGORIES), _google_types_digest())
+        return cache.get(key, lambda: _coverage_hole_rates_uncached(con))
+    return _coverage_hole_rates_uncached(con)
+
+
+def _coverage_hole_rates_uncached(con) -> dict[str, dict]:
+    """The measurement itself -- one pass over the city-wide coverage frame."""
     rows = con.execute(COVERAGE_FRAME_SQL).fetchdf()
     ratio = pd.to_numeric(rows["ratio"], errors="coerce")
     missing = rows[ratio > 1.0]                      # the MISSING arm, and only it
@@ -645,8 +743,162 @@ def _area_predicate(bbox: tuple[float, float, float, float] | None,
     return " AND ".join(clauses), params
 
 
+#: The supply block of the per-category frame -- (output name, aggregate).
+#: Always present: these four columns have been on `analysis.address_category`
+#: since the table existed.
+_SUPPLY_AGGREGATES: tuple[tuple[str, str], ...] = (
+    ("ratio_median", "median(c.supply_ratio_vs_base)"),
+    ("per_1k_median", "median(c.supply_per_1k)"),
+    ("supply_400m_median", "median(c.supply_400m)"),
+    ("n_ratio_addresses", "count(c.supply_ratio_vs_base)"),
+)
+
+#: The D76 site-revenue block. OPTIONAL: a warehouse built before the revenue
+#: migration, or one where `loci revenue` has never run, must still produce a
+#: card -- it just produces one whose economics section stays at grade D,
+#: which is the honest reading of "no model has been applied here".
+_REVENUE_AGGREGATES: tuple[tuple[str, str], ...] = (
+    ("revenue_p25", "median(c.revenue_p25)"),
+    ("revenue_p50", "median(c.revenue_p50)"),
+    ("revenue_p75", "median(c.revenue_p75)"),
+    ("rent_ceiling", "median(c.rent_ceiling)"),
+    ("n_revenue_addresses", "count(c.revenue_p50)"),
+    ("revenue_model_version", "max(c.revenue_model_version)"),
+    ("revenue_cap_p50", "median(c.revenue_cap_p50)"),
+    ("share_capacity_bound",
+     "avg(CASE WHEN c.revenue_p50 IS NULL THEN NULL "
+     "WHEN c.capacity_bound THEN 1.0 ELSE 0.0 END)"),
+)
+
+#: The columns `_REVENUE_AGGREGATES` needs to exist before the revenue block
+#: can be folded into the one query.
+_REVENUE_COLUMNS = frozenset({"revenue_p25", "revenue_p50", "revenue_p75",
+                              "rent_ceiling", "revenue_model_version",
+                              "revenue_cap_p50", "capacity_bound"})
+
+
+def _table_columns(con, table: str) -> frozenset[str]:
+    try:
+        return frozenset(r[0] for r in con.execute(f"DESCRIBE {table}").fetchall())
+    except Exception:                 # noqa: BLE001 -- table absent
+        return frozenset()
+
+
+def _category_frame(con, base: str, params: list) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The area's per-category supply AND revenue medians, in ONE pass.
+
+    Both blocks are `GROUP BY category` over the SAME address set, so two
+    statements meant two probes of `analysis.address_category` for one card.
+    `DESCRIBE` decides whether the revenue block is available instead of a
+    `try/except` around a second query, so the tolerance survives the fold.
+
+    IDENTICAL BY CONSTRUCTION, not by hope: the aggregates are the same
+    expressions in the same order, and the two frames handed back are column
+    slices of the one result -- `cats` carries exactly `_SUPPLY_AGGREGATES`,
+    `revenue` exactly `_REVENUE_AGGREGATES` (empty when the columns are
+    absent, which is what `_revenue_facts` already reads as "no model here").
+
+    If the folded statement fails for any OTHER reason, this falls back to the
+    original two-query form rather than losing the card -- the supply block
+    must survive a revenue-side surprise, which is what the old `try/except`
+    bought and is worth keeping.
+    """
+    have = _table_columns(con, "analysis.address_category")
+    want_revenue = bool(have) and _REVENUE_COLUMNS <= have
+    selected = list(_SUPPLY_AGGREGATES) + (list(_REVENUE_AGGREGATES) if want_revenue else [])
+    cols = ", ".join(f"{expr} AS {name}" for name, expr in selected)
+    sql = (f"SELECT c.category, {cols} FROM analysis.address_category c "
+           f"WHERE c.address_id IN (SELECT a.address_id {base}) GROUP BY 1 ORDER BY 1")
+    try:
+        df = con.execute(sql, params).fetchdf().set_index("category")
+    except Exception:                 # noqa: BLE001 -- duckdb raises several types
+        return _category_frame_two_pass(con, base, params)
+    cats = df[[name for name, _ in _SUPPLY_AGGREGATES]]
+    revenue = (df[[name for name, _ in _REVENUE_AGGREGATES]] if want_revenue
+               else pd.DataFrame().rename_axis("category"))
+    return cats, revenue
+
+
+def _category_frame_two_pass(con, base: str, params: list) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The pre-fold plan, kept as the fallback path AND as the oracle
+    `tests/test_report_scan.py` proves the one-pass query equal to."""
+    supply_cols = ", ".join(f"{expr} AS {name}" for name, expr in _SUPPLY_AGGREGATES)
+    cats = con.execute(
+        f"SELECT c.category, {supply_cols} FROM analysis.address_category c "
+        f"WHERE c.address_id IN (SELECT a.address_id {base}) GROUP BY 1",
+        params).fetchdf().set_index("category")
+    revenue_cols = ", ".join(f"{expr} AS {name}" for name, expr in _REVENUE_AGGREGATES)
+    try:
+        revenue = con.execute(
+            f"SELECT c.category, {revenue_cols} FROM analysis.address_category c "
+            f"WHERE c.address_id IN (SELECT a.address_id {base}) GROUP BY 1",
+            params).fetchdf().set_index("category")
+    except Exception:                 # noqa: BLE001 -- duckdb raises several types
+        revenue = pd.DataFrame().rename_axis("category")
+    return cats, revenue
+
+
+def _reference_demographics(con, boroughs, eligible_only: bool, *,
+                            cache: "RunCache | None" = None):
+    """The MN+BK reference medians the card compares an area against.
+
+    NO area predicate, deliberately -- and therefore the same pair of numbers
+    for every address in a run. Cached on (boroughs, eligible_only) when a
+    `RunCache` is supplied."""
+    boro_holes = ", ".join("?" for _ in boroughs)
+
+    def _compute():
+        return con.execute(f"""
+            SELECT median(d.median_hh_income) AS median_hh_income,
+                   median(d.age_18_34_share) AS age_18_34_share
+            FROM analysis.address_demographics d
+            JOIN analysis.address a USING (address_id)
+            WHERE a.borough IN ({boro_holes})
+              {"AND COALESCE(a.eligible, FALSE)" if eligible_only else ""}
+              AND COALESCE(a.frame, 'lot') = 'lot'
+        """, list(boroughs)).fetchdf().iloc[0]
+
+    if cache is None:
+        return _compute()
+    return cache.get(("reference_demographics", tuple(boroughs), bool(eligible_only)),
+                     _compute)
+
+
+def _evidence_bbls(con, *, cache: "RunCache | None" = None) -> set:
+    """Every BBL with laundry evidence -- city-wide, and a run constant."""
+    def _compute():
+        return {r[0] for r in con.execute(
+            "SELECT DISTINCT bbl FROM analysis.address_laundry_evidence").fetchall()}
+
+    if cache is None:
+        return _compute()
+    return cache.get(("evidence_bbls",), _compute)
+
+
+def supply_hash_cached(con, supply_set: str, *, cache: "RunCache | None" = None) -> str:
+    """`score.supply.supply_hash`, memoised for the life of a `RunCache`.
+
+    The hash is a CITY-WIDE fingerprint by definition (model/supply_asof.py,
+    and the ba944e18c57b freeze): narrowing its count to one address's
+    catchment would silently change every hash the project has ever written,
+    so this does not scope it -- it only stops a sweep recomputing the same
+    answer once per address. With `cache=None` it is the plain call.
+
+    NEVER hold a cache across a write that can move the supply hash (a closure
+    check, a dedup re-run, a `poi-snapshot`). `tests/test_poi_colocation.py`
+    asserts the uncached call DOES move after such a write, and that is the
+    behaviour `cache=None` preserves.
+    """
+    from loci.score.supply import supply_hash
+
+    if cache is None:
+        return supply_hash(con, supply_set)
+    return cache.get(("supply_hash", supply_set), lambda: supply_hash(con, supply_set))
+
+
 def area_facts(con, area: str, *, bbox=None, nta=None, boroughs=("MN", "BK"),
-               eligible_only: bool = True, supply_set: str = "principled") -> dict:
+               eligible_only: bool = True, supply_set: str = "principled",
+               cache: "RunCache | None" = None) -> dict:
     """Every number the seven sections need, for one area, in six queries.
 
     Area-level statistics are MEDIANS over the area's addresses (shares and
@@ -659,10 +911,16 @@ def area_facts(con, area: str, *, bbox=None, nta=None, boroughs=("MN", "BK"),
     TRUE on every row. The predicate and the flag are kept so that a restored
     pre-D75 database still answers the question it was asked; new code should
     not reach for either.
+
+    `cache` is an optional `RunCache` holding the four numbers that do not
+    depend on the area at all -- the city-wide coverage frame, the MN+BK
+    reference demographics, the laundry-evidence BBL set and the supply hash.
+    `None` (every existing caller) computes all four, exactly as before; a
+    sweep over many areas passes ONE cache and pays for them once. See
+    `RunCache` for the invalidation contract the database cannot enforce.
     """
     from loci.model import density_elasticity as de
     from loci.model import supply_ratio as sr
-    from loci.score.supply import supply_hash
 
     where, params = _area_predicate(bbox, nta)
     boro_holes = ", ".join("?" for _ in boroughs)
@@ -698,63 +956,38 @@ def area_facts(con, area: str, *, bbox=None, nta=None, boroughs=("MN", "BK"),
         FROM analysis.address_demographics d
         WHERE d.address_id IN (SELECT a.address_id {base})""", p).fetchdf().iloc[0]
 
-    reference = con.execute(f"""
-        SELECT median(d.median_hh_income) AS median_hh_income,
-               median(d.age_18_34_share) AS age_18_34_share
-        FROM analysis.address_demographics d
-        JOIN analysis.address a USING (address_id)
-        WHERE a.borough IN ({boro_holes}) AND COALESCE(a.eligible, FALSE)
-          AND COALESCE(a.frame, 'lot') = 'lot'
-    """, list(boroughs)).fetchdf().iloc[0]
+    # The MN+BK reference medians: the SAME two numbers for every area in the
+    # run (no area predicate at all -- that is deliberate, they are what the
+    # card compares the area AGAINST). 249,452 addresses joined to 249,509
+    # demographics rows, measured, every time a card was built.
+    reference = _reference_demographics(con, boroughs, eligible_only, cache=cache)
 
-    cats = con.execute(f"""
-        SELECT c.category,
-               median(c.supply_ratio_vs_base) AS ratio_median,
-               median(c.supply_per_1k)        AS per_1k_median,
-               median(c.supply_400m)          AS supply_400m_median,
-               count(c.supply_ratio_vs_base)  AS n_ratio_addresses
-        FROM analysis.address_category c
-        WHERE c.address_id IN (SELECT a.address_id {base})
-        GROUP BY 1""", p).fetchdf().set_index("category")
-
-    # Site-revenue (D76): its own query, and TOLERANT of the columns being
-    # absent. A warehouse built before the revenue migration, or one where
-    # `loci revenue` has never run, must still produce a card -- it just
-    # produces one whose economics section stays at grade D, which is the
-    # honest reading of "no model has been applied here".
-    try:
-        revenue = con.execute(f"""
-            SELECT c.category,
-                   median(c.revenue_p25)  AS revenue_p25,
-                   median(c.revenue_p50)  AS revenue_p50,
-                   median(c.revenue_p75)  AS revenue_p75,
-                   median(c.rent_ceiling) AS rent_ceiling,
-                   count(c.revenue_p50)   AS n_revenue_addresses,
-                   max(c.revenue_model_version) AS revenue_model_version,
-                   median(c.revenue_cap_p50) AS revenue_cap_p50,
-                   avg(CASE WHEN c.revenue_p50 IS NULL THEN NULL
-                            WHEN c.capacity_bound THEN 1.0 ELSE 0.0 END) AS share_capacity_bound
-            FROM analysis.address_category c
-            WHERE c.address_id IN (SELECT a.address_id {base})
-            GROUP BY 1""", p).fetchdf().set_index("category")
-    except Exception:                     # noqa: BLE001 -- duckdb raises several types
-        revenue = pd.DataFrame().rename_axis("category")
+    # ONE pass over analysis.address_category for the whole card, not two.
+    # The supply block and the D76 site-revenue block are the same GROUP BY
+    # over the same address set; issuing them separately made the area's
+    # doorways probe the 5.0M-row table twice for a table that has no index
+    # and, until the Phase B ORDER BY rebuild, no useful zonemap on
+    # address_id. See `_category_frame` for how the revenue block stays
+    # OPTIONAL without splitting the query back up.
+    cats, revenue = _category_frame(con, base, p)
 
     anchors = con.execute(
         "SELECT category, anchor_sources, anchor_coverage, qualifies "
         "FROM analysis.category_anchor").fetchdf().set_index("category")
 
-    # G9, owner ruling 2026-09-14: the per-category coverage-hole RATE over the
-    # whole MN+BK address frame, not a count of validation rows inside this box.
-    # See `coverage_hole_rates` for why the measurement is city-wide.
-    coverage = coverage_hole_rates(con)
-
-    evidence_bbls = {r[0] for r in con.execute(
-        "SELECT DISTINCT bbl FROM analysis.address_laundry_evidence").fetchall()}
-
-    live_hash = supply_hash(con, supply_set)
+    live_hash = supply_hash_cached(con, supply_set, cache=cache)
     baseline_doc = sr.load_baselines()
     baseline_hash = baseline_doc.get("supply_hash")
+
+    # G9, owner ruling 2026-09-14: the per-category coverage-hole RATE over the
+    # whole MN+BK address frame, not a count of validation rows inside this box.
+    # See `coverage_hole_rates` for why the measurement is city-wide -- and why
+    # it is a per-run CONSTANT that `cache` lets a sweep pay for once. The two
+    # hashes are passed in (not re-measured) so the cache key is free.
+    coverage = coverage_hole_rates(con, cache=cache, live_hash=live_hash,
+                                   baseline_hash=baseline_hash)
+
+    evidence_bbls = _evidence_bbls(con, cache=cache)
     haircut = sr.load_haircut()
     try:
         elast = de.load()
@@ -895,12 +1128,25 @@ def neighborhood_for_comps(facts: dict) -> str | None:
 
 
 def build_cards(facts: dict, rules: dict, categories: list[str] | None = None) -> list[dict]:
-    """Cards for the requested categories, thinnest supply ratio first."""
-    from loci.model.comps import comps_for
+    """Cards for the requested categories, thinnest supply ratio first.
+
+    The comps inputs are read ONCE here and handed to every `comps_for` call.
+    Before this, fifteen cards meant fifteen re-parses of `benchmarks.yaml`
+    and of the BizBuySell comps CSV -- an N+1 in FILE I/O, invisible to every
+    SQL profile of the report path. `comps.load_listings`/`load_benchmarks`
+    are memoised on (path, mtime, size) as well, so a caller that does not
+    come through here is not punished either; hoisting is kept because it is
+    the version that cannot go stale at all."""
+    from loci.model.comps import comps_for, load_benchmarks, load_listings
 
     boro = borough_for_comps(facts)
     hood = neighborhood_for_comps(facts)
-    return [build_card(cat, facts, comps_for(cat, borough=boro, neighborhood=hood), rules)
+    listings = load_listings()
+    benchmarks = load_benchmarks()
+    return [build_card(cat, facts,
+                       comps_for(cat, borough=boro, neighborhood=hood,
+                                 listings=listings, benchmarks=benchmarks),
+                       rules)
             for cat in rank_categories(facts, categories)]
 
 

@@ -260,6 +260,25 @@ def source_rank(category: str, source_id: str) -> int:
         # name disagree -- those never enter the same cluster at all; see
         # sources/cities/nyc/nys_medicaid_pharmacy.py.
         order = ["nys_medicaid_pharmacies"] + _TAIL
+    elif category == "laundry":
+        # THE SAME TRAP, THIRD INSTANCE (owner ruling 2026-09-16, fix now).
+        # D65 documents it for childcare and the pharmacy branch above documents
+        # it again; nobody added the laundry branch, so laundry fell to the
+        # `else` arm -- where `_TAIL` ENDS with `nyc_dcwp_licenses`, ranking the
+        # DCWP roster (4) BELOW the DCWP inspections anchor (rank = len(order),
+        # i.e. worst) and below every aggregator.
+        #
+        # Measured by wave two on the live file: with the roster ingested, an
+        # EXPIRED roster licence became the canonical row of its cluster and its
+        # `closed` status gated the whole cluster -- a live laundromat -- out of
+        # supply. Five of six did exactly that: laundry supply 3,954 -> 3,949.
+        # The roster row was outranking the 4,285-POI inspections anchor (D55,
+        # confidence 0.9) that the category is actually built on.
+        #
+        # `nyc_dcwp_inspections` first, and the roster stays where `_TAIL` puts
+        # it -- LAST -- so an expired licence can never speak for a cluster an
+        # inspector has visited.
+        order = ["nyc_dcwp_inspections"] + _TAIL
     else:
         order = _TAIL
     return order.index(source_id) if source_id in order else len(order)
@@ -550,7 +569,13 @@ def build_dedup(con) -> dict:
     con.execute("DELETE FROM analysis.poi_dedup")
     df = pd.DataFrame(result, columns=["poi_id", "cluster_id", "is_canonical", "category"])
     con.register("_dd", df)
+    # Named on BOTH sides: DuckDB binds INSERT ... SELECT by POSITION, so the
+    # SELECT list alone would not survive an ALTER on analysis.poi_dedup -- and
+    # the audit's standing recommendation is to DROP `category` from this table
+    # (it disagrees with staging.poi on 10,551 rows), which is exactly the kind
+    # of shape change a positional write turns into silent column-swapping.
     con.execute("INSERT INTO analysis.poi_dedup "
+                "(poi_id, cluster_id, is_canonical, category) "
                 "SELECT poi_id, cluster_id, is_canonical, category FROM _dd")
     con.unregister("_dd")
 

@@ -75,28 +75,43 @@ def con():
             units_capped INTEGER, neighborhood VARCHAR, nta_code VARCHAR,
             gap_score DOUBLE, lead_category VARCHAR, {ratios})
     """)
+    # THE NATURAL-KEY CONTRACT (sql/045, 2026-09-16): no `forecast_id` on
+    # either table, no `features_json`, `features_hash` in its place, and the
+    # join between the two is the four key columns that `forecast_id` used to
+    # concatenate. This fixture hand-builds the DDL rather than calling
+    # `ensure_schema` because the export must keep working on a warehouse that
+    # has only a SUBSET of sql/028 -- that is what the `_relation_columns`
+    # probes in webmap_export are for -- so the shape is stated here
+    # deliberately and kept in step with the real one by
+    # `test_the_fixture_matches_the_shipped_forecast_contract` below.
     c.execute("""
         CREATE TABLE analysis.forecast (
-            forecast_id VARCHAR, issued_month VARCHAR, horizon_months INTEGER,
+            issued_month VARCHAR, horizon_months INTEGER,
             model_version VARCHAR, address_id VARCHAR, category VARCHAR,
             frame VARCHAR, borough VARCHAR, nta_code VARCHAR,
             surprise_cell VARCHAR, p_opening DOUBLE, expected_openings DOUBLE,
-            support VARCHAR, features_json VARCHAR, frozen_at TIMESTAMP)
+            support VARCHAR, features_hash VARCHAR, frozen_at TIMESTAMP)
     """)
     c.execute("""
         CREATE TABLE analysis.forecast_outcome (
-            forecast_id VARCHAR, scored_month VARCHAR, horizon_elapsed INTEGER,
-            realized_openings INTEGER, realized_flag BOOLEAN, scored_at TIMESTAMP)
+            issued_month VARCHAR, model_version VARCHAR, address_id VARCHAR,
+            category VARCHAR, scored_month VARCHAR, horizon_elapsed INTEGER,
+            realized_openings INTEGER, realized_flag BOOLEAN,
+            scored_at TIMESTAMP)
     """)
     # The two VIEWS the export reads through, in the shape sql/028 defines them.
     c.execute("""
         CREATE VIEW analysis.forecast_latest AS
         SELECT f.address_id, f.category, f.frame, f.borough, f.nta_code,
                f.issued_month, f.model_version, f.horizon_months,
-               f.p_opening, f.expected_openings, f.support, f.features_json,
+               f.p_opening, f.expected_openings, f.support, f.features_hash,
                o.scored_month, o.horizon_elapsed, o.realized_openings, o.realized_flag
         FROM analysis.forecast f
-        LEFT JOIN analysis.forecast_outcome o ON o.forecast_id = f.forecast_id
+        LEFT JOIN analysis.forecast_outcome o
+               ON o.issued_month  = f.issued_month
+              AND o.model_version = f.model_version
+              AND o.address_id    = f.address_id
+              AND o.category      = f.category
         WHERE f.issued_month = (SELECT max(issued_month) FROM analysis.forecast)
     """)
     c.execute("""
@@ -145,13 +160,14 @@ def _add_gap(con, address_id, borough="MN", lon=-73.9857, lat=40.7484,
 
 def _issue(con, address_id, p, category=CAT, month="2026-09",
            version="0.1.0+deadbeef", horizon=12, nta="MN0001"):
-    fid = f"{month}|{version}|{category}|{address_id}"
+    """Returns the natural key, which is what a caller now joins on. It used to
+    return the `forecast_id` string this same tuple was concatenated into."""
     con.execute("""
-        INSERT INTO analysis.forecast (forecast_id, issued_month, horizon_months,
+        INSERT INTO analysis.forecast (issued_month, horizon_months,
             model_version, address_id, category, nta_code, p_opening)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, [fid, month, horizon, version, address_id, category, nta, p])
-    return fid
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, [month, horizon, version, address_id, category, nta, p])
+    return (month, version, address_id, category)
 
 
 def _seen(con, category=CAT, kind="source_date", on="2026-08-01", name="Sud Club",
@@ -571,3 +587,25 @@ def test_dry_run_counts_come_off_the_packed_block(con):
 def test_unknown_borough_fails_loud(con):
     with pytest.raises(ValueError, match="unknown borough"):
         wx.collect_forecast(con, ["ZZ"])
+
+
+def test_the_fixture_matches_the_shipped_forecast_contract(con):
+    """THE FIXTURE IS A CLAIM ABOUT PRODUCTION, and an unchecked one is how a
+    test suite stays green through a schema change it should have caught.
+
+    This file hand-builds `analysis.forecast` and `analysis.forecast_outcome`
+    on purpose (the export must work against a partial sql/028), so nothing
+    otherwise ties the two shapes together. `model/forecast.py` names every
+    column it writes; if this fixture and that list ever disagree, the webmap
+    tests would be passing against a table the warehouse does not have."""
+    from loci.model import forecast as fc
+
+    for table, expected in (("forecast", fc.FORECAST_INSERT_COLUMNS),
+                            ("forecast_outcome",
+                             fc.FORECAST_OUTCOME_INSERT_COLUMNS)):
+        got = [r[0] for r in con.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = 'analysis' AND table_name = ? "
+            "ORDER BY ordinal_position", [table]).fetchall()]
+        assert got == list(expected), f"analysis.{table}: {got} != {list(expected)}"
+        assert "forecast_id" not in got and "features_json" not in got

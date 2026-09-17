@@ -191,7 +191,8 @@ def spearman(x, y) -> tuple[float, int]:
 # ---------------------------------------------------------------- the sweep
 
 def measure_at_points(con, points: list[dict], radius_m: float | None = None,
-                      graph_path=None, months: int = 3, use_entrances: bool = True,
+                      graph_path=None, months: int | None = None,
+                      use_entrances: bool = True,
                       jobs_vintage: int | None = None, refresh: bool = False):
     """Compute transit_entries / jobs / homes within `radius_m` NETWORK metres
     of each DOT count point, with the SAME machinery the address columns use.
@@ -292,7 +293,7 @@ def measure_at_points(con, points: list[dict], radius_m: float | None = None,
                 "dot_window_daypart": dict(mr.DOT_WINDOW_DAYPART)}
 
 
-def run_validation(con, radius_m: float | None = None, months: int = 3,
+def run_validation(con, radius_m: float | None = None, months: int | None = None,
                    use_entrances: bool = True, refresh: bool = False):
     """Fetch -> latest round -> on-street points -> sweep -> Spearman.
     Returns (DataFrame, report). Writes nothing, anywhere."""

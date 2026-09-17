@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import pathlib
 
 import pytest
 
@@ -83,9 +84,10 @@ def _closure(con, fsq_id, category, name, lon, lat, closed, *, key=True,
     """Insert one closure, minting the key exactly as `load` does."""
     nk = pp.name_key_of(name)
     lk = pp.mint_key(category, nk, lon, lat) if (key and category and nk) else None
-    con.execute(f"INSERT INTO {pc.TABLE} VALUES (?,?,?,?,?,?,?,?,?,?)",
-                [fsq_id, lk, category, name, lon, lat, created, closed,
-                 pc.SOURCE, NOW])
+    cols = ", ".join(pc.COLUMNS)
+    con.execute(
+        f"INSERT INTO {pc.TABLE} ({cols}) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        [fsq_id, lk, category, name, lon, lat, created, closed, pc.SOURCE, NOW])
 
 
 # ------------------------------------------------- 1. the supply set is safe
@@ -251,3 +253,106 @@ def test_check_presence_invariants_still_hold_with_closures(con):
     errors, stats = pp.coverage_check(con)
     assert errors == []
     assert stats["coverage_pct"] == 100.0
+
+
+# ===========================================================================
+# 4. THE KEY IS `fsq_place_id` (audit finding 9)
+#
+# `staging.poi_closure` is keyed on the SOURCE's own id, one row per venue.
+# `location_key` is minted by `poi_presence.mint_key` and is NOT unique here:
+# on the live file 2026-09-16, 228,455 rows carry 61,837 non-null keys over
+# 61,518 distinct values -- 31 keys with more than one closure, 350 rows in
+# those groups. Two venues of the same category that round to the same 4 dp
+# coordinate and normalize to the same name key hash identically, and they are
+# DIFFERENT venues: the duplication is real data, not a defect to dedup away.
+#
+# So a bare `JOIN ... ON c.location_key = pp.location_key` fans out -- measured
+# against `analysis.poi_presence` it returns 8,024 rows for 8,019 distinct
+# ledger locations. Every consumer must aggregate to one row per location_key
+# FIRST, with a stated pick rule. `resolve()`'s is: earliest `date_closed`,
+# key match beating link match on a tie.
+# ===========================================================================
+def test_two_closures_on_one_location_key_do_not_fan_the_ledger_out(con):
+    """TWO source rows, ONE storefront key. The ledger has one row there and
+    must still have one row after both are applied — not two, and not one
+    updated twice with an arbitrary winner."""
+    pp.snapshot(con, month="2026-09", today=TODAY)
+    _closure(con, "f1", "cafe_bakery", "Apollo Bagels", *MN, dt.date(2025, 6, 1))
+    _closure(con, "f2", "cafe_bakery", "Apollo Bagels", *MN, dt.date(2025, 9, 9))
+
+    # the two rows really do share one key, and both really are in the table
+    keys = con.execute(
+        f"SELECT count(*), count(DISTINCT location_key) FROM {pc.TABLE}").fetchone()
+    assert keys == (2, 1)
+
+    resolved = pc.resolve(con)
+    assert len(resolved) == 1
+    assert resolved["location_key"].is_unique
+    # the stated pick rule, not whichever row the scan happened to reach last
+    # (fetchdf() hands dates back as pandas Timestamps)
+    assert str(resolved["closed_on"].iat[0])[:10] == "2025-06-01"
+
+    rep = pc.apply_to_ledger(con)
+    assert rep["written"] == 1
+    rows = con.execute(
+        "SELECT location_key, closed_on FROM analysis.poi_presence "
+        "WHERE display_name = 'Apollo Bagels'").fetchall()
+    assert len(rows) == 1, "the UPDATE fanned the ledger out"
+    assert rows[0][1] == dt.date(2025, 6, 1)
+
+
+def test_the_ledger_row_count_is_unchanged_by_duplicate_keyed_closures(con):
+    """The whole-table invariant, stated as a count rather than a name: the
+    ledger's grain is one row per location_key and nothing in this module may
+    change it. `poi_presence` is 65-reader table; a fan-out here would land in
+    every one of them."""
+    pp.snapshot(con, month="2026-09", today=TODAY)
+    before = con.execute(
+        "SELECT count(*), count(DISTINCT location_key) "
+        "FROM analysis.poi_presence").fetchone()
+    for i, closed in enumerate((dt.date(2025, 6, 1), dt.date(2025, 7, 1),
+                                dt.date(2024, 3, 3))):
+        _closure(con, f"dup{i}", "cafe_bakery", "Apollo Bagels", *MN, closed)
+    pc.apply_to_ledger(con)
+    after = con.execute(
+        "SELECT count(*), count(DISTINCT location_key) "
+        "FROM analysis.poi_presence").fetchone()
+    assert after == before
+    # earliest wins across all three
+    assert con.execute(
+        "SELECT closed_on FROM analysis.poi_presence "
+        "WHERE display_name = 'Apollo Bagels'").fetchone()[0] == dt.date(2024, 3, 3)
+
+
+def test_a_naive_location_key_join_is_the_thing_being_prevented(con):
+    """The counter-example, written out so the next reader can see WHY the
+    aggregation is there. This is the join shape the audit measured at 3.7x on
+    the ratio of rows to distinct keys; here it doubles one ledger row."""
+    pp.snapshot(con, month="2026-09", today=TODAY)
+    _closure(con, "f1", "cafe_bakery", "Apollo Bagels", *MN, dt.date(2025, 6, 1))
+    _closure(con, "f2", "cafe_bakery", "Apollo Bagels", *MN, dt.date(2025, 9, 9))
+
+    naive = con.execute(f"""
+        SELECT count(*) FROM analysis.poi_presence pp
+        JOIN {pc.TABLE} c ON c.location_key = pp.location_key""").fetchone()[0]
+    aggregated = con.execute(f"""
+        SELECT count(*) FROM analysis.poi_presence pp
+        JOIN (SELECT location_key, min(date_closed) AS date_closed
+              FROM {pc.TABLE} WHERE location_key IS NOT NULL
+              GROUP BY 1) c ON c.location_key = pp.location_key""").fetchone()[0]
+    assert naive == 2
+    assert aggregated == 1
+
+
+def test_the_insert_names_its_columns_on_both_sides():
+    """DuckDB binds `INSERT ... SELECT` by POSITION. `load()` used
+    `SELECT *` (audit finding 11): the day sql/027 gains a column, that writes
+    `fetched_at` into it and raises nothing. Naming only the SELECT would not
+    have helped -- both sides are named, from one tuple."""
+    src = (pathlib.Path(pc.__file__)).read_text()
+    assert "SELECT * FROM _closure_in" not in src
+    assert "INSERT INTO {TABLE} ({cols}) SELECT {cols}" in src
+    assert pc.COLUMNS == ("fsq_place_id", "location_key", "category", "name",
+                          "lon", "lat", "date_created", "date_closed",
+                          "source", "fetched_at")
+    assert pc.KEY == "fsq_place_id"

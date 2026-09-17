@@ -57,6 +57,28 @@ GRADE_BBOX_HALF_WIDTH_M = 100.0
 #: on `haversine_m` throughout this module).
 _M_PER_DEG_LAT = 111_320.0
 
+#: The SQL pre-filter box is widened by 1% before it is used to scope a read
+#: that Python then refines with `haversine_m`. IT MUST BE A SUPERSET, always:
+#: `_bbox_around` divides by 111,320 m/deg while `haversine_m` works on
+#: R = 6,371,000 m (111,194.9 m/deg), so an un-padded box is ~0.11% TIGHT --
+#: about 0.6 m at a 500 m catchment, which is exactly wide enough to drop a
+#: storefront at 499.8 m and manufacture a supply gap that is not there. The
+#: padding costs a handful of extra rows the Python test then rejects; the
+#: alternative costs a wrong number with no symptom.
+_BBOX_SUPERSET_PAD = 1.01
+
+#: The MN+BK screen (§4f of the 2026-09-16 audit). NOTHING in the schema
+#: enforces it -- `analysis.storefront` is 39% non-MN/BK, `storefront_pipeline`
+#: 47%, `brand_location` 33% -- so every read of a five-borough table in this
+#: module carries it explicitly.
+SCREEN_BOROUGHS: tuple[str, ...] = ("MN", "BK")
+
+#: `chains.brand_location` and `analysis.poi_presence` spell boroughs out in
+#: full while the address family uses two-letter codes, with no FK and no
+#: agreed vocabulary (audit §4f). One map, one place.
+BOROUGH_FULL_NAMES = {"MN": "Manhattan", "BK": "Brooklyn", "QN": "Queens",
+                      "BX": "Bronx", "SI": "Staten Island"}
+
 
 class CategoryNotAvailable(ValueError):
     """`--category <cat>` named a category that is not one of the 15 Loci
@@ -194,6 +216,52 @@ def _bbox_around(lat: float, lon: float, half_m: float) -> tuple[float, float, f
     return (lat - dlat, lon - dlon, lat + dlat, lon + dlon)
 
 
+def _bbox_sql(lat: float, lon: float, radius_m: float, *,
+              lon_expr: str, lat_expr: str) -> str:
+    """A SQL fragment bounding `lon_expr`/`lat_expr` to a box that CONTAINS
+    every point within `radius_m` of (lat, lon).
+
+    Numeric literals, not placeholders: the fragment is composed into
+    `canonical_poi_sql` and into queries whose other arguments are already
+    parameterised, and the four values are floats this module computed from an
+    address row -- never text off an input. `repr()` on a float round-trips
+    exactly in Python, so the literal is the same number the Python filter
+    then uses.
+
+    Superset by `_BBOX_SUPERSET_PAD`; the exact circle is still cut in Python
+    with `haversine_m`, so this only ever decides WHICH ROWS ARE READ, never
+    which rows are counted."""
+    minlat, minlon, maxlat, maxlon = _bbox_around(lat, lon,
+                                                  radius_m * _BBOX_SUPERSET_PAD)
+    return (f"{lat_expr} BETWEEN {minlat!r} AND {maxlat!r} "
+            f"AND {lon_expr} BETWEEN {minlon!r} AND {maxlon!r}")
+
+
+def _borough_sql(col: str, boroughs=SCREEN_BOROUGHS, *, keep_null: bool = True) -> str:
+    """The MN+BK screen as a SQL fragment, in BOTH borough vocabularies.
+
+    The warehouse spells boroughs two ways with no FK and no agreed
+    vocabulary (audit §4f): `'MN'`/`'BK'` in the address family,
+    `analysis.storefront`, `storefront_pipeline` and `staging.alcohol_licences`
+    -- `'Manhattan'`/`'Brooklyn'` in `chains.brand_location` and
+    `analysis.poi_presence`. A screen written in one vocabulary silently
+    deletes every row written in the other, which is a far worse failure than
+    the leak it was added to close, so this matches both spellings. Pick a
+    vocabulary upstream and this collapses to one list.
+
+    `keep_null` is TRUE by default and that is a deliberate, stated choice: a
+    NULL borough is UNKNOWN, not "some other borough". `storefront_pipeline`
+    has 17,532 NULL-borough rows and `brand_location` 22,434; dropping them
+    would delete real filings and real chain locations inside the catchment on
+    the strength of a missing label. They survive the borough screen and are
+    then decided by the spatial bound, which is the measurement that actually
+    answers the question."""
+    names = list(boroughs) + [BOROUGH_FULL_NAMES[b] for b in boroughs]
+    inlist = ", ".join(f"'{n}'" for n in names)
+    clause = f"{col} IN ({inlist})"
+    return f"({col} IS NULL OR {clause})" if keep_null else f"({clause})"
+
+
 def _address_row(con, address_id: str) -> dict:
     cols = con.execute("DESCRIBE analysis.address").fetchdf()["column_name"].tolist()
     row = con.execute(
@@ -235,10 +303,13 @@ def _sla_500ft_context(con, category: str | None, lat: float, lon: float) -> dic
     category)."""
     if category not in SLA_500FT_TRIGGER_CATEGORIES:
         return None
-    df = con.execute("""
+    df = con.execute(f"""
         SELECT ST_X(geom) AS lon, ST_Y(geom) AS lat
         FROM staging.alcohol_licences
         WHERE active AND classification = 'on_premises' AND geom IS NOT NULL
+          AND {_borough_sql("borough")}
+          AND {_bbox_sql(lat, lon, SLA_500FT_RADIUS_M,
+                         lon_expr="ST_X(geom)", lat_expr="ST_Y(geom)")}
     """).fetchdf()
     n = 0
     for r in df.itertuples(index=False):
@@ -304,9 +375,100 @@ def _same_bbl_consistency(bbl: str | None, lead_category: str | None, *,
     return out
 
 
+#: HOW `analysis.forecast_outcome` IS TIED BACK TO `analysis.forecast`.
+#:
+#: TODAY it is the surrogate `forecast_id`, because the reshape is STAGED and
+#: not applied: `sql/028`'s edit and the `migrate-warehouse` rebuild land
+#: together in one Phase B window, and until they do the live warehouse still
+#: has `forecast_id`. Flip this to "natural" IN THAT SAME WINDOW and nothing
+#: else in this module changes -- it is ONE constant so Phase B is a one-line
+#: edit rather than a hunt through f-strings.
+#:
+#: `model_version` is load-bearing in the natural join: without it a scored
+#: vintage fans out across all five same-month 2026-09 re-issues.
+#:
+#: Why it matters here at all: `analysis.forecast_latest` LEFT JOINs a
+#: window-function CTE over the full `forecast x forecast_outcome` join, and
+#: DuckDB will not push `address_id = ?` through that LEFT JOIN into the
+#: right-hand side -- so reading the view for ONE address planned an unbounded
+#: pass over 8,455,260 outcome rows. The query below carries the restriction
+#: into BOTH arms itself.
+FORECAST_OUTCOME_KEY = "natural"              # flipped in the Phase B window, 2026-09-16
+
+#: The four columns the natural key is built on, in sql/028's order.
+#: `scored_month` is the fifth and is the within-address ordering column, not
+#: part of the address restriction.
+FORECAST_NATURAL_KEY = ("issued_month", "model_version", "address_id", "category")
+
+
+def _forecast_outcome_join() -> str:
+    """The ON clause joining `o` (forecast_outcome) to `f` (forecast)."""
+    if FORECAST_OUTCOME_KEY == "natural":
+        return " AND ".join(f"o.{c} = f.{c}" for c in FORECAST_NATURAL_KEY)
+    return "o.forecast_id = f.forecast_id"
+
+
+#: `analysis.forecast_latest` rebuilt with the address restriction pushed into
+#: every scan it makes, instead of read as a view and filtered on the way out.
+#: Column-for-column and row-for-row the same answer for one (address_id,
+#: category) -- `tests/test_report_scan.py` pins that against the view itself
+#: on a fixture. The only difference is the plan.
+_FORECAST_SCOPED_SQL = """
+WITH fc AS (
+    SELECT f.*
+    FROM analysis.forecast f
+    WHERE f.address_id = ? AND f.category = ?
+    QUALIFY row_number() OVER (
+        PARTITION BY f.address_id, f.category
+        ORDER BY f.frozen_at DESC, f.model_version DESC) = 1
+),
+scored AS (
+    SELECT f.address_id, f.category, f.issued_month AS scored_vintage_month,
+           f.model_version AS scored_model_version,
+           o.scored_month, o.horizon_elapsed, o.realized_openings, o.realized_flag,
+           f.p_opening AS p_at_that_vintage
+    FROM analysis.forecast f
+    JOIN analysis.forecast_outcome o ON {on_clause}
+    WHERE f.address_id = ? AND f.category = ?
+    QUALIFY row_number() OVER (
+        PARTITION BY f.address_id, f.category
+        ORDER BY o.scored_month DESC, o.horizon_elapsed DESC) = 1
+)
+SELECT fc.address_id, fc.category, fc.frame, fc.borough, fc.nta_code,
+       fc.issued_month, fc.model_version, fc.horizon_months, fc.p_opening,
+       fc.expected_openings, fc.support, fc.features_hash,
+       s.scored_vintage_month, s.scored_model_version, s.scored_month,
+       s.horizon_elapsed, s.realized_openings, s.realized_flag,
+       s.p_at_that_vintage,
+       (date_diff('month',
+                  strptime(fc.issued_month || '-01', '%Y-%m-%d')::DATE,
+                  current_date) >= fc.horizon_months) AS is_scoreable_now
+FROM fc LEFT JOIN scored s
+  ON s.address_id = fc.address_id AND s.category = fc.category
+"""
+
+
 def _forecast_row(con, address_id: str, category: str | None) -> dict | None:
+    """The newest issued forecast and newest scored outcome for one address x
+    category.
+
+    Reads the scoped query above rather than `analysis.forecast_latest`, so
+    the plan carries the address restriction into the `forecast_outcome` scan
+    instead of materialising the whole view and filtering afterwards. Falls
+    back to the view if the scoped query cannot bind (a pre-D92 warehouse, or
+    one mid-migration where `forecast_id` has gone and this constant has not
+    been flipped) -- a slow correct answer beats a fast missing one.
+    """
     if category is None:
         return None
+    sql = _FORECAST_SCOPED_SQL.format(on_clause=_forecast_outcome_join())
+    try:
+        res = con.execute(sql, [address_id, category, address_id, category])
+        cols = [d[0] for d in res.description]
+        row = res.fetchone()
+        return dict(zip(cols, row)) if row else None
+    except Exception:      # noqa: BLE001 -- duckdb raises several types
+        pass
     try:
         cols = con.execute("DESCRIBE analysis.forecast_latest").fetchdf()["column_name"].tolist()
     except Exception:      # noqa: BLE001 -- view absent on a pre-D92 warehouse
@@ -327,7 +489,15 @@ def _supply_rows(con, lat: float, lon: float, catchment_m: float) -> list[POIRow
     cols = ("s.poi_id, s.name, s.category, s.source_id, ST_X(s.geom) AS lon, "
             "ST_Y(s.geom) AS lat, s.poi_status, s.poi_status_basis, "
             "s.colocation_n, s.colocation_resolution")
-    sql = canonical_poi_sql(cols=cols, gate_closed=False)
+    # SCOPED (2026-09-16): the unbounded read pulled all 136,563 rows of
+    # `analysis.poi_supply_status` into pandas so a Python loop could throw
+    # away 99.8% of them on `dist_m > catchment_m`. The box is a strict
+    # superset of that circle (`_bbox_sql`), so the rows kept are identical
+    # and the haversine test below is still the one that decides.
+    sql = canonical_poi_sql(
+        cols=cols, gate_closed=False,
+        where=_bbox_sql(lat, lon, catchment_m,
+                        lon_expr="ST_X(s.geom)", lat_expr="ST_Y(s.geom)"))
     df = con.execute(sql).fetchdf()
     out: list[POIRow] = []
     for r in df.itertuples(index=False):
@@ -426,14 +596,41 @@ def _vacant_storefront_rows(con, lat: float, lon: float,
     own BBL when that address has been through `address_legality`'s build
     step; `None` (rendered "not on file") otherwise -- this module never
     invents a square footage."""
-    df = con.execute("""
-        SELECT premises_id, address, bbl, ST_X(geom) AS lon, ST_Y(geom) AS lat,
-               reporting_year, vacant_1231, vacant_0630,
-               -- `last_use` walks filings NEWEST-first, so before the recode
-               -- was undone it read the 2024/2025 vocabulary preferentially.
-               activity_canonical AS primary_business_activity
-        FROM analysis.storefront
-        WHERE geom IS NOT NULL AND premises_id IS NOT NULL
+    # ONE PASS, and the shape of it is load-bearing. The vacancy streak and
+    # `last_use` below are computed over a premises' WHOLE filing history, so
+    # a spatially-filtered row set would truncate both (a premises whose
+    # earlier vacant years are exactly what `vacant_since` counts). The window
+    # marks every premises that has AT LEAST ONE in-scope filing and then
+    # keeps all of that premises' filings -- same answer as "name the premises
+    # in the box, then re-read them", at one scan instead of two (the second
+    # could not prune on `premises_id` and re-read all 412,967 rows).
+    #
+    # MN+BK: `analysis.storefront` carries all five boroughs (155,450 MN /
+    # 98,069 BK / 89,251 QN / 55,286 BX / 16,828 SI) with nothing in the
+    # schema enforcing the screen -- audit §4f, finding 5. The screen is
+    # applied to the WHOLE subquery, not only to the in-scope test, so a
+    # premises cannot be pulled in by an out-of-borough filing.
+    scope = (f"{_borough_sql('borough')} AND "
+             f"{_bbox_sql(lat, lon, catchment_m, lon_expr='ST_X(geom)', lat_expr='ST_Y(geom)')}")
+    df = con.execute(f"""
+        SELECT premises_id, storefront_id, filing_due_date,
+               address, bbl, lon, lat, reporting_year, vacant_1231, vacant_0630,
+               primary_business_activity
+        FROM (
+            SELECT premises_id, storefront_id, filing_due_date, address, bbl,
+                   ST_X(geom) AS lon, ST_Y(geom) AS lat,
+                   reporting_year, vacant_1231, vacant_0630,
+                   -- `last_use` walks filings NEWEST-first, so before the
+                   -- recode was undone it read the 2024/2025 vocabulary
+                   -- preferentially.
+                   activity_canonical AS primary_business_activity,
+                   max(CASE WHEN {scope} THEN 1 ELSE 0 END)
+                       OVER (PARTITION BY premises_id) AS _in_scope
+            FROM analysis.storefront
+            WHERE geom IS NOT NULL AND premises_id IS NOT NULL
+              AND {_borough_sql('borough')}
+        )
+        WHERE _in_scope = 1
     """).fetchdf()
     if df.empty:
         return []
@@ -444,7 +641,29 @@ def _vacant_storefront_rows(con, lat: float, lon: float,
 
     out: list[VacantStorefrontRow] = []
     for premises_id, rows in groups.items():
-        rows = sorted(rows, key=lambda r: (r.reporting_year is None, r.reporting_year))
+        # DETERMINISM, and it is not cosmetic. `analysis.storefront`'s real
+        # grain is (storefront_id, filing_due_date), NOT (storefront_id,
+        # reporting_year): premises 3028930042| carries FIVE 2024 filings,
+        # two due 2025-02-15 and three due 2025-06-03, whose `vacant_1231`
+        # reads True, True, True, False, False. Sorting on reporting_year
+        # alone left "is this storefront vacant?" decided by whichever of the
+        # five DuckDB's scan happened to emit last -- a stable-sort tie -- so
+        # merely changing the WHERE clause of the query above flipped this
+        # premises in and out of the memo's vacant list (26 rows vs 27 at
+        # address 3027550006). The full grain plus `storefront_id` makes the
+        # pick reproducible.
+        #
+        # WHAT THIS DOES NOT FIX, and the owner has to rule on it: a premises
+        # is a BUILDING and may hold several storefront units, so "the latest
+        # filing" is still ONE unit's filing. A premises whose latest round
+        # reports one vacant unit and two occupied ones is being called vacant
+        # or occupied on the strength of the unit that sorts last. See the
+        # handback note / audit finding 1 ("declare the grain + a
+        # storefront-year view").
+        rows = sorted(rows, key=lambda r: (
+            r.reporting_year is None, r.reporting_year,
+            r.filing_due_date is None, r.filing_due_date,
+            str(r.storefront_id)))
         last = rows[-1]
         # DOF flags come back as pandas nullable booleans: bool(pd.NA) raises,
         # so a NULL flag must read as "not vacant", never crash the pack.
@@ -500,12 +719,14 @@ def _pipeline_rows(con, lat: float, lon: float, catchment_m: float) -> list[Pipe
     `is_open` (that filing has already resolved into a business -- it
     belongs in the supply table, not "what is coming"). Investor review item
     4: name these rows, don't fold them into `openings_pipeline_400m`."""
-    df = con.execute("""
+    df = con.execute(f"""
         SELECT pipeline_id, business_name, loci_category, entry_stage, entry_date,
                lon, lat, is_open
         FROM analysis.storefront_pipeline
         WHERE lon IS NOT NULL AND lat IS NOT NULL
           AND entry_stage IN ?
+          AND {_borough_sql("borough")}
+          AND {_bbox_sql(lat, lon, catchment_m, lon_expr="lon", lat_expr="lat")}
     """, [list(SLA_PENDING_STAGES) + list(DOB_FITOUT_STAGES)]).fetchdf()
     out: list[PipelineRow] = []
     for r in df.itertuples(index=False):
@@ -536,7 +757,7 @@ def _chains_watch_rows(con, lat: float, lon: float,
     within `radius_m` straight-line metres of the latest snapshot, nearest
     first. Investor review item 4: name the chains-watchlist entries, don't
     fold them into a generic supply row."""
-    df = con.execute("""
+    df = con.execute(f"""
         SELECT bl.brand_key, bl.category, bl.lon, bl.lat,
                br.display_name, br.locations_new_12m, br.locations_total
         FROM chains.brand_location bl
@@ -544,6 +765,8 @@ def _chains_watch_rows(con, lat: float, lon: float,
           ON br.brand_key = bl.brand_key AND br.snapshot_month = bl.snapshot_month
         WHERE br.flagged
           AND bl.snapshot_month = (SELECT max(snapshot_month) FROM chains.brand_latest)
+          AND {_borough_sql("bl.borough")}
+          AND {_bbox_sql(lat, lon, radius_m, lon_expr="bl.lon", lat_expr="bl.lat")}
     """).fetchdf()
     out: list[ChainWatchRow] = []
     for r in df.itertuples(index=False):
@@ -629,7 +852,7 @@ def lead_category_override(grades: list, category: str, *,
 
 def assemble(con, address_id: str, *, catchment_m: float = DEFAULT_CATCHMENT_M,
             recommendations_dir=None, category: str | None = None,
-            allow_demoted: bool = False) -> EvidencePack:
+            allow_demoted: bool = False, cache=None) -> EvidencePack:
     """Every warehouse fact the four sections need, for ONE address. Pure
     read: no INSERT/UPDATE anywhere in this function, no paid call.
 
@@ -644,12 +867,23 @@ def assemble(con, address_id: str, *, catchment_m: float = DEFAULT_CATCHMENT_M,
     `lead_category_override` refuses a demoted category unless
     `allow_demoted`. Everything downstream (forecast row, demand facts, the
     SLA 500-ft check, `EvidencePack.hash()`, so the cache key) keys off the
-    lead, so the override changes the whole memo, not just its headline."""
+    lead, so the override changes the whole memo, not just its headline.
+
+    `cache` is an optional `model.recommend.RunCache` shared across a sweep of
+    addresses: it holds the four CITY-WIDE numbers a card needs (the coverage
+    frame, the MN+BK reference demographics, the laundry-evidence BBL set and
+    the supply hash), which are identical for every address in a run. `None`
+    -- a single `loci report` -- computes them, exactly as before. A driver
+    reporting on many addresses creates ONE and passes it to each call; see
+    `RunCache` for the invalidation contract, and note in particular that it
+    must be DROPPED after `enrich.py` writes closure evidence, because that
+    moves the supply hash."""
     address = _address_row(con, address_id)
     legality = _legality_row(con, address_id)
     bbox = _bbox_around(address["lat"], address["lon"], GRADE_BBOX_HALF_WIDTH_M)
     rules = load_rules()
-    scores = area_facts(con, address_id, bbox=bbox, boroughs=(address["borough"],))
+    scores = area_facts(con, address_id, bbox=bbox, boroughs=(address["borough"],),
+                        cache=cache)
     grades = build_cards(scores, rules)
     if category is not None:
         grades = lead_category_override(grades, category, allow_demoted=allow_demoted)

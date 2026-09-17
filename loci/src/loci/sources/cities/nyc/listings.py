@@ -1157,7 +1157,13 @@ def merge_sink(con, sink_dir) -> dict:
             # rather than a partial overwrite.
             con.execute("DELETE FROM staging.listings_fetch_log WHERE run_id IN "
                         "(SELECT DISTINCT run_id FROM _sinklog)")
-            con.execute("INSERT INTO staging.listings_fetch_log SELECT * FROM _sinklog")
+            # Named on BOTH sides. `_sinklog` is already built by SELECTing
+            # LOG_COLS in order, so nothing is mis-written today -- but DuckDB
+            # binds INSERT ... SELECT by POSITION, and only the TARGET column
+            # list survives an ALTER on the log table.
+            log_cols = ", ".join(LOG_COLS)
+            con.execute(f"INSERT INTO staging.listings_fetch_log ({log_cols}) "
+                        f"SELECT {log_cols} FROM _sinklog")
         out["bbl_rows"] = build_address_listing_laundry(con)
         con.execute("COMMIT")
     except Exception:
@@ -1175,12 +1181,22 @@ def _write(con, rows, budget: TavilyBudget) -> int:
         con.executemany(
             "DELETE FROM staging.listings WHERE listing_url = ?",
             [(r[0],) for r in payload])
+        # LISTING_COLS, not a bare count of placeholders: `_payload_row` builds
+        # its tuple in that order, and a column added to sql/005 without adding
+        # it there must fail loudly rather than shift every value one left.
         con.executemany(
-            "INSERT INTO staging.listings VALUES (" + ",".join(["?"] * 20) + ")", payload)
+            "INSERT INTO staging.listings (" + ", ".join(LISTING_COLS) + ") VALUES ("
+            + ",".join(["?"] * len(LISTING_COLS)) + ")", payload)
     if budget.log:
+        # LOG_COLS, and the values are pulled BY KEY rather than by dict order
+        # -- `budget.log` entries are built literally in LOG_COLS order today,
+        # but relying on that couples the spend ledger to a dict literal's
+        # layout.
         con.executemany(
-            "INSERT OR REPLACE INTO staging.listings_fetch_log VALUES (" + ",".join(["?"] * 10) + ")",
-            [tuple(e.values()) for e in budget.log])
+            "INSERT OR REPLACE INTO staging.listings_fetch_log ("
+            + ", ".join(LOG_COLS) + ") VALUES ("
+            + ",".join(["?"] * len(LOG_COLS)) + ")",
+            [tuple(e[c] for c in LOG_COLS) for e in budget.log])
     return len(payload)
 
 

@@ -249,7 +249,8 @@ def canonical_poi_sql(supply_set: str = DEFAULT_SUPPLY_SET,
                       *,
                       gate_closed: bool | None = None,
                       collapse_unresolved: bool | None = None,
-                      view: str | None = None) -> str:
+                      view: str | None = None,
+                      where: str | None = None) -> str:
     """The one SELECT every consumer of "the supply of businesses" should use.
 
     Replaces the hand-written `staging.poi JOIN analysis.poi_dedup ON ...
@@ -265,9 +266,25 @@ def canonical_poi_sql(supply_set: str = DEFAULT_SUPPLY_SET,
     `collapse_unresolved=True` to additionally keep one row per unresolved
     co-located group -- the alternative the owner has not yet ruled on.
 
+    `where` ANDs an extra predicate onto the supply predicate -- the one way
+    to read a SCOPED slice of the supply set without hand-writing the view
+    read and losing the gate. It exists for the report path, which wants the
+    ~300 POIs inside one 500 m catchment and was pulling all 136,563 rows of
+    `analysis.poi_supply_status` into pandas to throw 99.8% of them away. It
+    is a SQL fragment, not a parameter list: `con.execute()` takes this string
+    with no params, so a caller interpolates its own numeric literals (never
+    user text) into it -- see `report/evidence._bbox_sql`.
+
+    `where` MUST be a superset filter on anything the caller then refines in
+    Python. Narrowing it below the caller's own test silently deletes supply,
+    which is the same class of bug as the closure gate hiding an open
+    storefront.
+
     Geometry note: s.geom is EPSG:4326 by convention (DuckDB GEOMETRY carries
     no SRID); ST_X/ST_Y therefore return lon/lat degrees, which is what every
-    caller here snaps to the walk graph with.
+    caller here snaps to the walk graph with. A `where` fragment that bounds
+    a distance therefore bounds it in DEGREES, not metres, and the metre-true
+    test stays on `haversine_m` in the caller.
     """
     gate = GATE_CLOSED if gate_closed is None else gate_closed
     collapse = COLLAPSE_UNRESOLVED if collapse_unresolved is None else collapse_unresolved
@@ -277,12 +294,14 @@ def canonical_poi_sql(supply_set: str = DEFAULT_SUPPLY_SET,
     # anything else passing a view here is reading a different supply set under
     # the same name.
     src_view = view or SUPPLY_VIEW
-    where = [f"s.{supply_predicate(supply_set)}"]
+    preds = [f"s.{supply_predicate(supply_set)}"]
     if gate:
         # `<> 'closed'` and never `= 'open'`: the predicate is TRI-STATE and
         # 'unknown' must survive (see GATE_CLOSED).
-        where.append("s.poi_status <> 'closed'")
-    sql = f"SELECT {cols} FROM {src_view} s WHERE " + " AND ".join(where)
+        preds.append("s.poi_status <> 'closed'")
+    if where:
+        preds.append(f"({where})")
+    sql = f"SELECT {cols} FROM {src_view} s WHERE " + " AND ".join(preds)
     if collapse:
         # Deterministic survivor: a positively-open member beats an unknown one
         # ('open' < 'unknown' lexically), then the lowest poi_id, so two runs

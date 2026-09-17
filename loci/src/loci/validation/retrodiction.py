@@ -147,8 +147,37 @@ SNAPSHOT = dt.date(2026, 9, 1)
 
 RADIUS_M = 400.0
 CRS_METRIC = "EPSG:32618"
-BOROUGHS_FULL = ("Manhattan", "Brooklyn")
+#: `analysis.poi_presence.borough` WAS spelled 'Manhattan'/'Brooklyn' and is now
+#: CODES ('MN'/'BK'), rewritten by `loci migrate-warehouse --step
+#: poi_presence_vocab` on 2026-09-16 so the warehouse has ONE borough
+#: vocabulary. This constant kept its name and changed its values.
+#:
+#: THIS IS THE FAILURE IT CAUSED, and it is why the guard below exists: the
+#: rewrite landed while these readers still filtered on the long form, so
+#: `WHERE p.borough IN ('Manhattan','Brooklyn')` matched ZERO rows. Nothing
+#: raised. The forecast fit panel came back with 360,000 rows, `own_gap_flag`
+#: TRUE everywhere, `log_score` 0.0 everywhere and ZERO positives in all 15
+#: categories -- every address in New York reading as a total gap. It was
+#: caught only because a design matrix with no variation made the logit's
+#: Hessian singular; had one category held a single opening, a fitted,
+#: plausible, entirely wrong vintage would have been issued and frozen.
+#:
+#: A wrong borough vocabulary does not error. It returns nothing.
+BOROUGHS_FULL = ("MN", "BK")
 BOROUGHS_CODE = ("MN", "BK")
+
+#: AUDIT FINDING 4 -- THE BOROUGH LEAK. Five warehouse objects carry all five
+#: boroughs while this module's narrative is MN+BK, and NOTHING in the schema
+#: enforces the screen: `analysis.storefront` is 39% out of scope (MN 155,450 /
+#: BK 98,069 / QN 89,251 / BX 55,286 / SI 16,828 = 414,884), and
+#: `storefront_pipeline`, `staging.storefront_filing`, `licence_interval`,
+#: `chains.brand_location` and `poi_presence` are the same shape. Borough is
+#: also encoded TWO ways with no FK -- 'MN'/'BK' in the address family,
+#: 'Manhattan'/'Brooklyn' in `poi_presence` and `brand_location` -- so the two
+#: renderings below are not interchangeable and picking the wrong one silently
+#: returns zero rows rather than raising.
+BORO_CODE_SQL = ", ".join(f"'{b}'" for b in BOROUGHS_CODE)
+BORO_FULL_SQL = ", ".join(f"'{b}'" for b in BOROUGHS_FULL)
 
 #: Categories reported individually. The rest are pooled into the category
 #: fixed effect: below a few hundred openings a per-category AUC is noise.
@@ -373,13 +402,21 @@ def closure_audit(con, start: dt.date = WINDOW_START,
     out: list[ClosureInstrument] = []
 
     # (a) the ledger's own last_seen — D79's intended instrument
+    # FINDING 4: `behind` is this instrument's `observable_closures` count and
+    # `observable_closures()` puts 'poi_presence.last_seen_month' in the USABLE
+    # set -- a citywide count here would open the survival gate on a panel that
+    # is not the MN+BK cohort. The snapshot-month metadata is scoped with it so
+    # the two describe the same population. `poi_presence.borough` is the FULL
+    # vocabulary ('Manhattan'), not the code.
     months = con.execute(
-        "SELECT count(DISTINCT last_seen_month), max(n_months_seen) "
-        "FROM analysis.poi_presence").fetchone()
+        f"SELECT count(DISTINCT last_seen_month), max(n_months_seen) "
+        f"FROM analysis.poi_presence WHERE borough IN ({BORO_FULL_SQL})").fetchone()
     behind = con.execute(
-        "SELECT count(*) FROM analysis.poi_presence "
-        "WHERE last_seen_month < (SELECT max(last_seen_month) "
-        "                         FROM analysis.poi_presence)").fetchone()[0]
+        f"SELECT count(*) FROM analysis.poi_presence "
+        f"WHERE borough IN ({BORO_FULL_SQL}) "
+        f"  AND last_seen_month < (SELECT max(last_seen_month) "
+        f"                         FROM analysis.poi_presence "
+        f"                         WHERE borough IN ({BORO_FULL_SQL}))").fetchone()[0]
     out.append(ClosureInstrument(
         "poi_presence.last_seen_month", months[0] > 1, int(behind),
         f"{months[0]} distinct snapshot month(s), max n_months_seen "
@@ -387,9 +424,14 @@ def closure_audit(con, start: dt.date = WINDOW_START,
         f"month to fall behind of. D79: a skipped month is a permanent hole."))
 
     # (b) storefront_pipeline.is_open — the tautology
+    # FINDING 4: `storefront_pipeline` is a five-borough table with 17,532
+    # NULL-borough rows besides; the counts quoted in this instrument's text
+    # are MN+BK or they do not describe the cohort. NULL borough drops, which
+    # is the screen's own convention -- an unplaced filing is not in scope.
     tot, opened, isopen = con.execute(
-        "SELECT count(*), count(opened_on), sum(CASE WHEN is_open THEN 1 ELSE 0 END) "
-        "FROM analysis.storefront_pipeline").fetchone()
+        f"SELECT count(*), count(opened_on), sum(CASE WHEN is_open THEN 1 ELSE 0 END) "
+        f"FROM analysis.storefront_pipeline "
+        f"WHERE borough IN ({BORO_CODE_SQL})").fetchone()
     out.append(ClosureInstrument(
         "storefront_pipeline.is_open", False, 0,
         f"opened_on non-null {opened:,} vs is_open {int(isopen):,} of {tot:,} rows. "
@@ -404,11 +446,16 @@ def closure_audit(con, start: dt.date = WINDOW_START,
             WHERE source = 'nyc_dcwp_licenses'
               AND borough IN ({", ".join(f"'{b}'" for b in BOROUGHS_CODE)})
               AND filed_on BETWEEN ? AND ?""", [start, end]).fetchone()[0]
+    # FINDING 4: the count above is already MN+BK; this companion breakdown
+    # was not, so the sentence "the top non-Active categories are ..." was
+    # describing a different (five-borough) population from the number it
+    # explains.
     hints = con.execute(
-        """SELECT category_hint, count(*) n FROM staging.storefront_filing
-           WHERE source = 'nyc_dcwp_licenses'
-             AND status NOT IN ('Active', 'Ready for Renewal')
-           GROUP BY 1 ORDER BY 2 DESC LIMIT 5""").fetchdf()
+        f"""SELECT category_hint, count(*) n FROM staging.storefront_filing
+            WHERE source = 'nyc_dcwp_licenses'
+              AND status NOT IN ('Active', 'Ready for Renewal')
+              AND borough IN ({BORO_CODE_SQL})
+            GROUP BY 1 ORDER BY 2 DESC LIMIT 5""").fetchdf()
     out.append(ClosureInstrument(
         "dcwp_licenses.license_status", int(dcwp) > 0, int(dcwp),
         f"Expired/Surrendered/Voided/Revoked/Failed-to-Renew licences issued in "
@@ -479,15 +526,36 @@ def closure_audit(con, start: dt.date = WINDOW_START,
         f"re-reading the cached file fixes it."))
 
     # (f) DOF storefront registry — vacancy, but at the premises grain
-    reg = con.execute(
-        """SELECT max(reporting_year),
-                  count(*) FILTER (WHERE reporting_year = 2024),
-                  count(*) FILTER (WHERE reporting_year = 2025)
-           FROM analysis.storefront""").fetchone()
+    # AUDIT FINDING 4, THE SITE IT NAMES. This counted `analysis.storefront`
+    # with NO borough predicate inside an MN+BK narrative, and the table is 39%
+    # out of scope (MN 155,450 / BK 98,069 / QN 89,251 / BX 55,286 / SI 16,828
+    # = 414,884 filings). The cohort build in `go_dark_panel` was already
+    # scoped with exactly this predicate; this one was not.
+    #
+    # The universe split is the SECOND defect in the same three lines: DOF
+    # files twice a year, a 'full' annual filing and a 'vacant_only'
+    # supplement, and a bare row count pooled them -- so "only N filed for
+    # 2025" read as a collapse in filing when 2025 is simply a vacant-only
+    # supplement with no full filing published yet. Reporting the two
+    # separately is what makes the sentence true.
+    reg = con.execute(f"""
+        SELECT max(reporting_year),
+               count(*) FILTER (WHERE reporting_year = 2024
+                                  AND universe = 'full'),
+               count(*) FILTER (WHERE reporting_year = 2024
+                                  AND universe = 'vacant_only'),
+               count(*) FILTER (WHERE reporting_year = 2025
+                                  AND universe = 'full'),
+               count(*) FILTER (WHERE reporting_year = 2025
+                                  AND universe = 'vacant_only')
+        FROM analysis.storefront
+        WHERE borough IN ({BORO_CODE_SQL})""").fetchone()
     out.append(ClosureInstrument(
         "dof_storefront_registry.vacant_1231", False, 0,
-        f"LL157 vacancy runs to {reg[0]} ({int(reg[1]):,} rows in 2024, only "
-        f"{int(reg[2]):,} filed for 2025). It is the best independent signal in "
+        f"LL157 vacancy runs to {reg[0]} (MN+BK: {int(reg[1]):,} full-universe "
+        f"filings in 2024 plus a {int(reg[2]):,}-row vacant-only supplement; "
+        f"for 2025 only the supplement has been published, {int(reg[4]):,} "
+        f"rows, no full filing yet). It is the best independent signal in "
         f"the city, and it is unusable AS AN OUTCOME here: premises grain with "
         f"no business identity, so a cohort POI sits within 30 m of tens of "
         f"registry units and 'some storefront in this building is vacant' is "
@@ -1231,6 +1299,108 @@ def _activity_group(raw: str | None) -> str:
     return ACTIVITY_GROUPS.get((raw or "").strip().upper(), "other")
 
 
+#: Preferred source for the premises-year panel: ONE ROW per (premises_id,
+#: reporting_year), the filing already picked. Created by a migration the lead
+#: owns; `_premises_year_cte` falls back when it is absent.
+STOREFRONT_YEAR_VIEW = "analysis.storefront_year"
+
+
+def _relation_columns(con, qualified: str) -> set[str]:
+    schema, _, name = qualified.partition(".")
+    return {r[0] for r in con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = ? AND table_name = ?", [schema, name]).fetchall()}
+
+
+def _premises_year_cte(con) -> str:
+    """The `yr` CTE: one row per (premises_id, reporting_year), MN+BK.
+
+    AUDIT FINDING 1 -- THE POOLED FILING. `analysis.storefront` is one row per
+    FILING, not per storefront-year: its true key is
+    `(storefront_id, filing_due_date)`, and DOF publishes TWICE for a
+    reporting year -- a `universe = 'full'` annual filing and a
+    `universe = 'vacant_only'` supplement, WITH DIFFERENT ADDRESSES ON THE TWO
+    ROWS. A bare `GROUP BY premises_id, reporting_year` with
+    `bool_or(vacant_1231)` therefore UNIONS the two, and because the
+    supplement is by construction 100% vacant it can only ever push the
+    vacancy rate up. Measured on the live file 2026-09-16, MN+BK, at the
+    premises-year grain this CTE produces:
+
+        year   pooled              corrected           delta
+        2019    3,204 / 21,721      3,204 / 21,721      --   (no supplement)
+        2020    4,255 / 22,100      4,255 / 22,100      --
+        2021    3,420 / 19,317      3,420 / 19,317      --
+        2022    3,139 / 19,367      3,139 / 19,367      --
+        2023    3,372 / 19,923      3,177 / 19,923      -195  (16.93% -> 15.95%)
+        2024    3,209 / 19,490      3,062 / 19,490      -147  (16.46% -> 15.71%)
+        2025    1,090 /  1,628      1,090 /  1,628      --   (supplement only)
+
+    and the 2022 -> 2024 go-dark outcome falls from 1,080 events to 986 on the
+    same 12,762 at-risk premises (8.46% -> 7.73%). The 2022 BASE year is
+    unaffected -- no supplement exists for it -- so this is a pure correction
+    to the OUTCOME, not a change of cohort.
+
+    The pick rule is `analysis.storefront_latest`'s, not a new one:
+    `ARG_MAX(filing_due_date, (universe = 'full', filing_due_date))` -- the
+    full-universe filing where one exists, the latest due date otherwise.
+
+    Degrades in three steps, and NEVER back to the pooling version: the view,
+    then the same rule inline, then (only if the columns that DISTINGUISH two
+    filings do not exist at all, which is a pre-sql/012 database or a test
+    fixture) a plain group-by, where there is by construction nothing to pool.
+    """
+    view = _relation_columns(con, STOREFRONT_YEAR_VIEW)
+    if view and {"premises_id", "reporting_year", "vacant", "borough"} <= view:
+        return f"""
+        WITH yr AS (
+          SELECT premises_id, reporting_year, vacant, constr, bbl, nta_code,
+                 borough,
+                 activity_canonical AS activity,
+                 lon, lat
+          FROM {STOREFRONT_YEAR_VIEW}
+          WHERE borough IN ({BORO_CODE_SQL})
+            AND lon IS NOT NULL AND lat IS NOT NULL)"""
+
+    body = f"""
+          SELECT s.premises_id, s.reporting_year,
+                 bool_or(s.vacant_1231)           AS vacant,
+                 bool_or(COALESCE(s.construction_reported, FALSE)) AS constr,
+                 any_value(s.bbl)                 AS bbl,
+                 any_value(s.nta_code)            AS nta_code,
+                 any_value(s.borough)             AS borough,
+                 -- canonical, not raw: this panel spans 2019-2026 and so
+                 -- spans DOF's 2024 recode (sql/012_activity_recode.yaml).
+                 any_value(s.activity_canonical)  AS activity,
+                 avg(ST_X(s.geom))                AS lon,
+                 avg(ST_Y(s.geom))                AS lat
+          FROM analysis.storefront s"""
+    tail = f"""
+          WHERE s.borough IN ({BORO_CODE_SQL})
+            AND s.geom IS NOT NULL
+          GROUP BY 1, 2)"""
+
+    cols = _relation_columns(con, "analysis.storefront")
+    if "filing_due_date" in cols:
+        rank = ("(universe = 'full', filing_due_date)"
+                if "universe" in cols else "filing_due_date")
+        return f"""
+        WITH pick AS (
+          SELECT premises_id, reporting_year,
+                 ARG_MAX(filing_due_date, {rank}) AS filing_due_date
+          FROM analysis.storefront
+          WHERE borough IN ({BORO_CODE_SQL})
+            AND geom IS NOT NULL
+          GROUP BY 1, 2),
+        yr AS ({body}
+          JOIN pick USING (premises_id, reporting_year, filing_due_date){tail}"""
+
+    # No `filing_due_date` at all: nothing in the table can tell two filings
+    # for one premises-year apart, so there is exactly one and the group-by
+    # cannot pool. This branch is a pre-sql/012 schema, never the live file.
+    return f"""
+        WITH yr AS ({body}{tail}"""
+
+
 def go_dark_panel(con, *, base_year: int = GO_DARK_BASE_YEAR,
                   outcome_year: int = GO_DARK_OUTCOME_YEAR,
                   t0: dt.date = WINDOW_START, radius_m: float = RADIUS_M,
@@ -1246,22 +1416,7 @@ def go_dark_panel(con, *, base_year: int = GO_DARK_BASE_YEAR,
     because the direction of that bias is unknowable from inside the data.
     """
     rows = con.execute(f"""
-        WITH yr AS (
-          SELECT premises_id, reporting_year,
-                 bool_or(vacant_1231)             AS vacant,
-                 bool_or(COALESCE(construction_reported, FALSE)) AS constr,
-                 any_value(bbl)                   AS bbl,
-                 any_value(nta_code)              AS nta_code,
-                 any_value(borough)               AS borough,
-                 -- canonical, not raw: this panel spans 2019-2026 and so
-                 -- spans DOF's 2024 recode (sql/012_activity_recode.yaml).
-                 any_value(activity_canonical)    AS activity,
-                 avg(ST_X(geom))                  AS lon,
-                 avg(ST_Y(geom))                  AS lat
-          FROM analysis.storefront
-          WHERE borough IN ({", ".join(f"'{b}'" for b in BOROUGHS_CODE)})
-            AND geom IS NOT NULL
-          GROUP BY 1, 2)
+        {_premises_year_cte(con)}
         SELECT b.premises_id, b.lon, b.lat, b.nta_code, b.borough, b.bbl,
                b.activity, (b.constr OR COALESCE(o.constr, FALSE)) AS constr,
                o.vacant AS vacant_out,

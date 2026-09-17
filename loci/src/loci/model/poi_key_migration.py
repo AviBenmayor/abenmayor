@@ -753,8 +753,14 @@ def _rewrite_brand_location(con) -> dict:
         JOIN _map m ON bl.location_key = m.old_key""")
     con.execute("DELETE FROM chains.brand_location WHERE location_key IN "
                 "(SELECT old_key FROM _map)")
+    # Named on BOTH sides (`chains.detect.LOCATION_COLUMNS` is the same list).
+    # The SELECT list was already explicit, but DuckDB binds INSERT ... SELECT
+    # by POSITION, so without the target list a future ALTER on
+    # chains.brand_location would shift the ordinals under it.
     kept = con.execute("""
         INSERT INTO chains.brand_location
+               (snapshot_month, brand_key, location_key, poi_id, category,
+                borough, lon, lat, first_seen_on, first_seen_src)
         SELECT snapshot_month, brand_key, location_key, poi_id, category,
                borough, lon, lat, first_seen_on, first_seen_src
         FROM (SELECT *, row_number() OVER (

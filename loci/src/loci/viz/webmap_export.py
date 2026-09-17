@@ -2924,6 +2924,10 @@ FORECAST_TABLE = ("analysis", "forecast")
 FORECAST_OUTCOME_TABLE = ("analysis", "forecast_outcome")
 FORECAST_LATEST_VIEW = ("analysis", "forecast_latest")
 FORECAST_SURPRISE_VIEW = ("analysis", "forecast_surprise_nta")
+#: One row per issued vintage, carrying `issued_at` -- the ONLY real timestamp
+#: reachable from `forecast_surprise_nta`, which publishes `issued_month` and
+#: `model_version` and no clock of its own. See `_vintage_clock`.
+FORECAST_RUN_TABLE = ("analysis", "forecast_run")
 
 #: The columns each relation must carry for its block to be exported. Named
 #: here once so `forecast_missing` can say WHICH column is absent rather than
@@ -3140,7 +3144,26 @@ def forecast_vintage(con) -> dict:
         out["issuedMonth"] = None if row[0] is None else str(row[0])
         out["nVintages"] = int(row[1] or 0)
         if out["issuedMonth"]:
+            # AUDIT FINDING 8, SECOND SITE. `max(model_version)` inside the
+            # newest issued_month is the same git-hash sort as surprise_vintage
+            # had, and unlike that one it MANIFESTS TODAY: over the five live
+            # 2026-09 vintages it returns '0.1.1+f1cb6628' (issued 09-14 23:27)
+            # instead of '0.1.1+51bab17f' (09-15 17:53), so every exported map
+            # header stamped the wrong model version. Pick by the real clock --
+            # `frozen_at` on this table, the same column sql/028's
+            # `forecast_latest` was fixed to use -- and keep the version string
+            # only as the deterministic tiebreak.
             extra = [c for c in ("model_version", "horizon_months") if c in cols]
+            if extra:
+                if "model_version" in extra and "frozen_at" in cols:
+                    mv = con.execute(
+                        f"SELECT model_version FROM {'.'.join(FORECAST_TABLE)} "
+                        f"WHERE issued_month = ? "
+                        f"ORDER BY frozen_at DESC, model_version DESC LIMIT 1",
+                        [out["issuedMonth"]]).fetchone()
+                    out["modelVersion"] = (None if not mv or mv[0] is None
+                                           else str(mv[0]))
+                    extra = [c for c in extra if c != "model_version"]
             if extra:
                 r = con.execute(
                     f"SELECT {', '.join('max(' + c + ')' for c in extra)} "
@@ -3418,6 +3441,46 @@ def collect_realized(con, boroughs: list[str]) -> dict:
             "pipelineAvailable": bool(pipe_rows)}
 
 
+#: AUDIT FINDING 8 -- LATEST-BY-STRING-SORT.
+#: `model_version` is '<semver>+<8 hex git-ish hash>'. `ORDER BY model_version
+#: DESC` therefore orders two vintages issued in the SAME `issued_month` by the
+#: HEX, which is arbitrary. Live on 2026-09-16 five 2026-09 vintages exist and
+#: their true issue order (`analysis.forecast_run.issued_at`) is
+#:
+#:   0.1.0+f7d190df  2026-09-14 11:53
+#:   0.1.1+3cd0e269  2026-09-14 22:51
+#:   0.1.1+f1cb6628  2026-09-14 23:27
+#:   0.1.1+ae3eadb3  2026-09-15 08:54
+#:   0.1.1+51bab17f  2026-09-15 17:53   <- the newest
+#:
+#: while the lexicographic maximum is `0.1.1+f1cb6628`, purely on 'f' > '5'.
+#: sql/028:330 fixed `analysis.forecast_latest` this way (frozen_at DESC first,
+#: model_version DESC only as a deterministic tiebreak); this is the same fix
+#: applied to the two picks webmap_export makes for itself.
+def _vintage_clock(con) -> tuple[str, str] | None:
+    """(join clause, timestamp expression) that puts a REAL issue time beside a
+    relation carrying `issued_month` + `model_version`, or None.
+
+    Preference order, and why: `analysis.forecast_run` holds one row per issued
+    vintage and is six rows wide, so joining it costs nothing;
+    `analysis.forecast.frozen_at` is the same clock seventeen seconds earlier
+    but lives on 25M rows and has to be grouped. Neither is invented here --
+    both are objects sql/028 already creates. When NEITHER is present (an older
+    database) the caller degrades to the version-string order rather than
+    raising, which is the behaviour that shipped before this fix."""
+    run = _relation_columns(con, FORECAST_RUN_TABLE)
+    if run and {"issued_month", "model_version", "issued_at"} <= run:
+        return (f"LEFT JOIN {'.'.join(FORECAST_RUN_TABLE)} r "
+                f"USING (issued_month, model_version)", "r.issued_at")
+    base = _relation_columns(con, FORECAST_TABLE)
+    if base and {"issued_month", "model_version", "frozen_at"} <= base:
+        return (f"LEFT JOIN (SELECT issued_month, model_version, "
+                f"max(frozen_at) AS frozen_at FROM {'.'.join(FORECAST_TABLE)} "
+                f"GROUP BY 1, 2) r USING (issued_month, model_version)",
+                "r.frozen_at")
+    return None
+
+
 def surprise_vintage(con) -> dict | None:
     """WHICH scored vintage the surprise layer draws. The newest `scored_month`
     first, then the newest `issued_month` scored in it -- so a 2023-01 vintage
@@ -3429,12 +3492,24 @@ def surprise_vintage(con) -> dict | None:
     cols = _relation_columns(con, FORECAST_SURPRISE_VIEW)
     if not cols or "scored_month" not in cols:
         return None
+    # AUDIT FINDING 8: the newest vintage is the one ISSUED last, not the one
+    # whose git hash sorts highest. `_vintage_clock` brings that timestamp into
+    # scope; `model_version DESC` survives only as the deterministic tiebreak
+    # for two vintages issued in the same microsecond.
+    clock = _vintage_clock(con)
+    join, ts = clock if clock else ("", None)
+    order = ("scored_month DESC, issued_month DESC, model_version DESC"
+             if ts is None else
+             f"v.scored_month DESC, max({ts}) DESC NULLS LAST, "
+             f"v.issued_month DESC, v.model_version DESC")
     row = con.execute(f"""
-        SELECT scored_month, issued_month, model_version, max(horizon_elapsed)
-        FROM {'.'.join(FORECAST_SURPRISE_VIEW)}
-        WHERE scored_month IS NOT NULL
+        SELECT v.scored_month, v.issued_month, v.model_version,
+               max(v.horizon_elapsed)
+        FROM {'.'.join(FORECAST_SURPRISE_VIEW)} v
+        {join}
+        WHERE v.scored_month IS NOT NULL
         GROUP BY 1, 2, 3
-        ORDER BY scored_month DESC, issued_month DESC, model_version DESC
+        ORDER BY {order}
         LIMIT 1
     """).fetchone()
     if not row:

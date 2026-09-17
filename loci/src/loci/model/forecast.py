@@ -82,12 +82,31 @@ it on the fit sample and then applying it to the full frame would shift the
 feature between fitting and predicting; that is the quiet version of leakage
 and it is the failure mode that looks like skill.
 
-WHY 12,000 ADDRESSES FOR THE FIT AND 281,842 FOR THE PREDICTION. The retrodiction's
+WHY 12,000 ADDRESSES FOR THE FIT AND 332,041 FOR THE PREDICTION. The retrodiction's
 reasoning, unchanged: the lot frame's 400 m discs overlap almost completely, so
 the marginal information in address 12,001 is close to zero while the join cost
 is not. Prediction is cheap per row and must cover every doorway (owner,
 2026-09-13: no eligibility gate — every street is represented), so it runs on
-the whole frame.
+the whole universe.
+
+THE FIT FRAME AND THE SCORED FRAMES ARE NOT THE SAME SET (2026-09-16). The fit
+is `frame='lot'`, 12,000 hash-ordered addresses, exactly as before. The SCORE
+covers `frame='lot'` (281,842) AND `frame='street'` (50,199) — owner ruling (4),
+"street points get everything the lot frame has, including a forecast" — which
+is 332,041 x 15 = 4,980,615 rows per vintage, the row count of
+`analysis.address_category` and a free cross-check on every issue.
+
+A street midpoint is scored by the lot-fitted model, never admitted to the fit:
+it has no PLUTO lot of its own, `units_capped = 0` on all 50,199 of them, and
+its feature vector is assembled differently. All four features are nonetheless
+honestly derivable AT a street midpoint, because all four are properties of the
+400 m DISC around the point rather than of the parcel under it — `log_score` and
+`own_gap_flag` from `supply_as_of`, `log_homes` from PLUTO units on the
+surrounding LOT-frame addresses, `retail_index` from D82 character, which is
+100% populated on the street frame. The one real deficiency is the 1,169 street
+midpoints (2.3%) with zero residential units anywhere in their disc; those rows
+are written with `support = 'street_no_homes'` rather than dropped or
+silently given a p derived from a zero that means "nothing there".
 
 ===========================================================================
 THE BASELINES IT MUST BEAT, AND THE FAILURE CRITERION
@@ -156,6 +175,18 @@ SQL_028 = PKG / "sql" / "028_forecast.sql"
 #: landed -- see sql/030 for why a version now has to say what it was FIT ON,
 #: not only what it IS.
 SQL_030 = PKG / "sql" / "030_forecast_supply_hash.sql"
+#: The PHASE A reshape (2026-09-16): `analysis.forecast` loses `forecast_id`
+#: (257 MiB, a pure restatement of the four-column natural key that already
+#: carried a UNIQUE index) and `features_json` (526 MiB, the model INPUT,
+#: repeated 4.2M times per vintage) and gains `features_hash`;
+#: `analysis.forecast_outcome` loses `forecast_id` for the same four columns.
+#: NO VINTAGE IS DELETED — the owner overruled the audit's retention proposal
+#: on 2026-09-16 (1); this drops redundant COLUMNS and nothing else.
+#:
+#: Applied only IF PRESENT. This module is not the owner of any migration file
+#: and must run both before and after that file lands: `schema_is_reshaped`
+#: below is what the code actually branches on, never the file's existence.
+SQL_045 = PKG / "sql" / "045_forecast_natural_key.sql"
 
 #: Semantic version of the FORM. Bump the minor when the functional form or the
 #: fit-window rule changes; the feature hash below catches everything else.
@@ -179,9 +210,77 @@ HORIZON_MONTHS = 12
 RADIUS_M = 400.0
 CRS_METRIC = "EPSG:32618"
 
+#: THE FIT FRAME, and it is not negotiable. Every coefficient in this module is
+#: estimated on `frame='lot'` rows and nothing else. A street midpoint (D84) has
+#: no PLUTO lot of its own and `units_capped = 0` on all 50,199 of them, so it
+#: contributes nothing to the homes denominator it is measured against; letting
+#: one into the fit would move every coefficient for a reason that is an
+#: artefact of how the point was constructed rather than anything about the
+#: block. `build_fit_panel` calls `load_points` with this frame, always.
 FRAME = "lot"
+FIT_FRAME = FRAME
+
+#: THE SCORING FRAMES. The fitted model is APPLIED to both frames (owner ruling
+#: 2026-09-16 (4): "frame='street' points get everything the lot frame has,
+#: including a forecast"). This is a strictly larger PREDICTION set, not a
+#: larger training set -- see `issue` and `street_frame_readiness`.
+#:
+#: sql/028's original header said street rows were excluded because "street
+#: midpoints have no residents, so the homes denominator of supply_ratio would
+#: be structurally zero". That reason does not survive reading `homes_within`:
+#: the homes denominator is PLUTO units within 400 m of the point, drawn from
+#: the LOT frame only (`WHERE frame = 'lot' AND units_capped > 0`). A street
+#: midpoint's own zero units never entered anybody's denominator, including its
+#: own; what it gets is the units on the lots around it, which is exactly the
+#: quantity the feature means. The exclusion was over-cautious, not wrong-signed.
+SCORE_FRAMES: tuple[str, ...] = ("lot", "street")
+
+#: `analysis.forecast.support` vocabulary. 'fitted'/'pooled' say WHICH model
+#: produced the row. 'street_no_homes' says the row is a placeholder and not a
+#: forecast: a street midpoint with zero PLUTO residential units inside its
+#: 400 m disc, where `log_homes` and `supply_ratio` both collapse to their
+#: zero-information value and the logit would be extrapolating outside the
+#: entire fit support (every lot row that trains the model has homes > 0).
+#: The row is still WRITTEN -- dropping it would be an eligibility gate, which
+#: the owner forbade on 2026-09-13 -- and it is labelled so that nothing
+#: downstream can mistake the number for a prediction.
+SUPPORT_FITTED = "fitted"
+SUPPORT_POOLED = "pooled"
+SUPPORT_STREET_NO_HOMES = "street_no_homes"
+SUPPORT_VALUES: tuple[str, ...] = (SUPPORT_FITTED, SUPPORT_POOLED,
+                                   SUPPORT_STREET_NO_HOMES)
+
+#: Characters of the md5 kept in `analysis.forecast.features_hash`. 16 hex
+#: characters = 64 bits. This is an EQUALITY WITNESS for a feature vector, not
+#: a primary key: the birthday bound over 5.0M rows is ~7e-7, and a collision
+#: costs a wrong "these two vintages saw the same inputs" answer on one row,
+#: never a wrong row identity -- the identity is the four natural-key columns.
+FEATURES_HASH_CHARS = 16
+
+#: Above this many fit rows, a constant outcome or a constant regressor is a
+#: broken upstream join rather than a small sample, and `fit` refuses instead of
+#: handing statsmodels a singular Hessian. Fixtures sit in the tens of rows; a
+#: real fold-stack is 360,000.
+DEGENERATE_PANEL_MIN = 1_000
+
 BOROUGHS_CODE = ("MN", "BK")
-BOROUGHS_FULL = ("Manhattan", "Brooklyn")
+#: `analysis.poi_presence.borough` WAS spelled 'Manhattan'/'Brooklyn' and is now
+#: CODES ('MN'/'BK'), rewritten by `loci migrate-warehouse --step
+#: poi_presence_vocab` on 2026-09-16 so the warehouse has ONE borough
+#: vocabulary. This constant kept its name and changed its values.
+#:
+#: THIS IS THE FAILURE IT CAUSED, and it is why the guard below exists: the
+#: rewrite landed while these readers still filtered on the long form, so
+#: `WHERE p.borough IN ('Manhattan','Brooklyn')` matched ZERO rows. Nothing
+#: raised. The forecast fit panel came back with 360,000 rows, `own_gap_flag`
+#: TRUE everywhere, `log_score` 0.0 everywhere and ZERO positives in all 15
+#: categories -- every address in New York reading as a total gap. It was
+#: caught only because a design matrix with no variation made the logit's
+#: Hessian singular; had one category held a single opening, a fitted,
+#: plausible, entirely wrong vintage would have been issued and frozen.
+#:
+#: A wrong borough vocabulary does not error. It returns nothing.
+BOROUGHS_FULL = ("MN", "BK")
 
 ALL_CATEGORIES: tuple[str, ...] = tuple(CATEGORIES)
 
@@ -280,6 +379,18 @@ def model_version(semver: str = MODEL_SEMVER, *,
 class AlreadyIssuedError(RuntimeError):
     """`loci forecast issue` would silently overwrite an existing
     (issued_month, model_version) vintage without --force. See `guard_reissue`."""
+
+
+class StreetFrameNotReadyError(RuntimeError):
+    """`issue` was asked to score `frame='street'` rows on a warehouse that
+    cannot yet supply what a street row needs.
+
+    RAISED RATHER THAN COALESCED, and that is the whole point. The alternative
+    -- fill the missing feature with a zero or a median and write the row -- is
+    the bug class this project has been bitten by twice: a zero in a feature
+    that means "none here" is indistinguishable from a zero that means "we did
+    not look", and the second one manufactures a gap the map then draws.
+    """
 
 
 def live_supply_hash(con, supply_set: str | None = None) -> str:
@@ -383,9 +494,32 @@ def ensure_schema(con) -> None:
     030 runs AFTER 028 unconditionally, not only on a fresh database: a
     warehouse that already has analysis.forecast_run from before 0.1.1 needs
     the ALTER applied too, and `loci init-db` is not guaranteed to have run
-    again since 030 landed."""
+    again since 030 landed.
+
+    045 runs after both, and only if the file exists — this module is written
+    to the reshaped contract but does not own the migration that performs the
+    reshape, and a warehouse whose sql/ predates it must still open."""
     con.execute(SQL_028.read_text())
     con.execute(SQL_030.read_text())
+    if SQL_045.exists():
+        con.execute(SQL_045.read_text())
+
+
+def schema_is_reshaped(con) -> bool:
+    """True once `analysis.forecast` is on the natural-key contract: no
+    `forecast_id`, and a `features_hash`.
+
+    ASKED OF THE CATALOGUE, NOT OF THE FILESYSTEM. Whether sql/045 exists in
+    this checkout says nothing about whether it has been APPLIED to the
+    warehouse in front of us, and a peer session's database is the case that
+    matters. Callers that must not half-write use this; `_write_vintage` does
+    not, because a named-column INSERT against the old table fails loudly on
+    its own (`forecast_id` is NOT NULL with no default) and a loud failure is
+    the correct outcome there."""
+    cols = {r[0] for r in con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'analysis' AND table_name = 'forecast'").fetchall()}
+    return bool(cols) and "forecast_id" not in cols and "features_hash" in cols
 
 
 def require_schema(con) -> None:
@@ -863,6 +997,43 @@ def fit(panel: pd.DataFrame, *, support: dict[str, int],
                 and p.loc[p["category"] == c, "y"].nunique() == 2)
         for c in cat_levels}
 
+    # REFUSE A DEGENERATE PANEL RATHER THAN FIT ONE.
+    #
+    # On 2026-09-16 the borough-vocabulary rewrite left these readers filtering
+    # `poi_presence.borough` on the OLD long-form spelling, so the supply lookup
+    # matched zero rows. The panel arrived with 360,000 rows, `own_gap_flag`
+    # TRUE everywhere, `log_score` 0.0 everywhere and ZERO positives in all 15
+    # categories -- every address in New York reading as a total gap -- and the
+    # only reason a wrong vintage was not issued and FROZEN is that a design
+    # matrix with no variation happened to make the logit's Hessian singular.
+    # `LinAlgError: Singular matrix` is not a diagnosis; these checks are.
+    #
+    # Each names the quantity that is degenerate, because "the fit failed" sends
+    # the reader to statsmodels and "the outcome is constant" sends them to the
+    # supply join, which is where the bug actually was.
+    # The checks apply only to a panel big enough for their premise to hold. A
+    # 12-row fixture with no openings is a test exercising the SCORING path; a
+    # 360,000-row panel with no openings is a broken join. DEGENERATE_PANEL_MIN
+    # sits far above any fixture and far below a real fold-stack (360,000).
+    n_pos = int(p["y"].sum())
+    if len(p) >= DEGENERATE_PANEL_MIN and n_pos == 0:
+        raise RuntimeError(
+            f"fit panel has {len(p):,} rows and ZERO positive outcomes across "
+            f"{len(cat_levels)} categories. The model cannot be fitted, and the "
+            f"cause is upstream of the fit: an opening-side join returning "
+            f"nothing. Check that the supply lookup's borough predicate matches "
+            f"`analysis.poi_presence.borough`'s CURRENT vocabulary (codes since "
+            f"2026-09-16) -- a wrong vocabulary returns no rows and never raises.")
+    degenerate = ([c for c in cols if p[c].nunique(dropna=True) <= 1]
+                  if len(p) >= DEGENERATE_PANEL_MIN else [])
+    if degenerate:
+        raise RuntimeError(
+            f"fit panel features {degenerate} are constant over {len(p):,} rows. "
+            f"A constant regressor cannot be identified, and a feature that is "
+            f"constant across all of New York is a broken input, not a finding. "
+            f"log_score = 0 and own_gap_flag = 1 everywhere means the supply "
+            f"lookup returned zero POIs.")
+
     pooled = _fit_logit_clustered(p, cols, cat_levels)
     pooled_names = _names(cols, cat_levels)
     coefs = {"pooled": {
@@ -1025,6 +1196,118 @@ def predict(fit_result: dict, panel: pd.DataFrame) -> tuple[np.ndarray, np.ndarr
 # ---------------------------------------------------------------------------
 # 4. issue
 # ---------------------------------------------------------------------------
+#: Tables a `frame='street'` scoring pass declares a dependency on, beyond what
+#: `frame='lot'` already needs. `address_demographics` is NOT read by any of the
+#: four features (see FEATURE_LIST) -- it is declared here anyway, and a missing
+#: one is FATAL, for a provenance reason rather than an arithmetic one: a
+#: vintage is a frozen claim about a warehouse state, and issuing the first
+#: street rows against a warehouse where half the street-frame measures do not
+#: exist yet produces a vintage nobody can re-derive once the sibling build
+#: lands. The 50,199 street rows have zero demographics rows as of 2026-09-16.
+STREET_PREREQUISITE_TABLES: tuple[tuple[str, str], ...] = (
+    ("analysis", "address_demographics"),
+)
+
+
+def _relation_exists(con, schema: str, name: str) -> bool:
+    return bool(con.execute(
+        "SELECT count(*) FROM information_schema.tables "
+        "WHERE table_schema = ? AND table_name = ?",
+        [schema, name]).fetchone()[0])
+
+
+def street_frame_readiness(con, *, boroughs: tuple[str, ...] = BOROUGHS_CODE,
+                           require_demographics: bool = True) -> dict:
+    """Can this warehouse score `frame='street'` HONESTLY? A pure read.
+
+    Returns counts plus `blockers` -- the reasons `issue` must refuse. Two
+    kinds of thing are checked and they are not the same kind:
+
+      A MODEL FEATURE THAT IS MISSING is always a blocker. `retail_index`
+      (D82 character, `analysis.address_character`) is the only one of the four
+      that is read off the address rather than computed from the point's
+      coordinates, so it is the only one that CAN be missing. A NULL there
+      today is filled with the panel median by `frozen_features`; that fill is
+      harmless on the lot frame where the column is 100% populated and would be
+      a fabricated feature on a frame where it is not, so this refuses first.
+
+      A DECLARED PREREQUISITE THAT IS MISSING is a blocker by policy, not by
+      arithmetic -- see STREET_PREREQUISITE_TABLES.
+
+    NOT a blocker: `homes = 0`. That is a real, measured property of the
+    midpoint (no PLUTO residential units inside its 400 m disc), not an
+    absence of measurement, and its rows are written with
+    `support = 'street_no_homes'` rather than refused -- see SUPPORT_VALUES.
+    """
+    bor = ", ".join(f"'{b}'" for b in boroughs)
+    row = con.execute(f"""
+        SELECT count(*)                                            AS n_street,
+               count(*) FILTER (WHERE a.lon IS NULL OR a.lat IS NULL) AS n_no_coords,
+               count(*) FILTER (WHERE c.retail_index IS NULL)      AS n_no_retail_index,
+               count(*) FILTER (WHERE a.nta_code IS NULL)          AS n_no_nta
+        FROM analysis.address a
+        LEFT JOIN analysis.address_character c USING (address_id)
+        WHERE a.frame = 'street' AND a.borough IN ({bor})
+    """).fetchone()
+    out = {"n_street": int(row[0]), "n_no_coords": int(row[1]),
+           "n_no_retail_index": int(row[2]), "n_no_nta": int(row[3]),
+           "prerequisites": {}, "blockers": []}
+
+    # AN EMPTY FRAME IS NOT A BLOCKER. A warehouse with no street rows at all
+    # -- a second city, a scratch fixture -- has nothing to score on that frame
+    # and nothing to get wrong. Refusing there would make the street frame a
+    # requirement rather than an addition, and `score/` and `model/` are meant
+    # to be city-agnostic.
+    if out["n_street"] == 0:
+        out["ready"] = True
+        return out
+    if out["n_no_retail_index"]:
+        out["blockers"].append(
+            f"{out['n_no_retail_index']:,} of {out['n_street']:,} street "
+            "addresses have a NULL analysis.address_character.retail_index, "
+            "which is a MODEL FEATURE (FEATURE_LIST). Refusing rather than "
+            "median-filling it: a filled feature is a fabricated one.")
+
+    for schema, name in STREET_PREREQUISITE_TABLES:
+        rel = f"{schema}.{name}"
+        if not _relation_exists(con, schema, name):
+            out["prerequisites"][rel] = None
+            if require_demographics:
+                out["blockers"].append(
+                    f"{rel} does not exist; the street frame declares it as a "
+                    "prerequisite (STREET_PREREQUISITE_TABLES)")
+            continue
+        covered = int(con.execute(f"""
+            SELECT count(*) FROM analysis.address a
+            JOIN {rel} d USING (address_id)
+            WHERE a.frame = 'street' AND a.borough IN ({bor})
+        """).fetchone()[0])
+        out["prerequisites"][rel] = covered
+        if covered < out["n_street"] and require_demographics:
+            out["blockers"].append(
+                f"{rel} covers {covered:,} of {out['n_street']:,} street "
+                "addresses; the street frame declares it as a prerequisite "
+                "(STREET_PREREQUISITE_TABLES)")
+
+    out["ready"] = not out["blockers"]
+    return out
+
+
+def require_street_frame_ready(con, *, boroughs: tuple[str, ...] = BOROUGHS_CODE,
+                               require_demographics: bool = True) -> dict:
+    """`street_frame_readiness`, raising `StreetFrameNotReadyError` when it is
+    not. Called by `issue` BEFORE the fit, so a warehouse that cannot support
+    the street frame costs a query rather than forty minutes."""
+    rep = street_frame_readiness(con, boroughs=boroughs,
+                                 require_demographics=require_demographics)
+    if rep["blockers"]:
+        raise StreetFrameNotReadyError(
+            "cannot score frame='street' on this warehouse:\n  - "
+            + "\n  - ".join(rep["blockers"])
+            + "\n(pass score_frames=('lot',) to issue the lot frame alone)")
+    return rep
+
+
 def build_fit_panel(con, issued_month: str, *, radius_m: float = RADIUS_M,
                     horizon: int = HORIZON_MONTHS,
                     sample_n: int = FIT_SAMPLE_N,
@@ -1033,11 +1316,17 @@ def build_fit_panel(con, issued_month: str, *, radius_m: float = RADIUS_M,
                     points: pd.DataFrame | None = None) -> tuple[pd.DataFrame, dict]:
     """The stacked training folds. NOTHING dated on or after `issued_month`.
 
+    THE FIT UNIVERSE IS `FIT_FRAME` ONLY, and the 2026-09-16 street-frame work
+    did not touch it. `load_points` is called here with `frame=FIT_FRAME`
+    explicitly rather than by default, so that a later session widening the
+    SCORING frames cannot widen this one by editing one default. A street
+    midpoint in the fit would move every coefficient.
+
     Returns (panel, support) where support is the per-category dated-opening
     count over the union of the fold outcome windows."""
     m0 = month_first(issued_month)
     if points is None:
-        points = load_points(con, limit=sample_n)
+        points = load_points(con, limit=sample_n, frame=FIT_FRAME)
     if anchor is None:
         anchor = points
     homes = homes_within(con, points, radius_m=radius_m)
@@ -1082,9 +1371,25 @@ def issue(con, month: str, *, version: str | None = None,
           categories: tuple[str, ...] = ALL_CATEGORIES,
           limit_points: int | None = None,
           supply_set: str | None = None,
+          score_frames: tuple[str, ...] = SCORE_FRAMES,
+          require_street_demographics: bool = True,
           dry_run: bool = False, progress=None, write_con=None) -> dict:
-    """Fit on data available at `month`, predict every lot address x category,
-    and write the vintage.
+    """Fit on the LOT frame, predict every address x category in
+    `score_frames`, and write the vintage.
+
+    ONE UNIVERSE FITS, TWO ARE SCORED, and the asymmetry is the point.
+    `build_fit_panel` is called with `FIT_FRAME` and nothing else, so every
+    coefficient in `res` is estimated on lot rows exactly as it was before
+    2026-09-16. `score_frames` changes which rows that ALREADY-FITTED model is
+    applied to (owner ruling (4): street points get everything the lot frame
+    has, including a forecast). Adding 'street' cannot move a coefficient; it
+    can only add rows.
+
+    A street row is refused outright, before the fit, if the warehouse cannot
+    feed it honestly -- see `require_street_frame_ready`. It is written with
+    `support = 'street_no_homes'` when its 400 m disc holds no PLUTO
+    residential units: a measured deficiency, labelled, never a silent zero
+    and never a dropped address.
 
     IDEMPOTENT PER (issued_month, model_version) by DELETE-then-INSERT. Running
     the same model on the same month twice reproduces that month's answer;
@@ -1104,14 +1409,31 @@ def issue(con, month: str, *, version: str | None = None,
     function is the single-handle form: it is what the tests use, and what a
     caller who already holds a writable handle wants."""
     validate_month(month)
+    frames = tuple(score_frames)
+    unknown = [f for f in frames if f not in SCORE_FRAMES]
+    if unknown:
+        raise ValueError(f"unknown score frame(s) {unknown}; "
+                         f"expected a subset of {list(SCORE_FRAMES)}")
+    if FIT_FRAME not in frames:
+        raise ValueError(
+            f"score_frames={list(frames)} omits the fit frame {FIT_FRAME!r}. "
+            "A vintage that scores the street frame and not the lot frame "
+            "would be a model applied only where it was never fitted.")
     ver, shash = resolve_version(con, version=version, horizon=horizon,
                                  radius_m=radius_m, supply_set=supply_set)
     m0 = month_first(month)
     say = progress or (lambda *_: None)
     say(f"supply hash this vintage fits on: {shash}")
 
+    # BEFORE THE FIT, not after it. The refusal costs four queries; discovering
+    # it after the forty-minute prediction pass costs the pass.
+    street_ready = None
+    if "street" in frames:
+        street_ready = require_street_frame_ready(
+            con, require_demographics=require_street_demographics)
+
     say(f"1/5 frames — fit sample {sample_n:,}, anchor = the same sample")
-    fit_points = load_points(con, limit=sample_n)
+    fit_points = load_points(con, limit=sample_n, frame=FIT_FRAME)
     say("2/5 fit panel (two folds, both ending before the issue month)")
     panel, support = build_fit_panel(con, month, radius_m=radius_m,
                                      horizon=horizon, sample_n=sample_n,
@@ -1120,20 +1442,38 @@ def issue(con, month: str, *, version: str | None = None,
     say(f"3/5 fit — {len(panel):,} rows, {panel['nta_code'].nunique()} NTAs")
     res = fit(panel, support=support)
 
-    say("4/5 prediction frame — every lot address in MN+BK x 15 categories")
-    pred_points = load_points(con, limit=limit_points)
-    pred_points = with_surprise_cell(pred_points)
+    # ONE ANCHOR, COMPUTED ONCE, ON THE LOT FIT SAMPLE — for every scored
+    # frame. A street-specific base median would make `log_score` mean a
+    # different thing on the two frames and the pooled coefficient would be
+    # multiplying two different quantities.
     anchors = base_medians(con, fit_points, m0, radius_m=radius_m,
                            categories=categories)
-    # `surprise_cell` rides in on `pred_points` through frozen_features' own
-    # merge of the point attributes; re-merging it here would collide.
-    pred = frozen_features(con, pred_points, m0, anchors=anchors,
-                           radius_m=radius_m, categories=categories)
-    pred = pred[pred["homes"] > 0].copy()
 
-    p, is_fitted = predict(res, pred)
-    pred["p_opening"] = np.clip(p, 1e-9, 1 - 1e-9)
-    pred["support"] = np.where(is_fitted, "fitted", "pooled")
+    say(f"4/5 prediction frames — {', '.join(frames)} in MN+BK x "
+        f"{len(categories)} categories")
+    blocks, by_frame = [], {}
+    for frame in frames:
+        block = _predict_frame(con, res, frame=frame, t0=m0, anchors=anchors,
+                               radius_m=radius_m, categories=categories,
+                               limit_points=limit_points, progress=say)
+        by_frame[frame] = {
+            "n_rows": int(len(block)),
+            "n_addresses": int(block["point_id"].nunique()) if len(block) else 0,
+            "n_street_no_homes": int(
+                (block["support"] == SUPPORT_STREET_NO_HOMES).sum()),
+        }
+        # An empty block is DROPPED rather than concatenated. `pd.concat` on a
+        # frame with a subset of the columns fills the rest with NaN, and a NaN
+        # in `retail_index` is exactly the silent hole `_write_vintage` refuses
+        # -- it would turn "this frame has no rows" into "this frame has rows
+        # with no features".
+        if len(block):
+            blocks.append(block)
+    if not blocks:
+        raise RuntimeError(
+            f"no prediction rows on any of {list(frames)} — refusing to write "
+            "an empty vintage")
+    pred = pd.concat(blocks, ignore_index=True) if len(blocks) > 1 else blocks[0]
 
     say(f"5/5 write — {len(pred):,} rows, vintage {month} / {ver}")
     n_written = 0
@@ -1144,13 +1484,78 @@ def issue(con, month: str, *, version: str | None = None,
                                    horizon=horizon, t0=m0)
         _write_run(w, month=month, version=ver, horizon=horizon,
                    radius_m=radius_m, res=res, support=support,
-                   n_rows=n_written, anchors=anchors, supply_hash=shash)
+                   n_rows=n_written, anchors=anchors, supply_hash=shash,
+                   by_frame=by_frame)
 
     return {"issued_month": month, "model_version": ver, "supply_hash": shash,
             "horizon_months": horizon, "radius_m": radius_m,
             "fit": res, "support": support, "anchors": anchors,
+            "score_frames": list(frames), "by_frame": by_frame,
+            "street_readiness": street_ready,
             "n_rows_issued": int(n_written), "n_rows_predicted": int(len(pred)),
             "dry_run": bool(dry_run), "_pred": pred, "_t0": m0}
+
+
+def _predict_frame(con, res: dict, *, frame: str, t0: dt.date,
+                   anchors: dict, radius_m: float,
+                   categories: tuple[str, ...],
+                   limit_points: int | None = None,
+                   progress=None) -> pd.DataFrame:
+    """Score ONE frame with the ALREADY-FITTED `res`. Returns the prediction
+    block with `frame`, `p_opening` and `support` attached.
+
+    The two frames are scored in SEPARATE calls rather than in one concatenated
+    panel on purpose. `frozen_features` fills a NULL `retail_index` with the
+    PANEL median; pooling the frames would make the lot frame's fill depend on
+    the street frame's distribution, so lot output would stop being
+    reproducible from a lot-only run. Separate calls keep the lot block
+    byte-identical to what this module produced before the street frame existed.
+    """
+    say = progress or (lambda *_: None)
+    points = load_points(con, limit=limit_points, frame=frame)
+    if points.empty:
+        return pd.DataFrame(columns=["point_id", "category", "frame",
+                                     "p_opening", "support"])
+    # THE REFUSAL, AT THE ROW LEVEL. `require_street_frame_ready` checks the
+    # whole frame up front; this catches the case where `limit_points` or a
+    # concurrent write moved the set under us. Not coalesced -- raised.
+    n_null_ri = int(points["retail_index"].isna().sum())
+    if n_null_ri and frame != FIT_FRAME:
+        raise StreetFrameNotReadyError(
+            f"{n_null_ri:,} of {len(points):,} frame={frame!r} points have a "
+            "NULL retail_index, which is a model feature. `frozen_features` "
+            "would fill it with the panel median; a fabricated feature is not "
+            "a forecast.")
+    points = with_surprise_cell(points)
+    # `surprise_cell` rides in on `points` through frozen_features' own merge
+    # of the point attributes; re-merging it here would collide.
+    block = frozen_features(con, points, t0, anchors=anchors,
+                            radius_m=radius_m, categories=categories)
+
+    if frame == FIT_FRAME:
+        # UNCHANGED FROM THE PRE-STREET CODE. A lot address with no homes in
+        # its own 400 m disc is dropped, as it always has been; every vintage
+        # in the ledger was written under this rule and changing it would make
+        # the 2026-09 re-issue incomparable to its five predecessors.
+        block = block[block["homes"] > 0].copy()
+        no_homes = np.zeros(len(block), dtype=bool)
+    else:
+        # THE STREET FRAME KEEPS ITS ZERO-HOMES ROWS AND LABELS THEM. Dropping
+        # them would be an eligibility gate (owner, 2026-09-13). 1,169 of the
+        # 50,199 street midpoints are in this state as of 2026-09-16 -- parks,
+        # water edges, industrial strips.
+        block = block.copy()
+        no_homes = (block["homes"] <= 0).to_numpy()
+
+    p, is_fitted = predict(res, block)
+    block["p_opening"] = np.clip(p, 1e-9, 1 - 1e-9)
+    support = np.where(is_fitted, SUPPORT_FITTED, SUPPORT_POOLED)
+    block["support"] = np.where(no_homes, SUPPORT_STREET_NO_HOMES, support)
+    block["frame"] = frame
+    n_flag = int(no_homes.sum())
+    say(f"  {frame}: {len(block):,} rows"
+        + (f", {n_flag:,} flagged {SUPPORT_STREET_NO_HOMES}" if n_flag else ""))
+    return block
 
 
 def issue_managed(month: str, *, progress=None, **kw) -> dict:
@@ -1188,7 +1593,8 @@ def issue_managed(month: str, *, progress=None, **kw) -> dict:
         _write_run(w, month=rep["issued_month"], version=rep["model_version"],
                    horizon=rep["horizon_months"], radius_m=rep["radius_m"],
                    res=rep["fit"], support=rep["support"], n_rows=n,
-                   anchors=rep["anchors"], supply_hash=rep["supply_hash"])
+                   anchors=rep["anchors"], supply_hash=rep["supply_hash"],
+                   by_frame=rep.get("by_frame"))
     finally:
         w.close()
     rep["n_rows_issued"] = int(n)
@@ -1246,45 +1652,130 @@ _FEATURES_JSON_SQL = (
 
 
 def _features_json_sql(t0: dt.date) -> str:
+    """THE single definition of the frozen-feature string. Nothing stores it
+    any more (sql/045 dropped `analysis.forecast.features_json`, 526 MiB of a
+    1,292 MiB table); it survives as the pre-image of `features_hash` and as
+    the thing a reader reconstructs when they need the VALUES back."""
     return _FEATURES_JSON_SQL % {"t0": t0.isoformat()}
+
+
+def _features_hash_sql(t0: dt.date, chars: int = FEATURES_HASH_CHARS) -> str:
+    """`features_hash`: the first `chars` characters of lower(md5(the string
+    above)), computed IN SQL over the same expression.
+
+    HASHED IN SQL, NOT IN PANDAS, and that is load-bearing. The pre-image is
+    built by DuckDB's own `round()` and `CAST(... AS VARCHAR)`; rebuilding it
+    in Python would reproduce those two formatting rules by eye, and the first
+    float that formatted differently would make two identical feature vectors
+    hash differently -- a false "the inputs changed" on a table whose entire
+    purpose is to answer that question truthfully.
+
+    WHAT IT CAN AND CANNOT ANSWER. Two rows with the same hash saw the same
+    seven-key feature block. Two rows with DIFFERENT hashes saw different
+    blocks -- but the block includes `"t0"`, the freeze date, so two vintages
+    of DIFFERENT issue months can never match even on identical features. The
+    comparison it is built for is the one the ledger actually has: the five
+    same-month 2026-09 re-issues, which share a t0.
+    """
+    return (f"substr(lower(md5({_features_json_sql(t0)})), 1, {int(chars)})")
+
+
+#: The columns `_write_vintage` INSERTs, in the order its SELECT emits them.
+#: Named, not positional: DuckDB binds an `INSERT ... SELECT` BY POSITION and
+#: ignores the aliases entirely, so the pre-2026-09-16 form here would have
+#: shifted every value one column left the first time sql/045 reordered the
+#: table, silently, with `borough` landing in `frame`. This is audit §4b's
+#: forecast.py:1261. The pair below is also what makes the sql/045 column drop
+#: a compile error rather than a data corruption.
+FORECAST_INSERT_COLUMNS: tuple[str, ...] = (
+    "issued_month", "horizon_months", "model_version", "address_id",
+    "category", "frame", "borough", "nta_code", "surprise_cell", "p_opening",
+    "expected_openings", "support", "features_hash", "frozen_at")
+
+#: Likewise for analysis.forecast_outcome. Its first four columns ARE the
+#: forecast's natural key -- `forecast_id` is gone from both tables and the
+#: join is on these, which is what it always restated.
+FORECAST_OUTCOME_INSERT_COLUMNS: tuple[str, ...] = (
+    "issued_month", "model_version", "address_id", "category", "scored_month",
+    "horizon_elapsed", "realized_openings", "realized_flag", "scored_at")
+
+#: The four columns that identify a forecast row, and the ONLY join key
+#: between analysis.forecast and analysis.forecast_outcome.
+FORECAST_KEY: tuple[str, ...] = ("issued_month", "model_version",
+                                 "address_id", "category")
+
+
+def _key_join(left: str, right: str, keys: tuple[str, ...] = FORECAST_KEY) -> str:
+    """`a.k = b.k AND ...` over the natural key. One definition, so a join that
+    forgets `model_version` -- which would fan a scored vintage out across
+    every other version of the same month -- cannot be written by hand."""
+    return " AND ".join(f"{left}.{k} = {right}.{k}" for k in keys)
 
 
 def _write_vintage(con, pred: pd.DataFrame, *, month: str, version: str,
                    horizon: int, t0: dt.date) -> int:
-    frame = pred[["point_id", "category", "borough", "nta_code", "surprise_cell",
-                  "p_opening", "support", "supply_ratio", "own_gap_flag",
-                  "homes", "retail_index", "supply", "base_median"]]
+    """DELETE + INSERT one vintage. NAMED COLUMNS on both statements.
+
+    `frame` comes off the prediction block, not off a module constant: the
+    block is the concatenation of one `_predict_frame` call per scored frame
+    and each one stamped its own. A literal here would have relabelled every
+    street row 'lot' the moment the street frame landed.
+    """
+    cols = ["point_id", "category", "frame", "borough", "nta_code",
+            "surprise_cell", "p_opening", "support", "supply_ratio",
+            "own_gap_flag", "homes", "retail_index", "supply", "base_median"]
+    missing = [c for c in cols if c not in pred.columns]
+    if missing:
+        raise ValueError(f"prediction block is missing {missing}; "
+                         "_predict_frame is the only thing that should build it")
+    frame = pred[cols]
+    # NO SILENT NULL INTO A NOT NULL COLUMN. The features_json pre-image is a
+    # concatenation, and one NULL term in a `||` chain makes the WHOLE string
+    # NULL, so a NULL retail_index would arrive as features_hash = NULL and be
+    # rejected by the DDL with a message that names the wrong thing. Say it
+    # here, where the cause is in scope.
+    bad = {c: int(frame[c].isna().sum())
+           for c in ("supply_ratio", "own_gap_flag", "homes", "retail_index",
+                     "supply", "base_median", "p_opening", "support", "frame")
+           if int(frame[c].isna().sum())}
+    if bad:
+        raise ValueError(
+            f"refusing to write a vintage with NULLs in {bad} — every one of "
+            "these feeds features_hash or a NOT NULL column, and a NULL here "
+            "means a feature was never measured, not that it is zero")
+    unknown_support = sorted(set(frame["support"].unique()) - set(SUPPORT_VALUES))
+    if unknown_support:
+        raise ValueError(f"support values {unknown_support} are outside "
+                         f"{list(SUPPORT_VALUES)}, which the DDL CHECKs")
+
     con.register("_fc_pred", frame)
     con.execute("DELETE FROM analysis.forecast "
                 "WHERE issued_month = ? AND model_version = ?", [month, version])
     con.execute(f"""
-        INSERT INTO analysis.forecast
-        -- THE NATURAL KEY, NOT A HASH OF IT. The first cut used
-        -- substr(md5(address || '|' || category), 1, 10) -- 40 bits over 4.2
-        -- million rows, which the birthday bound puts at
-        --     4.23e6^2 / (2 * 2^40) ~= 8 expected collisions,
-        -- and it duly collided on the very first vintage. A ledger's primary
-        -- key must be collision-free BY CONSTRUCTION, not with high
-        -- probability, so the id carries the address (a 10-character BBL) and
-        -- the category verbatim. It is longer and it is readable, and neither
-        -- of those is the point: the point is that two different doorways can
-        -- never be the same row.
-        SELECT 'f-' || replace('{month}', '-', '') || '-'
-               || substr('{version}', position('+' IN '{version}') + 1) || '-'
-               || point_id || '-' || category                       AS forecast_id,
-               '{month}'                                            AS issued_month,
+        INSERT INTO analysis.forecast ({', '.join(FORECAST_INSERT_COLUMNS)})
+        -- THE NATURAL KEY, AND NOTHING RESTATING IT. Until sql/045 this table
+        -- also carried `forecast_id` -- 'f-<YYYYMM>-<hash>-<address>-<cat>',
+        -- 257 MiB across 25.4M rows -- which was a pure concatenation of the
+        -- four columns below and of the PK they now form. Two earlier ideas
+        -- are worth not re-having: a 10-character md5 of (address, category)
+        -- is 40 bits over 4.2M rows, which the birthday bound puts at ~8
+        -- expected collisions and which duly collided on the first vintage;
+        -- and the readable concatenation that replaced it was correct but
+        -- stored the key twice. A ledger's identity must be collision-free BY
+        -- CONSTRUCTION, and the columns themselves are.
+        SELECT '{month}'                                            AS issued_month,
                {int(horizon)}                                       AS horizon_months,
                '{version}'                                          AS model_version,
                point_id                                             AS address_id,
-               category,
-               '{FRAME}'                                            AS frame,
-               borough,
-               nta_code,
-               surprise_cell,
-               p_opening,
+               category                                             AS category,
+               frame                                                AS frame,
+               borough                                              AS borough,
+               nta_code                                             AS nta_code,
+               surprise_cell                                        AS surprise_cell,
+               p_opening                                            AS p_opening,
                p_opening                                            AS expected_openings,
-               support,
-               {_features_json_sql(t0)}                             AS features_json,
+               support                                              AS support,
+               {_features_hash_sql(t0)}                             AS features_hash,
                now()                                                AS frozen_at
         FROM _fc_pred
     """)
@@ -1297,14 +1788,24 @@ def _write_vintage(con, pred: pd.DataFrame, *, month: str, version: str,
 
 def _write_run(con, *, month: str, version: str, horizon: int, radius_m: float,
                res: dict, support: dict, n_rows: int, anchors: dict,
-               supply_hash: str | None = None) -> None:
+               supply_hash: str | None = None,
+               by_frame: dict | None = None) -> None:
     con.execute("DELETE FROM analysis.forecast_run "
                 "WHERE issued_month = ? AND model_version = ?", [month, version])
+    # `scored_frames` / `fit_frame` ride inside support_json rather than in new
+    # columns: the run table already carries every other "what was this fit"
+    # fact as JSON, and one vintage-level dict is not worth a migration. It is
+    # the only place the fit/score asymmetry is written down per vintage --
+    # `analysis.forecast.frame` says which frame a ROW is, and nothing else
+    # would say that the street rows were scored by a lot-fitted model.
     support_json = json.dumps({
         "dated_openings_in_fit_window": support,
         "anchor_base_median_at_issue": anchors,
         "fitted_categories": res["fitted_categories"],
         "support_floor": SUPPORT_FLOOR,
+        "fit_frame": FIT_FRAME,
+        "scored_frames": sorted(by_frame) if by_frame else [FIT_FRAME],
+        "rows_by_frame": by_frame or {},
         "by_category_oos": res["by_category"]}, sort_keys=True, default=str)
     # EXPLICIT COLUMN LIST, not positional VALUES (?,?,...): `supply_hash`
     # (sql/030) was ADDed after this table's original CREATE, so it is the
@@ -1388,8 +1889,8 @@ def _score_prepare(con, issued_month: str, *, as_of: str | None = None,
             f"({elapsed} months elapsed)")
         # The realized counts are computed in pandas (the spatial join lives
         # there) but the 4.2-million-row JOIN TO THE VINTAGE is done in DuckDB.
-        # Pulling every forecast_id into a frame would be a gigabyte of 30-byte
-        # strings for a column that is only ever used as a join key.
+        # Pulling the whole vintage into a frame would be four million rows of
+        # key columns for something that is only ever used as a join key.
         pts = con.execute(f"""
             SELECT DISTINCT a.address_id AS point_id, a.lon, a.lat
             FROM analysis.address a
@@ -1441,9 +1942,9 @@ def _scored_frame(con, realized: pd.DataFrame, *, issued_month: str,
                   version: str) -> pd.DataFrame:
     """(category, support, p_opening, realized_flag) for every row of a vintage.
 
-    Small dtypes only — no forecast_id, no address_id. AUC and Brier need the
-    full (p, y) vectors and nothing else, and at 4.2M rows the difference
-    between carrying the keys and not is a gigabyte."""
+    Small dtypes only — none of the four key columns come back. AUC and Brier
+    need the full (p, y) vectors and nothing else, and at 4.2M rows the
+    difference between carrying the keys and not is a gigabyte."""
     con.register("_fc_real", realized[["address_id", "category",
                                        "realized_openings"]])
     df = con.execute("""
@@ -1467,6 +1968,12 @@ def _write_outcomes(con, realized: pd.DataFrame, *, issued_month: str,
     the vintage, not only the ones that saw an opening. A scoring pass that
     stored only the hits would produce a calibration curve with no denominator.
 
+    THE DELETE IS NOW A PREDICATE, NOT A SUBQUERY. It used to read
+    `forecast_id IN (SELECT forecast_id FROM analysis.forecast WHERE ...)` — a
+    scan of the 25M-row table to rediscover an (issued_month, model_version)
+    that this function was handed as an argument. Those two columns are on
+    `forecast_outcome` itself now, so the delete names them directly.
+
     `con` must be WRITABLE, and it reads `analysis.forecast` itself — a
     writable handle can read, and DuckDB will not give one process a second
     connection to the same file with a different configuration anyway."""
@@ -1475,15 +1982,20 @@ def _write_outcomes(con, realized: pd.DataFrame, *, issued_month: str,
                                        "realized_openings"]])
     con.execute("""
         DELETE FROM analysis.forecast_outcome
-        WHERE scored_month = ?
-          AND forecast_id IN (SELECT forecast_id FROM analysis.forecast
-                              WHERE issued_month = ? AND model_version = ?)
+        WHERE scored_month = ? AND issued_month = ? AND model_version = ?
     """, [scored_month, issued_month, version])
     con.execute(f"""
         INSERT INTO analysis.forecast_outcome
-        SELECT f.forecast_id, '{scored_month}', {int(elapsed)},
-               COALESCE(r.realized_openings, 0),
-               COALESCE(r.realized_openings, 0) > 0, now()
+               ({', '.join(FORECAST_OUTCOME_INSERT_COLUMNS)})
+        SELECT f.issued_month                        AS issued_month,
+               f.model_version                       AS model_version,
+               f.address_id                          AS address_id,
+               f.category                            AS category,
+               '{scored_month}'                      AS scored_month,
+               {int(elapsed)}                        AS horizon_elapsed,
+               COALESCE(r.realized_openings, 0)      AS realized_openings,
+               COALESCE(r.realized_openings, 0) > 0  AS realized_flag,
+               now()                                 AS scored_at
         FROM analysis.forecast f
         LEFT JOIN _fc_real r
                ON r.address_id = f.address_id AND r.category = f.category
@@ -1533,7 +2045,11 @@ def track_record(con) -> list[dict]:
                avg(CASE WHEN o.realized_flag THEN 1.0 ELSE 0.0 END) AS realized_rate,
                avg(f.p_opening)                                     AS mean_p
         FROM analysis.forecast f
-        JOIN analysis.forecast_outcome o ON o.forecast_id = f.forecast_id
+        JOIN analysis.forecast_outcome o
+          ON o.issued_month  = f.issued_month
+         AND o.model_version = f.model_version
+         AND o.address_id    = f.address_id
+         AND o.category      = f.category
         GROUP BY 1, 2, 3, 4
         ORDER BY 1, 2, 3
     """).fetchdf().to_dict("records")
@@ -1548,7 +2064,11 @@ def vintage_scores(con, issued_month: str, scored_month: str,
         SELECT f.model_version, f.category, f.support, f.p_opening,
                o.realized_flag, o.horizon_elapsed
         FROM analysis.forecast f
-        JOIN analysis.forecast_outcome o ON o.forecast_id = f.forecast_id
+        JOIN analysis.forecast_outcome o
+          ON o.issued_month  = f.issued_month
+         AND o.model_version = f.model_version
+         AND o.address_id    = f.address_id
+         AND o.category      = f.category
         WHERE f.issued_month = ? AND o.scored_month = ?
     """
     args = [issued_month, scored_month]
@@ -1630,12 +2150,15 @@ def due_for_scoring(con, today: dt.date | None = None) -> list[tuple[str, str, s
     ELAPSES, not when someone remembers."""
     require_schema(con)
     today = today or dt.date.today()
+    # The subquery used to re-join analysis.forecast to recover the vintage a
+    # forecast_id belonged to. `forecast_outcome` carries issued_month and
+    # model_version itself now, so the 25M-row table is out of this plan
+    # entirely — same answer, one scan instead of two.
     rows = con.execute("""
         SELECT f.issued_month, f.model_version, max(f.horizon_months) AS h,
                (SELECT count(*) FROM analysis.forecast_outcome o
-                 JOIN analysis.forecast g ON g.forecast_id = o.forecast_id
-                WHERE g.issued_month = f.issued_month
-                  AND g.model_version = f.model_version
+                WHERE o.issued_month  = f.issued_month
+                  AND o.model_version = f.model_version
                   AND o.horizon_elapsed >= max(f.horizon_months)) AS scored
         FROM analysis.forecast f
         GROUP BY 1, 2
@@ -1683,12 +2206,28 @@ def prunable_vintages(con, *, keep_vintages: int = DEFAULT_KEEP_VINTAGES,
     it has not been scored at all."""
     require_schema(con)
     today = today or dt.date.today()
+    # A DOUBLE-COUNT FIXED ON THE WAY PAST, and it was live. This used to
+    # aggregate over `analysis.forecast LEFT JOIN analysis.forecast_outcome`,
+    # so `count(*) AS n_rows` counted (forecast row x scored_month) pairs, not
+    # forecast rows. `forecast_outcome`'s key is (vintage, address, category,
+    # scored_month): the moment a vintage is scored at BOTH its 12-month and a
+    # 24-month as-of — which `--as-of` exists to do, and which sql/028 calls a
+    # different row rather than a correction — `n_rows` doubled and `prune`
+    # reported twice the rows it was about to delete. It never deleted the
+    # wrong rows (the DELETE is by vintage), but the number a human reads
+    # before authorising a prune was wrong, and it would have gone on being
+    # wrong silently. The vintage size is a property of `forecast` alone, so
+    # it is counted there alone; whether anything scored it is an EXISTS.
     df = con.execute("""
-        SELECT f.issued_month, f.model_version, max(f.horizon_months) AS horizon_months,
-               count(*)                                    AS n_rows,
-               count(DISTINCT o.forecast_id) > 0            AS has_outcome
+        SELECT f.issued_month,
+               f.model_version,
+               max(f.horizon_months)               AS horizon_months,
+               count(*)                            AS n_rows,
+               EXISTS (SELECT 1 FROM analysis.forecast_outcome o
+                        WHERE o.issued_month  = f.issued_month
+                          AND o.model_version = f.model_version)
+                                                   AS has_outcome
         FROM analysis.forecast f
-        LEFT JOIN analysis.forecast_outcome o ON o.forecast_id = f.forecast_id
         GROUP BY 1, 2
     """).fetchdf()
     cols = ["issued_month", "model_version", "horizon_months", "n_rows",
@@ -1717,20 +2256,35 @@ def _estimate_forecast_row_bytes(con, sample: int = 5000) -> float:
     DuckDB does not expose an exact per-row disk footprint over SQL, and
     getting one exactly right is not the point: `prune` prints this so a
     human can judge whether running it is worth the 45-minute write-lock
-    wait, not so a script can budget disk to the byte."""
+    wait, not so a script can budget disk to the byte.
+
+    IT MEASURES WHAT THE TABLE HAS. Until sql/045 this summed `forecast_id`
+    (257 MiB live) and `features_json` (526 MiB live), which together were
+    61% of the number it reported and are now not columns at all. A self-report
+    that keeps measuring dropped columns does not merely go stale — on DuckDB
+    it raises `Binder Error: Referenced column ... not found`, which is the
+    better of the two failure modes and still not one to ship. The list below
+    is derived from FORECAST_INSERT_COLUMNS so the two cannot drift again.
+    """
+    varchar_cols = ("issued_month", "model_version", "address_id", "category",
+                    "frame", "borough", "nta_code", "surprise_cell", "support",
+                    "features_hash")
+    assert set(varchar_cols) <= set(FORECAST_INSERT_COLUMNS), varchar_cols
+    # borough / nta_code / surprise_cell are the nullable three; the rest are
+    # NOT NULL in sql/045, and `coalesce` on them would only hide a violation.
+    nullable = {"borough", "nta_code", "surprise_cell"}
+    terms = " + ".join(
+        f"coalesce(length({c}), 0)" if c in nullable else f"length({c})"
+        for c in varchar_cols)
     row = con.execute(f"""
-        SELECT avg(length(forecast_id) + length(issued_month) +
-                   length(model_version) + length(address_id) +
-                   length(category) + length(frame) +
-                   coalesce(length(borough), 0) + coalesce(length(nta_code), 0) +
-                   coalesce(length(surprise_cell), 0) + length(support) +
-                   length(features_json)) AS avg_varchar_len
-        FROM (SELECT * FROM analysis.forecast USING SAMPLE {int(sample)} ROWS)
+        SELECT avg({terms}) AS avg_varchar_len
+        FROM (SELECT {', '.join(varchar_cols)}
+              FROM analysis.forecast USING SAMPLE {int(sample)} ROWS)
     """).fetchone()
-    avg_varchar = float(row[0]) if row and row[0] is not None else 200.0
-    # + ~40 bytes: two DOUBLEs, a TIMESTAMP, and DuckDB's per-string length
-    # prefix on the ten VARCHAR columns already summed above.
-    return avg_varchar + 40.0
+    avg_varchar = float(row[0]) if row and row[0] is not None else 120.0
+    # + ~36 bytes: two DOUBLEs, an INTEGER, a TIMESTAMP, and DuckDB's per-string
+    # length prefix on the ten VARCHAR columns already summed above.
+    return avg_varchar + 36.0
 
 
 def prune(con, *, keep_vintages: int = DEFAULT_KEEP_VINTAGES,

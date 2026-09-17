@@ -555,7 +555,7 @@ def build_transit_profile(
     boroughs: list[str] | None,
     radius_m: float = DEFAULT_RADIUS_M,
     graph_path: pathlib.Path = GRAPH_PATH,
-    months: int = 3,
+    months: int | None = None,   # None = every month the feed publishes
     use_entrances: bool = True,
     refresh: bool = False,
     reachable: pd.DataFrame | None = None,

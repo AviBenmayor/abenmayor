@@ -115,7 +115,7 @@
 -- by never mixing. NOTHING HERE IS COMPARABLE TO
 -- `analysis.address_category.supply_ratio_vs_base`, which is a network measure,
 -- and `analysis.address.homes_400m`, which is also a network measure, is NOT
--- the `homes_400m` frozen in `features_json`.
+-- the `homes_400m` frozen in the features (now witnessed by `features_hash`).
 --
 -- The bias has a known sign: a straight-line disc strictly CONTAINS the network
 -- catchment, so both the frozen supply and the realized outcome are
@@ -141,14 +141,43 @@ CREATE SCHEMA IF NOT EXISTS analysis;
 -- address in MN+BK gets a row in every category. Nothing is dropped for being
 -- unpromising -- a p_opening of 0.004 is a forecast, and it is the rows at the
 -- bottom of the distribution that make the calibration curve mean anything.
+-- ---------------------------------------------------------------------------
+-- RESHAPED 2026-09-16 (warehouse audit, owner ruling (1)).
+--
+-- GONE: `forecast_id` and `features_json`. `forecast_id` was
+-- 'f-'||issued_month||'-'||githash||'-'||address_id||'-'||category -- a pure
+-- restatement of the four-column key that already carried a UNIQUE index, for
+-- 257 MiB. `features_json` was a 7-key VARCHAR blob repeated 4.2M times per
+-- vintage, 526 MiB, and is the model INPUT: re-derivable, and read by nothing.
+--
+-- `features_hash` replaces it: the first 16 chars of md5 over the SAME string
+-- `model/forecast._features_json_sql` builds, so two vintages can still be
+-- asked "were these fitted on the same inputs?" -- the one question the blob
+-- was ever good for. It is a 64-bit equality WITNESS, not an identity; identity
+-- is the four key columns.
+--
+-- EVERY VINTAGE IS KEPT. The audit proposed one shipped vintage per
+-- issued_month; the owner overruled it on 2026-09-16. The frozen vintage is the
+-- point of this table and a query-time view cannot replace it.
+--
+-- An EXISTING warehouse is reshaped by `loci migrate-warehouse --step
+-- forecast_outcome_rekey --step forecast_slim`, NOT by a migration file:
+-- DuckDB has no `ALTER TABLE ... ADD CONSTRAINT` (verified 1.5.5, "No support
+-- for that ALTER TABLE option yet"), so moving the primary key means a full
+-- CREATE-INSERT-DROP-RENAME, which must not re-run on every session.
+-- `model/forecast.schema_is_reshaped(con)` asks the CATALOGUE, not the
+-- filesystem, so code can branch on it either way.
+-- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS analysis.forecast (
-    forecast_id       VARCHAR PRIMARY KEY,   -- f-<YYYYMM>-<version hash>-<address_id>-<category>
     issued_month      VARCHAR NOT NULL,      -- 'YYYY-MM'; features frozen at its FIRST day
     horizon_months    INTEGER NOT NULL,      -- 12
     model_version     VARCHAR NOT NULL,      -- '<semver>+<8 hex>'
     address_id        VARCHAR NOT NULL,
     category          VARCHAR NOT NULL,      -- one of the 15 loci slugs
-    frame             VARCHAR NOT NULL,      -- 'lot'
+    frame             VARCHAR NOT NULL DEFAULT 'lot',  -- 'lot' | 'street' (D84,
+                                             --   owner ruling 4 2026-09-16).
+                                             --   The FIT is lot-only; street
+                                             --   points are SCORED by it.
     borough           VARCHAR,
     nta_code          VARCHAR,
     surprise_cell     VARCHAR,               -- 800 m grid cell id; the variance
@@ -156,13 +185,18 @@ CREATE TABLE IF NOT EXISTS analysis.forecast (
     p_opening         DOUBLE  NOT NULL,      -- P(>=1 same-category opening within
                                              --   400 m in the horizon)
     expected_openings DOUBLE  NOT NULL,      -- = p_opening. See THE UNIT, below.
-    support           VARCHAR NOT NULL CHECK (support IN ('fitted', 'pooled')),
-    features_json     VARCHAR NOT NULL,      -- the FROZEN inputs, verbatim
-    frozen_at         TIMESTAMP NOT NULL
+    -- 'street_no_homes' marks a street midpoint with ZERO lot-frame homes in
+    -- its 400 m disc (1,169 of 50,199). Its p_opening is a real number and an
+    -- EXTRAPOLATION: every lot row that trains the model has homes > 0. The row
+    -- is written rather than dropped (no eligibility gate, owner 2026-09-13)
+    -- and rather than coalesced to zero (that manufactures a gap), and this
+    -- label is the only thing that says so.
+    support           VARCHAR NOT NULL
+        CHECK (support IN ('fitted', 'pooled', 'street_no_homes')),
+    features_hash     VARCHAR NOT NULL,      -- substr(md5(<frozen inputs>), 1, 16)
+    frozen_at         TIMESTAMP NOT NULL,
+    PRIMARY KEY (issued_month, model_version, address_id, category)
 );
-
-CREATE UNIQUE INDEX IF NOT EXISTS forecast_vintage_cell
-    ON analysis.forecast (issued_month, model_version, address_id, category);
 CREATE INDEX IF NOT EXISTS forecast_vintage
     ON analysis.forecast (issued_month, model_version);
 CREATE INDEX IF NOT EXISTS forecast_addr
@@ -280,13 +314,20 @@ CREATE TABLE IF NOT EXISTS analysis.forecast_run (
 -- of the score and does not by itself distort calibration; it does mean the
 -- absolute levels are not entry rates for New York.
 CREATE TABLE IF NOT EXISTS analysis.forecast_outcome (
-    forecast_id        VARCHAR NOT NULL,
+    -- Keyed on the forecast's NATURAL key, not on the dropped `forecast_id`.
+    -- `model_version` is load-bearing in that key and in every join to
+    -- analysis.forecast: without it a scored vintage fans out across all five
+    -- same-month 2026-09 re-issues.
+    issued_month       VARCHAR NOT NULL,
+    model_version      VARCHAR NOT NULL,
+    address_id         VARCHAR NOT NULL,
+    category           VARCHAR NOT NULL,
     scored_month       VARCHAR NOT NULL,    -- 'YYYY-MM', the AS-OF date of the score
     horizon_elapsed    INTEGER NOT NULL,    -- months from issued_month to scored_month
     realized_openings  INTEGER NOT NULL,    -- raw count in the disc; diagnostics only
     realized_flag      BOOLEAN NOT NULL,    -- the SCORED outcome
     scored_at          TIMESTAMP NOT NULL,
-    PRIMARY KEY (forecast_id, scored_month)
+    PRIMARY KEY (issued_month, model_version, address_id, category, scored_month)
 );
 
 CREATE INDEX IF NOT EXISTS forecast_outcome_month
@@ -335,7 +376,11 @@ scored AS (
            o.scored_month, o.horizon_elapsed, o.realized_openings, o.realized_flag,
            f.p_opening AS p_at_that_vintage
     FROM analysis.forecast f
-    JOIN analysis.forecast_outcome o ON o.forecast_id = f.forecast_id
+    JOIN analysis.forecast_outcome o
+      ON  o.issued_month  = f.issued_month
+      AND o.model_version = f.model_version
+      AND o.address_id    = f.address_id
+      AND o.category      = f.category
     QUALIFY row_number() OVER (
         PARTITION BY f.address_id, f.category
         ORDER BY o.scored_month DESC, o.horizon_elapsed DESC) = 1
@@ -351,7 +396,7 @@ SELECT fc.address_id,
        fc.p_opening,
        fc.expected_openings,
        fc.support,
-       fc.features_json,
+       fc.features_hash,
        s.scored_vintage_month,
        s.scored_model_version,
        s.scored_month,
@@ -430,7 +475,11 @@ WITH scored AS (
            f.p_opening AS p,
            (CASE WHEN o.realized_flag THEN 1 ELSE 0 END)                   AS y
     FROM analysis.forecast f
-    JOIN analysis.forecast_outcome o ON o.forecast_id = f.forecast_id
+    JOIN analysis.forecast_outcome o
+      ON  o.issued_month  = f.issued_month
+      AND o.model_version = f.model_version
+      AND o.address_id    = f.address_id
+      AND o.category      = f.category
     WHERE f.nta_code IS NOT NULL
 ),
 by_cat AS (

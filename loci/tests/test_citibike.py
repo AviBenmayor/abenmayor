@@ -496,11 +496,16 @@ def test_a_share_outside_zero_one_raises():
         ab.check_shares_in_bounds(bad)
 
 
-def test_write_zeroes_every_in_scope_lot_address_and_leaves_street_rows_null(warehouse):
+def test_write_zeroes_every_in_scope_address_in_both_frames(warehouse):
     """The no-eligibility-gate rule (owner 2026-09-13) must hold by WRITE, not
     by omission: an address with no dock gets 0.0 and a run_at, not a NULL that
-    reads as 'never measured'. Street-frame rows are a different question and
-    stay NULL."""
+    reads as 'never measured'.
+
+    Owner ruling 4 (2026-09-16) extended that to D84's street frame, which was
+    the LAST frame still storing "never computed" as an absence -- and stored it
+    in the same column, with the same NULL, as "measured, no dock nearby". This
+    test used to assert the opposite; it was rewritten, not relaxed, because the
+    behaviour it pinned is the behaviour the ruling reverses."""
     from loci.model import address_bike as ab
 
     reach = pd.DataFrame({"address_id": ["a1"], "borough": ["Brooklyn"],
@@ -523,7 +528,9 @@ def test_write_zeroes_every_in_scope_lot_address_and_leaves_street_rows_null(war
         assert d[aid][2] is None                   # ...but the share is undefined
         assert d[aid][3] is not None
     assert d["a4"][3] is None                      # Manhattan: out of scope
-    assert d["s1"][3] is None                      # street frame: not computed
+    assert d["s1"][1] == 0.0                       # street frame: measured, no dock
+    assert d["s1"][2] is None                      # ...share still undefined
+    assert d["s1"][3] is not None
 
 
 def test_bike_columns_do_not_collide_with_a_sibling_annotation():

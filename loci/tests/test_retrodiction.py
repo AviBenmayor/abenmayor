@@ -49,11 +49,14 @@ def con():
 
 
 def _add(con, key, cat, lon, lat, kind, date, principled=True,
-         borough="Brooklyn", field="opened_on"):
-    con.execute("INSERT INTO analysis.poi_presence VALUES (?,?,?,?,?,?,?,?,?,?)",
-                [key, cat, key, lon, lat, borough, kind, field, date, f"poi:{key}"])
-    con.execute("INSERT INTO analysis.poi_supply VALUES (?, ?)",
-                [f"poi:{key}", principled])
+         borough="BK", field="opened_on"):
+    con.execute(
+        "INSERT INTO analysis.poi_presence (location_key, category, display_name, "
+        "lon, lat, borough, first_seen_kind, first_seen_src_field, "
+        "first_seen_src_date, poi_id_latest) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        [key, cat, key, lon, lat, borough, kind, field, date, f"poi:{key}"])
+    con.execute("INSERT INTO analysis.poi_supply (poi_id, in_principled) "
+                "VALUES (?, ?)", [f"poi:{key}", principled])
 
 
 #: Gowanus-ish. At this latitude 0.001 deg of longitude is ~84 m, so the
@@ -232,7 +235,7 @@ def poi_con():
     return c
 
 
-def _pp(con, key, cat, kind, date, poi_id=None, closed_on=None, borough="Brooklyn"):
+def _pp(con, key, cat, kind, date, poi_id=None, closed_on=None, borough="BK"):
     con.execute(
         "INSERT INTO analysis.poi_presence "
         "(location_key, category, borough, first_seen_kind, first_seen_src_date, "
@@ -292,7 +295,7 @@ def test_cohort_events_open_poi_is_never_an_event(poi_con):
     _pp(poi_con, "k4", "restaurant", "source_date", dt.date(2023, 2, 1),
         poi_id="doh:1", closed_on=None)
     counts = rd.cohort_closure_events(poi_con, dt.date(2023, 1, 1), dt.date(2024, 12, 31),
-                                      boroughs=("Brooklyn",))
+                                      boroughs=("BK",))
     assert counts["n_cohort_events"] == 0
 
 
@@ -320,6 +323,12 @@ def gd_con(con):
     """The premises-year panel plus the lot register the score is built on."""
     con.execute("""CREATE TABLE analysis.storefront (
         storefront_id VARCHAR, premises_id VARCHAR, reporting_year INTEGER,
+        -- sql/012. `analysis.storefront` is one row per FILING: DOF publishes
+        -- a `universe = 'full'` annual filing AND a `vacant_only` supplement
+        -- for the same reporting_year, and these two columns are the only
+        -- thing that tells them apart. Present in the fixture because
+        -- `_premises_year_cte` has to pick ONE of them (audit finding 1).
+        filing_due_date DATE, universe VARCHAR,
         vacant_1231 BOOLEAN, construction_reported BOOLEAN, bbl VARCHAR,
         nta_code VARCHAR, borough VARCHAR, primary_business_activity VARCHAR,
         -- sql/041. The retrodiction panel spans 2019-2026 and so spans
@@ -332,17 +341,34 @@ def gd_con(con):
     con.execute("""CREATE TABLE analysis.address_character (
         address_id VARCHAR, retail_index DOUBLE)""")
     for i in range(40):                      # homes, so homes_t0 > 0 everywhere
-        con.execute("INSERT INTO analysis.address VALUES (?,?,?,?,?,?,?)",
-                    [f"a{i}", "lot", "BK", LON + 0.0001 * i, LAT, 50.0, "BK99"])
-        con.execute("INSERT INTO analysis.address_character VALUES (?, ?)",
-                    [f"a{i}", 0.5])
+        con.execute(
+            "INSERT INTO analysis.address (address_id, frame, borough, lon, lat, "
+            "units_capped, nta_code) VALUES (?,?,?,?,?,?,?)",
+            [f"a{i}", "lot", "BK", LON + 0.0001 * i, LAT, 50.0, "BK99"])
+        con.execute("INSERT INTO analysis.address_character "
+                    "(address_id, retail_index) VALUES (?, ?)", [f"a{i}", 0.5])
     return con
 
 
-def _premises(con, pid, year, vacant, activity="RETAIL", constr=False, jitter=0.0):
+#: DOF's two annual filings for one reporting_year. `full` is the annual
+#: filing of every registered premises; `vacant_only` is the supplement, which
+#: is by construction 100% vacant -- so pooling the two can only push the
+#: vacancy rate UP (audit finding 1).
+FULL_DUE = {y: dt.date(y + 1, 6, 3) for y in range(2019, 2027)}
+SUPP_DUE = {y: dt.date(y + 1, 2, 1) for y in range(2019, 2027)}
+
+
+def _premises(con, pid, year, vacant, activity="RETAIL", constr=False, jitter=0.0,
+              universe="full", sid=None):
     con.execute(
-        "INSERT INTO analysis.storefront VALUES (?,?,?,?,?,?,?,?,?,?,ST_Point(?,?))",
-        [f"{pid}#{year}", pid, year, vacant, constr, "3000010001", "BK99", "BK",
+        "INSERT INTO analysis.storefront (storefront_id, premises_id, "
+        "reporting_year, filing_due_date, universe, vacant_1231, "
+        "construction_reported, bbl, nta_code, borough, "
+        "primary_business_activity, activity_canonical, geom) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,ST_Point(?,?))",
+        [sid or f"{pid}#{year}#{universe}", pid, year,
+         (FULL_DUE if universe == "full" else SUPP_DUE)[year], universe,
+         vacant, constr, "3000010001", "BK99", "BK",
          # raw, then canonical: this fixture predates the recode era, so the
          # two agree. Present because the panel binds to the canonical column.
          activity, activity, LON + jitter, LAT])
@@ -386,19 +412,12 @@ def test_any_unit_vacant_makes_the_premises_dark(gd_con):
     """`bool_or` within a premises-year is the documented definition: a building
     counts as going dark when ANY reported unit does. Pinned so the grain
     cannot drift to 'all units' without a test failing."""
-    gd_con.execute(
-        "INSERT INTO analysis.storefront VALUES "
-        "('m#2022a','mixed',2022,FALSE,FALSE,'3000010001','BK99','BK','RETAIL','RETAIL',"
-        " ST_Point(?,?))", [LON, LAT])
-    gd_con.execute(
-        "INSERT INTO analysis.storefront VALUES "
-        "('m#2022b','mixed',2022,FALSE,FALSE,'3000010001','BK99','BK','RETAIL','RETAIL',"
-        " ST_Point(?,?))", [LON, LAT])
-    _premises(gd_con, "mixed", 2024, False)
-    gd_con.execute(
-        "INSERT INTO analysis.storefront VALUES "
-        "('m#2024b','mixed',2024,TRUE,FALSE,'3000010001','BK99','BK','RETAIL','RETAIL',"
-        " ST_Point(?,?))", [LON, LAT])
+    # Two UNITS in one premises on the SAME filing -- not two filings. That is
+    # what `bool_or` is for; the two-filings case is pinned separately below.
+    _premises(gd_con, "mixed", 2022, False, sid="m#2022a")
+    _premises(gd_con, "mixed", 2022, False, sid="m#2022b")
+    _premises(gd_con, "mixed", 2024, False, sid="m#2024a")
+    _premises(gd_con, "mixed", 2024, True, sid="m#2024b")
 
     p = rd.go_dark_panel(gd_con, attrition_is_event=False)
     assert int(p.set_index("premises_id").loc["mixed", "event"]) == 1
@@ -413,6 +432,66 @@ def test_the_score_counts_only_what_existed_at_t0(gd_con):
 
     p = rd.go_dark_panel(gd_con, attrition_is_event=False, include_censored=False)
     assert float(p["supply_all_t0"].iloc[0]) == 1.0
+
+
+# ---------------------------------------------------------------------------
+# AUDIT FINDING 1 -- the pooled filing. `analysis.storefront` is one row per
+# FILING; DOF publishes a `full` annual filing and a `vacant_only` supplement
+# for the same reporting_year. `GROUP BY premises_id, reporting_year` with
+# `bool_or(vacant_1231)` unions the two, and since the supplement is 100%
+# vacant by construction the error is one-directional: it can only invent
+# vacancy. Live 2023 read 16.93% vacant pooled against 15.95% corrected.
+# ---------------------------------------------------------------------------
+def test_the_vacant_only_supplement_never_pools_with_the_full_filing(gd_con):
+    """The premises filed FULL and not vacant for 2024, and also appears in the
+    vacant-only supplement. The full filing is the one that counts, so this is
+    NOT an event. `bool_or` over both would call it one."""
+    _premises(gd_con, "supp", 2022, False)
+    _premises(gd_con, "supp", 2024, False, universe="full")
+    _premises(gd_con, "supp", 2024, True, universe="vacant_only")
+    # a control that IS dark on its own full filing
+    _premises(gd_con, "dark", 2022, False)
+    _premises(gd_con, "dark", 2024, True, universe="full")
+
+    p = rd.go_dark_panel(gd_con, attrition_is_event=False)
+    ev = p.set_index("premises_id")["event"]
+    assert int(ev.loc["supp"]) == 0
+    assert int(ev.loc["dark"]) == 1
+
+
+def test_the_base_year_pick_is_the_full_filing_too(gd_con):
+    """The same rule at t0. A premises whose 2022 FULL filing says occupied is
+    AT RISK, even though the 2022 supplement lists it -- pooling would read it
+    as already dark and drop it from the panel entirely, silently shrinking the
+    cohort rather than visibly changing an answer."""
+    _premises(gd_con, "atrisk", 2022, False, universe="full")
+    _premises(gd_con, "atrisk", 2022, True, universe="vacant_only")
+    _premises(gd_con, "atrisk", 2024, False, universe="full")
+
+    p = rd.go_dark_panel(gd_con, attrition_is_event=False)
+    assert "atrisk" in set(p["premises_id"])
+    assert int(p.set_index("premises_id").loc["atrisk", "event"]) == 0
+
+
+def test_the_premises_year_cte_prefers_the_view_when_it_exists(gd_con):
+    """`analysis.storefront_year` resolves the double filing once, for every
+    reader. When the migration has landed this module must read it rather than
+    re-deriving the pick; when it has not, the fallback is the CORRECTED
+    inline rule, never the pooling one."""
+    assert "analysis.storefront_year" not in rd._premises_year_cte(gd_con)
+    assert "ARG_MAX" in rd._premises_year_cte(gd_con)
+
+    gd_con.execute("""
+        CREATE OR REPLACE VIEW analysis.storefront_year AS
+        SELECT premises_id, reporting_year, filing_due_date, universe, borough,
+               bbl, nta_code, activity_canonical, ST_X(geom) AS lon,
+               ST_Y(geom) AS lat, vacant_1231 AS vacant,
+               COALESCE(construction_reported, FALSE) AS constr,
+               1 AS n_storefronts
+        FROM analysis.storefront""")
+    cte = rd._premises_year_cte(gd_con)
+    assert "analysis.storefront_year" in cte
+    assert "ARG_MAX" not in cte
 
 
 def test_activity_groups_are_the_three_ll157_publishes():

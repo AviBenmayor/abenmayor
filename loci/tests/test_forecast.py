@@ -70,12 +70,140 @@ def add_address(con, aid, lon, lat, *, nta="BK0101", units=100.0, ri=0.4,
 
 
 def add_poi(con, key, cat, lon, lat, kind, date, *, principled=True,
-            borough="Brooklyn"):
+            borough="BK"):
     con.execute("INSERT INTO analysis.poi_presence VALUES (?,?,?,?,?,?,?,?,?,?)",
                 [key, cat, key, lon, lat, borough, kind, "opened_on", date,
                  f"poi:{key}"])
     con.execute("INSERT INTO analysis.poi_supply VALUES (?,?)",
                 [f"poi:{key}", principled])
+
+
+# ---------------------------------------------------------------------------
+# the ledger, on the NATURAL-KEY contract (sql/045, 2026-09-16)
+# ---------------------------------------------------------------------------
+#: THE TARGET CONTRACT, REHEARSED. sql/045_forecast_natural_key.sql is owned by
+#: the migration lead and had not landed when this module was written. Without
+#: it every ledger test here would SKIP, and "30 skipped" is not evidence that
+#: the module's SQL is right -- it is evidence that nothing ran. So when the
+#: real migration is absent these two statements stand in for it, and the
+#: moment it lands `schema_is_reshaped` is true, this block is never reached,
+#: and it should be deleted. It is a scaffold with an expiry date, not a second
+#: definition of the schema: `test_forecast_latest_holds_the_columns...` still
+#: skips, because the VIEWS come from sql/028 and nothing here can rehearse a
+#: view contract without becoming the thing it is supposed to be testing.
+REHEARSAL_FORECAST_DDL = """
+CREATE TABLE analysis.forecast (
+    issued_month      VARCHAR NOT NULL,
+    horizon_months    INTEGER NOT NULL,
+    model_version     VARCHAR NOT NULL,
+    address_id        VARCHAR NOT NULL,
+    category          VARCHAR NOT NULL,
+    frame             VARCHAR NOT NULL DEFAULT 'lot',
+    borough           VARCHAR,
+    nta_code          VARCHAR,
+    surprise_cell     VARCHAR,
+    p_opening         DOUBLE  NOT NULL,
+    expected_openings DOUBLE  NOT NULL,
+    support           VARCHAR NOT NULL
+        CHECK (support IN ('fitted', 'pooled', 'street_no_homes')),
+    features_hash     VARCHAR NOT NULL,
+    frozen_at         TIMESTAMP NOT NULL,
+    PRIMARY KEY (issued_month, model_version, address_id, category)
+)"""
+REHEARSAL_OUTCOME_DDL = """
+CREATE TABLE analysis.forecast_outcome (
+    issued_month      VARCHAR NOT NULL,
+    model_version     VARCHAR NOT NULL,
+    address_id        VARCHAR NOT NULL,
+    category          VARCHAR NOT NULL,
+    scored_month      VARCHAR NOT NULL,
+    horizon_elapsed   INTEGER NOT NULL,
+    realized_openings INTEGER NOT NULL,
+    realized_flag     BOOLEAN NOT NULL,
+    scored_at         TIMESTAMP NOT NULL,
+    PRIMARY KEY (issued_month, model_version, address_id, category, scored_month)
+)"""
+
+
+def ledger(con, monkeypatch):
+    """The ledger tables on the NATURAL-KEY contract (sql/045, 2026-09-16).
+
+    `analysis.forecast` lost `forecast_id` and `features_json` and gained
+    `features_hash`; `analysis.forecast_outcome` lost `forecast_id` for the
+    four natural-key columns. If the warehouse in front of us already has that
+    -- asked of the CATALOGUE, never of the filesystem, because what matters is
+    whether the migration was APPLIED -- this is just `ensure_schema`.
+
+    Otherwise it rehearses the two tables and neutralises `ensure_schema`,
+    which would otherwise re-run sql/028 and fail at `CREATE OR REPLACE VIEW`
+    (DuckDB binds a view's columns at CREATE, verified). `monkeypatch` undoes
+    that after the test.
+    """
+    fc.ensure_schema(con)
+    if fc.schema_is_reshaped(con):
+        return con
+    con.execute("DROP VIEW IF EXISTS analysis.forecast_surprise_nta")
+    con.execute("DROP VIEW IF EXISTS analysis.forecast_latest")
+    con.execute("DROP TABLE IF EXISTS analysis.forecast_outcome")
+    con.execute("DROP TABLE IF EXISTS analysis.forecast")
+    con.execute(REHEARSAL_FORECAST_DDL)
+    con.execute(REHEARSAL_OUTCOME_DDL)
+    monkeypatch.setattr(fc, "ensure_schema", lambda _c: None)
+    return con
+
+
+def ledger_with_views(con):
+    """For the cases that test sql/028's VIEWS -- `forecast_latest` and
+    `forecast_surprise_nta`. There is nothing honest to rehearse here: a
+    hand-copied view in this file would be testing the copy. SKIPS until the
+    migration lands."""
+    fc.ensure_schema(con)
+    if not fc.schema_is_reshaped(con):
+        pytest.skip(
+            "analysis.forecast is still on the forecast_id / features_json "
+            "contract, so sql/028's two VIEWS still select the dropped "
+            "columns. sql/045_forecast_natural_key.sql and the sql/028 edit "
+            "are owned by the migration lead and have not landed in this tree.")
+    return con
+
+
+#: Every column of analysis.forecast, in DDL order, NAMED. The tests write the
+#: ledger the same way the module does -- through a column list -- so that a
+#: future column reorder cannot make a test fixture quietly disagree with
+#: production about which value is `frame` and which is `borough`.
+FORECAST_COLS = ("issued_month", "horizon_months", "model_version",
+                 "address_id", "category", "frame", "borough", "nta_code",
+                 "surprise_cell", "p_opening", "expected_openings", "support",
+                 "features_hash", "frozen_at")
+OUTCOME_COLS = ("issued_month", "model_version", "address_id", "category",
+                "scored_month", "horizon_elapsed", "realized_openings",
+                "realized_flag", "scored_at")
+
+#: A stand-in pre-image hash. Sixteen hex characters, the width
+#: `fc.FEATURES_HASH_CHARS` fixes; no test here asserts anything about its
+#: VALUE except in `test_features_hash_*`, which computes it for real.
+HASH16 = "0123456789abcdef"
+
+
+def ins_forecast(con, *, issued_month, address_id, category="restaurant",
+                 model_version="v1", horizon=12, frame="lot", borough="BK",
+                 nta="BK0101", cell="0:0", p=0.5, support="pooled",
+                 features_hash=HASH16, frozen_at=None):
+    con.execute(
+        f"INSERT INTO analysis.forecast ({', '.join(FORECAST_COLS)}) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, COALESCE(?::TIMESTAMP, now()))",
+        [issued_month, horizon, model_version, address_id, category, frame,
+         borough, nta, cell, p, p, support, features_hash, frozen_at])
+
+
+def ins_outcome(con, *, issued_month, address_id, scored_month,
+                category="restaurant", model_version="v1", elapsed=12,
+                realized=0, flag=None):
+    con.execute(
+        f"INSERT INTO analysis.forecast_outcome ({', '.join(OUTCOME_COLS)}) "
+        "VALUES (?,?,?,?,?,?,?,?, now())",
+        [issued_month, model_version, address_id, category, scored_month,
+         elapsed, realized, bool(realized > 0) if flag is None else flag])
 
 
 # ===========================================================================
@@ -165,14 +293,79 @@ def test_the_scoring_window_is_half_open(con, date, counts):
     assert (n == 1) is counts, f"{date} counted={n}, expected {counts}"
 
 
-def test_scoring_refuses_an_as_of_that_is_not_after_the_issue_month(con):
+def test_scoring_refuses_an_as_of_that_is_not_after_the_issue_month(con, monkeypatch):
     add_address(con, "a1", LON, LAT)
-    fc.ensure_schema(con)
-    con.execute("""INSERT INTO analysis.forecast VALUES
-        ('f1','2023-01',12,'0.1.0+abcdabcd','a1','restaurant','lot','BK','BK0101',
-         '0:0',0.5,0.5,'pooled','{}', now())""")
+    ledger(con, monkeypatch)
+    ins_forecast(con, issued_month="2023-01", model_version="0.1.0+abcdabcd",
+                 address_id="a1")
     with pytest.raises(ValueError, match="no window to score"):
         fc.score(con, "2023-01", as_of="2023-01", dry_run=True)
+
+
+def test_scoring_writes_one_outcome_row_per_forecast_and_rescoring_replaces_it(con, monkeypatch):
+    """THE SCORING ROUND TRIP on the natural key, end to end.
+
+    `forecast_outcome` lost `forecast_id`; the four key columns it used to
+    concatenate are on the row itself now, and the DELETE that makes a re-score
+    idempotent names them instead of re-scanning the 25M-row forecast table for
+    a vintage it was handed as an argument. Three things are asserted and all
+    three would have been satisfied by a join that silently fanned out:
+
+      * one outcome row per forecast row, not more (a wrong join key would
+        multiply them, and every realized rate downstream with them);
+      * ZERO IS A REAL OBSERVATION -- the row exists for the discs that saw
+        nothing, because a calibration curve without a denominator is not one;
+      * re-scoring the same (vintage, as-of) REPLACES; it does not accumulate.
+    """
+    for i in range(6):
+        add_address(con, f"a{i}", LON + 0.004 * i, LAT, nta=f"BK010{i % 2}")
+    for i in range(8):
+        add_poi(con, f"o{i}", "restaurant", LON + 0.004 * (i % 6) + 0.0005, LAT,
+                "source_date", dt.date(2023, 5, 1))
+    ledger(con, monkeypatch)
+    rep = fc.issue(con, "2025-01", categories=("restaurant",), sample_n=6)
+    n_fc = rep["n_rows_issued"]
+    assert n_fc == 6
+
+    # one same-category opening inside a0's disc, inside the horizon
+    add_poi(con, "hit", "restaurant", LON + 0.0005, LAT, "source_date",
+            dt.date(2025, 6, 1))
+    fc.score(con, "2025-01", as_of="2026-01")
+
+    rows = con.execute("""
+        SELECT count(*), count(DISTINCT (issued_month, model_version,
+                                         address_id, category)),
+               sum(CASE WHEN realized_flag THEN 1 ELSE 0 END)
+        FROM analysis.forecast_outcome
+    """).fetchone()
+    assert rows[0] == n_fc, "outcome rows fanned out against the forecast"
+    assert rows[1] == n_fc
+    assert rows[2] >= 1, "the opening inside the horizon was not realized"
+
+    # every outcome row joins back to exactly one forecast row
+    fan = con.execute(f"""
+        SELECT count(*) FROM analysis.forecast f
+        JOIN analysis.forecast_outcome o
+               ON {fc._key_join('o', 'f')}
+    """).fetchone()[0]
+    assert fan == n_fc
+
+    fc.score(con, "2025-01", as_of="2026-01")
+    assert con.execute("SELECT count(*) FROM analysis.forecast_outcome"
+                       ).fetchone()[0] == n_fc, "re-scoring accumulated"
+
+    # a SECOND as-of is a different row on the same forecasts, not a correction
+    fc.score(con, "2025-01", as_of="2027-01")
+    assert con.execute("SELECT count(*) FROM analysis.forecast_outcome"
+                       ).fetchone()[0] == 2 * n_fc
+    assert {r[0] for r in con.execute(
+        "SELECT DISTINCT horizon_elapsed FROM analysis.forecast_outcome"
+    ).fetchall()} == {12, 24}
+
+    tr = fc.track_record(con)
+    assert {r["scored_month"] for r in tr} == {"2026-01", "2027-01"}
+    assert all(r["n"] == n_fc for r in tr), (
+        "track_record's count is not one row per forecast -- the join fanned out")
 
 
 # ===========================================================================
@@ -191,7 +384,7 @@ def test_the_model_version_changes_when_the_feature_list_changes():
     assert a.startswith(fc.MODEL_SEMVER + "+")
 
 
-def test_issuing_the_same_vintage_twice_replaces_it_and_changes_nothing(con):
+def test_issuing_the_same_vintage_twice_replaces_it_and_changes_nothing(con, monkeypatch):
     """DELETE + INSERT per (issued_month, model_version). Re-running the same
     model on the same month reproduces that month's answer; it does not
     accumulate, and it does not drift."""
@@ -203,13 +396,22 @@ def test_issuing_the_same_vintage_twice_replaces_it_and_changes_nothing(con):
         add_poi(con, f"new{i}", "restaurant", LON + 0.004 * (i % 6) + 0.0006, LAT,
                 "source_date", dt.date(2024, 5, 1))
 
+    ledger(con, monkeypatch)
     kw = {"categories": ("restaurant",), "sample_n": 6}
+    # THE NATURAL KEY IS THE ORDER, and it is also the identity now. This used
+    # to `ORDER BY forecast_id`, a string that concatenated these same four
+    # columns; sorting on them directly asserts the same thing without the
+    # 257 MiB restatement. `features_hash` is selected too, so idempotence is
+    # pinned on the FROZEN INPUTS as well as on the probability -- two runs
+    # that agreed on p while disagreeing on what they were looking at would
+    # have passed the old assertion.
+    order = "ORDER BY issued_month, model_version, address_id, category"
+    sel = ("SELECT issued_month, model_version, address_id, category, "
+           "p_opening, features_hash FROM analysis.forecast ")
     first = fc.issue(con, "2025-01", **kw)
-    rows1 = con.execute("SELECT forecast_id, p_opening FROM analysis.forecast "
-                        "ORDER BY forecast_id").fetchdf()
+    rows1 = con.execute(sel + order).fetchdf()
     second = fc.issue(con, "2025-01", **kw)
-    rows2 = con.execute("SELECT forecast_id, p_opening FROM analysis.forecast "
-                        "ORDER BY forecast_id").fetchdf()
+    rows2 = con.execute(sel + order).fetchdf()
 
     assert first["model_version"] == second["model_version"]
     assert len(rows1) == len(rows2) == first["n_rows_issued"]
@@ -217,7 +419,50 @@ def test_issuing_the_same_vintage_twice_replaces_it_and_changes_nothing(con):
     assert con.execute("SELECT count(*) FROM analysis.forecast_run").fetchone()[0] == 1
 
 
-def test_a_second_model_version_lands_beside_the_first_not_over_it(con):
+def test_features_hash_witnesses_the_frozen_inputs_and_moves_when_they_do(con, monkeypatch):
+    """`features_hash` replaced `features_json` (526 MiB of the 1,292 MiB
+    table). What it must still be able to answer is the only question anyone
+    asked the blob: DID THESE TWO VINTAGES SEE THE SAME INPUTS?
+
+    So: sixteen lowercase hex characters; identical across a re-issue on an
+    unchanged warehouse; and DIFFERENT the moment a competitor appears inside
+    the disc, with the address, the category and the model version all
+    unchanged. If the third assertion failed, the column would be a decoration
+    -- it would say "same inputs" about two rows that saw different ones, and
+    dropping features_json would have destroyed information rather than
+    restating it."""
+    for i in range(6):
+        add_address(con, f"a{i}", LON + 0.004 * i, LAT, nta=f"BK010{i % 2}")
+    for i in range(8):
+        add_poi(con, f"o{i}", "restaurant", LON + 0.004 * (i % 6) + 0.0005, LAT,
+                "source_date", dt.date(2023, 5, 1))
+        add_poi(con, f"n{i}", "restaurant", LON + 0.004 * (i % 6) + 0.0006, LAT,
+                "source_date", dt.date(2024, 5, 1))
+    ledger(con, monkeypatch)
+    kw = {"categories": ("restaurant",), "sample_n": 6}
+    ver = fc.issue(con, "2025-01", **kw)["model_version"]
+
+    sel = ("SELECT address_id, features_hash FROM analysis.forecast "
+           "WHERE model_version = ? ORDER BY address_id")
+    before = dict(con.execute(sel, [ver]).fetchall())
+    assert before, "no rows issued"
+    for h in before.values():
+        assert len(h) == fc.FEATURES_HASH_CHARS == 16
+        assert h == h.lower() and all(c in "0123456789abcdef" for c in h)
+
+    # a NEW competitor, dated well before the issue month, inside a0's disc
+    add_poi(con, "extra", "restaurant", LON + 0.0005, LAT, "source_date",
+            dt.date(2024, 6, 1))
+    fc.issue(con, "2025-01", version=ver, **kw)
+    after = dict(con.execute(sel, [ver]).fetchall())
+
+    assert set(after) == set(before), "the re-issue changed the address set"
+    assert after["a0"] != before["a0"], (
+        "a competitor appeared inside a0's 400 m disc and its features_hash "
+        "did not move — the hash is not witnessing the frozen inputs")
+
+
+def test_a_second_model_version_lands_beside_the_first_not_over_it(con, monkeypatch):
     """The vintage discipline, in one assertion: a new model gets a new version
     and its own rows. A past vintage is never re-issued with a newer model, and
     the only way to make that impossible is to make the two coexist."""
@@ -228,6 +473,7 @@ def test_a_second_model_version_lands_beside_the_first_not_over_it(con):
                 "source_date", dt.date(2023, 5, 1))
         add_poi(con, f"n{i}", "restaurant", LON + 0.004 * (i % 6) + 0.0006, LAT,
                 "source_date", dt.date(2024, 5, 1))
+    ledger(con, monkeypatch)
     kw = {"categories": ("restaurant",), "sample_n": 6}
     a = fc.issue(con, "2025-01", **kw)
     b = fc.issue(con, "2025-01", version="9.9.9+deadbeef", **kw)
@@ -245,20 +491,17 @@ def _surprise_fixture(con):
     realize 0, so the residual sums are +0.5 x3 and -0.5 x3 and the total
     surprise is exactly 0... which would be a boring fixture. So cell 0 gets a
     second address, tipping the total to +0.5."""
-    fc.ensure_schema(con)
+    ledger_with_views(con)
     rows = []
     for i, (cell, realized) in enumerate(
             [("0:0", 1), ("0:0", 1), ("1:0", 1), ("2:0", 1),
              ("3:0", 0), ("4:0", 0), ("5:0", 0)]):
-        rows.append((f"f{i}", cell, 0.5, bool(realized)))
-    for fid, cell, p, realized in rows:
-        con.execute("""INSERT INTO analysis.forecast VALUES
-            (?, '2023-01', 12, 'v1', ?, 'restaurant', 'lot', 'BK', 'BK0101',
-             ?, ?, ?, 'pooled', '{}', now())""",
-                    [fid, f"addr-{fid}", cell, p, p])
-        con.execute("""INSERT INTO analysis.forecast_outcome VALUES
-            (?, '2024-01', 12, ?, ?, now())""",
-                    [fid, 1 if realized else 0, realized])
+        rows.append((f"addr-f{i}", cell, 0.5, bool(realized)))
+    for aid, cell, p, realized in rows:
+        ins_forecast(con, issued_month="2023-01", address_id=aid, cell=cell, p=p)
+        ins_outcome(con, issued_month="2023-01", address_id=aid,
+                    scored_month="2024-01", realized=1 if realized else 0,
+                    flag=realized)
     return rows
 
 
@@ -286,17 +529,15 @@ def test_the_surprise_z_is_cluster_robust_and_matches_the_hand_computation(con):
         "correlated cells -- the design effect has gone the wrong way")
 
 
-def test_the_z_is_null_below_five_clusters(con):
+def test_the_z_is_null_below_five_clusters(con, monkeypatch):
     """A sandwich variance from three clusters is not an estimate, and NULL says
     so where a small number would have been read as a small z."""
-    fc.ensure_schema(con)
+    ledger_with_views(con)
     for i in range(3):
-        con.execute("""INSERT INTO analysis.forecast VALUES
-            (?, '2023-01', 12, 'v1', ?, 'restaurant', 'lot', 'BK', 'BK0102',
-             ?, 0.5, 0.5, 'pooled', '{}', now())""",
-                    [f"g{i}", f"addr-g{i}", f"{i}:9"])
-        con.execute("""INSERT INTO analysis.forecast_outcome VALUES
-            (?, '2024-01', 12, 1, true, now())""", [f"g{i}"])
+        ins_forecast(con, issued_month="2023-01", address_id=f"addr-g{i}",
+                     nta="BK0102", cell=f"{i}:9")
+        ins_outcome(con, issued_month="2023-01", address_id=f"addr-g{i}",
+                    scored_month="2024-01", realized=1, flag=True)
     row = con.execute("""
         SELECT n_cells, z_clustered FROM analysis.forecast_surprise_nta
         WHERE nta_code = 'BK0102' AND category = '(all)'
@@ -312,14 +553,12 @@ def test_forecast_latest_carries_the_newest_p_beside_the_newest_outcome(con):
     category, the NEWEST issued probability, and the newest SCORED outcome even
     when that outcome belongs to an older vintage -- because the newest vintage
     is normally unscoreable."""
-    fc.ensure_schema(con)
+    ledger_with_views(con)
     for month, p in (("2023-01", 0.20), ("2026-09", 0.44)):
-        con.execute("""INSERT INTO analysis.forecast VALUES
-            (?, ?, 12, 'v1', 'a1', 'restaurant', 'lot', 'BK', 'BK0101', '0:0',
-             ?, ?, 'fitted', '{"sr":1.0}', now())""",
-                    [f"f-{month}", month, p, p])
-    con.execute("""INSERT INTO analysis.forecast_outcome VALUES
-        ('f-2023-01', '2024-01', 12, 3, true, now())""")
+        ins_forecast(con, issued_month=month, address_id="a1", p=p,
+                     support="fitted")
+    ins_outcome(con, issued_month="2023-01", address_id="a1",
+                scored_month="2024-01", realized=3, flag=True)
 
     row = con.execute("""SELECT issued_month, p_opening, scored_vintage_month,
                                 scored_month, realized_flag, realized_openings,
@@ -343,13 +582,12 @@ def test_forecast_latest_breaks_a_same_month_tie_on_frozen_at_not_the_version_st
     23:26) and D112's re-issue '0.1.1+51bab17f' (frozen 09-15 17:53): 'f' >
     '5', so the STALE vintage won and every card and allocator report stamped
     the wrong model version. The tie-break is `frozen_at DESC`."""
-    fc.ensure_schema(con)
+    ledger_with_views(con)
     for version, frozen, p_open in (("0.1.1+f1cb6628", "2026-09-14 23:26:50", 0.31),
                                     ("0.1.1+51bab17f", "2026-09-15 17:53:22", 0.11)):
-        con.execute("""INSERT INTO analysis.forecast VALUES
-            (?, '2026-09', 12, ?, 'a1', 'hardware', 'lot', 'BK', 'BK0101', '0:0',
-             ?, ?, 'fitted', '{"sr":1.0}', ?::TIMESTAMP)""",
-                    [f"f-2026-09-{version}", version, p_open, p_open, frozen])
+        ins_forecast(con, issued_month="2026-09", address_id="a1",
+                     category="hardware", model_version=version, p=p_open,
+                     support="fitted", frozen_at=frozen)
 
     r = con.execute("SELECT model_version, p_opening FROM analysis.forecast_latest"
                     ).fetchone()
@@ -360,14 +598,33 @@ def test_forecast_latest_breaks_a_same_month_tie_on_frozen_at_not_the_version_st
 def test_forecast_latest_holds_the_columns_the_webmap_and_the_card_read(con):
     """A view contract is a promise to callers. Pin the column names so a
     rename is a failing test rather than a silently empty panel on a card."""
-    fc.ensure_schema(con)
+    ledger_with_views(con)
     cols = {r[0] for r in con.execute(
         "SELECT column_name FROM information_schema.columns "
         "WHERE table_name = 'forecast_latest'").fetchall()}
+    # `features_json` is GONE from the contract and `features_hash` replaces
+    # it. The promise the view makes changed in kind, not only in name: it used
+    # to hand a caller the frozen feature VALUES, and it now hands them an
+    # equality witness over those values. Both halves are asserted -- the
+    # presence of the new column AND the absence of the old one -- because a
+    # view that kept emitting `features_json` would mean the 526 MiB never left.
     assert {"address_id", "category", "issued_month", "model_version",
-            "p_opening", "expected_openings", "support", "features_json",
+            "p_opening", "expected_openings", "support", "features_hash",
             "scored_month", "realized_flag", "realized_openings",
             "is_scoreable_now"} <= cols
+    assert "features_json" not in cols and "forecast_id" not in cols
+
+    base = {r[0] for r in con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'analysis' AND table_name = 'forecast'").fetchall()}
+    assert base == set(fc.FORECAST_INSERT_COLUMNS), (
+        "analysis.forecast and the module's INSERT column list disagree; one "
+        "of sql/045 and forecast.py has moved without the other")
+    outcome = {r[0] for r in con.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = 'analysis' AND table_name = 'forecast_outcome'"
+    ).fetchall()}
+    assert outcome == set(fc.FORECAST_OUTCOME_INSERT_COLUMNS)
 
     cols = {r[0] for r in con.execute(
         "SELECT column_name FROM information_schema.columns "
@@ -377,7 +634,7 @@ def test_forecast_latest_holds_the_columns_the_webmap_and_the_card_read(con):
             "surprise", "z_naive", "z_clustered"} <= cols
 
 
-def test_expected_openings_equals_p_and_the_residual_has_one_unit(con):
+def test_expected_openings_equals_p_and_the_residual_has_one_unit(con, monkeypatch):
     """The unit choice, pinned. `expected_openings` is p x 1 -- the expected
     number of DISCS-WITH-AN-OPENING contributed by the row, not an expected
     number of storefronts. If it ever became a Poisson rate, the surprise would
@@ -390,6 +647,7 @@ def test_expected_openings_equals_p_and_the_residual_has_one_unit(con):
                 "source_date", dt.date(2023, 5, 1))
         add_poi(con, f"n{i}", "restaurant", LON + 0.004 * (i % 6) + 0.0006, LAT,
                 "source_date", dt.date(2024, 5, 1))
+    ledger(con, monkeypatch)
     fc.issue(con, "2025-01", categories=("restaurant",), sample_n=6)
     bad = con.execute("SELECT count(*) FROM analysis.forecast "
                       "WHERE abs(expected_openings - p_opening) > 1e-12").fetchone()[0]
@@ -399,7 +657,7 @@ def test_expected_openings_equals_p_and_the_residual_has_one_unit(con):
 # ===========================================================================
 # the failure criterion is stored, not re-judged
 # ===========================================================================
-def test_a_run_that_fails_the_criterion_is_still_written(con):
+def test_a_run_that_fails_the_criterion_is_still_written(con, monkeypatch):
     """Deleting a vintage that failed is how a track record becomes a highlight
     reel. A failing fit is written with ships=false and a reason."""
     for i in range(6):
@@ -409,6 +667,7 @@ def test_a_run_that_fails_the_criterion_is_still_written(con):
                 "source_date", dt.date(2023, 5, 1))
         add_poi(con, f"n{i}", "restaurant", LON + 0.004 * (i % 6) + 0.0006, LAT,
                 "source_date", dt.date(2024, 5, 1))
+    ledger(con, monkeypatch)
     fc.issue(con, "2025-01", categories=("restaurant",), sample_n=6)
     row = con.execute("SELECT ships, ships_reason, n_rows_issued, feature_list, "
                       "fit_window_rule FROM analysis.forecast_run").fetchone()
@@ -426,12 +685,10 @@ def test_calibration_gap_is_the_max_absolute_decile_gap():
     assert fc.calibration_max_gap(cal) == pytest.approx(0.19)
 
 
-def test_due_for_scoring_only_returns_vintages_whose_horizon_has_elapsed(con):
-    fc.ensure_schema(con)
+def test_due_for_scoring_only_returns_vintages_whose_horizon_has_elapsed(con, monkeypatch):
+    ledger(con, monkeypatch)
     for month in ("2023-01", "2026-09"):
-        con.execute("""INSERT INTO analysis.forecast VALUES
-            (?, ?, 12, 'v1', 'a1', 'restaurant', 'lot', 'BK', 'BK0101', '0:0',
-             0.5, 0.5, 'pooled', '{}', now())""", [f"f-{month}", month])
+        ins_forecast(con, issued_month=month, address_id="a1")
     due = fc.due_for_scoring(con, today=dt.date(2026, 9, 14))
     assert [d[0] for d in due] == ["2023-01"]
     assert due[0][2] == "2024-01"
@@ -459,11 +716,11 @@ def test_the_model_version_changes_when_the_supply_hash_changes():
     assert a.startswith(fc.MODEL_SEMVER + "+")
 
 
-def test_guard_reissue_refuses_an_existing_vintage_without_force(con):
+def test_guard_reissue_refuses_an_existing_vintage_without_force(con, monkeypatch):
     """`loci forecast issue` must not silently overwrite a vintage that
     already has a forecast_run row. `--force` is the explicit override;
     a different (month, version) is never blocked."""
-    fc.ensure_schema(con)
+    ledger(con, monkeypatch)
     con.execute("""INSERT INTO analysis.forecast_run
         (issued_month, model_version, horizon_months, radius_m, fit_t0s,
          fit_window_rule, feature_list, ships, ships_reason, issued_at,
@@ -486,7 +743,7 @@ def test_guard_reissue_refuses_an_existing_vintage_without_force(con):
 # retention (GTM-163): keep-latest-N-per-model-version, never forecast_run /
 # forecast_outcome, never an unscored or open-horizon vintage
 # ===========================================================================
-def _prune_fixture(con):
+def _prune_fixture(con, monkeypatch):
     """Six 'v1' vintages, two rows each. Under a UNIFORM horizon an older
     vintage's horizon always elapses no later than a newer one's, so testing
     the open-horizon protection in ISOLATION from ranking needs a vintage
@@ -501,7 +758,7 @@ def _prune_fixture(con):
       2020-01  h=12   scored   rank 4 -- PRUNE candidate
       2019-01  h=120  scored   rank 5 -- kept: horizon still open at `today`
     """
-    fc.ensure_schema(con)
+    ledger(con, monkeypatch)
     vintages = [("2019-01", 120, True), ("2020-01", 12, True),
                 ("2020-07", 12, True), ("2021-01", 12, False),
                 ("2022-01", 12, True), ("2023-01", 12, True)]
@@ -513,22 +770,42 @@ def _prune_fixture(con):
             VALUES (?, 'v1', ?, 400.0, '[]', 'x', '[]', true, 'ok', now(),
                     'abc123')""", [month, horizon])
         for i in range(2):
-            fid = f"f-{month}-{i}"
-            con.execute("""INSERT INTO analysis.forecast VALUES
-                (?, ?, ?, 'v1', ?, 'restaurant', 'lot', 'BK', 'BK0101', '0:0',
-                 0.3, 0.3, 'pooled', '{}', now())""",
-                        [fid, month, horizon, f"addr-{month}-{i}"])
+            aid = f"addr-{month}-{i}"
+            ins_forecast(con, issued_month=month, address_id=aid,
+                         horizon=horizon, p=0.3)
             if scored:
                 scored_month = fc.month_str(
                     fc.add_months(fc.month_first(month), horizon))
-                con.execute("""INSERT INTO analysis.forecast_outcome VALUES
-                    (?, ?, ?, 0, false, now())""",
-                            [fid, scored_month, horizon])
+                ins_outcome(con, issued_month=month, address_id=aid,
+                            scored_month=scored_month, elapsed=horizon,
+                            realized=0, flag=False)
     return vintages
 
 
-def test_prune_keeps_open_horizon_and_unscored_vintages_and_never_touches_outcomes_or_runs(con):
-    _prune_fixture(con)
+def test_prunable_vintages_counts_forecast_rows_not_forecast_x_scoring_pairs(con, monkeypatch):
+    """THE DOUBLE COUNT, pinned. `prunable_vintages` used to aggregate over
+    `forecast LEFT JOIN forecast_outcome`, so `n_rows` counted (forecast row x
+    scored_month) pairs. A vintage scored TWICE -- which is what `--as-of`
+    exists for, and which sql/028 calls a second row rather than a correction
+    -- doubled the row count `prune` prints for a human to authorise.
+
+    Two forecast rows, scored at 12 AND 24 months: n_rows must be 2."""
+    ledger(con, monkeypatch)
+    for i in range(2):
+        ins_forecast(con, issued_month="2020-01", address_id=f"addr-{i}")
+        for scored, elapsed in (("2021-01", 12), ("2022-01", 24)):
+            ins_outcome(con, issued_month="2020-01", address_id=f"addr-{i}",
+                        scored_month=scored, elapsed=elapsed, realized=1)
+
+    got = fc.prunable_vintages(con, keep_vintages=1, today=dt.date(2023, 6, 1))
+    assert len(got) == 1
+    assert int(got.iloc[0]["n_rows"]) == 2, (
+        "n_rows counted forecast x scoring-date pairs, not forecast rows")
+    assert bool(got.iloc[0]["has_outcome"]) is True
+
+
+def test_prune_keeps_open_horizon_and_unscored_vintages_and_never_touches_outcomes_or_runs(con, monkeypatch):
+    _prune_fixture(con, monkeypatch)
     today = dt.date(2023, 6, 1)
     n_run_before = con.execute(
         "SELECT count(*) FROM analysis.forecast_run").fetchone()[0]
@@ -557,8 +834,8 @@ def test_prune_keeps_open_horizon_and_unscored_vintages_and_never_touches_outcom
     assert rep["checkpointed"] is True
 
 
-def test_prune_dry_run_deletes_nothing(con):
-    _prune_fixture(con)
+def test_prune_dry_run_deletes_nothing(con, monkeypatch):
+    _prune_fixture(con, monkeypatch)
     today = dt.date(2023, 6, 1)
     n_before = con.execute(
         "SELECT count(*) FROM analysis.forecast").fetchone()[0]

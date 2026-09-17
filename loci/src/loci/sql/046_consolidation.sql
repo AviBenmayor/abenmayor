@@ -1,0 +1,124 @@
+-- ---------------------------------------------------------------------------
+-- 046_consolidation.sql -- drop what nothing reads; keep what the audit
+-- mis-listed as dead.
+--
+-- DRAFT. `.sql.draft` on purpose: `db.init_schema` applies every *.sql on disk
+-- on every session. Rename to `046_consolidation.sql` at the Phase B go.
+--
+-- ---------------------------------------------------------------------------
+-- WHY (audit 2026-09-16, finding 17)
+-- ---------------------------------------------------------------------------
+-- 81 objects where D61 consolidated to 26. The audit hand-verified SIX with
+-- zero readers. THREE OF THOSE SIX ACTUALLY HAVE READERS -- re-grepped
+-- 2026-09-16 immediately before writing this file, which is the only moment a
+-- reader count is true. Dropping on a stale grep is how a "dead" view takes a
+-- test suite down at 2 a.m.
+--
+--   DROPPED (zero readers in src, tests, webmap and queryapp; the only hits
+--   are their own DDL and prose):
+--     analysis.address_laundry_gaps          sql/004:87, re-created sql/010:73
+--     analysis.storefront_pipeline_census    sql/020:203
+--     staging.storefront_filing_census       sql/019:172 -- not referenced
+--                                            ANYWHERE, not even in a comment
+--
+--   KEPT, against the audit's list, each with the reader that saved it:
+--     analysis.address_transit_profile_wide  tests/test_transit_profile.py:369
+--                                            SELECTs it; :342-343 pin that it
+--                                            is a VIEW and not a table. Two
+--                                            docstrings in
+--                                            model/address_transit_profile.py
+--                                            point users at it as THE pivot.
+--     analysis.storefront_latest             tests/test_storefront_registry.py
+--                                            :421 and :527 both read it, and
+--                                            wave one repointed the
+--                                            activity_canonical readers THROUGH
+--                                            it (D119). Dropping this would
+--                                            have silently undone that work.
+--     staging.listings_fetch_log             write-only TODAY, which is a BUG
+--                                            and not a reason to drop:
+--                                            listings.py:139 documents that the
+--                                            resume number is read back out of
+--                                            it. Audit finding 6/A6 wires the
+--                                            read up. A table that is missing
+--                                            its reader needs the reader, not a
+--                                            funeral.
+--
+-- NOT DEMOTED TO A VIEW, against the audit's "Proposed shape":
+--     analysis.zip_coverage_check -- the audit calls it a subset of
+--     zip_coverage_by_source. model/zbp_compare.py:228-232 already argues the
+--     opposite IN THE CODE and gives the reason (it is built FIRST and is the
+--     already-filtered input the other table attributes; 12 of its 2,034 rows
+--     survive only because it is not an inner join of the wider table). It has
+--     ~10 live readers. The existing documented decision stands; re-litigating
+--     it from a row-count resemblance would be exactly what CHECKPOINT's
+--     append-only decision log exists to prevent.
+--
+-- NOT DONE HERE -- the hex layer's home. The audit's 241 MiB "retired" hex
+-- layer is NOT dead (reach.py:135,138 and model/gaps.py:105,399 read
+-- analysis.hex_poi_distance for reach-tier calibration). The brief offered
+-- "move it under a `calib` schema OR NAME IT so 'no more hexes' is visibly
+-- about outputs". The physical move touches 265 references across 60 files,
+-- including src/loci/sources/cities/nyc/citibike_od.py and registry.yaml,
+-- which wave two owns and this session may not edit. So the NAMING option is
+-- taken: sql/051 classifies every hex object `layer=calib` in the catalog,
+-- docs/WAREHOUSE.md renders them under "Calibration inputs — NOT
+-- deliverables", and the schema move is a follow-up ticket to run when no
+-- other wave is in flight.
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- TWO CORRECTIONS TO EARLIER MIGRATION HEADERS
+--
+-- Both are recorded HERE rather than by editing the original files. The
+-- convention in this project is forward-only migrations: editing sql/005 or
+-- sql/039 in place would change what a from-scratch build says at that point in
+-- its own history, and the reasoning is the value (CLAUDE.md's decision-log
+-- rule -- mark superseded, do not delete).
+--
+-- 1. sql/039_chains_pipeline_signals.sql:98-100 says "The one positional
+--    `INSERT INTO chains.brand_snapshot SELECT *` in the codebase
+--    (chains/detect.py `_write`) was changed to name its columns in the same
+--    commit". THE WORDS "THE ONE" ARE FALSE. `_write` held TWO positional
+--    inserts; only `brand_snapshot` was fixed there. Its sibling
+--    `INSERT INTO chains.brand_location SELECT *` stayed positional, as did the
+--    same write in model/poi_key_migration.py `_rewrite_brand_location`, plus
+--    three more in score/access.py and score/dedup.py. All five now name their
+--    columns on both sides (Phase A, 2026-09-16).
+--
+--    chains.brand_location was never actually mis-written -- no migration
+--    ALTERs it, so it has exactly one column order and the repaired lists match
+--    it. But THIS FILE is itself the precedent that a chains table gets widened
+--    by ALTER, and the next such ALTER would have broken that write silently.
+--
+--    That failure mode is not hypothetical. analysis.storefront gets
+--    `activity_canonical` from sql/012's CREATE at ordinal 25 AND from sql/041's
+--    `ADD COLUMN IF NOT EXISTS`, so a database built fresh and the database on
+--    disk right now carry the SAME 31 columns in a DIFFERENT order. Every
+--    column in that neighbourhood is a VARCHAR or a date, so a positional write
+--    would not raise -- it would land six columns one position out.
+--    tests/test_no_positional_inserts.py is the standing check.
+--
+-- 2. sql/005_listings_laundry.sql:101-105 says the fetch-log table exists "so
+--    `loci ingest-listings` can enforce a budget across runs". IT DOES NOT.
+--    `build_listings` constructs `TavilyBudget(max_calls=max_calls)` with
+--    `calls=0, credits=0.0` every invocation and nothing anywhere SELECTs
+--    staging.listings_fetch_log. A stopped-and-resumed sweep therefore gets a
+--    FRESH cap each time: `--max-calls 40000` resumed four times authorises up
+--    to 160,000 calls against a metered API. That is the exact failure
+--    CLAUDE.md's "enforce spend budgets in code, not in comments" names.
+--
+--    The 2026-09-16 audit read this as listings.py:139 falsely claiming the
+--    RESUME number is read from the table. It does not claim that -- :139 tells
+--    a human operator to read the real CREDIT SPEND out of the table instead of
+--    estimating from the cap, which is true and which a person can do. The
+--    resume key is `covered_bbls(sink_dir)`, reads part files on disk, and
+--    works. So the table is NOT dropped: it is missing its reader, and a table
+--    missing its reader needs the reader.
+--    Phase B patch: scratchpad/phaseB-listings-resume-read.md. It needs the
+--    listings owner's review on sweep identity before it lands, and
+--    src/loci/sources/ is wave two's tree.
+-- ---------------------------------------------------------------------------
+
+DROP VIEW IF EXISTS analysis.address_laundry_gaps;
+DROP VIEW IF EXISTS analysis.storefront_pipeline_census;
+DROP VIEW IF EXISTS staging.storefront_filing_census;

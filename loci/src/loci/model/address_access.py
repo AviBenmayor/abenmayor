@@ -247,7 +247,7 @@ def compute_access(
     boroughs: list[str] | None,
     radius_m: float = DEFAULT_RADIUS_M,
     graph_path: pathlib.Path = GRAPH_PATH,
-    months: int = 3,
+    months: int | None = None,   # None = every month the feed publishes
     use_entrances: bool = True,
     jobs_vintage: int = DEFAULT_JOBS_VINTAGE,
     refresh: bool = False,
@@ -403,7 +403,7 @@ def build_access(
     boroughs: list[str] | None,
     radius_m: float = DEFAULT_RADIUS_M,
     graph_path: pathlib.Path = GRAPH_PATH,
-    months: int = 3,
+    months: int | None = None,   # None = every month the feed publishes
     use_entrances: bool = True,
     jobs_vintage: int = DEFAULT_JOBS_VINTAGE,
     refresh: bool = False,

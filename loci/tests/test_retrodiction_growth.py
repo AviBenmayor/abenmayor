@@ -570,7 +570,7 @@ def test_ascertainment_truncation_rule_drops_the_unfiled_tail(con):
         n = 100 if i < 9 else 10          # ascertainment collapses at month 10
         for _ in range(n):
             con.execute("INSERT INTO analysis.poi_presence VALUES (?,?,?)",
-                        ["gov_filing", m.date(), "Brooklyn"])
+                        ["gov_filing", m.date(), "BK"])  # coded borough (sql/045)
     a = rd.ascertainment_by_month(con, dt.date(2025, 1, 1), dt.date(2025, 12, 31))
     assert a["truncate_at"] == "2025-09"
     assert a["months_dropped"] == 3

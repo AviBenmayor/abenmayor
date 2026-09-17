@@ -130,12 +130,21 @@ def build_access(con, graph_path: pathlib.Path = GRAPH_PATH, limit: float = DIST
             continue
         df = pd.DataFrame(rows, columns=["h3_index", "poi_id", "category", "network_m"])
         con.register("_dist", df)
-        con.execute("INSERT INTO analysis.hex_poi_distance SELECT h3_index, poi_id, category, network_m FROM _dist")
+        # Named on BOTH sides: DuckDB binds INSERT ... SELECT by POSITION, so
+        # the SELECT list alone would not survive an ALTER on the target.
+        con.execute("INSERT INTO analysis.hex_poi_distance "
+                    "(h3_index, poi_id, category, network_m) "
+                    "SELECT h3_index, poi_id, category, network_m FROM _dist")
         con.unregister("_dist")
         n_pairs += len(df)
     con.execute("DELETE FROM analysis.hex_access")
     for tmin, tm in THRESHOLDS.items():
+        # served_share is written as the literal 1.0 the aggregate has always
+        # written: this table records reachable COUNTS, and the share column is
+        # a placeholder sql/002 constrains to [0,1]. Naming it keeps that
+        # explicit rather than leaving it to the fifth ordinal.
         con.execute("""INSERT INTO analysis.hex_access
+            (h3_index, category, threshold_min, n_reachable, served_share)
             SELECT h3_index, category, ?, count(*), 1.0 FROM analysis.hex_poi_distance
             WHERE network_m <= ? GROUP BY 1, 2""", [tmin, tm])
     return con.execute("SELECT count(*) FROM analysis.hex_access").fetchone()[0]

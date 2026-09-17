@@ -1222,7 +1222,13 @@ def lot_retail_area(con, spec: dict | None = None) -> pd.DataFrame:
             SELECT bbl, max(n) AS storefronts_on_bbl FROM (
                 SELECT bbl, reporting_year, COUNT(DISTINCT storefront_id) AS n
                 FROM analysis.storefront
+                -- MN+BK, the screen scope (audit finding 5). Correct
+                -- WITHOUT this only by accident: BBLs are borough-prefixed, so
+                -- the merge onto an MN+BK lot frame drops the other three
+                -- boroughs anyway. That is a coincidence of the key, not a
+                -- predicate, and it scanned all 414,884 filings to reach it.
                 WHERE bbl IS NOT NULL
+                  AND borough IN ('MN', 'BK')
                 GROUP BY bbl, reporting_year)
             GROUP BY bbl
         """).fetchdf()

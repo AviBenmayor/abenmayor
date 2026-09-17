@@ -462,16 +462,46 @@ def address_demographics_cmd(
         d["borough"] = boro
         frames.append(d)
     addresses_df = pd.concat(frames, ignore_index=True)
-    console.print(f"[dim]{len(addresses_df):,} residential addresses (all 5 boroughs); "
-                  f"assigning 2020 census tracts + ACS 2023 5-year...[/]")
 
-    df = ad.build_address_demographics(con, addresses_df)
+    # D84's street frame (owner ruling 4, 2026-09-16): frame='street' points get
+    # everything the lot frame has. Read from the UNIVERSE, not from PLUTO -- a
+    # street midpoint is not a tax lot and has no BBL, so it cannot take PLUTO's
+    # `bct2020` the way a lot does and is assigned by point-in-polygon against
+    # TIGER tract polygons instead.
+    street_df = ad.load_street_frame(con)
+    console.print(
+        f"[dim]{len(addresses_df):,} residential lots (5 boroughs, clipped to "
+        f"analysis.address on write) + {len(street_df):,} street midpoints; "
+        f"assigning {ad.tract_vintage_for(ad.ACS_YEAR)} census tracts + "
+        f"ACS {ad.ACS_YEAR} 5-year...[/]")
+
+    build_report: dict = {}
+    df = ad.build_address_demographics(
+        con, addresses_df, street_df=street_df, report=build_report)
+    if build_report.get("street", {}).get("points"):
+        s = build_report["street"]
+        console.print(
+            f"[dim]street frame: {s['assigned']:,} assigned by point-in-polygon "
+            f"({s['tract_vintage']} TIGER, {s['source_crs']}"
+            f"{', reprojected to EPSG:4326' if s['reprojected'] else ''}; "
+            f"{s['acs_geoid_overlap']:.1%} of polygons matched an ACS tract); "
+            f"{s['no_tract']:,} outside every tract (NULL tract, row kept); "
+            f"{s['boundary_ties']:,} exact boundary ties, "
+            f"{s['boundary_ambiguous']:,} within {s['boundary_eps_deg']} deg of "
+            f"two tracts[/]")
 
     if dry_run:
         console.print("[dim]--dry-run: computed, nothing written.[/]")
     else:
+        # POST-PRUNE count, not len(df): the write clips to analysis.address
+        # (audit finding 15 -- 485,495 of 767,337 rows were orphans from the
+        # pre-D78 five-borough PLUTO universe), so the two differ on the first
+        # real run and the stored number is the honest one.
         n = ad.write_address_demographics(con, df)
-        console.print(f"[green]ok[/] wrote {n:,} rows -> analysis.address_demographics")
+        console.print(f"[green]ok[/] {n:,} rows stored -> "
+                      f"analysis.address_demographics "
+                      f"(computed {len(df):,}; the difference is orphan rows "
+                      f"clipped to the analysis.address universe)")
 
     # D49's citywide-income cache is the 0.80x-mean threshold this report
     # checks addresses against; if it's missing, run `loci citywide-income`
@@ -481,7 +511,11 @@ def address_demographics_cmd(
         rec = load_citywide_mean_hh_income()
         threshold = 0.80 * rec["mean_hh_income"]
 
-    summary = ad.summarize(df, addresses_df, income_threshold=threshold)
+    summary = ad.summarize(
+        df,
+        pd.concat([addresses_df[["address_id", "borough"]],
+                   street_df[["address_id", "borough"]]], ignore_index=True),
+        income_threshold=threshold)
     console.print(f"{summary['n_addresses']:,} addresses, "
                   f"{summary['n_with_tract']:,} with a tract "
                   f"({100*summary['tract_assignment_rate']:.4f}%)")
@@ -5869,6 +5903,104 @@ def gen_categories() -> None:
     console.print(f"[green]ok[/] docs/CATEGORIES.md — {n} categories rendered")
 
 
+@app.command(name="gen-warehouse")
+def gen_warehouse() -> None:
+    """Regenerate docs/WAREHOUSE.md from the LIVE DuckDB catalog.
+
+    Every object's layer, grain and key come from its `COMMENT ON` in
+    sql/051_warehouse_catalog.sql, so the catalog IS the declaration and there
+    is no second list to drift. The audit that motivated this could not find
+    the grain of `storefront`, `poi_closure`, `bike_od_leakage`, `poi_key_map`
+    or `zip_establishments` stated ANYWHERE -- and two of this project's worst
+    bugs were that omission cashed in.
+
+    `loci check-warehouse` fails if this file is not a byte-identical render.
+    """
+    from loci import db as _db
+    from loci import warehouse as wh
+
+    con = _db.connect(read_only=True)
+    try:
+        n = wh.generate(con)
+    finally:
+        con.close()
+    console.print(f"[green]ok[/] docs/WAREHOUSE.md — {n} objects rendered")
+
+
+@app.command(name="check-warehouse")
+def check_warehouse() -> None:
+    """Assert docs/WAREHOUSE.md mirrors the catalog, and that every object is
+    classified.
+
+    Two failures, both deliberate:
+      * an object with no `layer=…; grain=…; key=…` comment — that is the
+        "inventory before adding a table" rule (owner, 2026-09-09) made
+        mechanical, and it is why a new `analysis.*` object cannot land
+        without a WAREHOUSE.md row;
+      * a doc that is not a byte-identical render — run `loci gen-warehouse`.
+    """
+    from loci import db as _db
+    from loci import warehouse as wh
+
+    con = _db.connect(read_only=True)
+    try:
+        errors = wh.drift(con)
+    finally:
+        con.close()
+    for e in errors:
+        console.print(f"[red]FAIL[/] {e}")
+    if not errors:
+        console.print("[green]ok[/] docs/WAREHOUSE.md matches the catalog")
+    raise typer.Exit(1 if errors else 0)
+
+
+@app.command(name="migrate-warehouse")
+def migrate_warehouse(
+    step: str = typer.Option(None, "--step",
+                             help="One step name; default every step in order."),
+    apply: bool = typer.Option(False, "--apply",
+                               help="WRITE. Without it this is a dry run."),
+) -> None:
+    """Run the guarded one-time warehouse rebuilds (loci/migrate.py).
+
+    DRY RUN BY DEFAULT. Each step probes the catalog and is a no-op once
+    applied, and every rebuild asserts its row count is unchanged before it
+    drops the original -- a rebuild that silently loses rows is worse than no
+    rebuild.
+
+    These are not .sql files because `db.init_schema` re-applies every
+    migration on every session, and DuckDB has no `ALTER TABLE ADD CONSTRAINT`
+    (verified 1.5.5), so adding a CHECK means a full table rewrite.
+
+    EVERY STEP WRITES TO THE SHARED WAREHOUSE. Do not run one while another
+    wave holds the file.
+    """
+    from loci import db as _db
+    from loci import migrate as mg
+
+    if step and step not in mg.STEPS:
+        raise typer.BadParameter(f"unknown step {step!r}; "
+                                 f"expected one of {sorted(mg.STEPS)}")
+    names = [step] if step else list(mg.STEPS)
+    con = _db.connect()
+    try:
+        for name in names:
+            result = mg.STEPS[name](con, apply)
+            tag = "[green]applied[/]" if result.applied else "[yellow]dry-run[/]"
+            console.print(f"{tag} {result.step}")
+            for note in result.notes:
+                console.print(f"    {note}")
+            for rel, n in result.before.items():
+                console.print(f"    before {rel}: {n:,}"
+                              + (f"  after: {result.after[rel]:,}"
+                                 if result.applied else ""))
+    finally:
+        con.close()
+    if not apply:
+        console.print("[yellow]DRY RUN[/] — nothing written. Re-run with "
+                      "--apply once every peer is clear.")
+
+
 @app.command(name="gen-paid-sources")
 def gen_paid_sources() -> None:
     """Regenerate docs/PAID-SOURCES.md from the registry's `wishlist` entries.
@@ -7029,6 +7161,17 @@ def forecast_issue(
                                      help="Cap the PREDICTION frame. For smoke "
                                           "tests only -- a real vintage covers "
                                           "every lot address."),
+    frames: str = typer.Option("lot,street", "--frames",
+                               help="Frames to SCORE, comma-separated. The FIT is "
+                                    "ALWAYS frame='lot' and --frames cannot change "
+                                    "that (a street midpoint has no PLUTO lot, so "
+                                    "fitting on one would move every coefficient). "
+                                    "Pass 'lot' to issue the lot frame while the "
+                                    "street-frame prerequisite "
+                                    "(analysis.address_demographics for the 50,199 "
+                                    "street rows) is still building: issue REFUSES "
+                                    "rather than write street rows whose features "
+                                    "were never measured."),
     dry_run: bool = typer.Option(False, "--dry-run",
                                  help="Fit and predict, write nothing."),
     force: bool = typer.Option(False, "--force",
@@ -7071,7 +7214,8 @@ def forecast_issue(
 
     say = lambda m: console.print(f"[dim]{m}[/]")       # noqa: E731
     kw = dict(version=model_version, horizon=horizon, radius_m=radius_m,
-              sample_n=sample_n, limit_points=limit_points)
+              sample_n=sample_n, limit_points=limit_points,
+              score_frames=tuple(f.strip() for f in frames.split(",") if f.strip()))
 
     # THE REFUSE-WITHOUT-FORCE CHECK, before the expensive fit: resolve what
     # version THESE settings and THIS supply set would produce and print the
@@ -7090,20 +7234,28 @@ def forecast_issue(
     finally:
         probe.close()
 
-    if dry_run:
-        con = fc.connect_read()
-        try:
-            rep = fc.issue(con, month, dry_run=True, progress=say, **kw)
-        finally:
-            con.close()
-        rep.pop("_pred", None)
-        rep.pop("_t0", None)
-    else:
-        # ONE HANDLE AT A TIME. DuckDB refuses a second connection to the same
-        # file with a different configuration inside one process, and read_only
-        # is exactly such a difference -- so the fit and the prediction run on a
-        # read handle, which is CLOSED before the write handle is asked for.
-        rep = fc.issue_managed(month, progress=say, **kw)
+    try:
+        if dry_run:
+            con = fc.connect_read()
+            try:
+                rep = fc.issue(con, month, dry_run=True, progress=say, **kw)
+            finally:
+                con.close()
+            rep.pop("_pred", None)
+            rep.pop("_t0", None)
+        else:
+            # ONE HANDLE AT A TIME. DuckDB refuses a second connection to the
+            # same file with a different configuration inside one process, and
+            # read_only is exactly such a difference -- so the fit and the
+            # prediction run on a read handle, which is CLOSED before the write
+            # handle is asked for.
+            rep = fc.issue_managed(month, progress=say, **kw)
+    except fc.StreetFrameNotReadyError as exc:
+        # A refusal, not a crash: writing street rows whose features were never
+        # measured would put NULL-featured predictions into a FROZEN ledger that
+        # cannot be re-issued. `--frames lot` is the documented way through.
+        console.print(f"[red]refusing:[/] {exc}")
+        raise typer.Exit(code=1) from exc
     f = rep["fit"]
 
     console.print(Panel.fit(
@@ -7111,6 +7263,9 @@ def forecast_issue(
         f"horizon {rep['horizon_months']} months · {rep['radius_m']:.0f} m straight-line\n"
         f"fit folds {', '.join(str(d) for d in fc.fit_t0s(month, horizon))}\n"
         f"rows issued {rep['n_rows_issued']:,}"
+        + ("  (" + ", ".join(f"{k} {v['n_rows']:,}"
+                             for k, v in sorted((rep.get("by_frame") or {}).items()))
+           + ")" if rep.get("by_frame") else "")
         + ("  [yellow](dry run — nothing written)[/]" if dry_run else ""),
         title="forecast issued"))
 
@@ -8163,6 +8318,79 @@ def citibike_ingest(
         con.close()
 
 
+@citibike_app.command("crosswalk")
+def citibike_crosswalk_cmd(
+    apply_: bool = typer.Option(True, "--apply/--no-apply",
+                                help="Also fill station_id on the LEGACY rows "
+                                     "of staging.citibike_station_month from "
+                                     "the crosswalk. --no-apply builds and "
+                                     "reports the table only."),
+    db: Path = typer.Option(None, "--db", help="Warehouse path."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Compute and report; write nothing."),
+) -> None:
+    """Map the pre-2021 station-id space onto the 2021+ one, conservatively.
+
+        staging.citibike_station_legacy     the legacy dock roster
+        staging.citibike_station_crosswalk  one row per LEGACY dock, matched or
+                                            not, with its evidence
+
+    The join is station NAME plus COORDINATES, which is the kind of join that
+    has fused distinct records in this project before, so it is tiered,
+    one-to-one, mutually-nearest for anything positional, ceilinged at 150 m,
+    and every row carries a confidence. Distances are METRES via
+    `loci.db.METRES_SQL` -- DuckDB GEOMETRY has no SRID and ST_Distance_Sphere
+    reads (lat, lon), so both sides are flipped (D16).
+
+    A MISS IS NOT A FAILURE. If the match rate is under 90% the legacy months
+    stay exactly where they are, with station_id_legacy populated and station_id
+    NULL. Nothing is ever dropped.
+    """
+    from loci.sources.cities.nyc import citibike_crosswalk as xw
+
+    con = _cb_connect(db, read_only=dry_run)
+    if not dry_run:
+        locidb.init_schema(con)
+    try:
+        rep = xw.build(con, apply=apply_, dry_run=dry_run)
+    finally:
+        con.close()
+
+    console.print(
+        f"legacy docks [bold]{rep['legacy_stations']:,}[/] · "
+        f"modern docks {rep['modern_stations']:,} · "
+        f"{rep['candidate_pairs']:,} candidate pairs within {rep['max_m']:.0f} m")
+    t = Table(title="crosswalk — staging.citibike_station_crosswalk")
+    for c in ("tier", "docks", "confidence"):
+        t.add_column(c, justify="left" if c == "tier" else "right")
+    for tier, conf in (("name_and_position", "1.00"), ("position_only", "0.60"),
+                       ("name_only", "0.50")):
+        t.add_row(tier, f"{rep[tier]:,}", conf)
+    t.add_row("ambiguous (dropped)", f"{rep['ambiguous']:,}", "—")
+    t.add_row("[bold]matched[/]", f"[bold]{rep['matched']:,}[/]", "")
+    console.print(t)
+    rate, trate = rep["match_rate_stations"], rep["match_rate_trips"]
+    style = "yellow" if rep["below_report_floor"] else "green"
+    console.print(
+        f"[{style}]match rate {rate:.1%} of docks · {trate:.1%} of legacy trips[/] "
+        f"(floor {rep['report_floor']:.0%}; worst accepted distance "
+        f"{(rep['max_accepted_distance_m'] or 0):.0f} m)")
+    if rep["below_report_floor"]:
+        console.print(
+            "[yellow]below the 90% floor — and nothing is dropped.[/] The legacy "
+            "months keep station_id_legacy and carry station_id NULL where no "
+            "confident match exists. A missing crosswalk row costs a join; a "
+            "dropped month costs the data.")
+    if dry_run:
+        console.print("[dim]--dry-run:[/] nothing written.")
+        raise typer.Exit(0)
+    console.print(f"[green]ok[/] {rep['written']:,} crosswalk rows")
+    if apply_:
+        console.print(
+            f"applied: {rep['legacy_rows_mapped']:,} of {rep['legacy_rows']:,} "
+            f"legacy station-month rows now carry a modern station_id")
+
+
 @citibike_app.command("stats")
 def citibike_stats(
     db: Path = typer.Option(None, "--db", help="Warehouse path."),
@@ -8359,16 +8587,19 @@ def citibike_address_measures(
                       f"{w['addresses_with_a_station']:,} addresses measured · "
                       f"{w['addresses_zeroed']:,} in-scope addresses read 0")
 
-        v = Table(title="validation — analysis.address (lot frame)")
-        for c in ("borough", "lot_addresses", "measured", "with_a_dock",
+        # Both sampling frames since owner ruling 4 (2026-09-16). The validation
+        # query now ROLLUPs (borough, frame), so a street-frame regression shows
+        # up as its own row instead of being averaged into the lot numbers.
+        v = Table(title="validation — analysis.address (both sampling frames)")
+        for c in ("borough", "frame", "addresses", "measured", "with_a_dock",
                   "coverage_pct", "zero_starts", "impossible_nonzero",
                   "impossible_share", "p50_starts", "p90_starts", "p50_ends",
                   "p50_evening_share", "p50_casual_share"):
-            v.add_column(c, justify="left" if c == "borough" else "right")
+            v.add_column(c, justify="left" if c in ("borough", "frame") else "right")
         for r in con.execute(ab.VALIDATION_SQL).fetchdf().to_dict("records"):
-            v.add_row(str(r["borough"] or "ALL"),
+            v.add_row(str(r["borough"] or "ALL"), str(r["frame"] or "ALL"),
                       *[("-" if r[c] is None else f"{r[c]:,}")
-                        for c in ("lot_addresses", "measured", "with_a_dock",
+                        for c in ("addresses", "measured", "with_a_dock",
                                   "coverage_pct", "zero_starts",
                                   "impossible_nonzero", "impossible_share",
                                   "p50_starts", "p90_starts", "p50_ends",
@@ -9829,6 +10060,13 @@ def citibike_growth_measures(
                                        "Without it an existing (asof_month, "
                                        "member_only) is left alone, which is what "
                                        "makes a two-vintage run cheap to restart."),
+    allow_unswept_frame: bool = typer.Option(
+        False, "--allow-unswept-frame",
+        help="Store a vintage for a sampling frame that phase 1 "
+             "(`loci citibike address-measures --re-sweep`) has never swept. "
+             "Every such row would read 'no balanced dock' — a fact about this "
+             "pipeline, not about Citi Bike, and indistinguishable downstream "
+             "from a real dock desert. Re-sweep instead unless you mean it."),
     db: Path = typer.Option(None, "--db", help="Warehouse path (use a snapshot copy "
                                                "to prove a run without taking the "
                                                "live write lock)."),
@@ -9877,9 +10115,10 @@ def citibike_growth_measures(
         _growth_require_table(con)
         for m in months:
             try:
-                meas, report = bg.build_growth(con, m, boros,
-                                               member_only=member_only,
-                                               re_sweep=re_sweep, dry_run=dry_run)
+                meas, report = bg.build_growth(
+                    con, m, boros, member_only=member_only,
+                    re_sweep=re_sweep, dry_run=dry_run,
+                    allow_unswept_frame=allow_unswept_frame)
             except RuntimeError as exc:
                 console.print(f"[red]asof {m:%Y-%m} refused[/] — {exc}")
                 raise typer.Exit(1) from None
@@ -10693,3 +10932,217 @@ def rewind_checks() -> None:
         t.add_row(name, "[green]PASS[/]" if ok else "[red]FAIL[/]", detail)
     console.print(t)
     raise typer.Exit(0 if all(ok for _, ok, _ in results) else 1)
+
+
+# ===========================================================================
+# FULL-SERIES INGESTS (2026-09-16, owner rule: "never ever ever limit data
+# pulls"). Three sources carried a single-vintage default that was ours, not
+# the source's: census_cbp (DEFAULT_YEAR = 2023), census_zbp (DEFAULT_YEAR =
+# 2023) and LODES (three hand-downloaded vintages). Each now pulls every year
+# the publisher serves, keyed by year.
+#
+# Appended at the END of the file on purpose, same reason as the blocks above:
+# concurrent sessions hold hunks in the middle of cli.py.
+# ===========================================================================
+
+def _year_range(spec: str | None, default: tuple[int, ...]) -> tuple[int, ...]:
+    """`--years 2005-2012`, `--years 2005,2008`, or nothing for the full series."""
+    if not spec:
+        return default
+    out: list[int] = []
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            a, b = part.split("-", 1)
+            out.extend(range(int(a), int(b) + 1))
+        else:
+            out.append(int(part))
+    return tuple(sorted(set(out)))
+
+
+@app.command(name="ingest-zbp-series")
+def ingest_zbp_series(
+    years: str = typer.Option(None, "--years",
+                              help="e.g. 2005-2012 or 2005,2008. Default: every "
+                                   "ingestable year (1998-2023)."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Fetch and count per year; write nothing."),
+) -> None:
+    """Land EVERY served ZBP vintage for NYC ZIPs, keyed by year (VALIDATION
+    ONLY -- never feeds the gap flag; see registry.yaml `census_zbp`).
+
+    1998-2023 by default. 1994-1997 ARE served by Census but are SIC-classified
+    and are reported as explicitly skipped, with the reason, rather than
+    quietly omitted -- `analysis.zip_establishments.naics` means a NAICS code
+    and this project holds exactly one industry crosswalk (D42).
+    """
+    from loci.sources.universal import census_zbp
+
+    ys = _year_range(years, census_zbp.ingestable_years())
+    con = locidb.connect()
+    locidb.init_schema(con)
+
+    def prog(year, summary, reason):
+        if reason is not None:
+            console.print(f"  [yellow]skip {year}[/] {reason}")
+            return
+        console.print(f"  [green]{year}[/] {summary['classification']:>9}  "
+                      f"{summary['rows_finest_level']:>7,} rows  "
+                      f"{summary['n_naics_codes']:>5} codes  "
+                      f"bands {','.join(summary['empszes_codes'])}"
+                      + (f"  [red]no data for: "
+                         f"{', '.join(sorted(summary['categories_absent']))}[/]"
+                         if summary["categories_absent"] else ""))
+
+    report = census_zbp.build_all_years(con, ys, dry_run=dry_run, progress=prog)
+    console.print(f"[green]ok[/] {report['rows_written']:,} rows across "
+                  f"{len(report['years_written'])} years "
+                  f"({report['years_written'][0]}-{report['years_written'][-1]})"
+                  + ("  [dim](--dry-run: nothing written)[/]" if dry_run else ""))
+    for s in report["skipped"]:
+        console.print(f"  [yellow]not ingested {s['year']}[/]: {s['reason']}")
+
+
+@app.command(name="ingest-cbp-national")
+def ingest_cbp_national(
+    years: str = typer.Option(None, "--years",
+                              help="Restrict the per-category county/ZIP pulls. "
+                                   "Default: every year each shape serves."),
+    refresh: bool = typer.Option(False, "--refresh",
+                                 help="Re-fetch even where a parquet is cached."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Print the year plan and fetch nothing."),
+) -> None:
+    """Cache the national CBP series as parquet under data/raw/cbp and
+    data/raw/zbp. Writes NOTHING to the warehouse.
+
+    Three shapes, three different served spans, all verified live 2026-09-16:
+
+      county totals (all industries)  1986-2023   38 years, no crosswalk needed
+      county by category              1998-2023   26 years, NAICS eras only
+      national ZIP by category        2018-2023    6 years, `zip code` geography
+                                                   does not exist before 2018
+
+    1986-1997 are SIC-classified: served by Census, pulled here only at the
+    all-industries level, because this project holds one NAICS crosswalk (D42).
+    """
+    from loci.sources.universal import census_cbp_national as C
+
+    if dry_run:
+        t = Table(title="CBP national pull plan (no network access)")
+        for c in ("shape", "years", "n", "limit"):
+            t.add_column(c)
+        t.add_row("county totals (all industries)",
+                  f"{C.CBP_FIRST_YEAR}-{C.CBP_LAST_YEAR}",
+                  str(len(C.cbp_county_totals_years())),
+                  "UPSTREAM: 1985 and 2024 both 404")
+        t.add_row("county by category",
+                  f"{C.CBP_NAICS_YEARS[0]}-{C.CBP_NAICS_YEARS[-1]}",
+                  str(len(C.CBP_NAICS_YEARS)),
+                  "OURS: SIC years need a second crosswalk (D42)")
+        t.add_row("national ZIP by category",
+                  f"{C.CBP_ZIP_YEARS[0]}-{C.CBP_ZIP_YEARS[-1]}",
+                  str(len(C.CBP_ZIP_YEARS)),
+                  "UPSTREAM: no `zip code` geography before 2018")
+        console.print(t)
+        raise typer.Exit(0)
+
+    if years:
+        ys = _year_range(years, ())
+        totals, t_skip = C.fetch_cbp_county_totals_all_years(
+            [y for y in ys if y in C.cbp_county_totals_years()], refresh)
+        county, c_skip = C.fetch_cbp_county_all_years(
+            [y for y in ys if y in C.CBP_NAICS_YEARS], refresh)
+        zcta, z_skip = C.fetch_zbp_zcta_all_years(
+            [y for y in ys if y in C.CBP_ZIP_YEARS], refresh)
+        console.print(f"[green]ok[/] totals {len(totals):,} · county "
+                      f"{len(county):,} · zcta {len(zcta):,} rows")
+        for s in (*t_skip, *c_skip, *z_skip):
+            console.print(f"  [yellow]skip {s['year']}[/] {s['reason']}")
+        raise typer.Exit(0)
+
+    report = C.pull_every_year(refresh=refresh,
+                               progress=lambda m: console.print(f"  [dim]{m}[/]"))
+    for key in ("cbp_county_totals", "cbp_county", "zbp_zcta"):
+        r = report[key]
+        console.print(f"[green]{key}[/] {r['rows']:,} rows, "
+                      f"{len(r['years'])} years {r['years'][0]}-{r['years'][-1]}")
+    if report["absent_codes"]:
+        by_reason = Counter(f"{a['naics_vintage']}:{a['category']}"
+                            for a in report["absent_codes"])
+        console.print("[yellow]codes the API answered 204 for (recorded, "
+                      "NOT written as zero):[/]")
+        for k, n in sorted(by_reason.items()):
+            console.print(f"  {k}: {n} year(s)")
+    for s in report["skipped"]["sic_years_not_pulled_by_category"]:
+        console.print(f"  [yellow]{s['year']}[/] {s['reason']}")
+
+
+@app.command(name="ingest-lodes")
+def ingest_lodes(
+    years: str = typer.Option(None, "--years",
+                              help="e.g. 2002-2010. Default: every published "
+                                   "vintage, 2002-2023."),
+    state: str = typer.Option("ny", "--state", help="LODES state code."),
+    refresh: bool = typer.Option(False, "--refresh",
+                                 help="Re-download files already on disk."),
+    dry_run: bool = typer.Option(False, "--dry-run",
+                                 help="Print the file plan; fetch nothing."),
+) -> None:
+    """Download EVERY LODES8 WAC vintage to data/raw/lodes (2002-2023 for NY).
+
+    Replaces the three hand-placed vintages (2002 / 2013 / 2023) that
+    registry.yaml used to record as the source's coverage. LODES publishes all
+    22 years free.
+
+    CAVEAT, carried on every row of the manifest this writes: LODES8 reports
+    every vintage on 2020 census blocks. 2020-2023 were OBSERVED there;
+    2002-2019 were AREA-RETRO-ALLOCATED onto them from the 2000/2010 block
+    geography. That is a BIAS correlated with where block boundaries moved --
+    not noise, and it does not average out over years (CONTEXT.md 7.4b).
+    """
+    from loci.sources.universal import lodes_wac
+
+    ys = lodes_wac.vintages(_year_range(years, lodes_wac.VINTAGES))
+
+    if dry_run:
+        rows = lodes_wac.plan(ys, state)
+        t = Table(title=f"LODES8 {state.upper()} WAC plan — "
+                        f"{len(rows)} files, nothing fetched")
+        for c in ("file", "on disk", "2020 blocks"):
+            t.add_column(c)
+        for r in rows:
+            note = ("observed" if r["kind"] == "wac"
+                    and r["year"] >= lodes_wac.FIRST_OBSERVED_ON_2020_BLOCKS
+                    else "one crosswalk, all vintages" if r["kind"] == "xwalk"
+                    else "[red]area-retro-allocated (BIAS)[/]")
+            t.add_row(Path(r["path"]).name,
+                      "yes" if r["on_disk"] else "[yellow]no[/]", note)
+        t.caption = (
+            "LODES8 reports every vintage on 2020 census blocks. "
+            f"{lodes_wac.FIRST_OBSERVED_ON_2020_BLOCKS}+ were OBSERVED there; "
+            f"{lodes_wac.FIRST_VINTAGE}-"
+            f"{lodes_wac.FIRST_OBSERVED_ON_2020_BLOCKS - 1} were retro-allocated "
+            "onto them by land area — a BIAS correlated with where block "
+            "boundaries moved, not noise, and it does not average out over "
+            "years (CONTEXT.md §7.4b).")
+        console.print(t)
+        raise typer.Exit(0)
+
+    def prog(what, rec):
+        if rec is None:
+            console.print(f"  [dim]{what}: already on disk[/]")
+        else:
+            console.print(f"  [green]{what}[/] {rec['bytes']:,} bytes  "
+                          f"[dim]{rec['blocks']}[/]")
+
+    report = lodes_wac.download(ys, state, refresh=refresh, progress=prog)
+    console.print(f"[green]ok[/] {len(report['years_on_disk'])} vintages on disk "
+                  f"({report['years_on_disk'][0]}-{report['years_on_disk'][-1]}), "
+                  f"{len(report['fetched'])} fetched "
+                  f"({report['bytes_fetched']:,} bytes), "
+                  f"{len(report['skipped'])} already present")
+    console.print(f"[yellow]{report['block_geography']}[/]")
+    console.print(f"manifest: {report['manifest']}")

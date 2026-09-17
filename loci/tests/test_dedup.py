@@ -145,3 +145,41 @@ def test_a_null_name_does_not_crash_the_frequency_tiebreak():
     # the only NAMED record wins the canonical slot; an unnamed one contributes
     # no frequency and must never outrank it.
     assert canon == ["nys_dos_appearance_enhancement:F2"]
+
+
+def test_every_anchored_category_outranks_the_aggregators_and_the_roster():
+    """The source_rank trap, pinned so it cannot recur a fourth time.
+
+    D65 documented it for childcare; the pharmacy branch documented it again;
+    laundry was still missing its branch on 2026-09-16 and wave two measured the
+    cost: an EXPIRED `nyc_dcwp_licenses` roster row became the canonical row of
+    its cluster and gated a live laundromat out of supply. Laundry supply fell
+    3,954 -> 3,949 from six ingested rows.
+
+    Two invariants, for EVERY category that has a near-census anchor:
+      1. the anchor ranks 0 -- better than every aggregator;
+      2. `nyc_dcwp_licenses` (a roster that can hold an expired licence for a
+         trading business) ranks WORSE than the anchor.
+    """
+    from loci.score.dedup import source_rank
+
+    anchors = {
+        "laundry": "nyc_dcwp_inspections",
+        "childcare": "nyc_dohmh_childcare",
+        "pharmacy": "nys_medicaid_pharmacies",
+        "bar": "nys_sla_liquor_licenses",
+        "restaurant": "nyc_dohmh_restaurants",
+        "grocery": "usda_snap_retailers",
+    }
+    aggregators = ("overture_places", "osm_overpass", "foursquare_os_places")
+    for category, anchor in anchors.items():
+        assert source_rank(category, anchor) == 0, (
+            f"{category}: {anchor} must be the most authoritative source, "
+            f"got rank {source_rank(category, anchor)} -- it has fallen through "
+            f"to the `else` arm and now scores worse than an aggregator")
+        for agg in aggregators:
+            assert source_rank(category, anchor) < source_rank(category, agg), (
+                f"{category}: {agg} outranks the anchor {anchor}")
+        assert source_rank(category, "nyc_dcwp_licenses") > source_rank(category, anchor), (
+            f"{category}: the DCWP roster outranks the anchor -- an expired "
+            f"licence would speak for a cluster an inspector has visited")

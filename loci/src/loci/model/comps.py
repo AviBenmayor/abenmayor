@@ -50,6 +50,7 @@ Cushion (the downside signal on top of supportable rent):
 """
 from __future__ import annotations
 
+import copy
 import csv
 import hashlib
 
@@ -71,11 +72,56 @@ FALLBACK_LEVELS = ("neighborhood", "borough", "citywide")
 LISTABLE_CATEGORIES = [c for c in CATEGORIES if c != "bank"]
 
 
+def _stamp(path) -> tuple:
+    """(resolved path, mtime_ns, size) -- the cache key for a parsed file.
+
+    THE PATH ALONE IS NOT A KEY. `data/benchmarks/bizbuysell_nyc_listings.csv`
+    is the file a human pastes real listings into the moment the BizBuySell
+    403 is worked around (see the module docstring); a cache keyed on its name
+    would keep serving the empty parse through that refresh, and every card in
+    the run would grade economics D against listings that are sitting on disk.
+    A stale comps cache is worse than the N+1 it removes. mtime AND size,
+    because a same-second rewrite can leave mtime unchanged on a coarse
+    filesystem clock while the length moves; a missing file is its own key.
+    """
+    try:
+        st = path.stat()
+    except OSError:
+        return (str(path), None, None)
+    return (str(path), st.st_mtime_ns, st.st_size)
+
+
+#: {stamp: parsed payload}. Small and bounded: two files, one entry each per
+#: distinct (mtime, size) seen in this process.
+_PARSE_CACHE: dict[tuple, object] = {}
+
+
+def clear_parse_cache() -> None:
+    """Drop the memoised parses. Tests that rewrite a fixture within one
+    mtime tick call this; nothing in production needs it."""
+    _PARSE_CACHE.clear()
+
+
 def load_listings(csv_path=None) -> list[dict]:
     """Raw listing rows from the CSV. Numeric fields parse to float where
     present; a blank/absent field stays None (never 0.0 -- $0 revenue would be
-    a real, if strange, value, and must not be confused with "not reported")."""
+    a real, if strange, value, and must not be confused with "not reported").
+
+    MEMOISED on `_stamp(path)`. `build_cards` called this once per category,
+    so one fifteen-category report re-parsed the CSV fifteen times; the rows
+    are handed back as fresh dicts so a caller that mutates one cannot poison
+    the next card's comp set."""
     path = csv_path or LISTINGS_CSV
+    key = ("listings", _stamp(path))
+    hit = _PARSE_CACHE.get(key)
+    if hit is not None:
+        return [dict(r) for r in hit]
+    rows = _parse_listings(path)
+    _PARSE_CACHE[key] = rows
+    return [dict(r) for r in rows]
+
+
+def _parse_listings(path) -> list[dict]:
     if not path.exists():
         return []
     numeric = {"asking_price", "gross_revenue", "cash_flow_sde",
@@ -94,8 +140,18 @@ def load_listings(csv_path=None) -> list[dict]:
 
 def load_benchmarks() -> dict:
     """The checked-in benchmarks.yaml: occupancy_cost_ratio fallback table,
-    collection provenance/caveats, and the raw per-category listing snapshot."""
-    return yaml.safe_load(BENCHMARKS_PATH.read_text())
+    collection provenance/caveats, and the raw per-category listing snapshot.
+
+    MEMOISED on `_stamp(BENCHMARKS_PATH)`, same reasoning as `load_listings`.
+    Returns a deep copy: the doc is nested and `_occupancy_ratio` reaches into
+    it, so handing out the cached object itself would let one caller's edit
+    change another card's occupancy ratio."""
+    key = ("benchmarks", _stamp(BENCHMARKS_PATH))
+    hit = _PARSE_CACHE.get(key)
+    if hit is None:
+        hit = yaml.safe_load(BENCHMARKS_PATH.read_text())
+        _PARSE_CACHE[key] = hit
+    return copy.deepcopy(hit)
 
 
 def benchmarks_hash() -> str:

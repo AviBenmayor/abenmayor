@@ -39,6 +39,32 @@ SQL_027 = pathlib.Path(__file__).resolve().parents[1] / "sql" / "027_poi_closure
 TABLE = "staging.poi_closure"
 SOURCE = "foursquare"
 
+#: The DDL order of `staging.poi_closure` (sql/027), named ONCE and used on
+#: BOTH sides of the INSERT below. Audit finding 11: DuckDB binds
+#: `INSERT ... SELECT` by POSITION, so naming the SELECT alone would not
+#: protect anything -- the day sql/027 gains a column, a positional insert
+#: writes `fetched_at` into it and no error is raised.
+COLUMNS = ("fsq_place_id", "location_key", "category", "name", "lon", "lat",
+           "date_created", "date_closed", "source", "fetched_at")
+
+#: THE KEY IS `fsq_place_id`, NOT `location_key` (audit finding 9).
+#: `location_key` is minted by `poi_presence.mint_key` and is NOT unique here:
+#: measured 2026-09-16 on the live file, 228,455 rows carry 61,837 non-null
+#: keys over 61,518 distinct values -- 31 keys with more than one closure,
+#: 350 rows in those groups, 319 excess. Two Foursquare venues of the same
+#: category that round to the same 4 dp coordinate and normalize to the same
+#: name key (a chain's two counters in one building, a re-registration of the
+#: same shop) hash identically and are DIFFERENT venues, so the duplication is
+#: real data, not a defect to dedup away.
+#:
+#: A bare `JOIN ... ON c.location_key = pp.location_key` therefore fans out:
+#: measured against `analysis.poi_presence` it returns 8,024 rows for 8,019
+#: distinct ledger locations. Any consumer that needs "is there a closure at
+#: this location_key" must AGGREGATE FIRST to one row per key with a stated
+#: pick rule -- this module's is `resolve()`'s: earliest `date_closed`, key
+#: match beating link match on a tie.
+KEY = "fsq_place_id"
+
 #: How a closure was attached to a ledger row, most confident first. Stored in
 #: `analysis.poi_presence.closed_src`, so provenance AND mapping confidence are
 #: both recoverable from the ledger alone.
@@ -101,10 +127,8 @@ def load(con, *, release: str | None = None, dry_run: bool = False,
             "(run `loci poi-closures ingest` to pull it) or the open-only filter "
             "leaked back into the fetch.")
 
-    frame = pd.DataFrame(rows, columns=[
-        "fsq_place_id", "location_key", "category", "name", "lon", "lat",
-        "date_created", "date_closed", "source", "fetched_at"])
-    frame = frame.drop_duplicates(subset="fsq_place_id", keep="first")
+    frame = pd.DataFrame(rows, columns=list(COLUMNS))
+    frame = frame.drop_duplicates(subset=KEY, keep="first")
 
     report = {
         "release": release,
@@ -123,7 +147,10 @@ def load(con, *, release: str | None = None, dry_run: bool = False,
     try:
         con.register("_closure_in", frame)
         con.execute(f"DELETE FROM {TABLE}")
-        con.execute(f"INSERT INTO {TABLE} SELECT * FROM _closure_in")
+        # Audit finding 11: named on BOTH sides. `frame` is built from the same
+        # `COLUMNS` tuple, so the two lists cannot drift apart silently.
+        cols = ", ".join(COLUMNS)
+        con.execute(f"INSERT INTO {TABLE} ({cols}) SELECT {cols} FROM _closure_in")
         con.execute("COMMIT")
     except Exception:
         con.execute("ROLLBACK")
@@ -212,10 +239,20 @@ def resolve(con) -> "object":
 
     out = pd.DataFrame(hits, columns=["location_key", "closed_on", "closed_src"])
     out["_rank"] = out["closed_src"].map({k: i for i, k in enumerate(MATCH_KINDS)})
+    # AUDIT FINDING 9, THE GUARD: this aggregation is the ONLY thing standing
+    # between the ledger and a fan-out. `location_key` is not unique in this
+    # table (see `KEY` above) and several closures routinely land on one ledger
+    # row by the link pass, so the frame handed to `apply_to_ledger`'s UPDATE
+    # must be ONE ROW PER location_key before it is joined to anything. The
+    # pick rule is stated, not incidental: earliest `date_closed`, key match
+    # beating link match on a tie.
     out = (out.sort_values(["location_key", "closed_on", "_rank"])
               .drop_duplicates(subset="location_key", keep="first")
               .drop(columns="_rank")
               .reset_index(drop=True))
+    assert out["location_key"].is_unique, (
+        "resolve() must return one row per location_key -- a duplicate here "
+        "would fan `apply_to_ledger`'s UPDATE out over the ledger")
     return out
 
 

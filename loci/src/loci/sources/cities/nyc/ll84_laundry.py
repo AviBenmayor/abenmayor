@@ -348,6 +348,9 @@ def build_ll84_laundry(con, *, limit: int | None = None,
     # affirmative answer over a 0 or a blank, and ignores NULLs by definition.
     con.execute("""
         INSERT INTO staging.ll84_laundry
+               (bbl, filed_year, dataset_id, common_area_hookups,
+                in_unit_hookups, units_reported, n_filings, any_multi_bbl,
+                ingested_at)
         SELECT bbl,
                CAST(filed_year AS SMALLINT),
                any_value(dataset_id),

@@ -76,7 +76,7 @@ def add_address(con, aid, lon, lat, *, nta="BK0101", units=100.0, ri=0.4,
 
 
 def add_poi(con, key, cat, lon, lat, kind, date, *, principled=True,
-            borough="Brooklyn"):
+            borough="BK"):
     con.execute("INSERT INTO analysis.poi_presence VALUES (?,?,?,?,?,?,?,?,?,?)",
                 [key, cat, key, lon, lat, borough, kind, "opened_on", date,
                  f"poi:{key}"])

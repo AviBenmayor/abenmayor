@@ -405,16 +405,43 @@ def test_an_address_with_no_balanced_dock_is_null_never_zero(loaded):
         assert pd.isna(m.at["ADDR-D", col])
 
 
-def test_every_lot_address_gets_a_row_and_no_street_row_does(loaded):
+def test_every_address_gets_a_row_including_the_street_frame(loaded):
     """Owner rule 2026-09-13: no eligibility gate. An address with nothing
     comparable nearby gets a ROW with NULLs, so "measured, nothing to compare"
-    and "never computed" stay different facts. D84's street frame is excluded
-    for phase 1's reason: it is not the frame the cards read."""
+    and "never computed" stay different facts.
+
+    2026-09-16 (owner ruling 4) extended that to D84's street frame, which had
+    been excluded on the grounds that it was not the frame the cards read. It
+    was the ONLY frame for which "never computed" was being stored as an
+    absence, and every join to it being LEFT, nothing could tell.
+    """
     loaded.execute("INSERT INTO analysis.address (address_id, borough, frame) "
                    "VALUES ('ADDR-STREET', 'BK', 'street')")
+    # phase 1 swept it: one dock in reach, exactly as ADDR-A has.
+    loaded.execute(
+        "INSERT INTO analysis.address_bike_station (address_id, borough, "
+        "station_id, dist_m, radius_m, graph_version, run_at) "
+        "VALUES ('ADDR-STREET', 'BK', 'D1', 120.0, 400.0, 'test', now())")
     m = _build(loaded, dry_run=True)
-    assert set(m.index) == set(REACH)
-    assert "ADDR-STREET" not in m.index
+    assert set(m.index) == set(REACH) | {"ADDR-STREET"}
+    assert math.isclose(m.loc["ADDR-STREET", "bike_growth_12m"], G_A, rel_tol=1e-9)
+
+
+def test_an_unswept_street_frame_is_refused_rather_than_stored_as_no_dock(loaded):
+    """The silent zero the widening could create. This module never touches the
+    walk graph -- the dock geometry is phase 1's analysis.address_bike_station --
+    so a frame in the universe but absent from that table writes well-formed
+    rows that all read "no balanced dock". That is a fact about the pipeline,
+    indistinguishable downstream from a real dock desert."""
+    loaded.execute("INSERT INTO analysis.address (address_id, borough, frame) "
+                   "VALUES ('ADDR-STREET', 'BK', 'street')")
+    with pytest.raises(RuntimeError, match="ZERO rows in"):
+        _build(loaded, dry_run=True)
+    # ...and it can be stored deliberately, never by accident.
+    m = _build(loaded, dry_run=True, allow_unswept_frame=True)
+    assert m.loc["ADDR-STREET", "n_docks_balanced"] == 0
+    assert m.loc["ADDR-STREET", "bike_growth_12m"] is None or pd.isna(
+        m.loc["ADDR-STREET", "bike_growth_12m"])
 
 
 def test_a_part_null_row_is_refused(loaded):

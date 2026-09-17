@@ -152,6 +152,16 @@ def test_write_address_demographics_round_trips(tmp_path, monkeypatch):
     ])
     con = locidb.connect(":memory:")
     locidb.init_schema(con)
+    # The universe the writer clips to (audit finding 15, 2026-09-16). Both
+    # addresses are IN it, so the prune must be a no-op here; that it is NOT a
+    # no-op when an address is missing is pinned by
+    # tests/test_street_frame_coverage.py::test_the_writer_prunes.
+    con.executemany(
+        "INSERT INTO analysis.address (address_id, bbl, borough, lon, lat, frame, "
+        "present_count, eligible, n_missing, reach_source, reach_hash, "
+        "graph_version, run_at) VALUES (?, ?, 'MN', -73.99, 40.70, 'lot', 0, TRUE, "
+        "0, 'tiers', 'test', 'test', now())",
+        [("1000010001", "1000010001"), ("1000010002", "1000010002")])
     df = build_address_demographics(con, addresses_df, year=2023, pluto_csv=pluto_csv)
     n = write_address_demographics(con, df, year=2023)
     assert n == 2

@@ -292,28 +292,44 @@ def system_growth(panel: pd.DataFrame) -> float:
 
 # --------------------------------------------------------- the address frames
 
-def address_universe(con, boroughs: list[str] | None) -> pd.DataFrame:
-    """Every LOT-frame address in scope -- the no-eligibility-gate rule (owner
-    2026-09-13). An address with no balanced dock gets a ROW with NULL values and
-    a stored reason, never an absent row: "measured, nothing comparable within a
-    five-minute walk" and "never computed" are different facts.
+def address_universe(con, boroughs: list[str] | None,
+                     frames: tuple[str, ...] | None = None) -> pd.DataFrame:
+    """Every address in scope, BOTH sampling frames -- the no-eligibility-gate
+    rule (owner 2026-09-13). An address with no balanced dock gets a ROW with
+    NULL values and a stored reason, never an absent row: "measured, nothing
+    comparable within a five-minute walk" and "never computed" are different
+    facts, and until 2026-09-16 every one of D84's 50,199 street midpoints was
+    silently in the second category.
 
-    D84's street-midpoint frame is excluded for phase 1's reason: it is not the
-    frame the screen and the cards read.
+    Owner ruling 4 (2026-09-16) removed the `frame = 'lot'` filter that used to
+    live here. `frames=('lot',)` reproduces the old universe and exists only so
+    a test can prove the lot rows did not move; nothing in the build passes it.
+
+    This function does NOT widen the geometry: the reachable dock set still
+    comes from `analysis.address_bike_station`, which phase 1
+    (`model/address_bike.py`) sweeps. If phase 1 has not been re-swept over the
+    street frame, every street row here reads "no balanced dock" -- true of the
+    pipeline, not of the city -- which is why `build_growth` compares the two
+    universes and refuses to be quiet about the difference.
     """
-    where = ["COALESCE(frame, 'lot') = 'lot'"]
+    where: list[str] = []
     params: list = []
+    if frames is not None:
+        where.append(f"COALESCE(frame, 'lot') IN ({', '.join('?' for _ in frames)})")
+        params += list(frames)
     if boroughs:
         where.append(f"borough IN ({', '.join('?' for _ in boroughs)})")
-        params = list(boroughs)
-    df = con.execute(
-        f"SELECT address_id, borough FROM analysis.address "
-        f"WHERE {' AND '.join(where)}", params).fetchdf()
+        params += list(boroughs)
+    sql = "SELECT address_id, borough FROM analysis.address"
+    if where:
+        sql += f" WHERE {' AND '.join(where)}"
+    df = con.execute(sql, params).fetchdf()
     if df.empty:
         raise RuntimeError(
-            f"no lot-frame addresses in analysis.address for boroughs={boroughs}. "
-            f"Run `loci address-gaps` first; an empty frame would write a vintage "
-            f"of zero rows that reads as a computed absence.")
+            f"no addresses in analysis.address for boroughs={boroughs}, "
+            f"frames={frames or 'ALL'}. Run `loci address-gaps` first; an empty "
+            f"frame would write a vintage of zero rows that reads as a computed "
+            f"absence.")
     return df
 
 
@@ -505,9 +521,52 @@ def write_measures(con, meas: pd.DataFrame, asof: dt.date, member_only: bool,
 
 # ---------------------------------------------------------------- the build
 
+def frame_sweep_coverage(con, universe: pd.DataFrame, reachable: pd.DataFrame,
+                         allow_unswept_frame: bool = False) -> dict:
+    """Per sampling frame: how many in-scope addresses appear in the PERSISTED
+    reachable set. Raises when a whole frame is missing from it.
+
+    THE SILENT ZERO THIS EXISTS TO STOP. This module never touches the walk
+    graph; the dock geometry is phase 1's `analysis.address_bike_station`. So
+    widening the universe to the street frame (owner ruling 4) BEFORE phase 1
+    has been re-swept over that frame produces 50,199 perfectly well-formed
+    rows, every one saying "no balanced dock", every one NULL-with-a-reason --
+    and the reason stored would be a fact about this pipeline, not about Citi
+    Bike. Nothing downstream could tell that from a genuine dock desert.
+
+    A frame with SOME coverage is fine and is only reported: a real address can
+    legitimately have no dock within 400 m. A frame with ZERO coverage while
+    another frame has some is a missed sweep, and raises.
+    """
+    have = set(reachable["address_id"].unique())
+    frames = con.execute(
+        "SELECT address_id, COALESCE(frame, 'lot') AS frame FROM analysis.address"
+    ).fetchdf()
+    u = universe[["address_id"]].merge(frames, on="address_id", how="left")
+    u["frame"] = u["frame"].fillna("lot")
+    u["swept"] = u["address_id"].isin(have)
+    out = {str(f): {"addresses": int(len(g)), "in_reachable_set": int(g["swept"].sum())}
+           for f, g in u.groupby("frame")}
+    dead = sorted(f for f, v in out.items()
+                  if v["addresses"] and v["in_reachable_set"] == 0)
+    alive = [f for f, v in out.items() if v["in_reachable_set"] > 0]
+    if dead and alive and not allow_unswept_frame:
+        raise RuntimeError(
+            f"frame(s) {dead} are in the universe but have ZERO rows in "
+            f"analysis.address_bike_station, while {alive} do. Phase 1 has not "
+            f"been swept over them: run `loci citibike address-measures "
+            f"--re-sweep` first. Writing the vintage now would store "
+            f"{sum(out[f]['addresses'] for f in dead):,} rows reading 'no balanced "
+            f"dock' -- a statement about this pipeline that is indistinguishable "
+            f"downstream from a real dock desert. Pass allow_unswept_frame=True "
+            f"only if you intend to store that.")
+    return out
+
+
 def build_growth(con, asof: dt.date, boroughs: list[str] | None = None,
                  member_only: bool = True, re_sweep: bool = False,
-                 dry_run: bool = False) -> tuple[pd.DataFrame, dict]:
+                 dry_run: bool = False,
+                 allow_unswept_frame: bool = False) -> tuple[pd.DataFrame, dict]:
     """(measures frame, report) for ONE vintage. READ-ONLY under `dry_run`.
 
     `--asof` is repeatable on the CLI and the loop lives there, so a refused
@@ -519,6 +578,8 @@ def build_growth(con, asof: dt.date, boroughs: list[str] | None = None,
     system = system_growth(panel)
     universe = address_universe(con, boroughs)
     reachable = load_reachable(con, boroughs)
+    swept = frame_sweep_coverage(con, universe, reachable,
+                                 allow_unswept_frame=allow_unswept_frame)
 
     meas = measures(universe, reachable, panel, asof,
                     member_only=member_only, system=system)
@@ -542,6 +603,7 @@ def build_growth(con, asof: dt.date, boroughs: list[str] | None = None,
             / max(panel["act_at_m"].sum(), 1.0)),
         "balanced_share_floor": BALANCED_SHARE_FLOOR,
         "addresses_in_scope": len(universe),
+        "sweep_coverage_by_frame": swept,
         "median_balanced_share": float(meas["balanced_share"].median(skipna=True)),
         "median_growth": float(meas["bike_growth_12m"].median(skipna=True)),
         "existing_rows_for_this_vintage": existing,
@@ -565,8 +627,11 @@ def build_growth(con, asof: dt.date, boroughs: list[str] | None = None,
 
 VALIDATION_SQL = """
 -- Proves on the WAREHOUSE, not on the frame the run built:
---   1. every in-scope lot address has a ROW for the vintage, so the
---      no-eligibility-gate rule is visible rather than asserted;
+--   1. every in-scope address -- BOTH sampling frames since owner ruling 4,
+--      2026-09-16 -- has a ROW for the vintage, so the no-eligibility-gate
+--      rule is visible rather than asserted. The row COUNT is the check: this
+--      table carries no `frame` column, so compare `rows` against
+--      `SELECT count(*) FROM analysis.address` for the same borough scope;
 --   2. a censored address is NULL and never 0 (impossible_zero must be 0) --
 --      a growth of exactly 0.0 with no balanced dock would be a fabricated
 --      "the docks here did not change";
@@ -679,7 +744,8 @@ def reconcile(con, address_id: str, asof: dt.date,
     if got is None:
         raise RuntimeError(
             f"{address_id} has no member-series row at asof {asof:%Y-%m}. Every "
-            f"in-scope lot address gets a row (no eligibility gate); a missing one "
+            f"in-scope address gets a row, in BOTH sampling frames since owner "
+            f"ruling 4 (no eligibility gate); a missing one "
             f"means the vintage was built on a narrower scope than this query.")
     n_bal = int(r.at[0, "n_docks_balanced"])
     if int(got[3]) != n_bal:

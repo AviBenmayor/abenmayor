@@ -64,13 +64,30 @@ arrivals does not exist, and writing 0 would assert "a pure commuter dock",
 which is a claim about a dock that is not there. NULL here means undefined;
 `bike_run_at IS NULL` means the command has never run.
 
-LOT ROWS ONLY
+BOTH FRAMES (owner ruling 4, 2026-09-16 -- was LOT ROWS ONLY)
 ---------------------------------------------------------------------------
 D84 put a second sampling frame (street midpoints every 100 m) into
-`analysis.address`. This build writes the LOT frame only -- `COALESCE(frame,
-'lot') = 'lot'` -- because that is the frame the screen and the cards read, and
-sweeping both frames doubles a Dijkstra that already dominates the runtime. The
-street rows keep NULL, which reads as "not computed", not as zero.
+`analysis.address`. Until 2026-09-16 this build wrote the LOT frame only, on
+the grounds that it was the frame the cards read and that sweeping both doubles
+a Dijkstra that dominates the runtime; the street rows kept NULL. The owner
+reversed it: the street frame gets everything the lot frame has. The street
+rows were reading as "not computed", indistinguishable from "no dock here", on
+exactly the industrial and newly-cut streets the frame exists to see.
+
+ONE SWEEP, NOT TWO. The street frame goes through THIS function, THIS graph,
+THIS radius -- `load_address_points` simply stopped filtering. There is no
+parallel path, because a parallel path is how two "network metres" come to mean
+two things. The cost is real (+18% query nodes) and is paid once.
+
+The widening cannot move a lot-frame number: the sweep is one SSSP per distinct
+query node over a graph built from the pickle alone, so an extra query node
+adds rows and perturbs none. Pinned by
+`tests/test_street_frame_coverage.py::test_widening_the_sweep_leaves_lot_pairs_identical`.
+
+DO NOT MIRROR EDGES if you touch `_to_csr`. `score/access.py` documents why:
+scipy's `csr_matrix` SUMS duplicate (row, col) entries, so manually mirroring an
+undirected edge DOUBLES its length. This module reuses the graph and does not
+build one.
 
 NOT A SCORE INPUT
 ---------------------------------------------------------------------------
@@ -229,14 +246,33 @@ def station_weights(con, first: dt.date, last: dt.date) -> tuple[pd.DataFrame, d
 
 # --------------------------------------------------------------- the sweep
 
-def load_lot_address_points(con, boroughs: list[str] | None) -> pd.DataFrame:
-    """The LOT-frame addresses to measure. D84's street rows are excluded here
-    and keep NULL -- see the module docstring."""
-    where = ["lon IS NOT NULL", "lat IS NOT NULL", "COALESCE(frame, 'lot') = 'lot'"]
+def load_address_points(con, boroughs: list[str] | None,
+                        frames: tuple[str, ...] | None = None) -> pd.DataFrame:
+    """Every address in scope to measure -- BOTH sampling frames.
+
+    `frames=None` means the whole `analysis.address` universe (owner ruling 4,
+    2026-09-16). `frames=('lot',)` reproduces the pre-2026-09-16 behaviour and
+    exists ONLY so a test can prove the two agree on the lot rows; nothing in
+    the build passes it.
+
+    WIDENING THIS DOES NOT MOVE AN EXISTING NUMBER, and that is a property of
+    the algorithm rather than a hope. The sweep is a single-source shortest
+    path from each distinct query NODE over a graph built from the pickle alone
+    (`_prune` then `_to_csr`, neither of which sees the address frame), so
+    adding query nodes adds rows and changes none: node A's distance to dock S
+    does not depend on whether node B was also in the batch.
+    `tests/test_street_frame_coverage.py` pins it by running the sweep both
+    ways and asserting the lot pairs are equal to the byte.
+    """
+    where = ["lon IS NOT NULL", "lat IS NOT NULL"]
     params: list = []
+    if frames is not None:
+        where.append(
+            f"COALESCE(frame, 'lot') IN ({', '.join('?' for _ in frames)})")
+        params += list(frames)
     if boroughs:
         where.append(f"borough IN ({', '.join('?' for _ in boroughs)})")
-        params = list(boroughs)
+        params += list(boroughs)
     return con.execute(
         f"SELECT address_id, borough, lon, lat FROM analysis.address "
         f"WHERE {' AND '.join(where)}", params).fetchdf()
@@ -245,9 +281,11 @@ def load_lot_address_points(con, boroughs: list[str] | None) -> pd.DataFrame:
 def build_reachable(con, boroughs: list[str] | None, stations: pd.DataFrame,
                     radius_m: float = DEFAULT_RADIUS_M,
                     graph_path: pathlib.Path = GRAPH_PATH,
-                    batch: int = BATCH) -> tuple[pd.DataFrame, dict]:
-    """(address_id, borough, station_id, dist_m) for every lot address in scope
-    and every dock it can WALK to inside `radius_m` network metres.
+                    batch: int = BATCH,
+                    frames: tuple[str, ...] | None = None) -> tuple[pd.DataFrame, dict]:
+    """(address_id, borough, station_id, dist_m) for every address in scope --
+    both frames -- and every dock it can WALK to inside `radius_m` network
+    metres.
 
     READ-ONLY on the warehouse.
     """
@@ -262,12 +300,13 @@ def build_reachable(con, boroughs: list[str] | None, stations: pd.DataFrame,
         Gp, X=stations["lon"].tolist(), Y=stations["lat"].tolist())
     s_nidx = np.array([idx[n] for n in np.atleast_1d(s_nodes)], dtype=np.int64)
 
-    addr = load_lot_address_points(con, boroughs)
+    addr = load_address_points(con, boroughs, frames=frames)
     if addr.empty:
         raise RuntimeError(
-            f"no lot-frame addresses in analysis.address for boroughs={boroughs}. "
-            f"Run `loci address-gaps` first; an empty frame would DELETE the "
-            f"reachable set for that scope and write nothing back.")
+            f"no addresses in analysis.address for boroughs={boroughs}, "
+            f"frames={frames or 'ALL'}. Run `loci address-gaps` first; an empty "
+            f"frame would DELETE the reachable set for that scope and write "
+            f"nothing back.")
     a_nodes = ox.distance.nearest_nodes(
         Gp, X=addr["lon"].tolist(), Y=addr["lat"].tolist())
     a_nidx = np.array([idx[n] for n in np.atleast_1d(a_nodes)], dtype=np.int64)
@@ -289,6 +328,7 @@ def build_reachable(con, boroughs: list[str] | None, stations: pd.DataFrame,
     out = out.drop(columns=["q"])
     report = {
         "boroughs": list(boroughs) if boroughs else "ALL",
+        "frames": list(frames) if frames else "ALL",
         "radius_m": float(radius_m),
         "graph_version": graph_version(graph_path),
         "addresses_in_scope": int(len(addr)),
@@ -420,12 +460,17 @@ def write_measures(con, reachable: pd.DataFrame, meas: pd.DataFrame,
         sets = ", ".join(f"{c} = _bm.{c}" for c in BIKE_ADDRESS_COLUMNS)
         con.execute(f"UPDATE analysis.address AS a SET {sets} "
                     f"FROM _bm WHERE a.address_id = _bm.address_id")
-        # THE ZEROES, EXPLICITLY. An in-scope LOT address with no reachable dock
+        # THE ZEROES, EXPLICITLY. An in-scope address with no reachable dock
         # gets 0.0 levels, NULL shares and a stamped run_at: "measured, nothing
         # within a five-minute walk". Without this the absence would read as
         # "never run" and the no-eligibility-gate rule would be broken by
         # omission rather than by a filter.
-        zero_scope = "COALESCE(frame, 'lot') = 'lot'"
+        #
+        # 2026-09-16 (owner ruling 4): no longer restricted to the lot frame.
+        # It was the frame filter HERE, not the sweep, that decided whether a
+        # street row read as "measured, no dock" or as "never computed", and a
+        # street row silently kept the second.
+        zero_scope = "lon IS NOT NULL AND lat IS NOT NULL"
         if boroughs:
             zero_scope += f" AND borough IN ({', '.join('?' for _ in boroughs)})"
         con.execute(
@@ -451,7 +496,11 @@ def write_measures(con, reachable: pd.DataFrame, meas: pd.DataFrame,
 
 VALIDATION_SQL = """
 -- Proves on the WAREHOUSE (not on the frames this run built):
---   1. every lot address in scope carries a level (0 is a value) and a run_at,
+--   0. BOTH SAMPLING FRAMES appear, broken out. The street frame carried zero
+--      rows here until 2026-09-16 and a citywide roll-up could not tell that
+--      from "the street frame has no docks near it"; grouping by frame makes
+--      the coverage of each one a number on the page rather than an assumption;
+--   1. every address in scope carries a level (0 is a value) and a run_at,
 --      so the no-eligibility-gate rule is visible rather than asserted;
 --   2. an address with NO reachable dock has level 0 and NULL shares -- never a
 --      0 share, which would be a claim about a dock that is not there;
@@ -463,7 +512,8 @@ VALIDATION_SQL = """
 --      distribution read, and anyone summing it across addresses is
 --      double-counting by construction.
 SELECT a.borough,
-       count(*)                                                  AS lot_addresses,
+       COALESCE(a.frame, 'lot')                                  AS frame,
+       count(*)                                                  AS addresses,
        count(a.bike_run_at)                                      AS measured,
        count(*) FILTER (WHERE bs.address_id IS NOT NULL)          AS with_a_dock,
        round(100.0 * count(*) FILTER (WHERE bs.address_id IS NOT NULL)
@@ -485,9 +535,8 @@ SELECT a.borough,
 FROM analysis.address a
 LEFT JOIN (SELECT DISTINCT address_id FROM analysis.address_bike_station) bs
        ON bs.address_id = a.address_id
-WHERE COALESCE(a.frame, 'lot') = 'lot'
-GROUP BY ROLLUP(a.borough)
-ORDER BY a.borough NULLS LAST
+GROUP BY ROLLUP(a.borough, COALESCE(a.frame, 'lot'))
+ORDER BY a.borough NULLS LAST, frame NULLS LAST
 """
 
 

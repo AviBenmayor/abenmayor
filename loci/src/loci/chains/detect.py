@@ -128,6 +128,20 @@ SNAPSHOT_COLUMNS = (
     "n_sources", "flagged", "flag_reason", "detected_at",
 ) + SIGNAL_COLUMNS
 
+#: Every column `_write` puts into chains.brand_location, NAMED, in the order
+#: sql/015 creates them. sql/039's header claims BOTH chains inserts were made
+#: to name their columns in that commit; only `brand_snapshot` above was, and
+#: the `brand_location` write stayed `INSERT ... SELECT *` until now. The table
+#: has exactly ONE column order today (verified: a fresh CREATE from sql/015
+#: matches the live table position for position, and no migration ALTERs it),
+#: so nothing was mis-written -- but sql/039 has already established ALTER as
+#: the way a chains table is widened, and the next one would have broken this
+#: write silently.
+LOCATION_COLUMNS = (
+    "snapshot_month", "brand_key", "location_key", "poi_id", "category",
+    "borough", "lon", "lat", "first_seen_on", "first_seen_src",
+)
+
 #: The two `pipeline_coverage` values. NULL is the third state and means the
 #: brand has no `loci_category`, so which regime applies is unknown.
 COVERAGE_REAL = "real"
@@ -503,9 +517,7 @@ def _write(con, month: str, brands, loc) -> None:
     # -- which is what a reader of a date actually needs to know about it.
     detail = loc.assign(snapshot_month=month,
                         first_seen_src=loc["first_seen_kind"])
-    detail = detail[["snapshot_month", "brand_key", "location_key", "poi_id",
-                     "category", "borough", "lon", "lat",
-                     "first_seen_on", "first_seen_src"]].copy()
+    detail = detail[list(LOCATION_COLUMNS)].copy()
     detail["location_key"] = detail["location_key"].astype(str)
     detail = detail.drop_duplicates(["snapshot_month", "brand_key", "location_key"])
 
@@ -518,7 +530,13 @@ def _write(con, month: str, brands, loc) -> None:
         cols = ", ".join(SNAPSHOT_COLUMNS)
         con.execute(f"INSERT INTO chains.brand_snapshot ({cols}) "
                     f"SELECT {cols} FROM _chain_snap")
-        con.execute("INSERT INTO chains.brand_location SELECT * FROM _chain_loc")
+        # Named on BOTH sides. The SELECT list alone would not protect this
+        # write: DuckDB binds an INSERT ... SELECT by POSITION, so a column
+        # added to chains.brand_location by a future ALTER would shift the
+        # target ordinals under an unchanged SELECT.
+        loc_cols = ", ".join(LOCATION_COLUMNS)
+        con.execute(f"INSERT INTO chains.brand_location ({loc_cols}) "
+                    f"SELECT {loc_cols} FROM _chain_loc")
         con.execute("COMMIT")
     except Exception:
         con.execute("ROLLBACK")

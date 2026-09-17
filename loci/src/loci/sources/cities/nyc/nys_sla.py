@@ -281,6 +281,8 @@ def write_licences(con, records: list[AlcoholLicence]) -> int:
     con.execute("DELETE FROM staging.alcohol_licences")
     con.execute("""
         INSERT INTO staging.alcohol_licences
+               (licence_id, description, licence_class, classification, name,
+                address, zip, borough, geom, expires_on, active, observed_on)
         SELECT licence_id, description, licence_class, classification, name,
                address, zip, borough, ST_Point(lon, lat),
                CAST(expires_on AS DATE), active, CAST(observed_on AS DATE)
