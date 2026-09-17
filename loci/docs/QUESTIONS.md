@@ -216,15 +216,6 @@ the Google sample validates. In that case the map ships restricted to those, and
 - **Why it matters:** CONTEXT.md v2 §7 (AC-1) and the Gowanus card of record both cite this unreconciled 2.9× move on a frozen hash; no CHECKPOINT decision explains it. Until resolved, no deliverable may print either bank figure (CONTEXT.md §7 standing rule).
 - **Current answer:** —
 
-### D56 — AC-1 base rate: the citywide 12-month opening rate for a `bathhouse_sauna` category is unknown until the category is admitted. Hand-enumerate it before pre-registering the Gowanus decision.
-- **Status:** open
-- **Answered by:** `Hand-enumerate the Gowanus bathhouse base rate (QUESTIONS D56)`
-- **Tier:** P1 — decision value for AC-1
-- **Tag:** *model / method*
-- **Session:** 2026-09-16, abenmayor-af
-- **Why it matters:** AC-1's prediction A (CONTEXT.md §7) resolves against a baseline opening rate per catchment-year; predicting zero against an unknown, possibly near-zero base rate resolves nothing (CONTEXT.md §7 “why AC-1 must not repeat the daily-needs screen”). The hand enumeration must happen before, not after, the pre-registration is frozen.
-- **Current answer:** —
-
 ### D32 — Freeze protocol for a stamped supply hash: a "final" declaration must go to every active session in one message before the first fit stamps it; any poi_status-changing write after that is a re-stamp event. Where should this live: CHECKPOINT rules, CLAUDE.md, or a `loci freeze` marker table the CLI refuses to write past?
 - **Status:** open
 - **Answered by:** — (not ticketed)
@@ -956,6 +947,12 @@ decisions pending an owner ruling, not descriptive-tier research questions.
 ---
 
 ## Answered
+
+### D56 — AC-1 base rate: the citywide 12-month opening rate for a `bathhouse_sauna` category is unknown until the category is admitted. Hand-enumerate it before pre-registering the Gowanus decision.
+- **Status:** answered
+- **Answered by:** `Hand-enumerate the Gowanus bathhouse base rate (QUESTIONS D56)`
+- **Tier:** P1 — decision value for AC-1
+- **Current answer:** Answered 2026-09-17 (owner, D123): citywide rate 1.7/yr (0.9–2.9), 3.4/yr since 2024, plus named pipeline; bathing-primary day spas count in the stock. Memo docs/bathhouse-base-rate-2026-09.md.
 
 ### M1 — Is the measured retail gap real, or a POI-coverage artifact?
 - **Status:** answered

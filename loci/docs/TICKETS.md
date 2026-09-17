@@ -1513,6 +1513,8 @@ Opened 2026-09-16 (CHECKPOINT D120).
 
 Pushed to Linear 2026-09-16 as GTM-199.
 
+Done 2026-09-17 (CHECKPOINT D123): 1.7 openings/yr citywide 2019–2026 (95% 0.9–2.9), 3.4/yr since 2024; owner ruled the Baseline field = citywide rate + named pipeline (Reunion 272 Seigel, SaunaLounge 45 S 3rd, Othership UES, Life Time Gowanus Wharf 2028), not a catchment rate; bathing-primary day spas count. Memo docs/bathhouse-base-rate-2026-09.md. Source anatomy handed to GTM-198 (Overture public_bath_houses = Parks restrooms; FSQ Bath House/Sauna unmapped; DOHMH café permits as a floor anchor).
+
 
 ---
 

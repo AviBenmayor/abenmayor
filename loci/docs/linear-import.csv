@@ -1084,7 +1084,9 @@ Why: a pre-registered decision with no base rate is a guess with a date on it. C
 
 Opened 2026-09-16 (CHECKPOINT D120).
 
-Pushed to Linear 2026-09-16 as GTM-199.",Backlog,1,2,validation,Loci,E4 · Validation and Artifact
+Pushed to Linear 2026-09-16 as GTM-199.
+
+Done 2026-09-17 (CHECKPOINT D123): 1.7 openings/yr citywide 2019–2026 (95% 0.9–2.9), 3.4/yr since 2024; owner ruled the Baseline field = citywide rate + named pipeline (Reunion 272 Seigel, SaunaLounge 45 S 3rd, Othership UES, Life Time Gowanus Wharf 2028), not a catchment rate; bathing-primary day spas count. Memo docs/bathhouse-base-rate-2026-09.md. Source anatomy handed to GTM-198 (Overture public_bath_houses = Parks restrooms; FSQ Bath House/Sauna unmapped; DOHMH café permits as a floor anchor).",Backlog,1,2,validation,Loci,E4 · Validation and Artifact
 Government-feed anchor for filing-blind amenity categories (QUESTIONS T10),"GTM-192 found the filings pipeline structurally blind to gym/spa/padel-type amenities at any threshold — no DOB, DOHMH or DCWP feed in the warehouse today carries a trade field that would attribute a filing to one of these categories. Find which government feed (DCWP licence classes, DOH permits, FDNY, DOB occupancy) actually sees them, and at what lag, because the E10 category-expansion checklist (GTM-112) requires every new category to name a real anchor before it ships.
 
 Why: without a named anchor, `bathhouse_sauna` and any other destination-amenity category inherits the full OSM/Overture undercount with nothing to calibrate it against — exactly the §7.1 coverage-bias threat the checklist exists to fail closed on.
