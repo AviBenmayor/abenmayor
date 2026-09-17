@@ -2038,6 +2038,16 @@
       "Labels": "ingest,score",
       "Project": "Loci",
       "Milestone": "E1 \u00b7 Ingest and Grid"
+    },
+    {
+      "Title": "Ingest NYC DOE Demographic Snapshot as childcare/family demand context (QUESTIONS D57)",
+      "Description": "Owner shared a Gothamist piece citing the NYU Furman Center: Bed-Stuy's Black population share ~75% (2000) -> 38% (2024), families with children thinning, P.S. 25 closed 2025 at 54 students. Loci's demand composition (D60 ACS at address grain; D63/D65/D69 age-fit on under_18_share / under_5_share for childcare and bar) rests on ACS 5-year estimates alone -- lagged, MOE-heavy at fine grain, and unable to show year-over-year change in the pool of children. The DOE Demographic Snapshot is an UNSAMPLED annual October headcount per school with grade bands and ELL/poverty/race shares; K enrollment is a two-year-lagged read on under-5 households; school closures are dated REALIZED events (D92's layer).\n\nProbed 2026-09-16: the series is four overlapping vintage files (s52a-8aq6, c7ru-d68s, vmmu-wj3w, nie4-bv6q), together spanning 2013-14..2021-22 -- nothing newer is published on data.cityofnewyork.us under any query tried, a real gap against DOE's own InfoHub Excel releases, not an ingest-window artifact. registry.yaml's nyc_doe_demographic_snapshot entry carries the full column list and this caveat.\n\nAcceptance criteria: (1) full-history ingest of every published snapshot year (all four files, deduped at the 2017-18 overlap) into staging -- never a rolling window (owner: 'never ever ever limit data pulls'); (2) a school -> zone join against the DOE elementary school zone polygons (cmjf-yawu, School Zones 2024-2025, the_geom + dbn) -- NOT a school-point join, since enrollment is a zone-grain signal and a school's address is not where its pupils live; (3) per-address CONTEXT columns on the address demand table -- a zoned elementary enrollment figure (e.g. k_enrollment_zone) and a 5-year enrollment change measure, both clearly separated from anything score-facing; (4) a Bed-Stuy vs Borough Park vs East Village sanity read comparing the DOE-derived composition trend against ACS and against the Furman Center's CoreData neighborhood profiles; (5) explicit note in the column doc and the card that this measure enters NO grade and NO score -- it is demand context and a validation panel for the age-fit terms only, never a screen input and never a growth thesis (CONTEXT.md's present-day-screen charter).\n\nOpened 2026-09-16 (CHECKPOINT D122).\n\nPushed to Linear 2026-09-16 as GTM-204.",
+      "Status": "Backlog",
+      "Priority": 3,
+      "Estimate": 5,
+      "Labels": "ingest,validation",
+      "Project": "Loci",
+      "Milestone": "E1 \u00b7 Ingest and Grid"
     }
   ]
 }

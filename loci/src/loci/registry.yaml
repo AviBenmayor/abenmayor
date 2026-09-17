@@ -794,6 +794,92 @@ sources:
     # bands are NOT listed here (see AGE_BANDS in grid/acs.py) -- only the
     # B01001_001E denominator is, or this key would be 33 entries of noise.
 
+  - id: nyc_doe_demographic_snapshot
+    name: NYC DOE Demographic Snapshot (school-level enrollment + composition)
+    tier: city
+    city: nyc
+    # `control`, not `validation`: the primary read is childcare/family DEMAND
+    # CONTEXT (an unsampled annual headcount of children already zoned to a
+    # school), which is the same job acs_5yr's age bands do above. The
+    # validation use -- an independent check on D63/D65/D69's under_18_share /
+    # under_5_share age-fit terms -- is recorded here and in `feeds`, not as a
+    # second role: the schema takes exactly one (see nyc_dot_pedestrian_counts
+    # below for the same one-role-two-uses pattern).
+    role: control
+    status: planned
+    portability:
+      class: city_open_data
+      feeds: [demand, validation]
+      confidence: med
+      degrades_to: >
+        The demand side stays entirely ACS-shaped: no unsampled, annual read on
+        the pool of children a childcare- or family-oriented storefront draws
+        on, and no independent check on whether under_18_share / under_5_share
+        are still tracking a neighborhood's actual child population in the
+        years between 5-year ACS vintages.
+      note: >
+        Nearly every US school district publishes an annual enrollment-by-school
+        file with race/poverty/ELL breakdowns -- state education departments
+        require it for Title I and civil-rights reporting. The SCHEMA (DBN,
+        the specific race/ELL/poverty columns) is NYC DOE's; the underlying fact
+        of an annual per-school headcount is not NYC-unique.
+    url: https://data.cityofnewyork.us/Education/2017-18-2021-22-Demographic-Snapshot/c7ru-d68s
+    # NOT `dataset_id`: DOE republishes this series as overlapping multi-year
+    # vintage files rather than appending to one id, the same pattern as
+    # nyc_dob_certificates_of_occupancy above. s52a-8aq6 + c7ru-d68s together
+    # span 2013-14..2021-22; nie4-bv6q/vmmu-wj3w are single-year files already
+    # inside that span, kept as a cross-check rather than for additional years.
+    dataset_ids: [s52a-8aq6, c7ru-d68s, vmmu-wj3w, nie4-bv6q]
+    api: https://data.cityofnewyork.us/resource/c7ru-d68s.json
+    geography: >
+      one row per school (DBN), no coordinates on the snapshot itself. The
+      address join is NOT school-point proximity -- it is address-in-polygon
+      against the DOE elementary school zone file (dataset cmjf-yawu, "School
+      Zones 2024-2025 (Elementary School)": the_geom MultiPolygon + dbn,
+      confirmed tabular and current), because enrollment is a school-ZONE-grain
+      signal, not a school-POINT one (charter/private/out-of-zone leakage means
+      a school's own address is not where its pupils live). wg9x-4ke6
+      ("2019-2020 School Locations", geocoded, lat/lon per DBN) is the fallback
+      point join if a zone polygon is ever unavailable for a DBN; it is the
+      newest tabular NYC Open Data school-location vintage found and is itself
+      six years stale.
+    temporal:
+      start: 2013-14
+      end: 2021-22
+      grain: annual (October headcount)
+      note: >
+        Verified 2026-09-16 against the Socrata catalog and each candidate
+        dataset's resource endpoint. No 2022-23 through 2024-25 Demographic
+        Snapshot exists on data.cityofnewyork.us under any query tried
+        ("demographic snapshot", "school demographic", "2022-23".."2024-25",
+        "enrollment", "charter school") -- DOE's InfoHub site publishes newer
+        Snapshot workbooks directly as Excel, outside this catalog, which is
+        the route to close the 2022-25 gap. Ingest what Open Data actually
+        publishes; do not claim currency this source doesn't have.
+    cost: {amount: 0, unit: total}
+    bias: >
+      ENROLLMENT IS NOT RESIDENT CHILDREN: charter, private and out-of-zone
+      leakage all sit outside a zoned public school's roster. K enrollment is a
+      two-year-lagged read on under-5 households, not a current one. No charter
+      indicator on the snapshot itself -- would need a join to a school-location
+      file's managed_by_name, unverified for full coverage this session. Set
+      against that: an UNSAMPLED annual headcount carries no margin of error,
+      the opposite failure mode from the ACS 5-year estimates the composition
+      terms currently rest on alone, which are both lagged and MOE-heavy at
+      address grain. Open Data's own lag (nothing published past 2021-22 as of
+      this probe) means it cannot yet speak to a school closure or enrollment
+      drop from 2022 onward on its own.
+    notes: >
+      CANDIDATE, registered 2026-09-16 (CHECKPOINT D122) on the owner's read of
+      a Gothamist/Furman Center piece: Bed-Stuy's Black population share ~75%
+      (2000) -> 38% (2024), families with children thinning, P.S. 25 closed
+      2025 at 54 students. Not yet ingested (see docs/TICKETS.md, E1). Enters as
+      DEMAND CONTEXT for childcare/family-oriented categories and as a
+      VALIDATION panel for D63/D65/D69's age-fit terms -- explicitly NOT a
+      screen input and NOT a growth thesis (CONTEXT.md's present-day-screen
+      charter). A dated school closure belongs in D92's realized-closure layer
+      once a newer vintage than Open Data currently carries lands it.
+
   - id: zillow_zori_zhvi
     name: Zillow Observed Rent Index / Home Value Index
     tier: universal

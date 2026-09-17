@@ -15,12 +15,12 @@ Owner ask, 2026-09-14: *"what are the critical inputs necessary to be able to ex
 | **universal** | 7 | Works on day one, anywhere on earth. Nothing to procure. |
 | **national (US federal)** | 10 | Works on day one in any US city. Carries its own portable bias. |
 | **state** | 7 | Re-plumbed per state. Publication quality varies enormously; expect some states to publish nothing usable. |
-| **city open data (different schema)** | 15 | An equivalent exists but the schema is different. This is the real cost of a second city: an adapter per source. |
+| **city open data (different schema)** | 16 | An equivalent exists but the schema is different. This is the real cost of a second city: an adapter per source. |
 | **city-unique (no equivalent exists)** | 6 | No equivalent exists. The stage degrades, permanently — see §4. |
 
-**45 sources classed.** 17 of them (38%) need no per-city work at all.
+**46 sources classed.** 17 of them (37%) need no per-city work at all.
 
-**18 of the 45 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
+**19 of the 46 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
 
 ---
 
@@ -90,6 +90,7 @@ development pipeline.
 | NYC DCP Housing Database — Project-Level Files | city open data (different schema) *(med conf.)* | The arriving-homes spine is gone, so recommend_grades' null_grade fires: arriving_homes grades D and, being load-bearing, the whole card reads 'do not act'. |
 | NYC DOB Certificates of Occupancy (BIS + DOB NOW) | city open data (different schema) *(med conf.)* | The pipeline loses its freshness supplement: 11,407 MN+BK net units that already hold a CO keep reading 'permitted', overstating the forward pipeline. |
 | NYC DOB Permit Issuance + DOB NOW Approved Permits | city open data (different schema) *(med conf.)* | The construction-activity axis collapses: active / lapsed / stalled cannot be computed, arriving_homes falls to its null_grade D, and every card reads 'do not act'. |
+| NYC DOE Demographic Snapshot (school-level enrollment + composition) | city open data (different schema) *(med conf.)* | The demand side stays entirely ACS-shaped: no unsampled, annual read on the pool of children a childcare- or family-oriented storefront draws on, and no independent check on whether under_18_share / under_5_share are still tracking a neighborhood's actual child population in the years between 5-year ACS vintages. |
 | NYC Energy and Water Data Disclosure (Local Law 84 / LL133) | city open data (different schema) *(med conf.)* | In-building laundry evidence is lost, so the laundry haircut falls back to priors: addressable_demand drops from A to its prior_grade B for the one category that has a haircut at all. |
 | NYC MapPLUTO (Primary Land Use Tax Lot Output) | city-unique (no equivalent exists) *(med conf.)* | The screen has no sampling frame. analysis.address IS 'PLUTO lots WHERE UnitsRes > 0', so without it there is no universe, no dasymetric ancillary, no commercial zoning capacity control (required by CONTEXT 1.3), and no retail floor area for D82 character or the D91 capacity ceiling. |
 | StreetEasy listing pages (advertised in-building laundry, via Tavily) | city-unique (no equivalent exists) *(med conf.)* | Laundry evidence coverage drops below recommend_grades' evidence_coverage_a of 0.50, so addressable_demand for laundry falls from A to the prior_grade B. |
@@ -173,6 +174,7 @@ establishment counts, DOT sidewalk counts, the D88 retrodiction.
 | Census ZIP Code Business Patterns (ZBP), via the County Business Patterns (CBP) API | national (US federal) | No external establishment-count benchmark, so anchor coverage ratios (the 0.85 / 0.90 numbers that justified the childcare and pharmacy anchors) cannot be computed. |
 | Citi Bike System Data (trip files) | national (US federal) *(med conf.)* | The only two-directional movement series in the registry is lost: demand keeps subway ENTRIES, which publish the morning tap-in and never the evening arrival, and which read zero for 65% of Brooklyn addresses -- so `bike_ends_400m`, the only arrival-side measure Loci has, cannot be built and the destination-versus- commuter reading of a corner goes back to being an assumption. |
 | HUD aggregated USPS vacancy data | national (US federal) | No independent residential vacancy series, so the residential half of vacancy rests on ACS 5-year smoothing alone. |
+| NYC DOE Demographic Snapshot (school-level enrollment + composition) | city open data (different schema) *(med conf.)* | The demand side stays entirely ACS-shaped: no unsampled, annual read on the pool of children a childcare- or family-oriented storefront draws on, and no independent check on whether under_18_share / under_5_share are still tracking a neighborhood's actual child population in the years between 5-year ACS vintages. |
 | DOHMH New York City Restaurant Inspection Results | city open data (different schema) | Restaurant, cafe and bar lose their near-census anchor: those three categories revert to aggregator coverage and the CONTEXT 7.1 undercount becomes unmeasurable. |
 | NYC DOT Bi-Annual Pedestrian Counts | city open data (different schema) *(med conf.)* | The access proxies (transit_entries_400m, jobs_400m, homes_400m) lose their only external check, so the D76 rank correlation cannot be computed and the proxy stays an assumption. |
 | NYC DOT traffic cameras (NYCTMC public feed) | city open data (different schema) *(med conf.)* | The frame-sampler route to a measured footfall number closes; nothing else in the free registry can produce a person count. |
@@ -536,6 +538,7 @@ second-city plan starts from the doubt rather than rediscovering it.
 | NYC DOB Certificates of Occupancy (BIS + DOB NOW) | city open data (different schema) | med | Certificates of occupancy are a universal building-code artefact; whether they are published as an open dataset is not universal. |
 | DOB NOW: Build - Job Application Filings | city open data (different schema) | med | Permit-application feeds are common; a work-type breakdown fine enough to isolate a sign permit or a place of assembly is not. |
 | NYC DOB Permit Issuance + DOB NOW Approved Permits | city open data (different schema) | med | The generic requirement is a permit file carrying a RENEWAL or status date, not just an issue date. Many permit datasets publish issuance only, which is exactly the column that makes this stage work. |
+| NYC DOE Demographic Snapshot (school-level enrollment + composition) | city open data (different schema) | med | Nearly every US school district publishes an annual enrollment-by-school file with race/poverty/ELL breakdowns -- state education departments require it for Title I and civil-rights reporting. The SCHEMA (DBN, the specific race/ELL/poverty columns) is NYC DOE's; the underlying fact of an annual per-school headcount is not NYC-unique. |
 | Active NYC Health Code Regulated Child Care Programs | state | med | NYC is unusual in that the CITY licenses group child care (Art. 47); in most states the roster is a state agency file. Portable, but from a different publisher. |
 | NYC DOT Bi-Annual Pedestrian Counts | city open data (different schema) | med | Many cities publish some pedestrian counts; a 37-round, 19-year biannual panel at fixed points is rare, and the restricted-range problem (counts sited on busy commercial corridors) travels to every city that has one. |
 | NYC DOT traffic cameras (NYCTMC public feed) | city open data (different schema) | med | Public traffic-camera APIs exist in many cities; unpublished bearing and field of view make any count a count on an unknown catchment, wherever it is done. |

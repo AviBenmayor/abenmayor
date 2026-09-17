@@ -196,7 +196,16 @@ the Google sample validates. In that case the map ships restricted to those, and
 - **Fails if:** n/a — go-to-market question, not a screen result to validate.
 - **Current answer:** — (Open. The GTM memo (D87) ranks the ICP brokers → lenders/feasibility shops → BID/SBS → 3–30-unit operators, and anchors seat price on Reonomy $4,800 / GrowthFactor $2,400, but no customer conversation has happened yet to confirm which segment actually pays first, or at what price — the memo is explicit that this is unverified.)
 
-#### Recent session decisions (D29–D56)
+#### Recent session decisions (D29–D57)
+
+### D57 — Does the screen's present-day demand read for Bed-Stuy agree with the Furman Center composition story?
+- **Status:** open
+- **Answered by:** — (not ticketed; a CANDIDATE source, nyc_doe_demographic_snapshot, is registered in registry.yaml and its ingest is ticketed under E1 — see docs/TICKETS.md)
+- **Tier:** P2 — validation / demand context
+- **Tag:** *validation / data*
+- **Session:** 2026-09-16
+- **Why it matters:** Owner shared a Gothamist piece (2026-09-16, https://gothamist.com/news/schools-chancellor-weighs-plans-for-30k-students-in-small-nyc-schools) citing the NYU Furman Center: Bed-Stuy's Black population share ~75% (2000) → 38% (2024), families with children thinning, P.S. 25 closed 2025 at 54 students. Loci's demand composition (D60 ACS at address grain; D63/D65/D69 age-fit on under_18_share / under_5_share for childcare and bar) rests on ACS 5-year estimates alone — lagged, MOE-heavy, and unable to show year-over-year change in the pool of children. Two independent, more granular reads on the same composition shift now exist: the Furman Center's CoreData neighborhood profiles (downloadable per sub-borough area, series 2000/2006/2010/2019/2023/2024 — households with children, single-person households, race, income, homeownership, rent — https://furmancenter.org/neighborhoods) and the DOE Demographic Snapshot (probed 2026-09-16: datasets s52a-8aq6, c7ru-d68s, vmmu-wj3w, nie4-bv6q, covering 2013-14..2021-22, zone-joined via cmjf-yawu). A read-only Bed-Stuy check against Furman's numbers is in progress this session. This question is whether the screen's own present-day demand read (not a growth projection — CONTEXT.md's present-day-screen charter) agrees with that story, and if not, whether the gap is an ACS-lag artifact or a real miss.
+- **Current answer:** —
 
 ### D55 — Gowanus core bank supply ratio reads 1.97x on the 2026-09-11 card and 0.67x on the 2026-09-13 card, same supply hash 767b28674e30, same 1,831 addresses. Which is right, and why did it move?
 - **Status:** open
