@@ -80,7 +80,7 @@ have readers in `tests/`, which this scan does not see.
 | `analysis.poi_supply` | view | one open business location counted as supply | - | 46 |
 | `analysis.poi_supply_status` | view | one location with its open/closed/unknown verdict _reads analysis.supply_asof, not current_date_ | - | 29 |
 | `analysis.sidewalk_count` | table | camera x frame x model x model version | camera_id,frame_hash,model,model_version | 20 |
-| `analysis.storefront` | table | ONE FILING for one storefront -- NOT one storefront _storefront_id RENUMBERS between filings. Group by reporting_year and you pool a full filing with a vacant_only supplement: use analysis.storefront_year_ | storefront_id,filing_due_date | 61 |
+| `analysis.storefront` | table | ONE FILING for one storefront -- NOT one storefront _storefront_id RENUMBERS between filings. Group by reporting_year and you pool a full filing with a vacant_only supplement: use analysis.storefront_year_ | storefront_id,filing_due_date | 62 |
 | `analysis.storefront_latest` | view | one PREMISES with its latest observation _keyed on premises_id because storefront_id renumbers between filings_ | premises_id | 5 |
 | `analysis.storefront_pipeline` | table | one pipeline record for one premises | pipeline_id | 56 |
 | `analysis.storefront_pipeline_lead` | view | one premises with its leading pipeline stage | - | 2 |
@@ -99,7 +99,7 @@ have readers in `tests/`, which this scan does not see.
 |---|---|---|---|---|
 | `analysis.address_category` | table | address x category _4,980,615 rows = 332,041 addresses x 15 categories_ | borough,address_id,category | 130 |
 | `analysis.address_gaps` | view | one address with its per-category gap measures _GENERATED from loci.categories.CATEGORIES by model/address_gaps.address_gaps_view_sql, not static DDL. A new analysis.address column will never reach it silently_ | - | 74 |
-| `analysis.forecast` | table | address x category x issued_month x model_version -- one frozen prediction _EVERY vintage is kept (owner 2026-09-16). The frozen vintage is the point: a query-time view cannot replace it_ | issued_month,model_version,address_id,category | 73 |
+| `analysis.forecast` | table | address x category x issued_month x model_version -- one frozen prediction _EVERY vintage is kept (owner 2026-09-16). The frozen vintage is the point: a query-time view cannot replace it_ | issued_month,model_version,address_id,category | 74 |
 | `analysis.forecast_latest` | view | address x category, newest shipped vintage _orders by frozen_at DESC then model_version DESC. Ordering by the git hash alone picks the wrong vintage -- five same-month vintages are live and they genuinely disagree_ | - | 13 |
 | `analysis.forecast_run` | table | one fit -- issued_month x model_version _the FIT, not the predictions_ | issued_month,model_version | 18 |
 | `analysis.forecast_surprise_nta` | view | NTA x category for one scored vintage _an NTA with no expected value is NOT emitted, and a NULL z_clustered is never backfilled from z_naive_ | - | 11 |
