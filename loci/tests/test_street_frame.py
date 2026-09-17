@@ -364,7 +364,7 @@ def test_frame_travels_onto_the_long_table():
     assert list(addr.columns) == ag.ADDRESS_COLUMNS
     assert list(cat_df.columns) == ag.ADDRESS_CATEGORY_SCREEN_COLUMNS
     assert set(cat_df["frame"]) == {ag.LOT_FRAME, ag.STREET_FRAME}
-    assert len(cat_df) == 15 * len(df)
+    assert len(cat_df) == len(ag.ALLCATS) * len(df)
     assert (cat_df[cat_df["address_id"] == "seg:1:0"]["frame"] == ag.STREET_FRAME).all()
 
 
@@ -503,7 +503,7 @@ def test_prune_removes_out_of_scope_rows_of_BOTH_frames():
     assert ag.prune_out_of_scope(con, ("MN", "BK")) == (0, 0)
 
 
-def test_every_street_point_carries_all_fifteen_category_rows():
+def test_every_street_point_carries_every_category_row():
     """INVARIANT (f), structural half. A street point is a scored point like
     any other: 15 rows, present or missing alike, so `count(address_category)`
     stays exactly 15 x `count(address)` across BOTH frames."""
@@ -511,11 +511,11 @@ def test_every_street_point_carries_all_fifteen_category_rows():
     n_addr, n_cat = con.execute(
         "SELECT (SELECT count(*) FROM analysis.address), "
         "(SELECT count(*) FROM analysis.address_category)").fetchone()
-    assert n_cat == 15 * n_addr
+    assert n_cat == len(ag.ALLCATS) * n_addr
     per_street = con.execute(
         "SELECT count(*) FROM analysis.address_category WHERE address_id = 'seg:5:0'"
     ).fetchone()[0]
-    assert per_street == 15
+    assert per_street == len(ag.ALLCATS)
 
 
 def test_a_censored_street_point_sorts_to_the_bottom_by_density_with_no_gate():
@@ -640,6 +640,6 @@ def test_the_warehouse_holds_exactly_two_frames_and_the_namespaces_are_disjoint(
         n_addr, n_cat = con.execute(
             "SELECT (SELECT count(*) FROM analysis.address), "
             "(SELECT count(*) FROM analysis.address_category)").fetchone()
-        assert n_cat == 15 * n_addr
+        assert n_cat == len(ag.ALLCATS) * n_addr
     finally:
         con.close()

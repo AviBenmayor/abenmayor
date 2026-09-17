@@ -35,7 +35,7 @@ import subprocess
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-from loci.sources.base import POIRecord, SourceAdapter
+from loci.sources.base import POIRecord, SourceAdapter, bathhouse_by_name, bathhouse_name_excluded
 
 # NYC bounding box, in the order the `overturemaps` CLI expects:
 # west,south,east,north.
@@ -146,6 +146,13 @@ PRIMARY_CATEGORY: dict[str, str] = {
     "yoga_studio": "fitness",
     "pilates_studio": "fitness",
     "martial_arts_club": "fitness",
+    # bathhouse_sauna (GTM-198). `public_bath_houses` is deliberately absent:
+    # 60 of its 63 NYC rows are Parks Dept "Public Restroom" comfort stations
+    # (2026-08 extract). `spas`/`day_spa`/`health_spa` stay with nails_beauty
+    # under the narrow definition; widening is an owner ruling because it
+    # moves ~4,300 rows out of that category's supply set.
+    "sauna": "bathhouse_sauna",
+    "onsen": "bathhouse_sauna",
     # bank (Overture uses "banks", plural, not "bank")
     "banks": "bank",
     "bank_credit_union": "bank",
@@ -235,7 +242,7 @@ class OverturePlacesAdapter(SourceAdapter):
                 continue
 
             primary = r.get("primary_category")
-            category = self._category_for(primary)
+            category = self._category_for(primary, r.get("name"))
             if category is None:
                 continue
 
@@ -252,10 +259,18 @@ class OverturePlacesAdapter(SourceAdapter):
             )
 
     @staticmethod
-    def _category_for(primary: str | None) -> str | None:
+    def _category_for(primary: str | None, name: str | None = None) -> str | None:
         if not primary:
             return None
+        # The pinned name-term rule (sources/base.py): a `spas`/`health_spa`/
+        # `day_spa` record whose NAME says bathhouse/banya/sauna is the
+        # bathhouse, not a nail spa. Applied before the tag map so the split
+        # inside the spa sub-tags is decided in exactly one place.
+        if bathhouse_by_name("overture", primary, name):
+            return "bathhouse_sauna"
         cat = PRIMARY_CATEGORY.get(primary)
+        if cat == "bathhouse_sauna" and bathhouse_name_excluded(name):
+            return None      # a HigherDOSE tagged `sauna` is a studio, not counted
         if cat:
             return cat
         # The cuisine-specific restaurant family (chinese_restaurant,

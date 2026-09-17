@@ -177,6 +177,13 @@ GOOGLE_TYPES: dict[str, list[str]] = {
     "fitness": ["gym", "fitness_center", "yoga_studio"],
     "bank": ["bank"],
     "hardware": ["hardware_store"],
+    # bathhouse_sauna (GTM-198, 2026-09-17): Table A has BOTH `sauna` and
+    # `public_bath` (verified on the place-types page, Table A span). `spa` is
+    # deliberately excluded -- it is Google's day-spa/nail-spa catch-all, the
+    # population nails_beauty already carries, and adding it would make this
+    # validator count a nail spa as a bathhouse. `massage`/`massage_spa` and
+    # `wellness_center` are 812199 neighbours, not the category.
+    "bathhouse_sauna": ["sauna", "public_bath"],
 }
 
 

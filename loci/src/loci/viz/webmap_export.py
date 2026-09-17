@@ -221,7 +221,11 @@ COLORS = {"hardware": "#b5541f", "convenience": "#2f7d5c", "clinic": "#3d6fb4",
           "fitness": "#c69a1e", "childcare": "#9350a6", "laundry": "#1f9aa1",
           "pharmacy": "#cc4b63", "hair_barber": "#6d8b3a", "cafe_bakery": "#8a6d4b",
           "grocery": "#417a2f", "nails_beauty": "#b3689a", "bar": "#7a5cc0",
-          "bank": "#4a7a8c", "tailor_repair": "#996a3a", "restaurant": "#a8443c"}
+          "bank": "#4a7a8c", "tailor_repair": "#996a3a", "restaurant": "#a8443c",
+          # bathhouse_sauna (GTM-198): chosen as the hex with the largest
+          # minimum Lab distance from the other 15 (dE76 27.2, nearest
+          # childcare); re-validate the pair set in dark mode before publishing.
+          "bathhouse_sauna": "#c02f8f"}
 
 H3_RES = 9
 COORD_DP = 5  # ~1 m at NYC latitude; halves the JSON size vs full float repr

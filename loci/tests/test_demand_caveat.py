@@ -201,8 +201,12 @@ def test_clinic_is_excluded_from_the_annotation_entirely():
     assert all(demand[c]["annotate"] for c in CATEGORIES if c != "clinic")
 
 
-def test_caveat_set_is_exactly_the_four_paper_discretionary_categories():
-    assert caveat_categories() == {"restaurant", "cafe_bakery", "bar", "fitness"}
+def test_caveat_set_is_exactly_the_four_paper_discretionary_categories_plus_bathhouse():
+    # The four paper-backed rows, plus bathhouse_sauna: its class is DERIVED
+    # (CEX "Fees and admissions" elasticity 0.40 > 0.35, spend.yaml) and the
+    # owner widened this exact-set pin on 2026-09-17 (GTM-198) rather than
+    # have the number hand-set below the cut to keep the set at four.
+    assert caveat_categories() == {"restaurant", "cafe_bakery", "bar", "fitness", "bathhouse_sauna"}
 
 
 # --- (b2) drift ----------------------------------------------------------

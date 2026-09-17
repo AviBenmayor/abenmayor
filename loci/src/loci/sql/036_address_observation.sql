@@ -106,7 +106,15 @@ CREATE TABLE IF NOT EXISTS analysis.address_observation (
                         'grocery', 'convenience', 'pharmacy', 'laundry',
                         'hair_barber', 'nails_beauty', 'tailor_repair',
                         'restaurant', 'cafe_bakery', 'bar',
-                        'childcare', 'clinic', 'fitness', 'bank', 'hardware')),
+                        'childcare', 'clinic', 'fitness', 'bank', 'hardware',
+                        'bathhouse_sauna')),   -- 16th slug, GTM-198 (2026-09-17).
+                                           --   This literal only reaches a FRESH
+                                           --   warehouse (CREATE IF NOT EXISTS);
+                                           --   an existing one is rebuilt by
+                                           --   `loci migrate-warehouse --step
+                                           --   observation_category_check --apply`
+                                           --   (migrate.py), at the ingest step,
+                                           --   never by a session's init_schema.
     status          VARCHAR NOT NULL CHECK (status IN (
                         'open', 'closed', 'vacant', 'unknown')),
     maps_status_label VARCHAR,             -- the RAW label, e.g. 'Permanently closed'.

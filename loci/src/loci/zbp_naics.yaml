@@ -123,3 +123,20 @@ categories:
     - naics: "444130"
       confidence: high
       note: "Hardware stores -- definitional."
+
+  bathhouse_sauna:
+    - naics: "812199"
+      confidence: medium
+      note: >
+        Other personal care services -- the ONLY NAICS home for saunas, steam
+        baths, bathhouses and Turkish baths, but the code also holds tattoo
+        parlours, tanning salons, ear piercing, day spas, colonic irrigation
+        and hair removal. Live CBP 2023 pull (2026-09-17): 849 establishments
+        across 56 MN+BK ZIPs (MN 555 / BK 294) against ~45 real bathhouse/
+        sauna venues citywide in the POI feeds, so the denominator is 20-30x
+        the category. Treat any zbp-compare ratio here as UNMEASURABLE rather
+        than as a coverage floor: a ratio of 0.05 would be consistent with a
+        complete roster. The G3 anchor-coverage gate cannot pass on this code
+        by construction, and that is a property of NAICS, not of the anchor.
+        `low` is not in the confidence vocabulary (zbp.py); medium is the
+        floor and this note carries the rest.

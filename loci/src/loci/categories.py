@@ -35,6 +35,13 @@ CATEGORIES: dict[str, Category] = {c.slug: c for c in (
     Category("fitness",       4, "Fitness"),
     Category("bank",          4, "Bank branch"),
     Category("hardware",      4, "Hardware / home supply"),
+    # 16th slug, AC-1 Step 1 (CONTEXT.md §7, GTM-198). Landed through the
+    # fail-closed checklist (docs/CATEGORY-EXPANSION.md) as far as G0; gates
+    # G3-G8 need a warehouse fit and are NOT passed -- see the CHECKPOINT entry
+    # that records them. A destination amenity, not a daily need: the
+    # prevalence-gap premise (near-zero willingness to travel) does not hold,
+    # so its gaps annotate, they do not lead (categories.yaml headline: false).
+    Category("bathhouse_sauna", 4, "Bathhouse / sauna"),
 )}
 
 TIER_WEIGHTS: dict[int, float] = {1: 0.40, 2: 0.20, 3: 0.25, 4: 0.15}

@@ -512,3 +512,14 @@ categories:
     log_form_regime: saturating
     log_form_agrees_on_sign: true
     fitted_on: *id001
+  # Owner ruling 2026-09-17 (GTM-198 G7, checklist artifact 5): the honest
+  # pre-ingest state. NOT a fit and NOT the G7 verdict -- `loci
+  # density-elasticity fit` re-writes this file once the slug has been
+  # ingested on the announced hash. (A dry run on 2026-09-17 DID fit NAICS
+  # 812199 as `saturating`, t -5.05; that is a label for tattoo, tanning and
+  # day-spa establishments, not bathhouses, and the owner declined to gate it
+  # on NAICS breadth -- the row will carry whatever the fit prints.)
+  bathhouse_sauna:
+    regime: not_fitted
+    not_fitted_because: fit pending first ingest on the announced hash (GTM-198 G7)
+    fitted_on: *id001

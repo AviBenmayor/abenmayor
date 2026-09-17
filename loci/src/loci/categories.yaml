@@ -327,3 +327,112 @@ categories:
     sources:
       osm: ["shop=hardware", "shop=doityourself"]
       overture: [hardware_store, home_improvement_store]
+
+  bathhouse_sauna:
+    label: "Bathhouse / sauna"
+    # DEFINITION (pinned 2026-09-17 so the citywide base-rate enumeration for
+    # QUESTIONS D56 counts the same things; do not reword without re-counting):
+    definition: >
+      public-admission bathing facility whose primary offer is heat/water
+      bathing — bathhouse, sauna, steam room, banya, hammam, Korean
+      spa/jjimjilbang, per-visit plunge/thermal pools. Excludes day spa /
+      health spa (stay in nails_beauty pending the wide-slug ruling),
+      nail/med/massage-only, hotel-guest-only spas, gym or
+      residential-building saunas, and membership-only clubs (flag, do not
+      count). Owner ruling 2026-09-17 (via GTM-199): "day spa out UNLESS
+      bathing is the primary offer" — Juvenex, Great Jones Spa and Fountain
+      of Youth count; MN+BK stock reads ~21.
+    # 16th slug -- AC-1 Step 1 (CONTEXT.md §7, owner ruling 2026-09-16, GTM-198),
+    # landed 2026-09-17 through docs/CATEGORY-EXPANSION.md as far as G0.
+    # NOT USABLE FOR HEADLINE CLAIMS, for two reasons that are both stronger
+    # than the D30 precedent: (1) the prevalence-gap premise fails -- a
+    # bathhouse is a destination amenity with a 15-30 minute travel catchment
+    # (CONTEXT.md §7 AC-1 point 5, Appendix A8), so "missing within reach_m"
+    # is true for nearly every MN+BK address and says nothing; (2) the only
+    # anchor (nyc_dohmh_pool_permits, below) has no facility-type column and
+    # its ZBP denominator (812199) is 20-30x the category, so G3 is
+    # unmeasurable, not merely failed. Its gaps annotate; they never lead.
+    #
+    # OWNER RULINGS 2026-09-17 (GTM-198): (1) SHIPS AS A NON-FILTERING SIGNAL
+    # (docs/CATEGORY-EXPANSION.md §4) -- headline stays false, the slug can
+    # reorder or annotate a card and never gates one; removing it must leave
+    # gap_score, lead_category, n_missing and the missing set of the other
+    # fifteen byte-identical. (2) NARROW slug, with the day-spa clause in the
+    # definition above. (3) The three exact-set pins (demand caveat set,
+    # demoted set, D43 bike-OD family) are widened to sixteen. (4) G7 ships a
+    # `not_fitted` row until the first ingest on the announced hash.
+    ships_as: signal
+    headline: false
+    # The pinned name-term rule (see the `sources:` comment below for why it
+    # is part of the definition). Mirrored byte-for-byte by
+    # sources/base.py BATHHOUSE_NAME_TERMS / BATHHOUSE_NAME_SUBTAGS.
+    name_terms: "(?i)\\b(bath ?house|baths?\\b(?!\\s*(?:&|and)\\s*body)|bathing|banya|sauna|jjimjilbang|hammam|onsen|schvitz|shvitz|spa castle|world spa|othership|qc ny|mermaid spa|juvenex|great jones spa|fountain of youth)"
+    # Excluded even on an include hit, and also applied to the native sauna /
+    # onsen / "Bath House" tags: private-suite and infrared studios, gym and
+    # residential rooms, massage-only, "Bath & Body" retail. Studios and clubs
+    # are "flag, do not count": they live in the hand list, not in supply.
+    name_terms_exclude: "(?i)(infrared|light sauna|sauna studio|sauna lounge|sauna suites?|perspire|higherdose|beem\\b|sw3at|akari|kove\\b|nlighten|n°lighten|mobile sauna|sauna barrels|bath co\\b|bath (?:&|and) body|bathing area|remodel|contractor|construction|east side club|equinox|crunch|gym|fitness|condominium|condo\\b|tower|residence|apartments?|massage)"
+    name_terms_apply_to:
+      overture: [spas, health_spa, day_spa]
+      foursquare: [spa]
+    naics_2022: ["812199"]   # Other Personal Care Services: saunas, steam
+                             # baths, bathhouses, Turkish baths -- AND tattoo
+                             # parlours, tanning salons, ear piercing, day
+                             # spas, colonic clinics. Far broader than the
+                             # slug; see zbp_naics.yaml (confidence: medium).
+    naics_2017: ["812199"]   # unchanged across the 2022 recode
+    sources:
+      # NARROW definition (owner ruling pending, GTM-198): sauna, bathhouse,
+      # banya, Korean/Russian/Turkish bath. Day spa / health spa / generic
+      # `spas` STAY in nails_beauty -- moving them would pull ~4,300 Overture
+      # rows and ~2,500 Foursquare "Spa" rows out of that category's supply
+      # set (staging.poi, read 2026-09-17) and move its hash and its D14
+      # ratio for no new evidence at any address. Widen only by ruling.
+      osm: ["leisure=sauna", "amenity=public_bath"]
+      overture: [sauna, onsen]
+      # EXCLUDED, explicitly and permanently: Overture `public_bath_houses`.
+      # GTM-199's enumeration (peer scratch gtm199_warehouse.md §1) read all
+      # 63 MN+BK rows: 100% NYC Parks comfort stations, zero bathhouses. Never
+      # map it, whatever a future taxonomy note says the slug means.
+      # Overture `private_association` (Lore Bathing Club) is also unmapped;
+      # membership clubs are "flag, do not count" under the definition.
+      # Foursquare leaves: "Sauna" (Sports and Recreation) and "Bath House"
+      # (Health and Beauty Service) -- foursquare_places.LEAF_CATEGORY. Until
+      # 2026-09-17 both were unmapped, which is why Brooklyn Bathhouse, Lore
+      # and Othership Williamsburg never entered staging.poi (GTM-199 §3).
+      #
+      # THE NAME-TERM RULE, PINNED. Every real NYC bathhouse that Overture
+      # carries sits in `spas` / `health_spa` / `day_spa` (4,317 rows, all
+      # nails_beauty today) and every Foursquare one in the "Spa" leaf --
+      # cityWell, QC NY, World Spa, Bathhouse Flatiron, Othership, The Spa
+      # Club, AIRE UES, The Altar (GTM-199 §3). A name-term rule over those
+      # sub-tags is therefore PART OF THE DEFINITION: it is the ONLY way the
+      # narrow/wide split can be applied inside the spa sub-tags at all. Code
+      # mirror: sources/base.py BATHHOUSE_NAME_TERMS (drift-tested). It is a
+      # FLOOR -- brand names with no bathing word (The Altar, cityWell, The
+      # Spa Club) need the hand list -- and it must never be applied outside
+      # the spa sub-tags, where "bath" is a shop and "sauna" a gym room.
+      # HAND-REVIEW RULE for a day-spa-tagged hit (owner 2026-09-17): "day spa
+      # out UNLESS bathing is the primary offer" -- Juvenex, Great Jones Spa
+      # and Fountain of Youth count, so their names are include terms; a day
+      # spa whose bathing is an add-on to treatments stays in nails_beauty.
+      # (pattern and sub-tag list are the slug-level `name_terms` /
+      # `name_terms_apply_to` keys below, outside `sources:`.)
+      # ANCHOR (composite, conditional -- P1). (a) DOHMH in-house CAFE permits
+      # in the restaurant roster (nyc_dohmh_restaurants, 43nn-pn8j): nine
+      # bathhouses hold one -- Bathhouse x3, Brooklyn Bathhouse, World Spa, Spa
+      # Castle, R&T Baths, AIRE, NY Spa & Sauna, Spa 88, The Spa Club -- a real
+      # government registration with a premises address whose gov_filing
+      # first-seen trails opening by 0-5 months (GTM-199 §1, §3), against
+      # Foursquare date_created which LEADS opening badly (World Spa listed
+      # 2019-03, opened 2022-12). Conditional on the bathhouse serving food, so
+      # coverage is a FLOOR: the D65 childcare asymmetry, a bathhouse without a
+      # cafe is not a ghost. (b) DOHMH pool permits 3kfa-rvez, Health Code
+      # Article 165 "bathing establishment" -- a permit to operate with street
+      # address, BBL, BIN and lat/long, but NO facility type: the 1,221 permits
+      # are every condo, hotel, gym and school pool, and the bathhouse subset is
+      # separable only by facility_name keyword. Sauna-only studios with no
+      # pool or plunge are outside Article 165 altogether. Neither half is
+      # ingested for this slug; registry.yaml nyc_dohmh_pool_permits.
+      dohmh: ["in-house cafe permit on the restaurant roster, matched by premises address + name_terms -- a floor, not a census"]
+      dohmh_pools: ["facility_name keyword (bath|banya|sauna|spa|schvitz|russian|turkish|korean) -- keyword match, NOT a licence category; registry.yaml nyc_dohmh_pool_permits"]

@@ -338,3 +338,40 @@ categories:
     gla_sqft_high: 8000
     reliable: true
     daytime_augmented: false
+
+  bathhouse_sauna:
+    cex_mapping: >
+      No CEX line isolates bathhouse/sauna/spa admissions. Nearest lines, both
+      real 2024 Table 1101 items: "Fees and admissions" (935 national; covers
+      recreational admissions and health-club/social-club membership fees --
+      the line `fitness` already uses) and "Personal care products and
+      services" (978; spa treatments sit here with hair and nails). A blend,
+      not a citation: annual_spend below is a registry-completeness
+      placeholder in the bank/childcare/clinic tradition, NOT a BLS number.
+    annual_spend: 100
+    income_elasticity: 0.40   # = fitness, same "Fees and admissions" line.
+                              # Quintile spread on that line is 12.9x (q1 197,
+                              # q5 2,546), the steepest in Table 1101, vs 4.2x
+                              # for personal care; any elasticity on this
+                              # file's scale for either line clears the 0.35
+                              # cut, so the derived class (discretionary) does
+                              # not depend on the blend.
+    source: national_blended
+    mapping_note: >
+      Table 3004 (MSA) rolls both candidate lines up, so no NY MSA figure
+      exists at any grain. The placeholder is deliberately small: the
+      fair-value engine must not print a bathhouse revenue from a household
+      budget line that was built for movie tickets and gym dues, and
+      `reliable: false` keeps it out of any revenue statement (G11 grades
+      this category D regardless). GTM-198, 2026-09-17.
+    ocr_low: 0.12
+    ocr_high: 0.20             # carried from fitness (a membership/admission
+                               # business with a large fitted floorplate); not
+                               # a comp -- benchmarks.yaml has n=0 like every
+                               # other category.
+    gla_sqft_low: 8000
+    gla_sqft_high: 30000       # operator press figures for Aire (~16k sqft),
+                               # Bathhouse Williamsburg (~10k) and Flatiron
+                               # (~40k); order of magnitude only.
+    reliable: false
+    daytime_augmented: false

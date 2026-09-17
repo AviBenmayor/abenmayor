@@ -232,7 +232,11 @@ flagged: [pharmacy]
 # grade D. hardware HAS an EC cell (444140) but no usable CEX line; childcare,
 # bank and clinic have neither; tailor_repair shares one CEX line with laundry
 # and has no isolable NAICS.
-benchmark_only: [childcare, bank, clinic, hardware, tailor_repair]
+# bathhouse_sauna (GTM-198, 2026-09-17): no CEX line (spend.yaml `reliable:
+# false`, a "Fees and admissions" / "Personal care services" blend) and no
+# isolable EC cell (812199 is tattoo, tanning and day spas too) -- benchmark-
+# only by both tests, economics grade D (checklist G11).
+benchmark_only: [childcare, bank, clinic, hardware, tailor_repair, bathhouse_sauna]
 
 # ------------------------------------------------------------------ the CEX
 # Table 1101 (national, by income quintile) supplies the SHAPE; Table 3004 (New

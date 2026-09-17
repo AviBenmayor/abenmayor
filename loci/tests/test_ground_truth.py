@@ -667,6 +667,15 @@ def test_category_check_matches_the_categories_module():
     listed = tail[tail.index("(") + 1:tail.index(")")]
     slugs = {s.strip().strip("'") for s in listed.split(",")}
     assert slugs == set(CATEGORIES)
+    # GTM-198 (2026-09-17): 036's literal reaches only a FRESH warehouse; an
+    # existing one is rebuilt by migrate.step_observation_category_check from
+    # this same DDL, so the rebuild statement must carry the same list.
+    from loci import migrate as mg
+    ddl = mg._observation_create_ddl()
+    tail = ddl[ddl.index("category_guess IN ("):]
+    listed = tail[tail.index("(") + 1:tail.index(")")]
+    assert {s.strip().strip("'") for s in listed.split(",")} == set(CATEGORIES)
+    assert ddl.startswith("CREATE TABLE __TARGET__ (")
 
 
 def test_the_view_radius_matches_the_module_constant():

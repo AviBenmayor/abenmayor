@@ -387,6 +387,75 @@ sources:
       40 m + name rule rather than by a private rule in the adapter. See
       sources/cities/nyc/dohmh_childcare.py.
 
+  - id: nyc_dohmh_pool_permits
+    name: NYC Pool Inspections (DOHMH bathing-establishment permits, Health Code Art. 165)
+    tier: city
+    city: nyc
+    role: poi
+    status: planned
+    portability:
+      class: city_open_data
+      feeds: [poi_supply]
+      confidence: low
+      degrades_to: >
+        bathhouse_sauna has no registry anchor at all: every canonical record
+        stays under D52(a) including lone-aggregator rows, the coverage grade
+        caps at C, and a Gowanus "no bathhouse within reach" reading cannot be
+        told from a Foursquare/Overture blind spot.
+      note: >
+        Public-pool permitting is universal (NYS Sanitary Code Subpart 6-1, and
+        every state has an equivalent), but the roster is published by whichever
+        LOCAL health department permits pools, under its own schema and with no
+        guarantee of a facility-type column; NYC's happens to be an inspection
+        feed rather than a permit list.
+    url: https://data.cityofnewyork.us/Health/NYC-Pool-Inspections/3kfa-rvez
+    dataset_id: 3kfa-rvez
+    api: https://data.cityofnewyork.us/resource/3kfa-rvez.json
+    geography: point (lat/long published, plus BBL, BIN, address_no/address_st, zip, nta_code)
+    temporal: {start: 2019-01, end: 2025-12, grain: inspection events, refreshed 2026-07-15}
+    cost: {amount: 0, unit: total}
+    bias: >
+      The permit population is EVERY bathing establishment with a pool --
+      condominium, hotel, gym, school and camp pools included -- and the
+      dataset carries NO facility-type column, so the bathhouse/sauna subset
+      is separable only by facility_name keyword (bath|banya|sauna|spa|
+      russian|turkish|korean|schvitz). That errs both ways: hotel and condo
+      "spa" amenity pools are swept IN (Peninsula, Trilogy, Rio Condo/Spa,
+      Belaire), and a sauna-only studio with no pool or plunge tub (Perspire,
+      HigherDOSE, beem) is OUTSIDE Article 165 altogether, so the newest
+      sauna-studio format is invisible to it. An inspection feed, not a permit
+      roster: a venue appears only once inspected (routine ~annual), so
+      presence lags opening and last-inspection staleness must be handled the
+      way DCWP inspections are (D55). Data ends 2025-12-31.
+    notes: >
+      PROBED LIVE 2026-09-17 for GTM-198 (AC-1 Step 1, the bathhouse_sauna
+      P1 anchor), scratchpad bathhouse_probe.md. rowsUpdatedAt 2026-07-15;
+      7,080 inspection rows over 1,221 distinct accela permits (MA 586, BK
+      258, QU 182, BX 99, SI 96); columns accela, docket, permit_type
+      (Indoor 4,800 / Outdoor 2,280), facility_name, address_no, address_st,
+      bo, zip, bbl, bin, lat, long, nta_code, inspection_date/type, violation
+      counts. Name-keyword hits: 59 of 1,955 name/address rows, and they
+      include the venues that matter -- UNKNOWN BATHS LLC 103 N 10th St
+      (Bathhouse Williamsburg), UNKNOWN BATHS TWO LLC 6 W 22nd St (Bathhouse
+      Flatiron, inspected 2025-09-10: the site the D110 retrospective found
+      INVISIBLE to every filing feed), DST. Russian Turkish Baths 268 E 10th,
+      Spa 88, Aire/Acqua Ancient Baths 88 Franklin + 305 E 61st, Akari Sauna
+      149 Franklin + 202 Grand, Chelsea Saunas, Banya NY, Russian Baths of
+      N.Y., World Spa, Great Jones Spa, K-Town Sauna, Juvenex, Spa Castle
+      Premier 57, and the Flushing Korean spas. Absent: Bathhouse 540
+      Atlantic Ave (activated 2026-05, after the feed's last row) and
+      Othership 25 Kent Ave. It is the ONLY government act of registration
+      for this use found in a catalog sweep of data.cityofnewyork.us,
+      data.ny.gov and health.data.ny.gov (bathhouse 0 hits; DCWP's 49 licence
+      categories contain no spa/bathhouse/massage/health-club; DOB job
+      descriptions name 77 DOB NOW + 142 classic sauna/bathhouse jobs but a
+      fit-out is a pipeline signal, not supply; NYSED massage therapy is
+      person-level with no bulk file, the D71 shape). CONDITIONAL anchor:
+      qualifies only if a facility_name classifier is built and its precision
+      measured against ground truth, and even then G3 cannot read on NAICS
+      812199 (849 MN+BK establishments vs ~45 venues) -- see zbp_naics.yaml.
+      Not ingested; no source_rank branch; no category_anchor row.
+
   - id: fdic_bank_branches
     name: FDIC BankFind Locations (Summary of Deposits)
     tier: universal

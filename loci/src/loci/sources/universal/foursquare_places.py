@@ -34,7 +34,7 @@ import os
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
-from loci.sources.base import POIRecord, SourceAdapter
+from loci.sources.base import POIRecord, SourceAdapter, bathhouse_by_name, bathhouse_name_excluded
 
 # west, south, east, north — same NYC bbox as the Overture adapter
 BBOX = (-74.3, 40.4, -73.6, 41.0)
@@ -99,6 +99,13 @@ LEAF_CATEGORY: dict[str, str] = {
     "bank": "bank", "credit union": "bank",
     # hardware ("Home Improvement Service" is contractors, not a store)
     "hardware store": "hardware",
+    # bathhouse_sauna (GTM-198) -- "Sports and Recreation > Sauna" and
+    # "Health and Beauty Service > Bath House" in the 2026-08-11 taxonomy
+    # (65 + 41 NYC rows). "Spa" stays with nails_beauty (narrow slug, owner
+    # ruling pending). Known noise in these two leaves: gym sauna rooms
+    # ("Sauna at Equinox ..."), condo amenity rooms and the odd contractor --
+    # the D52(b) shared-premises problem; MIN_REFRESHED drops most ghosts.
+    "sauna": "bathhouse_sauna", "bath house": "bathhouse_sauna",
 }
 
 
@@ -114,9 +121,12 @@ def _as_date(v) -> dt.date | None:
         return None
 
 
-def map_leaf(labels) -> str | None:
+def map_leaf(labels, name: str | None = None) -> str | None:
     """Map a Foursquare `fsq_category_labels` value (list of 'A > B > C' strings)
-    onto a Loci slug: group prefix first, then leaf label. First hit wins."""
+    onto a Loci slug: group prefix first, then leaf label. First hit wins.
+    `name` feeds the pinned bathhouse name-term rule (sources/base.py) on the
+    "Spa" leaf only: a spa whose name says bathhouse/banya/sauna is the
+    bathhouse, not a nail spa."""
     if not labels:
         return None
     if isinstance(labels, str):
@@ -129,7 +139,11 @@ def map_leaf(labels) -> str | None:
         for prefix, slug in GROUP_CATEGORY.items():
             if low == prefix or low.startswith(prefix + " >"):
                 return slug
+        if bathhouse_by_name("foursquare", leaf, name):
+            return "bathhouse_sauna"
         if leaf in LEAF_CATEGORY:
+            if LEAF_CATEGORY[leaf] == "bathhouse_sauna" and bathhouse_name_excluded(name):
+                return None  # gym sauna rooms, studios, contractors on the two leaves
             return LEAF_CATEGORY[leaf]
     return None
 
@@ -202,7 +216,7 @@ class FoursquarePlacesAdapter(SourceAdapter):
             if r.get("closed"):
                 continue
             refreshed = _as_date(r.get("refreshed"))
-            category = map_leaf(r.get("labels"))
+            category = map_leaf(r.get("labels"), r.get("name"))
             if category is None:
                 for path in (r.get("labels") or []):
                     leaf = (path or "").split(">")[-1].strip().lower()
@@ -407,7 +421,7 @@ def iter_closed(release: str = RELEASE):
             if not rows:
                 break
             for r in rows:
-                yield {"fsq_place_id": r[0], "name": r[1], "category": map_leaf(r[2]),
+                yield {"fsq_place_id": r[0], "name": r[1], "category": map_leaf(r[2], r[1]),
                        "lat": r[3], "lon": r[4], "date_created": _as_date(r[5]),
                        "date_closed": _as_date(r[6]), "date_refreshed": _as_date(r[7])}
     finally:

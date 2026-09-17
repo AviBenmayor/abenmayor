@@ -75,6 +75,10 @@ TAG_CATEGORY: dict[tuple[str, str], str] = {
     ("amenity", "bank"): "bank",
     ("shop", "hardware"): "hardware",
     ("shop", "doityourself"): "hardware",
+    # bathhouse_sauna (GTM-198): the two documented OSM tags for the use.
+    # `shop=massage` is NOT mapped (812199 neighbour, not the category).
+    ("leisure", "sauna"): "bathhouse_sauna",
+    ("amenity", "public_bath"): "bathhouse_sauna",
 }
 
 # Group tag lookups by OSM key so one Overpass query (with a regex value

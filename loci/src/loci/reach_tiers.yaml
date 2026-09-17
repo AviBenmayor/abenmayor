@@ -315,3 +315,27 @@ categories:
       No walk-distance access literature found for hardware/home-supply
       stores. Falls back unchanged to the owner's norm.
     citations: []
+
+  bathhouse_sauna:
+    reach_m: 1200
+    basis: analog
+    owner_m: 960
+    owner_min: 12
+    justification: >
+      No walk-distance standard exists for bathhouses, saunas or banyas in
+      any source reviewed. Mapped by analogy to the CDC "recreational
+      facility" 1-mile access measure that already backs `fitness` (the
+      tier ceiling, 1,200 m, understating the source by ~400 m), because a
+      bathhouse is bought the way a gym visit is -- a booked, occasional,
+      travel-for-it trip -- and it is the longest tier the set allows.
+      Owner norm is the 12-min occasional-use tier (960 m). THE HONEST
+      READING IS THAT NEITHER VALUE IS A REACH: CONTEXT.md §7 AC-1 point 5
+      and Appendix A8 put this category's catchment at a 15-30 minute
+      drive or transit trip, 2-4x the tier ceiling. At 1,200 m the missing
+      set is nearly every MN+BK address (~45 venues citywide, 2026-09-17
+      probe), so a gap flag here means "no walkable bathhouse", which is
+      true almost everywhere and is not a claim about opportunity. The
+      value exists so the reach loader does not raise; the instrument for
+      this category is the A8 trade-area method, not this screen.
+    citations:
+      - "Centers for Disease Control and Prevention, 'Development of a Nationally Representative Built Environment Measure of Access to Exercise Opportunities.' Preventing Chronic Disease 12:E140, 2015 -- 1 mi to a recreational facility (urban); used as an ANALOG via fitness, not an on-point citation: the CDC facility list is NAICS 713940, not 812199."

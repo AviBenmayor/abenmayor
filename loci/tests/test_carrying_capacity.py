@@ -349,7 +349,11 @@ def test_repack_is_the_inverse_of_unpack():
                     reason="carrying_capacity.yaml not fitted in this checkout")
 def test_shipped_fit_is_internally_consistent():
     doc = yaml.safe_load(cc.YAML_PATH.read_text())
-    assert set(doc["categories"]) == set(CATEGORIES)
+    # GTM-198 (owner 2026-09-17): bathhouse_sauna has no capacity fit until the
+    # first ingest on the announced hash; the file carries a fit_hash, so a
+    # hand row is impossible by construction. Exact unfitted set, on purpose.
+    assert set(CATEGORIES) - set(doc["categories"]) == {"bathhouse_sauna"}
+    assert set(doc["categories"]) <= set(CATEGORIES)
     assert doc["fit_hash"] == cc.fit_hash(doc)
     for cat, rec in doc["categories"].items():
         if not rec.get("fitted"):

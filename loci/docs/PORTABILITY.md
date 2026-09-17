@@ -15,12 +15,12 @@ Owner ask, 2026-09-14: *"what are the critical inputs necessary to be able to ex
 | **universal** | 7 | Works on day one, anywhere on earth. Nothing to procure. |
 | **national (US federal)** | 10 | Works on day one in any US city. Carries its own portable bias. |
 | **state** | 7 | Re-plumbed per state. Publication quality varies enormously; expect some states to publish nothing usable. |
-| **city open data (different schema)** | 16 | An equivalent exists but the schema is different. This is the real cost of a second city: an adapter per source. |
+| **city open data (different schema)** | 17 | An equivalent exists but the schema is different. This is the real cost of a second city: an adapter per source. |
 | **city-unique (no equivalent exists)** | 6 | No equivalent exists. The stage degrades, permanently — see §4. |
 
-**46 sources classed.** 17 of them (37%) need no per-city work at all.
+**47 sources classed.** 17 of them (36%) need no per-city work at all.
 
-**19 of the 46 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
+**20 of the 47 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
 
 ---
 
@@ -72,6 +72,7 @@ about.
 | NYS Liquor Authority Current Active Licenses | state | Bar loses its anchor and the alcohol map overlay disappears; bar supply reverts to aggregators, which over-count bars relative to every other category. |
 | NYC DCWP Inspections (Retail Laundry / Dry Cleaners) | city open data (different schema) *(med conf.)* | Laundry loses its only anchor and reverts to aggregator coverage -- the weakest category in POI data, because a laundromat has no check-in history. |
 | NYC DCWP Legally Operating Businesses | city open data (different schema) | Loses the E5 licence-history panel. No effect on the bundle count -- D55 found it contributes essentially nothing to the fifteen categories. |
+| NYC Pool Inspections (DOHMH bathing-establishment permits, Health Code Art. 165) | city open data (different schema) *(low conf.)* | bathhouse_sauna has no registry anchor at all: every canonical record stays under D52(a) including lone-aggregator rows, the coverage grade caps at C, and a Gowanus "no bathhouse within reach" reading cannot be told from a Foursquare/Overture blind spot. |
 | DOHMH New York City Restaurant Inspection Results | city open data (different schema) | Restaurant, cafe and bar lose their near-census anchor: those three categories revert to aggregator coverage and the CONTEXT 7.1 undercount becomes unmeasurable. |
 
 ### `demand`
@@ -530,6 +531,7 @@ second-city plan starts from the doubt rather than rediscovering it.
 | Source | Class | Conf. | The uncertainty |
 |---|---|---|---|
 | MTA Subway Entrances and Exits 2024 | city open data (different schema) | low | GTFS pathways.txt can carry entrances and a growing minority of agencies publish them, but coverage is patchy and unverified outside NYC. |
+| NYC Pool Inspections (DOHMH bathing-establishment permits, Health Code Art. 165) | city open data (different schema) | low | Public-pool permitting is universal (NYS Sanitary Code Subpart 6-1, and every state has an equivalent), but the roster is published by whichever LOCAL health department permits pools, under its own schema and with no guarantee of a facility-type column; NYC's happens to be an inspection feed rather than a permit list. |
 | NYS Medicaid Enrolled Provider Listing — retail pharmacies | state | low | NOT reliably portable. This roster works as a pharmacy census only because New York's NYRx carve-out (2023-04-01) routes every Medicaid member's pharmacy benefit through fee-for-service. In a managed-care state the same file is a fraction of the pharmacies. Treat the CLASS as state and the METHOD as NY- specific. |
 | Citi Bike System Data (trip files) | national (US federal) | med | Classed `national` because the SCHEMA, not the operator, is the portable thing: every Lyft-run US system (Divvy Chicago, Bay Wheels SF, Capital Bikeshare DC, Bluebikes Boston, Citi Bike NYC) publishes the same thirteen columns in the same monthly-zip convention, so the parser and every derived measure port with a changed bucket URL. Confidence is `med` and not `high` because that covers roughly a dozen cities and no more: a non-Lyft system (Indego, a BCycle city) publishes a different schema or no trip file at all, and a city with no bikeshare has no equivalent at any price. Dock placement is also an operator's capital plan, so coverage in a second city is whatever that operator built. |
 | NYC DCP Housing Database — Project-Level Files | city open data (different schema) | med | Every city publishes permits; almost none publish a QA'd, geocoded, NET-UNIT- RECODED project file. Elsewhere the net-unit recode has to be rebuilt from raw permits, which is where unit double-counting enters. |

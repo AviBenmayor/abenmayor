@@ -203,6 +203,19 @@ Confirms the task's expectation: no walk-based standard exists for
 clinic/urgent-care access in the literature reviewed — all major standards
 (HRSA, Graham Center) are drive-time. Used for: `clinic` — scored `none`.
 
+**Bathhouse / sauna / banya access** — no walk-distance standard in any
+source reviewed (2026-09-17, GTM-198). The category's own literature is
+trade-area shaped: CONTEXT.md §7 AC-1 point 5 and Appendix A8 put its
+catchment at a 15–30 minute drive or transit trip, 2–4× Loci's 1,200 m
+ceiling. Used for: `bathhouse_sauna` — scored `analog` at 1,200 m via the
+CDC recreational-facility measure that backs `fitness` (the CDC facility
+list is NAICS 713940, not 812199, so the analogy is behavioural — a booked,
+occasional, travel-for-it trip — not a citation of the category). Owner norm
+12 min / 960 m. Either value makes the missing set nearly every MN+BK
+address (~45 venues citywide), which is why reach_tiers.yaml's justification
+says the value exists so the loader does not raise, not because it measures
+access.
+
 **No standard found** (searched, nothing on-point): laundromat/dry-cleaner
 consumer access distance (siting guides address operator trade-area
 economics, ~1 mile, not a resident-access norm); hair/barber and

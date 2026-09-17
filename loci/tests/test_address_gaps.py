@@ -16,8 +16,10 @@ from loci.model.address_gaps import (
     ALLCATS,
     CAP_M,
     UNITS_CAP,
+    EmptyCategoryError,
     _address_nearest_matrix_from_graph,
     _cap_units,
+    _refuse_empty_categories,
     compute_gap_metrics,
 )
 
@@ -156,8 +158,8 @@ def test_the_non_filtering_identity_holds_over_every_address():
 def test_censored_flags_mark_the_cap_and_only_the_cap():
     """`nearest_m` is a Dijkstra capped at CAP_M, so a category with NOTHING
     inside the cap is recorded AT it and its ratio is a floor. The fixture's
-    other twelve categories have no POI at all and must all be flagged; the
-    three that do have one must not be."""
+    other categories (the bundle minus three) have no POI at all and must all
+    be flagged; the three that do have one must not be."""
     G, addresses, pois = _fixture()
     M = _address_nearest_matrix_from_graph(G, addresses, pois, min_component=1)
     m = compute_gap_metrics(M, _full_reach())
@@ -167,7 +169,7 @@ def test_censored_flags_mark_the_cap_and_only_the_cap():
     for cat in ("grocery", "pharmacy", "hardware"):
         assert not cens[:, ALLCATS.index(cat)].any(), cat
     unmeasured = [c for c in ALLCATS if c not in ("grocery", "pharmacy", "hardware")]
-    assert len(unmeasured) == 12
+    assert len(unmeasured) == len(ALLCATS) - 3
     for cat in unmeasured:
         assert cens[:, ALLCATS.index(cat)].all(), cat
     # ...and the flag means exactly `nearest_m >= CAP_M`, nothing else.
@@ -367,7 +369,7 @@ def test_the_writer_stores_the_censoring_flags_per_category():
         "WHERE address_id = 'A0'").fetchall())
     assert rows["grocery"] is False
     assert rows["tailor_repair"] is True
-    assert sum(bool(v) for v in rows.values()) == 14
+    assert sum(bool(v) for v in rows.values()) == len(ALLCATS) - 1
     # ...and censored is exactly `nearest_m >= CAP_M`, with no third opinion.
     assert con.execute(
         "SELECT count(*) FROM analysis.address_category "
@@ -479,3 +481,32 @@ def test_the_default_scope_is_the_screen_scope():
     default = inspect.signature(cli.address_gaps_cmd).parameters["borough"].default
     assert default.default == "MNBK"
     assert SCREEN_BOROUGHS == ("MN", "BK")
+
+
+# --- fail-closed on a category with no supply (docs/CATEGORY-EXPANSION.md §1.2)
+
+def test_db_engine_refuses_a_category_with_no_supply_pois():
+    """A slug that exists in categories.py but that no adapter has emitted yet
+    (the state a 16th category is in between G0 and its first ingest) sits at
+    the cap for every address and would lead every card. The DB-backed engine
+    must refuse, naming the slug, rather than rank on a registry state."""
+    import pytest
+    by_cat = {c: [(-73.98, 40.75)] for c in ALLCATS}
+    _refuse_empty_categories(by_cat)              # complete supply: silent
+    by_cat[ALLCATS[-1]] = []
+    with pytest.raises(EmptyCategoryError, match=ALLCATS[-1]):
+        _refuse_empty_categories(by_cat)
+    del by_cat[ALLCATS[0]]                        # absent key, same refusal
+    with pytest.raises(EmptyCategoryError, match=ALLCATS[0]):
+        _refuse_empty_categories(by_cat)
+
+
+def test_pure_engine_still_censors_an_empty_category_at_the_cap():
+    """The synthetic engine is deliberately unguarded (its fixtures leave most
+    categories empty on purpose); an empty category reads CAP_M, never raises."""
+    G = _line_graph()
+    addresses = [("a", -73.98, 40.75)]
+    pois = [("grocery", -73.98 + 3 * (100 / 84400.0), 40.75)]
+    M = _address_nearest_matrix_from_graph(G, addresses, pois, min_component=1)
+    assert M[0, ALLCATS.index("grocery")] < CAP_M
+    assert M[0, ALLCATS.index(ALLCATS[-1])] == CAP_M

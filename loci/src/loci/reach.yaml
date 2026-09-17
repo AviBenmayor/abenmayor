@@ -47,3 +47,10 @@ reach_m:
   fitness: 601
   bank: 750
   tailor_repair: 1632
+  # bathhouse_sauna: NOT computed. Placeholder = the query's right-censor value
+  # (2450 m; hex_poi_distance holds no pairs past 30 min). With ~45 venues
+  # citywide (38 Foursquare + 7 Overture in MN+BK, 2026-09-17 probe) the p80
+  # hex-to-nearest distance is censored by construction, so this is the value
+  # `loci reach-table --write` will print, not a guess at a smaller one.
+  # Re-run after the first ingest that maps the slug (GTM-198).
+  bathhouse_sauna: 2450

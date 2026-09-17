@@ -252,3 +252,63 @@ def test_rebuild_preserves_not_null_and_defaults(tmp_path):
     with pytest.raises(duckdb.Error):
         con.execute("INSERT INTO analysis.dev_pipeline (job_number, borough, lon) "
                     "VALUES ('j4','MN',NULL)")
+
+
+# ------------------------------------ observation_category_check (GTM-198)
+
+def _old_observation_fixture(tmp_path):
+    """analysis.address_observation as the SHARED warehouse holds it: built
+    from 036's DDL with the fifteen-slug CHECK sql/036 carried before
+    2026-09-17, plus one row per branch. No init_schema -- 036 alone is the
+    dependency this step has, and the fixture must not inherit a peer's
+    in-flight migration."""
+    from loci.categories import CATEGORIES
+    con = duckdb.connect(str(tmp_path / "o.duckdb"))
+    con.execute("CREATE SCHEMA analysis")
+    ddl = migrate._observation_create_ddl().replace("__TARGET__", "analysis.address_observation")
+    ddl = ddl.replace(",\n                        'bathhouse_sauna')", ")")
+    assert "'bathhouse_sauna'" not in ddl
+    con.execute(ddl)
+    con.execute("""INSERT INTO analysis.address_observation
+        (observation_id, rec_id, category, status, created_at, observed_at, category_guess)
+        VALUES ('o1', 'r1', 'grocery', 'open', now(), now(), 'grocery'),
+               ('o2', 'r1', 'grocery', 'vacant', now(), now(), NULL)""")
+    assert not migrate.probe_observation_category_check(con)
+    assert all(f"'{s}'" in migrate._observation_check_text(con)
+               for s in CATEGORIES if s != "bathhouse_sauna")
+    return con
+
+
+def test_observation_check_dry_run_writes_nothing(tmp_path):
+    con = _old_observation_fixture(tmp_path)
+    r = migrate.step_observation_category_check(con, apply=False)
+    assert r.applied is False and r.before == {"rows": 2}
+    assert any("DRY RUN" in n for n in r.notes)
+    assert not migrate.probe_observation_category_check(con)
+    with pytest.raises(duckdb.ConstraintException):
+        con.execute("INSERT INTO analysis.address_observation "
+                    "(observation_id, rec_id, category, status, created_at, observed_at, category_guess) "
+                    "VALUES ('o3', 'r1', 'bathhouse_sauna', 'open', now(), now(), 'bathhouse_sauna')")
+
+
+def test_observation_check_apply_widens_the_check_and_keeps_every_row(tmp_path, monkeypatch):
+    con = _old_observation_fixture(tmp_path)
+    # the step re-applies 036 after the swap; 036's index/view statements need
+    # analysis.poi_presence and analysis.recommendation, which this bare fixture
+    # does not have -- stub the re-apply to a no-op (the swap is what is tested).
+    monkeypatch.setattr(migrate, "_reapply_036", lambda con: None)
+    r = migrate.step_observation_category_check(con, apply=True)
+    assert r.applied is True and r.before == r.after == {"rows": 2}
+    assert migrate.probe_observation_category_check(con)
+    con.execute("INSERT INTO analysis.address_observation "
+                "(observation_id, rec_id, category, status, created_at, observed_at, category_guess) "
+                "VALUES ('o3', 'r1', 'bathhouse_sauna', 'open', now(), now(), 'bathhouse_sauna')")
+    assert con.execute("SELECT count(*) FROM analysis.address_observation").fetchone()[0] == 3
+    # NOT NULL / PK survived the rebuild (the whole point of using 036's DDL)
+    with pytest.raises(duckdb.ConstraintException):
+        con.execute("INSERT INTO analysis.address_observation "
+                    "(observation_id, rec_id, category, status, created_at, observed_at) "
+                    "VALUES ('o1', 'r1', 'grocery', 'open', now(), now())")
+    # a second run is a no-op
+    r2 = migrate.step_observation_category_check(con, apply=True)
+    assert r2.applied is False and any("already applied" in n for n in r2.notes)

@@ -4,7 +4,7 @@
 
 ## The daily-needs bundle
 
-Fifteen categories in four weighted tiers. Tier weights are judgment calls, stated explicitly so a reader can disagree with them precisely.
+Sixteen categories in four weighted tiers. Tier weights are judgment calls, stated explicitly so a reader can disagree with them precisely.
 
 | Tier | w | # | Category | NAICS 2022 | Headline |
 |---|---|---|---|---|---|
@@ -23,6 +23,7 @@ Fifteen categories in four weighted tiers. Tier weights are judgment calls, stat
 |  |  | 13 | Fitness | 713940 | yes |
 |  |  | 14 | Bank branch | 522110 | yes |
 |  |  | 15 | Hardware / home supply | 444140 | yes |
+|  |  | 16 | Bathhouse / sauna | 812199 | no |
 
 ### Demoted from headline claims
 
@@ -31,4 +32,13 @@ Fifteen categories in four weighted tiers. Tier weights are judgment calls, stat
 - Hair / barber
 - Tailor / repair
 - Clinic / urgent care
+- Bathhouse / sauna
+
+### Pinned definitions
+
+A `definition:` in categories.yaml is the inclusion rule a hand enumeration (ground truth, base rate) counts against. Verbatim.
+
+- **Bathhouse / sauna** (`bathhouse_sauna`): public-admission bathing facility whose primary offer is heat/water bathing — bathhouse, sauna, steam room, banya, hammam, Korean spa/jjimjilbang, per-visit plunge/thermal pools. Excludes day spa / health spa (stay in nails_beauty pending the wide-slug ruling), nail/med/massage-only, hotel-guest-only spas, gym or residential-building saunas, and membership-only clubs (flag, do not count). Owner ruling 2026-09-17 (via GTM-199): "day spa out UNLESS bathing is the primary offer" — Juvenex, Great Jones Spa and Fountain of Youth count; MN+BK stock reads ~21.
+
+  Ships as a **non-filtering signal** (owner ruling 2026-09-17, docs/CATEGORY-EXPANSION.md §4): `headline: false`, it can reorder or annotate a card and never gates one; its gaps are not opportunity claims.
 

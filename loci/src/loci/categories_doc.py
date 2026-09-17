@@ -43,8 +43,38 @@ DEMOTED_NOTE = (
 )
 
 
+_COUNT_WORDS = {15: "Fifteen", 16: "Sixteen", 17: "Seventeen", 18: "Eighteen"}
+
+
+def _count_word(n: int) -> str:
+    """The bundle size as a word, so the sentence cannot lie about the table."""
+    return _COUNT_WORDS.get(n, str(n))
+
+
 def _yaml() -> dict:
     return yaml.safe_load(CATEGORIES_YAML.read_text())["categories"]
+
+
+def _definitions(ymeta: dict) -> list[str]:
+    """One block per slug that pins a `definition:` in categories.yaml -- the
+    inclusion rule a hand count must use to count the same things the feeds
+    do. Rendered verbatim so the doc cannot paraphrase it."""
+    rows = [(cat, ymeta[cat.slug]["definition"].strip())
+            for cat in CATEGORIES.values()
+            if ymeta.get(cat.slug, {}).get("definition")]
+    if not rows:
+        return []
+    out = ["", "### Pinned definitions", "",
+           ("A `definition:` in categories.yaml is the inclusion rule a hand "
+            "enumeration (ground truth, base rate) counts against. Verbatim.")]
+    for cat, text in rows:
+        out += ["", f"- **{cat.label}** (`{cat.slug}`): {text}"]
+        if ymeta[cat.slug].get("ships_as") == "signal":
+            out += ["", ("  Ships as a **non-filtering signal** (owner ruling 2026-09-17, "
+                         "docs/CATEGORY-EXPANSION.md §4): `headline: false`, it can reorder "
+                         "or annotate a card and never gates one; its gaps are not "
+                         "opportunity claims.")]
+    return out
 
 
 def render() -> str:
@@ -60,8 +90,9 @@ def render() -> str:
         "",
         "## The daily-needs bundle",
         "",
-        ("Fifteen categories in four weighted tiers. Tier weights are judgment calls, "
-         "stated explicitly so a reader can disagree with them precisely."),
+        (f"{_count_word(len(CATEGORIES))} categories in four weighted tiers. Tier "
+         "weights are judgment calls, stated explicitly so a reader can disagree "
+         "with them precisely."),
         "",
         "| Tier | w | # | Category | NAICS 2022 | Headline |",
         "|---|---|---|---|---|---|",
@@ -84,6 +115,7 @@ def render() -> str:
     md += ["", "### Demoted from headline claims", "", DEMOTED_NOTE, ""]
     for label in demoted:
         md.append(f"- {label}")
+    md += _definitions(ymeta)
     md.append("")
 
     return "\n".join(md) + "\n"

@@ -40,6 +40,7 @@ distance_min:
   hardware:      12
   clinic:        12
   tailor_repair: 12
+  bathhouse_sauna: 12   # destination amenity; longest owner tier (GTM-198, 2026-09-17)
 
 distance_m:
   cafe_bakery:   320
@@ -57,3 +58,4 @@ distance_m:
   hardware:      960
   clinic:        960
   tailor_repair: 960
+  bathhouse_sauna: 960

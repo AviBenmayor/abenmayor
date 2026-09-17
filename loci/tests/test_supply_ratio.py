@@ -487,5 +487,9 @@ def test_baseline_yaml_declares_its_radius_and_universe():
     doc = load_baselines()
     assert doc["radius_m"] == pytest.approx(DEFAULT_RADIUS_M)
     assert doc["boroughs"] == ["MN", "BK"]
-    assert set(doc["categories"]) == set(ALLCATS)
+    # GTM-198 G8 (owner 2026-09-17): bathhouse_sauna's baseline lands with the
+    # first ingest on the announced hash; until then the unfitted set is
+    # exactly that one slug, and a hand-written row would be a fabrication.
+    assert set(ALLCATS) - set(doc["categories"]) == {"bathhouse_sauna"}
+    assert set(doc["categories"]) <= set(ALLCATS)
     assert HAIRCUT_PATH.exists()

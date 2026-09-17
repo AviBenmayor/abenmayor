@@ -2,7 +2,7 @@
 
 **GENERATED — do not edit.** Rendered by `loci gen-sources` from the non-wishlist entries in [`src/loci/registry.yaml`](../src/loci/registry.yaml). `loci check-sources` fails if this file differs from a fresh render, so a claim here is a claim in the registry with its dated evidence beside it.
 
-Registry verified 2026-09-02. **46 sources** in or committed to the pipeline, grouped by role. The post-raise wishlist is generated separately into [`docs/PAID-SOURCES.md`](PAID-SOURCES.md); the per-source portability classing is generated into [`docs/PORTABILITY.md`](PORTABILITY.md).
+Registry verified 2026-09-02. **47 sources** in or committed to the pipeline, grouped by role. The post-raise wishlist is generated separately into [`docs/PAID-SOURCES.md`](PAID-SOURCES.md); the per-source portability classing is generated into [`docs/PORTABILITY.md`](PORTABILITY.md).
 
 ## Business locations, present day
 
@@ -13,6 +13,7 @@ Registry verified 2026-09-02. **46 sources** in or committed to the pipeline, gr
 | **NYC DCWP Inspections (Retail Laundry / Dry Cleaners)** | `jzhd-m6uv` | city | point | $0 | verified | Enforcement-driven, not a census: coverage begins 2023-07, so a retail laundry never inspected is absent and its absence is indistinguishable from a real gap … |
 | **NYC DCWP Legally Operating Businesses** | `w7w3-xahh` | city | point | $0 | verified | Only DCWP-licensed categories (includes laundries, not groceries). |
 | **Active NYC Health Code Regulated Child Care Programs** | `gy3q-4tzp` | city | point (lat/lon published; no geocoding needed) | $0 | verified | GROUP settings only — Health Code Article 47 (GCC) and Article 43 school-based (SBCC) … |
+| **NYC Pool Inspections (DOHMH bathing-establishment permits, Health Code Art. 165)** | `3kfa-rvez` | city | point (lat/long published, plus BBL, BIN, address_no/address_st, zip, nta_code) | $0 | planned | The permit population is EVERY bathing establishment with a pool -- condominium, hotel, gym, school and camp pools included -- and the dataset carries NO facility-type column, so … |
 | **DOHMH New York City Restaurant Inspection Results** | `43nn-pn8j` | city | address + lat/lon | $0 | verified | Effectively unbiased -- every food establishment is inspected, so this is a near-census. The project's best data asset and the anchor for calibrating undercount in other sources. |
 | **NYS Active Appearance Enhancement and Barber Business Licensees** | `y3u4-jbgh` | city | point | $0 | planned | SURVIVORSHIP-BIASED. Active licenses only; closed salons are absent entirely. Never use to construct openings/closings series. |
 | **NYS Medicaid Enrolled Provider Listing — retail pharmacies** | `keti-qx5t` | city | point | $0 | verified | ANCHOR for the pharmacy category (was 0.000 coverage vs 1,330 MN+BK ZBP establishments) … |

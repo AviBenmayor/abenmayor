@@ -9716,7 +9716,8 @@ def _od_print_specificity(bod, con, window, n_perm, n_boot, seed,
         f"\n[bold]D43 category specificity[/] — {s['window']}, "
         f"{s['n_origin_ntas']} origins over {s['n_destination_ntas']} "
         f"destinations. Bars ratified blind 2026-09-16: BH q={b['bh_q']}, one "
-        f"family of 15, |median W| ≥ {b['min_effect']}, aux R² < "
+        f"family of {len(s['per_category'])} (15 until the 2026-09-17 ruling), "
+        f"|median W| ≥ {b['min_effect']}, aux R² < "
         f"{b['aux_r2_cutoff']}, B={b['n_perm']:,} permutations, "
         f"{b['n_boot']:,} bootstrap resamples.")
     if s.get("thresholds_pending"):

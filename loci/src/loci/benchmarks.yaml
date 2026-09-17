@@ -89,6 +89,7 @@ occupancy_cost_ratio:
   clinic: 0.08
   childcare: 0.10
   tailor_repair: 0.10
+  bathhouse_sauna: 0.15   # carried from fitness; no listing basis (GTM-198)
 
 # Per-category raw comps table (loci.model.comps also computes this on the
 # fly from the CSV via comps_for()/all_comps() -- this block is the checked-in
@@ -108,4 +109,5 @@ categories:
   clinic:          {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
   childcare:       {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
   tailor_repair:   {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
+  bathhouse_sauna: {n: 0, gross_revenue_p25: null, gross_revenue_p50: null, gross_revenue_p75: null, cash_flow_p25: null, cash_flow_p50: null, cash_flow_p75: null, multiple_median: null, rent_median: null}
   # bank: skipped -- not listable as a small-business comp (task scope).

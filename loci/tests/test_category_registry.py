@@ -35,6 +35,12 @@ SLUGS = frozenset(CATEGORIES)
 #: equality, so a new slug landing in either set fails the test.
 KNOWN_MISSING_BENCHMARK = frozenset({"bank"})
 KNOWN_MISSING_GOOGLE_TYPE = frozenset({"clinic"})
+#: Slugs admitted at G0 whose FITTED artifacts cannot exist before the first
+#: ingest on the announced supply hash (owner ruling 2026-09-17, GTM-198 G8).
+#: Asserted as an EXACT set: the moment `loci supply-ratio --fit-baseline`
+#: writes the row, this constant must be emptied or the test fails -- a fit
+#: that lands silently is the same defect as a row that never lands.
+UNFITTED_PENDING_INGEST = frozenset({"bathhouse_sauna"})
 
 
 def _load(rel: str) -> dict:
@@ -95,9 +101,15 @@ def test_generated_model_tables_cover_every_slug():
     """`loci supply-ratio --fit-baseline` (D73) and `loci density-elasticity fit`
     (D70) must have been re-run after the slug landed; a category with no
     baseline has no ratio and no regime note on the card."""
-    for rel in ("model/supply_baseline.yaml", "model/density_elasticity.yaml"):
-        block = _load(rel)["categories"]
-        assert SLUGS - set(block) == set(), f"{rel} has not been re-fit for these slugs"
+    block = _load("model/density_elasticity.yaml")["categories"]
+    assert SLUGS - set(block) == set(), "density_elasticity.yaml has not been re-fit"
+    block = _load("model/supply_baseline.yaml")["categories"]
+    unfitted = SLUGS - set(block)
+    assert unfitted == UNFITTED_PENDING_INGEST, (
+        f"supply_baseline.yaml unfitted set {sorted(unfitted)} != the sanctioned "
+        f"{sorted(UNFITTED_PENDING_INGEST)} (GTM-198 G8: a baseline lands with "
+        "the first ingest on the announced hash, never by hand)"
+    )
 
 
 # ------------------------------------------------------------ the pinned holes

@@ -13,10 +13,50 @@ from __future__ import annotations
 import abc
 import datetime as dt
 import json
+import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field
 
 from loci.categories import CATEGORIES, tier_of
+
+#: The bathhouse_sauna NAME-TERM RULE (GTM-198/199, 2026-09-17). Real NYC
+#: bathhouses are tagged as generic spas by Overture (`spas`/`health_spa`/
+#: `day_spa`) and Foursquare ("Spa"), the population `nails_beauty` carries, so
+#: the narrow definition can only be applied inside those sub-tags by name.
+#: The pattern is PINNED in src/loci/categories.yaml (`name_terms`, drift-
+#: tested by tests/test_bathhouse_name_terms.py) and applied ONLY to the
+#: sub-tags listed there (`name_terms_apply_to`); outside them "bath" is a
+#: shop and "sauna" a gym room. It is a FLOOR: brand names with no bathing
+#: word (QC NY, The Altar, cityWell, The Spa Club) need the hand list.
+BATHHOUSE_NAME_TERMS = '(?i)\\b(bath ?house|baths?\\b(?!\\s*(?:&|and)\\s*body)|bathing|banya|sauna|jjimjilbang|hammam|onsen|schvitz|shvitz|spa castle|world spa|othership|qc ny|mermaid spa|juvenex|great jones spa|fountain of youth)'
+BATHHOUSE_NAME_RE = re.compile(BATHHOUSE_NAME_TERMS)
+#: What the definition does NOT count even when the include terms match:
+#: private-suite / infrared sauna studios (Perspire, HigherDOSE, beem, Akari,
+#: Kove -- "listed, NOT counted", GTM-199 web note §1c), gym and residential
+#: sauna rooms, massage-only, and the "Bath & Body" retail false positive.
+#: Applied to every name-term hit AND to the native sauna/onsen/"Bath House"
+#: tags, so a HigherDOSE tagged `sauna` is excluded the same way a HigherDOSE
+#: tagged `spas` is. Flagged venues live in the hand list, not in supply.
+BATHHOUSE_NAME_EXCLUDE = '(?i)(infrared|light sauna|sauna studio|sauna lounge|sauna suites?|perspire|higherdose|beem\\b|sw3at|akari|kove\\b|nlighten|n°lighten|mobile sauna|sauna barrels|bath co\\b|bath (?:&|and) body|bathing area|remodel|contractor|construction|east side club|equinox|crunch|gym|fitness|condominium|condo\\b|tower|residence|apartments?|massage)'
+BATHHOUSE_NAME_EXCLUDE_RE = re.compile(BATHHOUSE_NAME_EXCLUDE)
+#: Native sub-tags the include rule may be applied to, per source.
+BATHHOUSE_NAME_SUBTAGS: dict[str, frozenset[str]] = {
+    "overture": frozenset({"spas", "health_spa", "day_spa"}),
+    "foursquare": frozenset({"spa"}),
+}
+
+
+def bathhouse_name_excluded(name: str | None) -> bool:
+    """True when the NAME marks a venue the definition does not count."""
+    return bool(name) and BATHHOUSE_NAME_EXCLUDE_RE.search(name) is not None
+
+
+def bathhouse_by_name(source: str, subtag: str | None, name: str | None) -> bool:
+    """True when a spa-sub-tagged record's NAME says it is a bathhouse (and
+    is not on the exclusion list)."""
+    if not name or subtag not in BATHHOUSE_NAME_SUBTAGS.get(source, ()):
+        return False
+    return BATHHOUSE_NAME_RE.search(name) is not None and not bathhouse_name_excluded(name)
 
 
 @dataclass

@@ -174,6 +174,35 @@ ADDRESS_CATEGORY_SCREEN_COLUMNS = [
 
 # --------------------------------------------------------------- the engine
 
+class EmptyCategoryError(RuntimeError):
+    """A registered category with NO POI in the supply set (docs/CATEGORY-
+    EXPANSION.md §1.2, the fail-open trap made fail-closed here)."""
+
+
+def _refuse_empty_categories(by_cat: dict[str, list]) -> None:
+    """Refuse to screen when a category in ALLCATS has zero supply POIs.
+
+    Such a category sits at `cap_m` for EVERY address, so `nearest_m /
+    reach_m` is its maximum everywhere: it becomes `lead_category` for the
+    whole city and `n_missing` gains one at every address -- silently, because
+    nothing else in this module distinguishes "no bathhouse within reach" from
+    "no adapter has emitted this slug yet". That is a registry state (a 16th
+    slug landed in categories.py before any ingest mapped it), not a
+    measurement, and the screen must say so rather than rank on it. The pure
+    engine `_address_nearest_matrix_from_graph` is NOT guarded: its callers
+    pass synthetic POI sets that deliberately leave categories empty.
+    """
+    empty = [c for c in ALLCATS if not by_cat.get(c)]
+    if empty:
+        raise EmptyCategoryError(
+            f"{len(empty)} of {len(ALLCATS)} categories have no POI in the supply "
+            f"set: {', '.join(empty)}. A category with no supply would be missing "
+            "at every address and lead every card; that is a registry state, not a "
+            "gap. Ingest a source that maps the slug (and re-record supply_hash) "
+            "or remove it from categories.py before running the screen."
+        )
+
+
 def _dijkstra_per_category(A, idx: dict, N: int, by_cat: dict[str, list[tuple[float, float]]],
                             G, cap_m: float) -> np.ndarray:
     """(N, 15) network distance from EVERY graph node to the nearest canonical
@@ -268,6 +297,7 @@ def address_nearest_matrix(
         for cat, lon, lat in pois:
             if cat in by_cat:
                 by_cat[cat].append((lon, lat))
+        _refuse_empty_categories(by_cat)
         node_m = _dijkstra_per_category(A, idx, N, by_cat, G, DIST_LIMIT)
         cache_dir.mkdir(parents=True, exist_ok=True)
         pd.DataFrame({f"d_{c}": node_m[:, i] for i, c in enumerate(ALLCATS)}).to_parquet(

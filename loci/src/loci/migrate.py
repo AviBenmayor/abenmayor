@@ -581,6 +581,82 @@ def step_classify(con, apply: bool) -> Result:
     return Result("classify", True, before, after, notes)
 
 
+def _observation_check_text(con) -> str:
+    return con.execute(
+        "SELECT coalesce(string_agg(constraint_text, ' '), '') FROM duckdb_constraints() "
+        "WHERE schema_name = 'analysis' AND table_name = 'address_observation' "
+        "AND constraint_type = 'CHECK' AND constraint_text ILIKE '%category_guess%'"
+    ).fetchone()[0]
+
+
+def probe_observation_category_check(con) -> bool:
+    """Does analysis.address_observation's category_guess CHECK name EVERY
+    registered slug? Reads the constraint text itself, not "some CHECK exists"
+    (the false-green `_has_check` learned the hard way, above)."""
+    from loci.categories import CATEGORIES
+    text = _observation_check_text(con)
+    return all(f"'{slug}'" in text for slug in CATEGORIES)
+
+
+def _observation_create_ddl() -> str:
+    """The CREATE TABLE statement from sql/036, verbatim, retargeted for a
+    rebuild. ONE source of DDL: 036 is what a fresh warehouse gets, and this
+    step is how an existing warehouse catches up with it."""
+    import re
+    from loci.db import SQL_DIR
+    text = (SQL_DIR / "036_address_observation.sql").read_text()
+    m = re.search(r"CREATE TABLE IF NOT EXISTS analysis\.address_observation \((.*?)\n\);",
+                  text, re.S)
+    if not m:
+        raise RuntimeError("sql/036: CREATE TABLE analysis.address_observation not found")
+    body = m.group(1)
+    # price_label was ALTER-added at the END of the live table (036's D105
+    # note) but sits mid-list in the literal; the INSERT below names columns,
+    # so order is irrelevant here.
+    return f"CREATE TABLE __TARGET__ ({body}\n)"
+
+
+def _reapply_036(con) -> None:
+    """Re-run sql/036 after the swap: the indexes died with the old table and
+    the miss view must be re-bound. Idempotent (IF NOT EXISTS / OR REPLACE)."""
+    from loci.db import SQL_DIR
+    con.execute((SQL_DIR / "036_address_observation.sql").read_text())
+
+
+def step_observation_category_check(con, apply: bool) -> Result:
+    """Widen analysis.address_observation.category_guess's CHECK to the current
+    registry (GTM-198: `bathhouse_sauna`, 2026-09-17).
+
+    sql/036 wrote the fifteen slugs literally into the CHECK, so a ground-truth
+    session that reads a bathhouse at a Gowanus anchor cannot be recorded
+    until the table is rebuilt -- DuckDB cannot ALTER a CHECK, so this is the
+    CREATE-INSERT-count-DROP-RENAME of `_swap`, from 036's own DDL. It does
+    NOT move the supply hash (address_observation is outside
+    canonical_poi_sql's universe) but it rewrites a table other sessions may
+    be INSERTing into: run at the ingest step, announced, never on landing.
+    036 is then re-applied so its indexes and the miss view come back.
+    """
+    notes: list[str] = []
+    rel = "analysis.address_observation"
+    before = {"rows": _count(con, rel)}
+    if probe_observation_category_check(con):
+        notes.append("already applied — the CHECK names every registered slug")
+        return Result("observation_category_check", False, before, before, notes)
+    if not apply:
+        notes.append(f"DRY RUN — would rebuild {rel} ({before['rows']:,} rows) with "
+                     "the widened category_guess CHECK from sql/036")
+        return Result("observation_category_check", False, before, before, notes)
+
+    cols = ", ".join(_columns(con, rel))
+    _swap(con, rel, _observation_create_ddl(),
+          f"({cols}) SELECT {cols} FROM {rel}", notes)
+    _reapply_036(con)
+    if not probe_observation_category_check(con):
+        raise RuntimeError("rebuild ran but the CHECK still lacks a registered slug")
+    after = {"rows": _count(con, rel)}
+    return Result("observation_category_check", True, before, after, notes)
+
+
 #: Order matters. forecast_outcome_rekey MUST precede forecast_slim (it
 #: recovers the natural key by joining on forecast_id, which forecast_slim
 #: deletes). `classify` MUST be last -- every step above changes the catalog.
@@ -591,5 +667,6 @@ STEPS: dict[str, typing.Callable] = {
     "address_order": step_address_order,
     "demographics_clip": step_demographics_clip,
     "poi_presence_vocab": step_poi_presence_vocab,
+    "observation_category_check": step_observation_category_check,
     "classify": step_classify,
 }

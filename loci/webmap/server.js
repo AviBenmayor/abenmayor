@@ -23,7 +23,7 @@ const GT={grocery:['grocery_store','supermarket'],convenience:['convenience_stor
     'afghani_restaurant','asian_restaurant','buffet_restaurant','fine_dining_restaurant'],
   cafe_bakery:['cafe','coffee_shop','bakery','donut_shop','bagel_shop','ice_cream_shop','juice_shop','dessert_shop','tea_house'],
   bar:['bar','pub','wine_bar','night_club'],
-  childcare:['child_care_agency','preschool'],fitness:['gym','fitness_center','yoga_studio'],bank:['bank'],hardware:['hardware_store'],tailor_repair:['tailor']};
+  childcare:['child_care_agency','preschool'],fitness:['gym','fitness_center','yoga_studio'],bank:['bank'],hardware:['hardware_store'],tailor_repair:['tailor'],bathhouse_sauna:['sauna','public_bath']};
 // Spend guard for a PUBLIC url. Two layers:
 //  1. hard total cap per process: GOOGLE_CLICK_BUDGET calls, default 0 = per-click validation OFF.
 //     The coverage check now runs as a capped, stratified batch (`loci validate`), not per click.

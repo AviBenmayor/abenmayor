@@ -233,3 +233,20 @@ categories:
       published screen. (spend.yaml itself flags hardware's annual_spend as a
       placeholder because no CEX line isolates hardware-store spend; the
       ELASTICITY, not the spend level, is what this file consumes.)
+  bathhouse_sauna:
+    evidence: cex
+    note: >
+      Not covered by the paper. CEX "Fees and admissions" (the fitness line,
+      Table 1101: q1 $197 -> q5 $2,546, a 12.9x quintile spread, the steepest
+      of any line this file cites) -> spend.yaml elasticity 0.40 ->
+      DISCRETIONARY at the 0.35 cut, so its gaps carry the demand caveat in
+      confidently-low-income areas. Two honesty notes. (1) The line is a
+      blend: CEX has no bathhouse/sauna/spa admission item; recreational
+      admissions and health-club membership sit in "Fees and admissions",
+      spa treatments in "Personal care services". The class does not turn on
+      the choice -- both lines exceed 0.35 on the quintile spread -- but the
+      spend row is `reliable: false` for that reason. (2) The caveat is
+      close to inert for this category: under the reach rule it is missing
+      at almost every address (CONTEXT.md §7 AC-1 point 5), so the annotation
+      marks nearly every low-income address, which is a statement about the
+      category's prevalence, not about demand. GTM-198, 2026-09-17.

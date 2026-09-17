@@ -2027,5 +2027,7 @@ Closes nothing in QUESTIONS but unblocks QUESTIONS D56/O1/O2.
 
 Opened 2026-09-16 (CHECKPOINT D120).
 
+G0 landed 2026-09-17 (CHECKPOINT D124): admitted as a non-filtering signal, narrow slug; ingest + hash move deferred to D124-1.
+
 Pushed to Linear 2026-09-16 as GTM-198.
 

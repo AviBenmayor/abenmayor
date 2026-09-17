@@ -168,6 +168,9 @@ MAPS_SEARCH_TERM: dict[str, str] = {
     "pharmacy": "pharmacy",
     "restaurant": "restaurant",
     "tailor_repair": "tailor",
+    # GTM-198: Google's own type is `sauna`; "bathhouse" alone misses the
+    # Korean/Russian spas that call themselves sauna or spa.
+    "bathhouse_sauna": "sauna",
 }
 
 
