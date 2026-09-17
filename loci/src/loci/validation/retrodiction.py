@@ -681,6 +681,45 @@ def _project(lon: np.ndarray, lat: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return tr.transform(np.asarray(lon), np.asarray(lat))
 
 
+def supply_as_of_sql(asof: dt.date, *, include_censored: bool = True,
+                     categories: tuple[str, ...] | None = None,
+                     boroughs: tuple[str, ...] = BOROUGHS_FULL,
+                     with_closure: bool = False) -> str:
+    """THE ONE LEAKAGE-SAFE SELECTION, as SQL text: principled supply
+    locations that existed at `asof`.
+
+    Extracted (2026-09-17) so `model/supply_snapshot.py` materialises EXACTLY
+    the set `supply_as_of` counts -- one rule, two readers, and a test that
+    pins them equal. The rule itself is unchanged: `first_seen_src_date <=
+    asof`, plus every `backfill_censored` row when `include_censored` (D79's
+    conservative reading), no closure check (survivorship is threat 8 and is
+    bounded elsewhere, not silently corrected here).
+
+    Emits `location_key, category, lon, lat, borough, first_seen_kind,
+    first_seen_src_date`, plus `closed_on` when `with_closure` (the snapshot
+    flags closure; the count never reads it). `closed_on` is opt-in because
+    several test fixtures build a four-column poi_presence stand-in and the
+    counting rule must keep working on them -- the rule reads no closure.
+    """
+    cats = tuple(categories) if categories else None
+    censor_clause = ("OR p.first_seen_kind = 'backfill_censored'"
+                     if include_censored else "")
+    cat_clause = ""
+    if cats:
+        cat_clause = "AND p.category IN (" + ", ".join(f"'{c}'" for c in cats) + ")"
+    closure_col = ", p.closed_on" if with_closure else ""
+    return f"""
+        SELECT p.location_key, p.category, p.lon, p.lat, p.borough,
+               p.first_seen_kind, p.first_seen_src_date{closure_col}
+        FROM analysis.poi_presence p
+        JOIN analysis.poi_supply s
+          ON s.poi_id = p.poi_id_latest AND s.in_principled
+        WHERE p.borough IN ({", ".join(f"'{b}'" for b in boroughs)})
+          {cat_clause}
+          AND (p.first_seen_src_date <= DATE '{asof.isoformat()}' {censor_clause})
+    """
+
+
 def supply_as_of(con, points: pd.DataFrame, asof: dt.date,
                  radius_m: float = RADIUS_M, include_censored: bool = True,
                  categories: tuple[str, ...] | None = None) -> pd.DataFrame:
@@ -698,22 +737,8 @@ def supply_as_of(con, points: pd.DataFrame, asof: dt.date,
     wants to make. False drops them, which is the aggressive reading. Both are
     run; neither is hidden.
     """
-    cats = tuple(categories) if categories else None
-    censor_clause = ("OR p.first_seen_kind = 'backfill_censored'"
-                     if include_censored else "")
-    cat_clause = ""
-    if cats:
-        cat_clause = "AND p.category IN (" + ", ".join(f"'{c}'" for c in cats) + ")"
-
-    sup = con.execute(f"""
-        SELECT p.location_key, p.category, p.lon, p.lat
-        FROM analysis.poi_presence p
-        JOIN analysis.poi_supply s
-          ON s.poi_id = p.poi_id_latest AND s.in_principled
-        WHERE p.borough IN ({", ".join(f"'{b}'" for b in BOROUGHS_FULL)})
-          {cat_clause}
-          AND (p.first_seen_src_date <= DATE '{asof.isoformat()}' {censor_clause})
-    """).fetchdf()
+    sup = con.execute(supply_as_of_sql(asof, include_censored=include_censored,
+                                       categories=categories)).fetchdf()
 
     sx, sy = _project(sup["lon"].to_numpy(), sup["lat"].to_numpy())
     # `sup` and `pts` are read by DuckDB's replacement scan straight out of

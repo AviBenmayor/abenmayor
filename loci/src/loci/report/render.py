@@ -574,11 +574,61 @@ def _section2_full(pack, enrichment, prose_text: str | None,
     if not pack.vacant_storefronts and not pack.pipeline:
         lines += ["", "No vacant DOF storefronts and no SLA-pending/DOB fit-out filings "
                  "on file within the catchment."]
+    lines += _context_lines(pack)
     if prose_text:
         lines += ["", prose_text]
     else:
         lines += ["", note]
     return "\n".join(lines)
+
+
+CONTEXT_TAG = "(context, not a grade)"
+
+
+def _context_lines(pack) -> list[str]:
+    """The three 2026-09-17 context lines: licence non-renewal, premises
+    tenure, filing activity. Each carries its n and the CONTEXT_TAG, and each
+    is printed only when its measure has been run -- a missing measure is a
+    missing line, never a zero. None of these feeds a grade; the tag says so
+    on the page because a number beside a grade reads as part of it."""
+    d = pack.demand
+    out: list[str] = []
+    n_lic = d.get("n_licences_400m")
+    if n_lic is not None:
+        cat = pack.lead_category or "this category"
+        if n_lic > 0:
+            line = (f"- Licence non-renewal: {_n(d.get('n_nonrenewed_400m'))} of {_n(n_lic)} "
+                    f"SLA {cat} licences within 400 m ended without a successor in the "
+                    f"last 5 years ({_pct(d.get('nonrenewal_rate_5y_400m'))})")
+        else:
+            line = f"- Licence non-renewal: no SLA {cat} licence within 400 m in the last 5 years"
+        if d.get("nonrenewal_rate_5y_borough") is not None:
+            line += (f", vs {_pct(d['nonrenewal_rate_5y_borough'])} across the borough "
+                     f"(n = {_n(d.get('nonrenewal_n_borough'))})")
+        out.append(line + f". A licence end is an upper bound on a business end "
+                   f"{CONTEXT_TAG}.")
+    n_prem = d.get("n_premises_400m")
+    if n_prem is not None:
+        if n_prem > 0 and d.get("median_tenure_years_400m") is not None:
+            turn = d.get("premises_turnover_400m")
+            every = (f"one occupant change every {1 / turn:.1f} premises-years"
+                     if turn else "no occupant change observed")
+            out.append(f"- Tenure: {_n(n_prem)} LL157 storefront premises within 400 m; "
+                       f"median occupancy run {_n(d['median_tenure_years_400m'])} years "
+                       f"(2019-2024 panel, censored at 12 months), {every}. Same-class "
+                       f"tenant swaps are invisible, so this overstates tenure "
+                       f"{CONTEXT_TAG}.")
+        else:
+            out.append(f"- Tenure: no LL157 storefront premises within 400 m {CONTEXT_TAG}.")
+    if d.get("sign_permit_400m_12m") is not None:
+        asof = f" (as of {d['filings_blind_asof']})" if d.get("filings_blind_asof") else ""
+        out.append(f"- Filing activity, any trade, last 12 months within 400 m: "
+                   f"{_n(d.get('sign_permit_400m_12m'))} sign permits, "
+                   f"{_n(d.get('fitout_400m_12m'))} DOB fit-out filings, "
+                   f"{_n(d.get('permit_issued_400m_12m'))} permits issued, "
+                   f"{_n(d.get('liquor_application_400m_12m'))} SLA applications{asof}. "
+                   f"Filings cluster where retail is already thick (D88) {CONTEXT_TAG}.")
+    return [""] + out if out else []
 
 
 def _section3_full(pack, enrichment, prose_text: str | None,

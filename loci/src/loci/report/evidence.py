@@ -718,13 +718,28 @@ def _pipeline_rows(con, lat: float, lon: float, catchment_m: float) -> list[Pipe
     first, EXCLUDING anything `storefront_pipeline` already marks
     `is_open` (that filing has already resolved into a business -- it
     belongs in the supply table, not "what is coming"). Investor review item
-    4: name these rows, don't fold them into `openings_pipeline_400m`."""
+    4: name these rows, don't fold them into `openings_pipeline_400m`.
+
+    WINDOWED on `entry_date` since 2026-09-17: analysis.storefront_pipeline is
+    now the FULL filing history (1989-), so an unwindowed read would list a
+    fit-out filed in 1996 that never opened as "coming". The window is
+    `storefront_pipeline.OPENINGS_PIPELINE_MONTHS` back from the pipeline's
+    own as-of -- the same 18 months `openings_pipeline_400m` counts -- so the
+    named rows and the count on the card describe one set."""
+    from loci.model.storefront_pipeline import OPENINGS_PIPELINE_MONTHS
+
+    # The as-of is read INSIDE the bounded statement (a scalar subquery), not
+    # as a separate unbounded read: tests/test_report_scan.py pins that every
+    # read of this table carries a spatial bound.
     df = con.execute(f"""
         SELECT pipeline_id, business_name, loci_category, entry_stage, entry_date,
                lon, lat, is_open
         FROM analysis.storefront_pipeline
         WHERE lon IS NOT NULL AND lat IS NOT NULL
           AND entry_stage IN ?
+          AND (entry_date IS NULL OR entry_date >=
+               coalesce((SELECT max(asof_date) FROM analysis.storefront_pipeline),
+                        current_date) - INTERVAL '{OPENINGS_PIPELINE_MONTHS} months')
           AND {_borough_sql("borough")}
           AND {_bbox_sql(lat, lon, catchment_m, lon_expr="lon", lat_expr="lat")}
     """, [list(SLA_PENDING_STAGES) + list(DOB_FITOUT_STAGES)]).fetchdf()
@@ -796,6 +811,14 @@ def _demand_facts(con, address_id: str, category: str | None, row: dict) -> dict
         "units_completed_24mo_400m": row.get("units_completed_24mo_400m"),
         "units_completed_60mo_400m": row.get("units_completed_60mo_400m"),
     }
+    # 2026-09-17 context lines -- tenure (model/storefront_tenure.py) and the
+    # category-blind filing counts (storefront_pipeline.build_blind). Read
+    # straight off the address row; NULL means the measure has not been run
+    # and the card says nothing rather than printing a zero.
+    for k in ("n_premises_400m", "premises_turnover_400m", "median_tenure_years_400m",
+              "sign_permit_400m_12m", "fitout_400m_12m", "permit_issued_400m_12m",
+              "liquor_application_400m_12m", "filings_blind_asof"):
+        out[k] = row.get(k)
     demo = con.execute(
         "SELECT median_hh_income, median_hh_income_moe, renter_share, age_18_34_share "
         "FROM analysis.address_demographics WHERE address_id = ? "
@@ -818,6 +841,24 @@ def _demand_facts(con, address_id: str, category: str | None, row: dict) -> dict
                 "rent_ceiling": cat[3], "supply_ratio_vs_base": cat[4],
                 "demand_caveat_text": cat[5],
             })
+        # The licence non-renewal line (model/licence_event.py): the address's
+        # own 400 m count and the borough baseline it is quoted against
+        # (category x borough, class rolled up). Only the four SLA categories
+        # carry it; elsewhere every field is None and the line is not printed.
+        lic = con.execute(
+            "SELECT n_licences_400m, n_nonrenewed_400m, nonrenewal_rate_5y_400m, "
+            "licence_asof FROM analysis.address_category "
+            "WHERE address_id = ? AND category = ?", [address_id, category]).fetchone()
+        if lic and lic[0] is not None:
+            out.update({"n_licences_400m": lic[0], "n_nonrenewed_400m": lic[1],
+                        "nonrenewal_rate_5y_400m": lic[2], "licence_asof": lic[3]})
+            base = con.execute(
+                "SELECT nonrenewal_rate_5y_business, n_at_risk_5y "
+                "FROM analysis.licence_event_baseline "
+                "WHERE category = ? AND borough = ? AND licence_class IS NULL",
+                [category, row.get("borough")]).fetchone()
+            out["nonrenewal_rate_5y_borough"] = base[0] if base else None
+            out["nonrenewal_n_borough"] = base[1] if base else None
     return out
 
 

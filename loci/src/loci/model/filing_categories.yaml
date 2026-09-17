@@ -73,7 +73,7 @@
 #   * every DCWP value the laundry ingest calls laundry
 #     (dcwp.KNOWN_LAUNDRY_CATEGORIES) is mapped the same way here.
 
-version: 2026-09-13
+version: 2026-09-17
 built_against: staging.storefront_filing, 232,667 rows, ingested 2026-09-13
 
 #: DOHMH cuisine values where this file DELIBERATELY disagrees with
@@ -331,6 +331,11 @@ sources:
       - "Wholesale Beer (Retail)"
       - "Wholesale Liquor"
       - "Wholesale Wine"
+      # First seen 2026-09-17 on the UNWINDOWED active file (D119, "never
+      # limit data pulls"): a producer holding several craft manufacturing
+      # privileges under one status. 20 rows, 2020-2024. A producer, not a
+      # storefront.
+      - "Combined Craft Status"
 
   nyc_sla_pending_licenses: *sla
 
@@ -374,6 +379,16 @@ sources:
     map: {}
     unmapped:
       - "Bingo Game Operator"
+      # The consumer laundromat licence -- SIX rows in the full-history
+      # roster (w7w3-xahh), all 2021, first seen in the pipeline on the
+      # 2026-09-17 full-history rebuild. model/licence_interval.CATEGORY_MAP
+      # maps it (for the survival LABEL, where six honest rows are better
+      # than none). It is deliberately NOT mapped here: mapping it would put
+      # `laundry` into chains.detect.filing_real_categories() and turn every
+      # laundry `structural_zero` in the warehouse into a measured zero on
+      # the strength of six licences -- the silent widening
+      # tests/test_chains_detect.py pins against.
+      - "Laundries"
       - "Booting Company"
       - "Car Wash"
       - "Commercial Lessor - Bingo"
@@ -415,6 +430,7 @@ sources:
       - "Specialized Vending License - MFV"
       - "Stoop Line Stand"
       - "Storage Warehouse"
+      - "Temporary Street Fair Vendor Permit"   # a table at a street fair, not a storefront (4,055 application rows, first seen 2026-09-17)
       - "Third Party Food Delivery Service"
       - "Ticket Seller Business"
       - "Ticket Seller Individual"

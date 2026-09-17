@@ -115,7 +115,7 @@ CLASSIFICATION: dict[str, str] = {
     'staging.poi_stale_census':
         'layer=staging; grain=one source x staleness bucket; key=-; note=a census OVER staging.poi_stale, not a second copy of it',
     'analysis.address':
-        'layer=measure; grain=one address, 124 columns; key=borough,address_id; note=332,041 rows = 281,842 frame=lot + 50,199 frame=street. THE most-read object in the warehouse (90 references)',
+        'layer=measure; grain=one address, 142 columns; key=borough,address_id; note=332,041 rows = 281,842 frame=lot + 50,199 frame=street. THE most-read object in the warehouse (90 references)',
     'analysis.address_demographics':
         'layer=measure; grain=one address x ACS vintage, 20 measures + 20 MOEs; key=address_id,acs_year; note=ACS 2023 sits on 2020 TRACT GEOGRAPHY -- aggregating a different vintage through these tract ids is a silent error the database cannot catch',
     'analysis.address_transit_profile':
@@ -224,6 +224,35 @@ CLASSIFICATION: dict[str, str] = {
         'layer=ledger; grain=one piece of evidence for one closure; key=evidence_id',
     'analysis.spend_ledger':
         'layer=ledger; grain=one paid-source spend event; key=-',
+    # ---- 2026-09-17: the four calculations (licence label, triangulation,
+    # ---- frozen snapshots, tenure). Declared in the same edit that created
+    # ---- them, per the rule this dict exists to enforce.
+    'analysis.licence_event':
+        'layer=measure; grain=one NYS SLA licence with the pre-registered non-renewal label under BOTH arms; key=licence_number; note=restaurant/bar/grocery/pharmacy only; DCWP rows stay in licence_interval. A licence end is an UPPER BOUND on a business end -- P5 decides whether it may be called survival; until then it is "licence non-renewal", context not grade. event_* is NULL (not FALSE) when bbl is NULL',
+    'analysis.licence_event_baseline':
+        'layer=measure; grain=category x borough x licence-class rollup of licence_event; key=-; note=a VIEW; the class = NULL row is the borough rate the card quotes; rates exclude unchecked (bbl NULL) rows from BOTH numerator and denominator',
+    'analysis.closure_triangulation':
+        'layer=measure; grain=one stale Foursquare venue CORROBORATED by >= 1 independent premises signal; key=stale_poi_id; note=STAGED, never promoted here: not evidence, not poi_status. n_kinds >= 2 is a CHECK (D79). Read flip_shared_by before counting closures -- one LL157 flip can corroborate several stale venues within 30 m',
+    'analysis.supply_snapshot':
+        'layer=measure; grain=one principled supply location present at t0, per t0; key=t0,location_key; note=retrodiction.supply_as_of_sql materialised, hash-stamped. NO closure filter (status_at_t0 flags it). Pre-2023 t0 sets are 40-49% backfill-censored: read supply_snapshot_census before quoting a count',
+    'analysis.supply_snapshot_census':
+        'layer=measure; grain=t0 x category census of supply_snapshot, with the censored share; key=-; note=a VIEW; the category = NULL row is the whole t0 set',
+    'analysis.storefront_tenure':
+        'layer=measure; grain=one LL157 premises with its occupancy runs and turnovers 2019-2024; key=premises_id; note=runs are interval-censored at 12 months (observations one 12/31 apart) and a same-class tenant swap is invisible: turnover undercounts, tenure overcounts. All five boroughs on disk',
+    'analysis.nta_tenure':
+        'layer=measure; grain=borough x NTA rollup of storefront_tenure; key=-; note=a VIEW; the NTA descriptive table',
+    # ---- 2026-09-17: the aerial items (scope memo §5 items 3-5, owner's pick)
+    # ---- and the citywide footprints they hang on. Each measure is CARD
+    # ---- CONTEXT ONLY and UNGATED until the owner has checked its review
+    # ---- page under data/aerial/ (memo §5 "gate before a grade" column).
+    'staging.building_footprint':
+        'layer=staging; grain=one building footprint (BIN), citywide; key=bin; note=1,083,030 rows over 818,190 base_bbl -- a lot carries MANY BINs, union by bbl before joining. height_roof_ft is FEET (2017 LiDAR, maintained from imagery); construction_year before 2017 is RPAD not imagery. Demolition rows are KEPT',
+    'analysis.lot_aerial_change':
+        'layer=measure; grain=one permitted lot x (ortho_from, ortho_to); key=bbl,ortho_from,ortho_to; note=UNGATED: OWNER REVIEW PENDING (memo §5 row 3: agreement >= 0.8 vs DOB status on 100 hand-checked lots; data/aerial/gowanus_change_review.html). change_class is a heuristic on brightness change + 2024 edge density; sheds, tarps, trucks and shadows read as change. A two-year bin dates nothing. Card context only',
+    'analysis.building_awning':
+        'layer=measure; grain=one building (BIN) x ortho year, its street faces; key=bin,ortho_year; note=UNGATED: OWNER REVIEW PENDING (memo §5 row 4: precision >= 0.8 vs LL157 occupied premises on 100 hand-checked faces; data/aerial/awning_review.html). First run restricted to the twelve D82 corridors; a colour/texture heuristic on the 3 m sidewalk band -- sheds and box trucks are the known false positives. Card context only',
+    'analysis.lot_convertible':
+        'layer=measure; grain=one lot that is one-storey / garage / parking / vacant with a >= 500 m2 floorplate; key=bbl; note=UNGATED: OWNER REVIEW PENDING (memo §5 row 5: hand-check the top 30; data/aerial/convertible_review.html). height_m is footprint height_roof (2017 LiDAR) -- no 2021 NYC LiDAR is published (verified 2026-09-17). score is a SORT KEY, not a measure. Card context only',
     'chains.brand_snapshot':
         'layer=ledger; grain=brand x snapshot month; key=snapshot_month,brand_key',
     'chains.brand_location':
@@ -292,12 +321,17 @@ def catalog(con) -> list[Object]:
     row lands is a document whose drift check gets switched off. Row counts
     belong in the audit, not in the inventory.
     """
+    # `NOT temporary`: a session's own TEMP tables (a builder's scratch
+    # `_tri_stale`, retrodiction's `_rd_sup`) are visible in duckdb_tables()
+    # on the connection that made them and are NOT warehouse objects. Without
+    # the filter a `gen-warehouse` run from a build session renders them as
+    # UNCLASSIFIED (happened 2026-09-17).
     rows = con.execute("""
         SELECT schema_name, table_name, 'table' AS kind, comment, estimated_size
-        FROM duckdb_tables() WHERE NOT internal
+        FROM duckdb_tables() WHERE NOT internal AND NOT temporary
         UNION ALL
         SELECT schema_name, view_name, 'view', comment, NULL
-        FROM duckdb_views() WHERE NOT internal
+        FROM duckdb_views() WHERE NOT internal AND NOT temporary
         ORDER BY 1, 2
     """).fetchall()
     out = []
@@ -462,9 +496,11 @@ def apply_classification(con) -> tuple[int, list[str], list[str]]:
     has never run look identical from here and only one of them is fine.
     """
     kinds = {f"{s}.{n}": k for s, n, k in con.execute("""
-        SELECT schema_name, table_name, 'TABLE' FROM duckdb_tables() WHERE NOT internal
+        SELECT schema_name, table_name, 'TABLE' FROM duckdb_tables()
+        WHERE NOT internal AND NOT temporary
         UNION ALL
-        SELECT schema_name, view_name, 'VIEW' FROM duckdb_views() WHERE NOT internal
+        SELECT schema_name, view_name, 'VIEW' FROM duckdb_views()
+        WHERE NOT internal AND NOT temporary
     """).fetchall()}
     applied = 0
     for qualified, text in CLASSIFICATION.items():

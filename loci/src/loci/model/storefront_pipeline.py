@@ -277,6 +277,16 @@ def ensure_schema(con) -> None:
     sql_027 = SQL_020.parent / "027_poi_closure.sql"
     if sql_027.exists():
         con.execute(sql_027.read_text())
+    # sql/020 also re-creates analysis.storefront_pipeline_census, which
+    # sql/046 DROPPED (zero readers). Re-applying 020 alone resurrected it on
+    # the 2026-09-17 full-history rebuild and `loci check-warehouse` failed on
+    # an unclassified view. 046 is idempotent (DROP IF EXISTS), so it is
+    # re-applied here for the same reason 027 is: a module that applies one
+    # migration file must re-apply every later file that touches the same
+    # objects.
+    sql_046 = SQL_020.parent / "046_consolidation.sql"
+    if sql_046.exists():
+        con.execute(sql_046.read_text())
 
 
 def stage_rank_sql() -> str:
@@ -791,22 +801,27 @@ def validate(con, frame: pd.DataFrame) -> list[str]:
     if bad_stage:
         problems.append(f"{bad_stage:,} rows carry a stage outside the vocabulary")
 
-    # (10) THE liquor_active WINDOW, re-measured. sql/020's whole defence of
-    #      including liquor_active in `opened_on` is that SLA's fetch is
-    #      windowed, so no decades-old renewal is present. If that stops being
-    #      true this is where it shows.
+    # (10) THE liquor_active WINDOW, re-measured. sql/020's original defence
+    #      of including liquor_active in `opened_on` was that SLA's fetch was
+    #      windowed. Since 2026-09-16 ("never limit data pulls") it is NOT:
+    #      the active file is ingested whole and `originalissuedate` reaches
+    #      1981. So this is no longer a failure -- it is the documented
+    #      meaning of the column: for a liquor_active row `opened_on` is the
+    #      premises' FIRST licence date under that serial, a premises-tenure
+    #      origin and not a recent opening. `lead_days` is unaffected (a
+    #      negative gap is already NULL), the ledger step only ever moves a
+    #      first-seen EARLIER, and `openings_recent_400m` windows on the date.
+    #      The measurement is kept and reported so the reader sees how old.
     row = con.execute(
-        f"SELECT min(opened_on) FROM {TABLE} WHERE opened_on_stage = 'liquor_active'"
+        f"SELECT min(opened_on), count(*) FILTER (WHERE opened_on < "
+        f"(SELECT max(asof_date) FROM {TABLE}) - INTERVAL '4 years') "
+        f"FROM {TABLE} WHERE opened_on_stage = 'liquor_active'"
     ).fetchone()
-    oldest = row[0] if row else None
-    if oldest is not None:
-        asof = con.execute(f"SELECT max(asof_date) FROM {TABLE}").fetchone()[0]
-        if asof and (asof - oldest).days > 365 * 4:
-            problems.append(
-                f"the oldest liquor_active opened_on is {oldest} ({(asof - oldest).days} "
-                f"days before asof). SLA's originalissuedate is the premises' FIRST "
-                f"licence date; a window this wide means `opened_on` is dating "
-                f"renewals as openings (sql/020 header).")
+    if row and row[0] is not None:
+        validate.liquor_active_note = (
+            f"oldest liquor_active opened_on is {row[0]}; {int(row[1]):,} such rows "
+            f"are more than 4 years before asof -- premises FIRST-licence dates, "
+            f"not recent openings (sql/020 header; full-history ingest D119)")
     return problems
 
 
@@ -1110,7 +1125,7 @@ def apply_gov_filing(con, *, asof: dt.date | None = None,
     try:
         # Which rows WOULD move, counted before the write so the report is a
         # statement about this run rather than a diff of two counts.
-        eligible = con.execute(f"""
+        eligible = con.execute("""
             SELECT g.location_key, pp.first_seen_kind
             FROM _gov g JOIN analysis.poi_presence pp USING (location_key)
             WHERE pp.first_seen_kind = 'backfill_censored'
@@ -1697,3 +1712,154 @@ def stats(con) -> dict:
         out["east_village"] = area_openings(con, nta_code=EAST_VILLAGE_NTA,
                                             label="East Village")
     return out
+
+
+# ---------------------------------------------------------------------------
+# category-BLIND filing counts at the address grain (2026-09-17)
+# ---------------------------------------------------------------------------
+# `openings_pipeline_400m` reads only the five categories with a licensing
+# feed (restaurant, bar, grocery, pharmacy, laundry-ish); the other ten read a
+# structural ZERO that looks like "nothing is opening on this block". These
+# columns count FILING EVENTS of four stages within 400 m network at 6/12/24
+# months, whatever the trade: sign permits, DOB fit-outs, DOB permits issued,
+# SLA applications. They are read straight off staging.storefront_filing
+# (every feed, every borough, no date clip -- D119) so the pipeline roll-up's
+# group key does not decide what is counted: a filing is a filing.
+#
+# THE D88 COSTUME RISK, stated where the columns are made: filings cluster
+# where retail is already thick. As a forecast feature these counts would
+# re-prove herding (a thick strip files more, opens more, and the model would
+# learn "thick predicts thick"). They are CARD CONTEXT and nothing else --
+# not a grade input, not a forecast feature -- and `_guard` keeps them off
+# every column the screen owns.
+#
+# Only rank 5 (sign_permit) and rank 8 are storefront-specific
+# (filing_stages.py caveat 2): a `fitout_filing` on a mixed-use building may
+# be a lobby renovation and a `permit_issued` a boiler. Read the sign-permit
+# column first; the other three are wider nets.
+BLIND_STAGES: tuple[str, ...] = ("fitout_filing", "sign_permit", "permit_issued",
+                                 "liquor_application")
+BLIND_STAGE_COLUMN = {"fitout_filing": "fitout", "sign_permit": "sign_permit",
+                      "permit_issued": "permit_issued",
+                      "liquor_application": "liquor_application"}
+BLIND_WINDOWS_MONTHS: tuple[int, ...] = (6, 12, 24)
+BLIND_COLUMNS = [f"{BLIND_STAGE_COLUMN[s]}_400m_{m}m"
+                 for s in BLIND_STAGES for m in BLIND_WINDOWS_MONTHS]
+BLIND_STAMP_COLUMNS = ["filings_blind_asof", "filings_blind_run_at"]
+
+
+def load_blind_points(con, asof: dt.date) -> tuple[pd.DataFrame, dict]:
+    """Filing events of BLIND_STAGES with a point, one weight column per
+    (stage, window). A filing with no coordinate and no PLUTO-resolvable BBL
+    is counted in the report and contributes nothing."""
+    cuts = {m: _months_before(asof, m) for m in BLIND_WINDOWS_MONTHS}
+    stages = ", ".join(f"'{s}'" for s in BLIND_STAGES)
+    df = con.execute(f"""
+        SELECT f.stage, f.filed_on,
+               coalesce(f.lon, p.lon) AS lon, coalesce(f.lat, p.lat) AS lat,
+               (f.lon IS NULL AND p.lon IS NOT NULL) AS from_pluto
+        FROM {FILING_TABLE} f
+        LEFT JOIN _pluto_lot p ON f.lon IS NULL AND p.bbl = f.bbl
+        WHERE f.stage IN ({stages}) AND f.filed_on IS NOT NULL
+          AND f.filed_on <= DATE '{asof}' AND f.filed_on >= DATE '{cuts[max(cuts)]}'
+    """).fetchdf()
+    report = {"asof": asof.isoformat(),
+              "windows_from": {m: c.isoformat() for m, c in cuts.items()},
+              "filings_in_widest_window": len(df),
+              "placed": int(df["lon"].notna().sum()),
+              "placed_from_pluto": int(df["from_pluto"].sum()) if len(df) else 0,
+              "unplaced": int(df["lon"].isna().sum()),
+              "by_stage": df["stage"].value_counts().to_dict()}
+    if df.empty or df["lon"].notna().sum() == 0:
+        raise RuntimeError(
+            "no placed filing of any blind stage in the last 24 months. Writing "
+            "zeros onto every address would read as 'nobody filed anything in "
+            "New York', a confident false negative. Check `loci filings status`.")
+    filed = pd.to_datetime(df["filed_on"]).dt.date
+    for s in BLIND_STAGES:
+        for m in BLIND_WINDOWS_MONTHS:
+            col = f"{BLIND_STAGE_COLUMN[s]}_400m_{m}m"
+            df[col] = ((df["stage"] == s) & (filed >= cuts[m])).astype(float)
+    return df, report
+
+
+def compute_blind(con, boroughs: list[str] | None, *, asof: dt.date | None = None,
+                  radius_m: float | None = None, graph_path=None
+                  ) -> tuple[pd.DataFrame, dict]:
+    """(frame address_id/borough + BLIND_COLUMNS + stamps, report). READ-ONLY.
+    One network sweep for all twelve columns."""
+    from loci.model.walk_catchment import load_addresses, network_sums
+
+    asof = asof or dt.date.today()
+    if not con.execute("SELECT count(*) FROM information_schema.tables "
+                       "WHERE table_name = '_pluto_lot'").fetchone()[0]:
+        from loci.model import storefront_filing as sf
+        sf.build_pluto_index(con)
+    pts, report = load_blind_points(con, asof)
+    addr = load_addresses(con, boroughs)
+    sums, rep = network_sums(pts, BLIND_COLUMNS, addr, radius_m=radius_m,
+                             graph_path=graph_path)
+    out = sums[["address_id", "borough"]].copy()
+    for c in BLIND_COLUMNS:
+        out[c] = sums[c].round().astype("int64")
+    out["filings_blind_asof"] = asof
+    out["filings_blind_run_at"] = pd.Timestamp(dt.datetime.now())
+    report.update(rep)
+    report.update({"rows": len(out), "boroughs": list(boroughs) if boroughs else "ALL",
+                   "max_by_column": {c: int(out[c].max()) for c in BLIND_COLUMNS},
+                   "addresses_with_any_24m": int((out[[c for c in BLIND_COLUMNS
+                                                       if c.endswith("_24m")]].sum(axis=1) > 0).sum())})
+    return out, report
+
+
+def write_blind(con, df: pd.DataFrame, boroughs: list[str] | None) -> int:
+    cols = [*BLIND_COLUMNS, *BLIND_STAMP_COLUMNS]
+    _guard(cols)
+    reset = ", ".join(f"{c} = NULL" for c in cols)
+    if boroughs:
+        holes = ", ".join("?" for _ in boroughs)
+        con.execute(f"UPDATE analysis.address SET {reset} WHERE borough IN ({holes})",
+                    list(boroughs))
+    else:
+        con.execute(f"UPDATE analysis.address SET {reset}")
+    payload = df[["address_id", "borough", *cols]]
+    con.register("_bl", payload)
+    try:
+        sets = ", ".join(f"{c} = _bl.{c}" for c in cols)
+        con.execute(f"UPDATE analysis.address AS a SET {sets} FROM _bl "
+                    f"WHERE a.address_id = _bl.address_id AND a.borough = _bl.borough")
+    finally:
+        con.unregister("_bl")
+    return len(payload)
+
+
+def validate_blind(con, boroughs: list[str] | None) -> list[str]:
+    problems: list[str] = []
+    scope, params = "", []
+    if boroughs:
+        holes = ", ".join("?" for _ in boroughs)
+        scope, params = f"WHERE borough IN ({holes})", list(boroughs)
+    n = con.execute(f"SELECT count(*) FROM analysis.address {scope}", params).fetchone()[0]
+    for c in BLIND_COLUMNS:
+        have = con.execute(f"SELECT count({c}) FROM analysis.address {scope}", params).fetchone()[0]
+        if have != n:
+            problems.append(f"{n - have:,} addresses carry NULL {c}; 0 is a value, NULL is 'not run'")
+    # windows nest: 6m <= 12m <= 24m for every stage and address
+    for s in BLIND_STAGES:
+        b = BLIND_STAGE_COLUMN[s]
+        bad = con.execute(
+            f"SELECT count(*) FROM analysis.address {scope} {'AND' if scope else 'WHERE'} "
+            f"({b}_400m_6m > {b}_400m_12m OR {b}_400m_12m > {b}_400m_24m)", params).fetchone()[0]
+        if bad:
+            problems.append(f"{bad:,} addresses have a 6/12/24-month {b} count that does not nest")
+    return problems
+
+
+def build_blind(con, boroughs: list[str] | None, *, asof: dt.date | None = None,
+                radius_m: float | None = None, graph_path=None,
+                dry_run: bool = False) -> tuple[pd.DataFrame, dict]:
+    df, rep = compute_blind(con, boroughs, asof=asof, radius_m=radius_m, graph_path=graph_path)
+    if not dry_run:
+        rep["_written"] = write_blind(con, df, boroughs)
+        rep["_problems"] = validate_blind(con, boroughs)
+    return df, rep

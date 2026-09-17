@@ -11147,3 +11147,388 @@ def ingest_lodes(
                   f"{len(report['skipped'])} already present")
     console.print(f"[yellow]{report['block_geography']}[/]")
     console.print(f"manifest: {report['manifest']}")
+
+
+# ===========================================================================
+# 2026-09-17 -- the four calculations the owner chose from the inventory:
+# licence non-renewal label, went-dark triangulation, frozen rewind
+# snapshots, premises tenure + full-history filing counts. Each is a
+# subcommand (CLAUDE.md: loose scripts become CLI subcommands), each writes
+# through its module's build()/validate() pair, and none touches
+# staging.poi or poi_status -- `supply_hash` is printed before and after every
+# write so a silent move cannot pass unnoticed.
+# ===========================================================================
+def _print_problems(problems: list[str]) -> None:
+    for p in problems:
+        console.print(f"[red]FAIL[/] {p}")
+    if problems:
+        raise typer.Exit(1)
+
+
+def _hash_guard(con, before: str, what: str) -> None:
+    from loci.score import supply
+
+    after = supply.supply_hash(con)
+    if after != before:
+        console.print(f"[red]supply_hash MOVED during {what}: {before} -> {after}. "
+                      f"This step must never touch the supply set.[/]")
+        raise typer.Exit(2)
+    console.print(f"[dim]supply_hash {after} unchanged through {what}[/]")
+
+
+# --------------------------------------------------------- licence-events
+licence_events_app = typer.Typer(add_completion=False, help=(
+    "The SLA licence NON-RENEWAL label (rewind pre-registration v2 §1.2) and its "
+    "400 m descriptive baseline. Context, never a grade; no hazard is fit here."))
+app.add_typer(licence_events_app, name="licence-events")
+
+
+@licence_events_app.command("build")
+def licence_events_build(
+    asof: str = typer.Option(None, "--asof", help="YYYY-MM-DD; default today. The 5-year "
+                                                  "window counts back from this."),
+) -> None:
+    """Apply the pre-registered event definition to analysis.licence_interval's
+    SLA rows -> analysis.licence_event (one row per licence, both arms)."""
+    import datetime as _dt
+
+    from loci.model import licence_event as le
+    from loci.score import supply
+
+    asof_d = _dt.date.fromisoformat(asof) if asof else _dt.date.today()
+    con = _filings_connect()
+    before = supply.supply_hash(con)
+    rep = le.build(con, asof=asof_d)
+    t = Table(title=f"analysis.licence_event — {rep['rows']:,} rows, window "
+                    f"{rep['window'][0]} -> {rep['window'][1]}")
+    for c in ("category", "licences", "ended", "no BBL (unchecked)", "event business",
+              "event premises", "with successor", "MN+BK"):
+        t.add_column(c, justify="right" if c != "category" else "left")
+    for cat, r in rep["by_category"].items():
+        t.add_row(cat, f"{r['n']:,}", f"{r['n_ended']:,}", f"{r['n_unchecked']:,}",
+                  f"{r['ev_business']:,}", f"{r['ev_premises']:,}",
+                  f"{r['with_successor']:,}", f"{r['mnbk']:,}")
+    console.print(t)
+    console.print("dropped before labelling: " + ", ".join(
+        f"{k} {v:,}" for k, v in rep["dropped"].items()) if rep["dropped"] else
+        "dropped before labelling: none")
+    console.print("[yellow]A licence end is an UPPER BOUND on a business end. This is "
+                  "'SLA licence non-renewal' until `licence-events checks` P5 says "
+                  "otherwise.[/]")
+    _hash_guard(con, before, "licence-events build")
+
+
+@licence_events_app.command("checks")
+def licence_events_checks() -> None:
+    """P3', P5 and the >= 200-events count, PASS/FAIL with numbers. No fit."""
+    from loci.model import licence_event as le
+
+    con = _filings_connect(read_only=True)
+    res = le.checks(con)
+    cov = le.coverage(con)
+
+    t = Table(title="P3' -- licence -> MN+BK BBL -> Loci-scored lot (floor 70%; < 50% no run)")
+    for c in ("category", "n", "BBL", "scored", "share", "imputable <=50 m",
+              "share incl. imputed", "result"):
+        t.add_column(c)
+    for cat, r in res["p3_prime"].items():
+        verdict = ("[green]PASS[/]" if r["pass"] else
+                   "[red]FAIL (no run)[/]" if r["no_run"] else
+                   "[red]FAIL (scores imputed)[/]")
+        t.add_row(cat, f"{r['n']:,}", f"{r['bbl_resolved']:,}", f"{r['scored']:,}",
+                  f"{100 * r['share_scored']:.1f}%" if r["share_scored"] is not None else "-",
+                  f"{r['imputable_within_50m']:,}",
+                  f"{100 * r['share_scored_or_imputed']:.1f}%"
+                  if r["share_scored_or_imputed"] is not None else "-", verdict)
+    console.print(t)
+
+    t = Table(title="P5 -- PPV of an expiry EVENT against an independent closure "
+                    "within +/-12 m (floor 0.50)")
+    for c in ("category", "events", "joinable", "closed +/-12m", "closed ever",
+              "seen trading >12m after", "PPV joinable", "PPV determined", "result"):
+        t.add_column(c)
+    for cat, r in res["p5"].items():
+        pj = f"{r['ppv_joinable']:.2f}" if r["ppv_joinable"] is not None else "-"
+        pd_ = f"{r['ppv_determined']:.2f}" if r["ppv_determined"] is not None else "-"
+        verdict = ("[green]PASS[/]" if r["pass_joinable"] else
+                   "[yellow]FAIL joinable / PASS determined[/]" if r["pass_determined"]
+                   else "[red]FAIL -- 'licence non-renewal', context only[/]")
+        t.add_row(cat, f"{r['n_events']:,}", f"{r['n_joinable']:,}",
+                  f"{r['n_closed_within_12m']:,}", f"{r['n_closed_ever']:,}",
+                  f"{r['n_seen_trading_after_12m']:,}", pj, pd_, verdict)
+    console.print(t)
+    console.print("[dim]PPV joinable = closed within +/-12 m / events with any Foursquare or "
+                  "DOHMH venue of that name+category within 50 m (the pre-registered "
+                  "statistic). PPV determined = closed within +/-12 m / (that + events whose "
+                  "matched venue Foursquare refreshed >12 m after the expiry with no "
+                  "closure). Foursquare's ~3% closure ascertainment makes the first a "
+                  "floor; both are printed, neither is the other.[/]")
+
+    t = Table(title=f">= {le.MIN_EVENTS} events per category, MN+BK, cohorts issued "
+                    f"{le.COHORT_START}..{le.COHORT_END}, {le.COHORT_FOLLOWUP_MONTHS} m follow-up")
+    for c in ("category", "cohort n", "events business", "events premises",
+              "raw business", "raw premises", "result"):
+        t.add_column(c)
+    for cat, r in res["events"].items():
+        verdict = "[green]PASS[/]" if r["pass"] else (
+            "[red]FAIL -- auto-dropped (provisional)[/]" if r["provisional"]
+            else "[red]FAIL[/]")
+        t.add_row(cat, f"{r['cohort_n']:,}", f"{r['cohort_business']:,}",
+                  f"{r['cohort_premises']:,}", f"{r['raw_business']:,}",
+                  f"{r['raw_premises']:,}", verdict)
+    console.print(t)
+
+    t = Table(title="coverage rule (§2): SLA-licensed (active, MN+BK) / canonical supply; "
+                    "< 25% caps the claim as conditional")
+    for c in ("category", "SLA active", "canonical", "share"):
+        t.add_column(c)
+    for cat, r in cov.items():
+        t.add_row(cat, f"{r['sla_active']:,}", f"{r['canonical']:,}",
+                  f"{100 * r['share']:.1f}%" if r["share"] is not None else "-")
+    console.print(t)
+
+
+@licence_events_app.command("measure")
+def licence_events_measure(
+    boroughs: str = typer.Option("ALL", help="Comma-separated borough codes, or ALL."),
+    radius_m: float = typer.Option(400.0, "--radius-m", help="NETWORK metres."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """n_licences_400m / n_nonrenewed_400m / nonrenewal_rate_5y_400m onto
+    analysis.address_category for restaurant, bar, grocery, pharmacy."""
+    from loci.model import licence_event as le
+    from loci.score import supply
+
+    boros = _parse_boroughs(boroughs)
+    con = _pipeline_connect(read_only=dry_run)
+    before = supply.supply_hash(con)
+    df, rep = le.build_measure(con, boros, radius_m=radius_m, dry_run=dry_run)
+    t = Table(title=f"licence non-renewal within {radius_m:.0f} m -- asof {rep['asof']}")
+    for c in ("measure", "value"):
+        t.add_column(c)
+    t.add_row("at-risk, checkable, placed licences swept", f"{rep['points']:,}")
+    t.add_row("addresses / graph nodes", f"{rep['addresses']:,} / {rep['query_nodes']:,}")
+    t.add_row("address x category rows (4 categories)", f"{rep['rows']:,}")
+    t.add_row("rows with >= 1 licence within reach", f"{rep['address_categories_with_licences']:,}")
+    t.add_row("max licences / max non-renewals per address",
+              f"{rep['max_n_400m']} / {rep['max_nonrenewed_400m']}")
+    console.print(t)
+    if dry_run:
+        raise typer.Exit(0)
+    console.print(f"[green]written[/] {rep['_written']:,} rows")
+    _print_problems(rep["_problems"])
+    _hash_guard(con, before, "licence-events measure")
+
+
+# ---------------------------------------------------------- triangulation
+@poi_closures_app.command("triangulate")
+def poi_closures_triangulate(
+    asof: str = typer.Option(None, "--asof", help="YYYY-MM-DD stamp; default today."),
+) -> None:
+    """Stale Foursquare venues corroborated by an LL157 vacancy flip or a
+    same-name SLA licence end within 30 m -> analysis.closure_triangulation.
+
+    STAGED, NOT PROMOTED. Nothing here writes analysis.poi_closure_evidence,
+    poi_status or the supply hash; the report says how many locations WOULD
+    flip if promoted, and promotion is an announced hash move for the
+    executive to rule on.
+    """
+    import datetime as _dt
+
+    from loci.model import closure_triangulation as ct
+    from loci.score import supply
+
+    asof_d = _dt.date.fromisoformat(asof) if asof else _dt.date.today()
+    con = _filings_connect()
+    before = supply.supply_hash(con)
+    rep = ct.build(con, asof=asof_d)
+    t = Table(title="went-dark triangulation (D79: a stale venue alone writes nothing)")
+    for c in ("measure", "value"):
+        t.add_column(c)
+    t.add_row("stale venues (staging.poi_stale)", f"{rep['stale_venues']:,}")
+    t.add_row("NOT written -- stale only, no independent kind", f"{rep['not_written_stale_only']:,}")
+    t.add_row("written -- corroborated", f"{rep['written']:,}")
+    for k, n in sorted(rep["by_kinds"].items()):
+        t.add_row(f"  kinds = {k}", f"{n:,}")
+    for k, n in sorted(rep["by_n_kinds"].items()):
+        t.add_row(f"  {k} agreeing kinds", f"{n:,}")
+    t.add_row("distinct LL157 flips corroborating them", f"{rep['distinct_flip_premises']:,}")
+    t.add_row("  rows whose flip is shared with other stale venues",
+              f"{rep['flip_shared_with_other_stale_venues']:,}")
+    t.add_row("licence kind dropped as inconsistent with the LL157 window",
+              f"{rep['licence_kind_dropped_as_inconsistent']:,}")
+    t.add_row("matched to a poi_presence location (same name+category, 30 m)",
+              f"{rep['matched_to_presence']:,}")
+    t.add_row("[bold]WOULD flip poi_status if promoted[/]",
+              f"[bold]{rep['would_flip_poi_status']:,}[/] "
+              f"({rep['would_flip_from_unknown']:,} unknown->closed, "
+              f"{rep['would_flip_from_open']:,} open->closed)")
+    console.print(t)
+    _print_problems(ct.validate(con))
+    _hash_guard(con, before, "poi-closures triangulate")
+    console.print("[yellow]Not promoted. Promotion widens sql/033's source CHECK and moves "
+                  "the supply hash -- announce it first.[/]")
+
+
+# ------------------------------------------------------- rewind snapshot
+@rewind_app.command("snapshot")
+def rewind_snapshot(
+    t0: str = typer.Option(None, "--t0", help="YYYY-MM-DD. Omit with --all for every "
+                                              "January 1st 2016-2025."),
+    all_defaults: bool = typer.Option(False, "--all", help="Build every default t0."),
+) -> None:
+    """Materialise the supply set as of t0 (retrodiction.supply_as_of's rule)
+    into analysis.supply_snapshot, stamping the backfill-censored share."""
+    import datetime as _dt
+
+    from loci.model import supply_snapshot as ss
+    from loci.score import supply
+
+    if not t0 and not all_defaults:
+        console.print("[red]give --t0 YYYY-MM-DD or --all[/]")
+        raise typer.Exit(2)
+    t0s = list(ss.DEFAULT_T0S) if all_defaults else [_dt.date.fromisoformat(t0)]
+    con = _filings_connect()
+    before = supply.supply_hash(con)
+    t = Table(title="analysis.supply_snapshot -- every row carries its censored share (D79)")
+    for c in ("t0", "locations", "backfill-censored", "share", "closed before t0",
+              "no BBL <=30 m", "hash"):
+        t.add_column(c)
+    problems: list[str] = []
+    for d in t0s:
+        c = ss.build(con, d)[d.isoformat()]["ALL"]
+        t.add_row(d.isoformat(), f"{c['n']:,}", f"{c['n_censored']:,}",
+                  f"{100 * c['censored_share']:.1f}%", f"{c['n_closed_before_t0']:,}",
+                  f"{c['n_without_bbl']:,}", c["supply_hash"])
+        problems += ss.validate(con, d)
+    console.print(t)
+    _print_problems(problems)
+    _hash_guard(con, before, "rewind snapshot")
+
+
+# ------------------------------------------------------ storefront-tenure
+storefront_tenure_app = typer.Typer(add_completion=False, help=(
+    "Premises tenure prior from LL157: occupancy runs, turnover, and the 400 m "
+    "address measure. Context, never a grade."))
+app.add_typer(storefront_tenure_app, name="storefront-tenure")
+
+
+@storefront_tenure_app.command("build")
+def storefront_tenure_build(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """analysis.storefront_tenure: one row per premises from analysis.storefront_year."""
+    from loci.model import storefront_tenure as st
+    from loci.score import supply
+
+    con = _filings_connect(read_only=dry_run)
+    before = supply.supply_hash(con)
+    df, rep = st.build(con, dry_run=dry_run)
+    t = Table(title="analysis.storefront_tenure")
+    for c in ("measure", "value"):
+        t.add_column(c)
+    t.add_row("premises with >= 1 observed year", f"{rep['premises']:,}")
+    t.add_row("premises-years observed", f"{rep['premises_years']:,}")
+    t.add_row("occupancy runs / turnovers", f"{rep['runs']:,} / {rep['turnovers']:,}")
+    t.add_row("mean run length (years, interval-censored at 12 m)",
+              f"{rep['mean_run_years']:.2f}")
+    for b, n in sorted(rep["by_borough"].items(), key=lambda kv: str(kv[0])):
+        t.add_row(f"  borough {b}", f"{n:,}")
+    console.print(t)
+    console.print("[yellow]A same-class tenant swap is invisible here (12 coarse classes, no "
+                  "tenant name): turnover is an undercount, tenure an overcount.[/]")
+    if dry_run:
+        raise typer.Exit(0)
+    _print_problems(rep["_problems"])
+    _hash_guard(con, before, "storefront-tenure build")
+
+
+@storefront_tenure_app.command("measure")
+def storefront_tenure_measure(
+    boroughs: str = typer.Option("ALL", help="Comma-separated borough codes, or ALL."),
+    radius_m: float = typer.Option(400.0, "--radius-m", help="NETWORK metres."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """n_premises_400m / premises_turnover_400m / median_tenure_years_400m onto
+    analysis.address."""
+    from loci.model import storefront_tenure as st
+    from loci.score import supply
+
+    boros = _parse_boroughs(boroughs)
+    con = _pipeline_connect(read_only=dry_run)
+    before = supply.supply_hash(con)
+    df, rep = st.build_measure(con, boros, radius_m=radius_m, dry_run=dry_run)
+    t = Table(title=f"premises tenure within {radius_m:.0f} m")
+    for c in ("measure", "value"):
+        t.add_column(c)
+    t.add_row("premises swept", f"{rep['points']:,}")
+    t.add_row("addresses / graph nodes", f"{rep['addresses']:,} / {rep['query_nodes']:,}")
+    t.add_row("addresses with >= 1 premises within reach", f"{rep['addresses_with_premises']:,}")
+    t.add_row("max premises per address", f"{rep['max_n_premises_400m']}")
+    console.print(t)
+    if dry_run:
+        raise typer.Exit(0)
+    console.print(f"[green]written[/] {rep['_written']:,} rows")
+    _print_problems(rep["_problems"])
+    _hash_guard(con, before, "storefront-tenure measure")
+
+
+# ------------------------------------------- storefront-pipeline blind
+@storefront_pipeline_app.command("blind")
+def storefront_pipeline_blind(
+    boroughs: str = typer.Option("ALL", help="Comma-separated borough codes, or ALL."),
+    asof: str = typer.Option(None, "--asof", help="YYYY-MM-DD; default today."),
+    radius_m: float = typer.Option(400.0, "--radius-m", help="NETWORK metres."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Compute and print; write nothing."),
+) -> None:
+    """Category-BLIND filing counts within 400 m at 6/12/24 months -- sign
+    permits, DOB fit-outs, permits issued, SLA applications -- onto
+    analysis.address. Card context only (D88: filings cluster where retail
+    is thick; never a forecast feature)."""
+    import datetime as _dt
+
+    from loci.model import storefront_pipeline as sp
+    from loci.score import supply
+
+    asof_d = _dt.date.fromisoformat(asof) if asof else _dt.date.today()
+    boros = _parse_boroughs(boroughs)
+    con = _pipeline_connect(read_only=dry_run)
+    before = supply.supply_hash(con)
+    df, rep = sp.build_blind(con, boros, asof=asof_d, radius_m=radius_m, dry_run=dry_run)
+    t = Table(title=f"category-blind filings within {radius_m:.0f} m -- asof {rep['asof']}")
+    for c in ("measure", "value"):
+        t.add_column(c)
+    t.add_row("filings in the 24-month window (placed / from PLUTO / unplaced)",
+              f"{rep['filings_in_widest_window']:,} ({rep['placed']:,} / "
+              f"{rep['placed_from_pluto']:,} / {rep['unplaced']:,})")
+    for s, n in sorted(rep["by_stage"].items()):
+        t.add_row(f"  {s}", f"{n:,}")
+    t.add_row("addresses / graph nodes", f"{rep['addresses']:,} / {rep['query_nodes']:,}")
+    t.add_row("addresses with any filing within reach (24 m)", f"{rep['addresses_with_any_24m']:,}")
+    for c, mx in rep["max_by_column"].items():
+        t.add_row(f"  max {c}", f"{mx}")
+    console.print(t)
+    if dry_run:
+        raise typer.Exit(0)
+    console.print(f"[green]written[/] {rep['_written']:,} rows")
+    _print_problems(rep["_problems"])
+    _hash_guard(con, before, "storefront-pipeline blind")
+
+
+# ===========================================================================
+# `loci aerial` / `loci footprints` -- what the free aerial sources yield at
+# the lot grain (scope memo 2026-09-17 §2/§4/§5; owner chose items 3, 4, 5).
+#
+#   loci footprints ingest                  staging.building_footprint (citywide)
+#   loci aerial pull        --gowanus|--boroughs MN,BK --years 2022,2024
+#   loci aerial change      --gowanus|--bbox ...   analysis.lot_aerial_change
+#   loci aerial awnings     [--corridor NAME]      analysis.building_awning
+#   loci aerial convertible --gowanus|--boroughs   analysis.lot_convertible
+#
+# ALL THREE MEASURES ARE CARD CONTEXT ONLY and each is "ungated: owner review
+# pending" in the warehouse catalog until the owner has checked the review
+# page the run writes under data/aerial/. Appended at the END of the file for
+# the same reason the recommendations block is: concurrent threads hold hunks
+# above, and a block that only adds lines at the bottom cannot conflict.
+# ===========================================================================
+
