@@ -156,6 +156,76 @@ the Google sample validates. In that case the map ships restricted to those, and
 - **Fails if:** the line is added as a load-bearing grade section before the chains watchlist has a growth measure (a snapshot delta, per D77) to point to — a raw brand-count with no trend is exactly the "context, not evidence" mistake D76 was written to prevent.
 - **Current answer:** Open; decide only after the 2026-10 chains snapshot exists (D77 next action).
 
+### D58 — Will DOF release usable LL157 storefront-registry rent and lease fields at premises grain?
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** `File FOIL for LL157 storefront-registry rent and lease fields (D126)`
+- **Tier:** P2 — product surface / AC-2
+- **Why it matters:** LL157 requires collection of lease terms and average monthly rent per square foot, but its public-data clause names address/vacancy search and aggregate reporting, not raw premises-grain rent disclosure. A usable response is the only identified flip condition for the parked tenant-side product idea.
+- **How to answer:** File the drafted FOIL; if premises-grain fields are withheld, request the tiered aggregate fallback and record the precise statutory basis for denial.
+- **Fails if:** DOF withholds the fields, releases only aggregates, or produces records too redacted, stale, or non-addressable for the stated question.
+- **Current answer:** FOIL drafted; no response yet (D126).
+
+### O12 — Does asking rent and lease term actually disclose on a phone call for a representative sample of vacant storefronts?
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** (not yet ticketed) — corridor interview test
+- **Tier:** P2 — opportunity evidence
+- **Why it matters:** This is the crux of the investor/contrarian split: whether observed opacity is a tenant-facing gap or an artifact of automated listing fetches being blocked when a human caller would get the terms.
+- **How to answer:** Run the pre-registered 100-address corridor test from memo §8.2, call every contact under two randomized personas, and score disclosure within 48 hours against the declared ≥70%, <40%, and ≥25-point thresholds.
+- **Fails if:** calls disclose terms consistently enough that the supposed opacity is only an online-display problem.
+- **Current answer:** Not tested; parked under D126.
+
+### O13 — Will brokers or tenant representatives pay for, refer, or reliably use a rent-and-terms intelligence product?
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** (not yet ticketed) — broker willingness-to-pay interviews
+- **Tier:** P2 — opportunity evidence
+- **Why it matters:** Broker-led workflows may be the viable distribution channel, but no willingness-to-pay, referral, or workflow evidence has been collected.
+- **How to answer:** Complete AC-2 discovery calls with one tenant-rep broker, one lender or feasibility shop, and one 3–30-unit operator, recording the artifact shown, price named, and stated willingness to pay.
+- **Fails if:** brokers regard the information as non-actionable, already available through relationships, or not worth a paid workflow.
+- **Current answer:** Not tested; parked under D126.
+
+### O14 — Does a landlord-acceptance signal predict which vacant storefronts a small operator can actually enter?
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** (not yet ticketed) — landlord-acceptance validation
+- **Tier:** P2 — opportunity evidence
+- **Why it matters:** If landlord acceptance rather than discovery is the binding constraint, any future dossier would need to lead with an acceptance signal rather than a decodability score.
+- **How to answer:** Cross storefront-tenure, licence-event turnover, and months-vacant history against the corridor test's observed outcomes: shown space versus flat rejection.
+- **Fails if:** the proposed signals do not separate spaces that a small operator can access from those they cannot.
+- **Current answer:** Not tested; parked under D126.
+
+### M16 — What share of tenant-relevant commercial inventory is absent, duplicate, or stale across public listing channels?
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** (not yet ticketed) — listing-coverage audit
+- **Tier:** P2 — measurement
+- **Why it matters:** The research identifies unlisted and stale inventory as a possible gap, but its size and persistence have not been measured against a defined ground truth.
+- **How to answer:** Sample at least 200 LL157 flips or closure-triangulation addresses, check the four largest marketplaces plus a walk-by, and compute a like-for-like coverage ratio and days-on-market distribution.
+- **Fails if:** a repeatable audit finds public channels sufficiently complete and current for the target corridors.
+- **Current answer:** Not measured; parked under D126.
+
+### T14 — Does the proposed commercial-tenant disclosure legislation advance, change materially, or become law?
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** (not yet ticketed) — legislative status check
+- **Tier:** P2 — temporal / policy context
+- **Why it matters:** Int 0090-2026 was laid over in committee on 2026-09-16; if enacted, it would require landlord-to-prospective-tenant disclosures, changing the private-information baseline without creating a public rent database.
+- **How to answer:** Periodically check NYC Council Legistar and NYS Senate trackers for Int 0090-2026, successors to Int 0568-2024, S9823/S1451A, or an NYC/NYS vacancy tax.
+- **Fails if:** the bill is enacted with no material disclosure duty, or the claim is left unmonitored while the bill changes.
+- **Current answer:** Proposed only; not law (D126 research).
+
+### T15 — Does Int 0090-2026 alter the claim that no jurisdiction currently requires storefront lease disclosure?
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** (not yet ticketed) — legislative interpretation check
+- **Tier:** P2 — temporal / policy context
+- **Why it matters:** The bill is a material caveat: it proposes prospective-tenant disclosure by landlords, but it was laid over and does not require public premises-grain rent publication.
+- **How to answer:** Re-read the enacted text and committee status at each legislative movement; distinguish private disclosure to a prospective tenant from public posting or premises-grain data release.
+- **Fails if:** the claim omits the proposal or overstates an unenacted bill as current law.
+- **Current answer:** The claim stands only with this caveat; bill not enacted (D126 research).
+
 ### X10 — Which of the NYC carrying-capacity parameters replicate in Chicago / LA / Philadelphia on CBP alone (the CBP↔POI ratio, the grocery flattening point, the accelerating categories)?
 - **Status:** open
 - **Answered by:** (not ticketed) — GTM-164

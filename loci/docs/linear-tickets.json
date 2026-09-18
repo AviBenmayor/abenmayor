@@ -60,6 +60,16 @@
   ],
   "issues": [
     {
+      "Title": "File FOIL for LL157 storefront-registry rent and lease fields (D126)",
+      "Description": "Owner action: send the ready-to-paste request at docs/asks/foil-ll157-rent-fields-2026-09-17.md through NYC OpenRecords and retain the request ID, acknowledgement, response date, responsive export, and any appeal. Request the LL157 storefront-registry rent and lease fields at premises grain in native electronic format, with redactions or a segregable export if DOF invokes confidentiality. This is evidence collection only: do not ingest, publish, or create a tenant-facing product unless a response actually establishes usable premises-grain fields. Opened 2026-09-17 (CHECKPOINT D126). Pending Linear sync; no GTM id has been represented as live.",
+      "Status": "Backlog",
+      "Priority": 2,
+      "Estimate": 1,
+      "Labels": "validation,ingest",
+      "Project": "Loci",
+      "Milestone": "E4 \u00b7 Validation and Artifact"
+    },
+    {
       "Title": "Write CONTEXT.md project charter",
       "Description": "Thesis (residual reformulation), definitions, source registry, method, viz plan, acceptance criteria, threats, phases, open questions.\n\nDONE \u2014 CONTEXT.md, 488 lines, 10 sections.",
       "Status": "Backlog",

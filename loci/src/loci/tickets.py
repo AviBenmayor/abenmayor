@@ -63,6 +63,9 @@ PUSHED_WITHOUT_ID = frozenset({
     "Ground-truth follow-ups: storefront coordinates in the observation grain, "
     "name reconciliation of the 45 miss candidates, deli-aware convenience "
     "terms, anchor eligibility check",
+    # Pending Linear sync: D126 cannot receive a real GTM id until a connection
+    # is available. Remove this exemption when the id is stamped into its ticket.
+    "File FOIL for LL157 storefront-registry rent and lease fields (D126)",
     # Audited 2026-09-16 against the live Linear inventory (charter v2
     # realignment, CHECKPOINT D116; see the pulled snapshot dated 2026-09-16)
     # while demoting every open E6/E7/E8/E9 ticket to Low: all of GTM-68-75,
@@ -152,6 +155,9 @@ EPICS = [
 
 # (epic, title, priority, estimate, labels, description)
 T = [
+# ------------------------------------------------------------------ Tenant-side market research (D126)
+("E4 · Validation and Artifact", "File FOIL for LL157 storefront-registry rent and lease fields (D126)", H, 1, "validation,nyc",
+ "Owner action: send the ready-to-paste request at docs/asks/foil-ll157-rent-fields-2026-09-17.md through NYC OpenRecords and retain the request ID, acknowledgement, response date, responsive export, and any appeal. Request the LL157 storefront-registry rent and lease fields at premises grain in native electronic format, with redactions or a segregable export if DOF invokes confidentiality. This is evidence collection only: do not ingest, publish, or create a tenant-facing product unless a response actually establishes usable premises-grain fields. Opened 2026-09-17 (CHECKPOINT D126). Pending Linear sync; no GTM id has been represented as live."),
 # ------------------------------------------------------------------ E0
 ("E0 · Foundations", "Write CONTEXT.md project charter", H, 3, "docs",
  "Thesis (residual reformulation), definitions, source registry, method, viz plan, acceptance criteria, threats, phases, open questions.\n\nDONE — CONTEXT.md, 488 lines, 10 sections."),
