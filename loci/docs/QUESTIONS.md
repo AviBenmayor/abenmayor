@@ -1233,6 +1233,9 @@ decisions pending an owner ruling, not descriptive-tier research questions.
 - **Answered by:** (not ticketed)
 - **Current answer:** Loci has LODES WAC (jobs located here) but no OD or RAC, so "where do Gowanus workers come from / residents go" is unanswerable; MTA station-level ridership is not stored as a time series either. Worth loading LODES OD before the AC-1 trade-area sheet (D116-2 / D124-2), which needs a transit-time catchment? Status: open (2026-09-17, Session 42).
 
+### D63 — Category tier / TIER_WEIGHTS: define or retire?
+Raised 2026-09-21 (glossary audit, D132). `categories.py` still carries a 1–4 category tier with DNCI weights; charter A4 retired DNCI, no scorer reads the weights, yet they are rendered into CATEGORIES.md and drift-tested. Either the tier means something in the address era (then define it in §4.2) or it is dead and the drift test guards a fossil. Also open from the same audit, lower stakes: `coverage`, `ledger`, `cluster`, `vintage` and `storefront` each carry several meanings and got no canonical names beyond a "say which" note.
+
 ---
 
 ## Dropped

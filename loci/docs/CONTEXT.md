@@ -2,10 +2,10 @@
 
 **Version:** 2.0
 **Date:** 2026-09-16
-**Supersedes:** CONTEXT.md v1 (2026-09-01), whose head stated a causal residential-growth thesis rejected in week one (D1). The v1 reasoning a later reader still needs is kept in the Superseded appendix, not deleted. **This charter also retires the SCOPE CORRECTION banner at the head of `docs/CHECKPOINT.md`**, which still describes hexes, an 80% prevalence rule, `analysis.hex_gaps` and "726 gap hexes". That banner is dead framing in the first file every session opens; delete it when this lands.
+**Supersedes:** CONTEXT.md v1 (2026-09-01), whose head stated a causal residential-growth thesis rejected in week one (D1). The v1 reasoning a later reader still needs is kept in the Superseded appendix, not deleted. **This charter also retires the SCOPE CORRECTION banner at the head of `docs/CHECKPOINT.md`**, which still describes hexes, an 80% prevalence rule, `analysis.hex_gaps` and "726 gap hexes". That banner is dead framing in the first file every session opens; it is retained and marked retired rather than deleted, so a later reader still sees why it stopped applying.
 **Owner:** Avi Benmayor
 **Scope:** New York City, Manhattan and Brooklyn only for the screen and its calibration (D48, D78). The data foundation covers five boroughs; `address-gaps` refuses any other borough.
-**Status:** shipped instrument. 114 recorded decisions (ids run to D117) over 33 sessions. State lives in `docs/CHECKPOINT.md`, work in `docs/TICKETS.md`, research questions in `docs/QUESTIONS.md`.
+**Status:** shipped instrument. 114 recorded decisions (ids run to D132) over 33 sessions. State lives in `docs/CHECKPOINT.md`, work in `docs/TICKETS.md`, research questions in `docs/QUESTIONS.md`.
 
 ---
 
@@ -46,7 +46,7 @@ The owner's own statement, 2026-09-16, governs this section:
 
 > "What we sell is cost of search, not better decisions." (`docs/GTM.md:17`)
 
-Assembling fifteen categories, walk-network distances, borough baselines, seven filing feeds, zoning legality and character for one address takes an analyst days and takes Loci minutes, on auditable public data a buyer can re-derive.
+Assembling fifteen categories, walk-network distances, borough baselines, eight filing feeds (D119), zoning legality and character for one address takes an analyst days and takes Loci minutes, on auditable public data a buyer can re-derive.
 
 **The guardrail**, verbatim, from the 2026-09-14 retrodiction (D88):
 
@@ -57,7 +57,7 @@ Openings clustered where supply was already thick. Two results carry this, and t
 | Result | Value | Reading |
 |---|---|---|
 | Own-category supply coefficient | +1.17 [0.87, 1.47] after NTA fixed effects **and conditioning on other-category supply** | Thickness predicts entry. Agglomeration or herding, not unmet demand |
-| Restaurant own-category **gap** coefficient | **−0.89 [−1.44, −0.33], p = 0.0018, the only per-category coefficient to survive Bonferroni** | No restaurant within 400 m in 2023 predicted **fewer** restaurant openings. The strongest single piece of evidence against "thin equals opportunity" |
+| Restaurant own-category **gap** coefficient | **−0.89 [−1.44, −0.33], p = 0.0018, the only per-category coefficient to survive Bonferroni** | No restaurant within 400 m straight-line in 2023 predicted **fewer** restaurant openings. The strongest single piece of evidence against "thin equals opportunity" |
 
 **The goal** is the owner's answer of 2026-09-16, verbatim: **"Decision value is the goal."** Cost of search is where the evidence stops. Decision value is what the project is trying to reach.
 
@@ -72,11 +72,11 @@ Loci may claim decision value only when it carries a survival or viability label
 | 1 | Foursquare pre-ledger closure panel | 54,190 venues that opened and closed before the snapshot (`docs/GTM.md:122`); raw ascertainment ~3% of closures, categorically non-random | An ascertainment-corrected survival label with out-of-sample AUC ≥ 0.65 against realized closures, the correction itself ratified before fitting | 2027-03-31 | Unbuilt |
 | 2 | LL157 go-dark | The one survival-adjacent outcome the city publishes | ≥ +0.02 AUC over the same model without the score, sign stable across both outcome definitions | 2027-06-30 (one re-run, on the next full-universe filing) | **Failed once.** AUC 0.549 vs 0.535; sign flips (+0.42 / −0.20) |
 | 3 | `analysis.address_observation` | The human ground-truth ledger. Per C5 it may **score** a label but may never be a feature in the screen, so it enters as a scoring and labelling source only | ≥ 200 observed storefronts across ≥ 60 anchors, and a pre-registered label reaching AUC ≥ 0.65 out of sample against observed closure | 2027-06-30 | 103 observations, 19 anchors (D107) |
-| 4 | **NYS SLA licence intervals** (active `9s3h-dpkz` + inactive `6dg3-2z7i`, via `analysis.licence_interval`) | Licence issue → observed expiry with no successor at the premises within 180 d; the only real establishment panel in the warehouse. Covers 4 of 15 categories. A licence end is an upper bound on a business end — tight for a bar, loose for a grocery's beer permit. `expiry_future` rows (1,561) are dropped, not read as future ends. Supersedes the DCWP roster `w7w3-xahh`, which has no status-change date and maps to one Loci category | Scored on **restaurant, bar, grocery** (pharmacy provisional): AUC ≥ 0.65 AND ΔAUC ≥ +0.02 over a **category × borough × licence-class + time-since-issue-spline** hazard AND decile calibration gap ≤ 0.10 with ≥ 10 pp tercile spread AND sign-stable across SLA-expiry and Foursquare-`date_closed` definitions AND ≥ 200 events per category, 36 m, cohorts issued 2016–2021 with cohort FE and a 2020/21 indicator. Gated on **P5** (expiry→closure PPV ≥ 0.50 per category, else the outcome is renamed "licence non-renewal") and **P3′** (≥ 70% of intervals resolve to an MN+BK BBL carrying a Loci score at t0; < 50% the rung does not run) | **2027-06-30**, with P3′/P5/P6 **published by 2027-01-31** | 126,869 intervals landed, 45,255 category-mapped, BBL-resolved MN+BK 89.6%; licence→POI ledger join 7.3% (not the binding join); P-checks unrun |
+| 4 | **NYS SLA licence intervals** (active `9s3h-dpkz` + inactive `6dg3-2z7i`, via `analysis.licence_interval`) | Licence issue → observed expiry with no successor licence at the same tax lot (BBL) within 180 d; a second, business-level arm also treats a materially different successor name as an end. The only real establishment panel in the warehouse. Covers 4 of 15 categories. A licence end is an upper bound on a business end — tight for a bar, loose for a grocery's beer permit. `expiry_future` rows (1,561) are dropped, not read as future ends. Supersedes the DCWP roster `w7w3-xahh`, which has no status-change date and maps to one Loci category | Scored on **restaurant, bar, grocery** (pharmacy provisional): AUC ≥ 0.65 AND ΔAUC ≥ +0.02 over a **category × borough × licence-class + time-since-issue-spline** hazard AND decile calibration gap ≤ 0.10 with ≥ 10 pp tercile spread AND sign-stable across SLA-expiry and Foursquare-`date_closed` definitions AND ≥ 200 events per category, 36 m, cohorts issued 2016–2021 with cohort FE and a 2020/21 indicator. Gated on **P5** (expiry→closure PPV ≥ 0.50 per category, else the outcome is renamed "licence non-renewal") and **P3′** (≥ 70% of intervals resolve to an MN+BK BBL carrying a Loci score at t0; < 50% the rung does not run) | **2027-06-30**, with P3′/P5/P6 **published by 2027-01-31** | 126,869 intervals landed, 45,255 category-mapped, BBL-resolved MN+BK 89.6%; licence→POI ledger join 7.3% (not the binding join); P-checks run 2026-09-17 (bbaa988): P3′ restaurant 65.2% FAIL, bar 59.2% FAIL, grocery 71.6% PASS; P5 joinable PPV restaurant 0.29 / bar 0.24 / grocery 0.04, all FAIL against the 0.50 floor; event counts restaurant 3,966 / grocery 957 / bar 376 PASS |
 
 Rung (iii) v2 (D121): survival is identified for restaurant, bar and grocery via NYS SLA licence intervals, provisionally pharmacy; the other eleven categories are dropped before the fit in writing because New York publishes no per-business identity or end event for them. P3′, P5 (grocery PPV ≥ 0.50) and P6 (laundry origin) are due 2027-01-31; an unreported check is a fail. A pass licenses the claim that the score predicts SLA licence non-renewal in those categories, not survival across the bundle.
 
-**The stop rule, and it is revisitable.** If all three sources fail by their dates, then on **2027-07-01** Loci claims cost of search, and this charter amends itself on that date to say so. "Exhausted" means the dates passed, not that effort ran out. The rule reopens only when a **new** closure source is admitted to `src/loci/registry.yaml` by its own CHECKPOINT decision naming that source's floor and its date. A source added without a floor and a date does not reopen it.
+**The stop rule, and it is revisitable.** If all four sources fail by their dates, then on **2027-07-01** Loci claims cost of search, and this charter amends itself on that date to say so. "Exhausted" means the dates passed, not that effort ran out. The rule reopens only when a **new** closure source is admitted to `src/loci/registry.yaml` by its own CHECKPOINT decision naming that source's floor and its date. A source added without a floor and a date does not reopen it.
 
 **Survival and viability are therefore in scope as a gated commitment.** That is the owner's own label, 2026-09-16: "In scope as a gated commitment."
 
@@ -95,37 +95,73 @@ Canonical order is in `docs/CHECKPOINT.md` under "How to resume". Every step is 
 | 3 | `address-demand`, `pipeline`, `storefronts`, `age-fit apply` | `address_demand.py`, `dev_pipeline.py`, `storefronts.py`, `age_fit.py` | Demand class, development pipeline, storefront vacancy, age curves |
 | 4 | `supply-ratio` | `supply_ratio.py` | Supply within 400 m network distance against the MN+BK baseline, per address and category (D73) |
 | 5 | `address-access`, `transit-profile`, `citibike address-measures`, `dot-counts` | `address_access.py`, `address_transit_profile.py`, `address_bike.py`, `address_dot_context.py` | Movement context. Card context only, never a grade input and never the supply-ratio denominator (D76, D111) |
-| 6 | `address-character build`, `address-legality build`, `storefront-pipeline openings` | `address_character.py`, `address_legality.py`, `storefront_pipeline.py` | Character label (D82); PLUTO zoning legality (D97, D104); filing lifecycle from seven feeds (D80) |
+| 6 | `address-character build`, `address-legality build`, `storefront-pipeline openings` | `address_character.py`, `address_legality.py`, `storefront_pipeline.py` | Character label (D82); PLUTO zoning legality (D97, D104); filing lifecycle from eight feeds (D119) |
 | 7 | `revenue` | `revenue.py` | Site-revenue model. Restaurant is the only category that passes its backtest (D91) |
-| 8 | `recommend` | `recommend.py` | Evidence-graded card and allocator memo. Fail-closed: a card may not say *act* while any load-bearing claim is grade D (D74) |
+| 8 | `recommend` | `recommend.py` | Evidence-graded card and allocator memo. Fail-closed: a card may not say *diligence* or *act* while any load-bearing claim is grade D (D74) |
 | 9 | `forecast issue` / `forecast score` | `forecast.py` | Dated p_opening vintages and their realized outcomes (D92, D96) |
 | 10 | `chains candidates / admit / auto-admit / render` | `chains/` | The 902-brand watchlist and its page (D109, D110, D113, D114) |
 | 11 | `ground-truth` | `ground_truth.py` | Supervised browser verification at named anchors. Scores and verifies; never a screen feature (C5, D105) |
 | 12 | `export-webmap` | `viz/webmap_export.py` | Publishes address state to the public map |
 
-### 4.2 Definitions, and the three radii kept apart
+### 4.2 Definitions, and the four radii kept apart
 
-**The daily-needs bundle** is fifteen categories defined in `src/loci/categories.yaml`, the single source of truth for OSM, Overture, NAICS and licence mappings, plus a sixteenth, `bathhouse_sauna`, admitted 2026-09-17 through the fail-closed expansion checklist as a **non-filtering signal** (owner ruling, GTM-198: `headline: false`, narrow definition with the clause "day spa out UNLESS bathing is the primary offer"; the pinned definition is in `docs/CATEGORIES.md`). Two are demoted from headline claims by owner ruling (2026-09-14, D30 precedent): `tailor_repair`, whose measured true-coverage-hole rate is 37.5% [31.1 to 44.4] **and a floor**, and `hair_barber`. New categories enter only through the fail-closed expansion checklist (GTM-112).
+**The daily-needs bundle** is fifteen categories defined in `src/loci/categories.yaml`, one definition list mirrored into several per-concern files with a drift test, covering OSM, Overture, NAICS and licence mappings, plus a sixteenth, `bathhouse_sauna`, admitted 2026-09-17 through the fail-closed expansion checklist as a **non-filtering signal** (owner ruling, GTM-198: `headline: false`, narrow definition with the clause "day spa out UNLESS bathing is the primary offer"; the pinned definition is in `docs/CATEGORIES.md`). Four are demoted from headline claims: `clinic` (2026-09-14, D30 precedent), `tailor_repair`, whose measured true-coverage-hole rate is 37.5% [31.1 to 44.4] **and a floor**, `hair_barber` (both D30 precedent), and `bathhouse_sauna` (2026-09-17, D124). New categories enter only through the fail-closed expansion checklist (GTM-112).
 
 Mirror: `docs/CATEGORIES.md`, generated by `loci gen-categories`, drift-checked by `tests/test_category_registry.py`.
 
-**Walkable** is network distance along the pedestrian graph, never Euclidean. Straight-line buffers are wrong in NYC specifically: waterfronts, rail cuts, expressways and NYCHA superblocks create places where 300 m of separation is a 20-minute walk.
+**Walkable** describes the pedestrian graph, not straight-line distance. Walkable *measures* — reach, gap, supply ratio, catchment — are network distance; the one straight-line radius is named below and is not walkable. Straight-line buffers are wrong in NYC specifically: waterfronts, rail cuts, expressways and NYCHA superblocks create places where 300 m of separation is a 20-minute walk.
 
-**Three different radii are in play and must never be conflated.**
+**Four different radii are in play and must never be conflated.**
 
 | Radius | Where it applies | Source |
 |---|---|---|
 | **320 to 1200 m**, per category | The screen's reach thresholds and the gap flag. 400 m applies to 4 of the 15 categories | `src/loci/reach_tiers.yaml` (D41); candidate tier set 400 / 800 / 1200 |
-| **400 m network** | The supply-ratio CLI default, and the catchment every card quotes | D73 |
+| **400 m network** | The supply-ratio CLI default, and the catchment every card quotes. The allocator memo's 500 m straight-line list violates this and is ticketed for removal (D132) | D73 |
+| **400 m straight-line** ("forecast radius") | The outcome and feature radius of the forecast and retrodiction, frozen for comparability with D88. Never used in a screen measure or on a card | D88, D119, D132 |
 | **649 m straight-line disc** | The Google coverage audit only. Google Nearby Search accepts a circle, so the disc radius is derived as the 800 m network threshold divided by NYC's measured 1.233 circuity | D53, `reach_tiers.yaml` validation block |
 
 D90's 7.6% hole rate, the whole answer to §9.1, was measured at the 649 m disc approximating an **800 m** network threshold. It is not a validation of the 400 m readings the cards print. See §9.12.
 
-**The spatial unit is the address**, a residential tax lot or a street midpoint. Hexes are frozen history (D38, D56). **The study period is the present**, plus the dated ledgers of §4.5's REALIZED layer. There is no growth panel in the live pipeline.
+**The spatial unit is the address**, a residential tax lot or a street midpoint. Hexes are not a claim surface (D38, D56); a hex distance table survives only as the calibration input for reach tiers, recomputed rarely. **The study period is the present**, plus the dated ledgers of §4.5's REALIZED layer. There is no growth panel in the live pipeline.
+
+**Glossary** (2026-09-21, D132 unless noted).
+
+- **act** — the verdict a card carries when its worst load-bearing grade is A or B.
+- **diligence** — the verdict at grade C: worth hand-diligence, but not action on this data alone.
+- **POI** (from code, 2026-09-21, D132) — one source record of a business at a point, normalised to a Loci category, before dedup.
+- **canonical POI** (from code, 2026-09-21, D132) — the one record chosen by source rank to stand for a dedup cluster; the unit supply counts.
+- **supply set** (from code, 2026-09-21, D132) — the named subset of canonical POIs that counts as supply. The default, *principled*, drops a lone aggregator record only in a category whose registry anchor covers at least 70% of the census establishment count, then applies the closure gate.
+- **registry anchor / floor anchor** (from code, 2026-09-21, D132) — a government source dense enough (≥70% coverage) to veto a lone aggregator record in its category; a *floor anchor* is a registry known to under-cover, which adds and never vetoes.
+- **closure gate** (from code, 2026-09-21, D132) — exclusion of canonical POIs with status *closed* from supply; *unknown* is kept.
+- **poi_status** (from code, 2026-09-21, D132) — three values: *open* (positive evidence within 731 days of the as-of), *closed* (a dated closure record, a published-closed source, or a licence expired before the as-of; absence of evidence never closes, D79), *unknown* (everything else).
+- **evidence-aged** (from code, 2026-09-21, D132) — a POI whose newest open evidence is older than 731 days at the as-of; read as *unknown*, not *closed*.
+- **backfill-censored** (from code, 2026-09-21, D132) — a first-seen record with no date of any kind; counted as present at every rewind date.
+- **rewind / rung** (from code, 2026-09-21, D132) — the pre-registered backtest (D119) that freezes the supply set at a January-1 date t0 (a *rewind snapshot*) and scores three rungs: entry, category-correctness, survival.
+- **licence event (non-renewal)** (from code, 2026-09-21, D132) — a liquor licence that reached an observed expiry with no successor licence at the same tax lot within 180 days; a business-level arm also counts a materially different successor name as an end.
+- **went-dark triangulation** (from code, 2026-09-21, D132) — a stale aggregator venue corroborated by a storefront-registry occupied→vacant flip or a licence end within 30 m and 365 days; staged evidence, not a status write.
+- **closure check (paid)** (from code, 2026-09-21, D132) — a budget-capped external status lookup on an *unknown* POI, producing dated closure evidence.
+- **censored nearest distance** (from code, 2026-09-21, D132) — a category with nothing within 2,400 m network of an address, recorded at the cap so its gap ratio is a floor.
+- **frame** (from code, 2026-09-21, D132) — which sampling frame an address row came from: *lot* (residential tax lot) or *street* (street-segment midpoint).
+- **licensed lot vs registry premises** (from code, 2026-09-21, D132) — a licence's premises is a tax lot (BBL); the storefront registry's premises is a lot-and-unit. Do not use "premises" unqualified.
+
+#### Words that carry more than one meaning
+
+| Word | Meanings | Canonical names to use |
+|---|---|---|
+| closure | poi_status verdict / source-published closure record / dated closure evidence / licence non-renewal / went-dark corroboration / storefront-registry go-dark outcome / observed closure at a ground-truth site | "closed verdict", "closure record", "closure evidence", "licence non-renewal", "went-dark corroboration", "go-dark outcome", "observed closure" |
+| baseline | MN+BK median supply per 1k homes / the canonical re-run on a new hash / category×borough non-renewal rate / no-score comparator model / AC-1 citywide opening rate | "supply norm", "canonical re-run", "non-renewal rate", "no-score comparator", "opening base rate" |
+| pipeline | canonical command order / residential development units / storefront filing lifecycle / chain intent signals | "canonical order", "development pipeline", "filing pipeline", "chain intent signals" |
+| open | poi_status / observed status at a site / an open-evidence filing stage / first-seen date / an opening event (forecast outcome) | "open verdict", "observed open", "open-evidence stage", "first-seen date", "opening" |
+| gap | screen ratio >1 on network reach / zero supply within the forecast radius / a confirmed gap at a ground-truth site | "reach gap", "zero-supply flag", "confirmed gap" |
+| catchment | 400 m network (cards) / the memo's 500 m straight-line list (being removed) / travel-time trade area (A8) | "walk catchment", "trade area" |
+| anchor | registry anchor source / ground-truth verification site / per-category t0 median in the forecast | "registry anchor", "verification site", "t0 norm" |
+| tier | category group 1–4 / reach tier 400/800/1200 / watchlist admission tier / grade ladder | "category group", "reach tier", "admission tier", "grade" |
+| layer | the four claim layers of §4.5 / the warehouse object layers | "claim layer", "warehouse layer" |
+| storefront | registry filing row / registry premises-year / filing-pipeline record / vacant storefront / observed business | say which |
 
 ### 4.3 Access scoring
 
-One multi-source Dijkstra per category on the walk graph, seeded from every POI in that category and cut off at the threshold. The persisted artifact is one row per (point, canonical business) pair within reach with its network distance, so walk-time, nearest-distance, spacing and coverage questions are queries, not recomputes. Fifteen traversals, not one isochrone per point. `src/loci/score/access.py`, `README.md:49`.
+Per category, a network shortest-path search from every address outward to the nearest canonical business. What persists is the nearest network distance per (address, category), with a cap of 2,400 m at which the value is censored (2026-09-21, D132).
 
 ### 4.4 Cross-source dedup
 
@@ -135,11 +171,11 @@ The POI base unions several sources, so establishments recur, and overlap is den
 
 *Carried unchanged from v1 §4.7. Approved by the owner 2026-09-14; decision D95.*
 
-Four layers. Loci's claims sort into four layers, and every new claim should say which one it belongs to. MODELED: computed from public data, gap score, supply ratio, character, recommendations, the forecast ledger's p_opening. REALIZED: observed in the world, the first-seen ledger, closures, filings lifecycle, chain snapshots, DOT counts. SCORED: where modeled meets realized on a schedule, retrodiction, recommendation fill checks, forecast outcomes. LEARNED: what survived a test against realized data and travels, FINDINGS.md, carrying capacity, portability, planner verdicts. The scoreboard, not any single map, is the compounding asset.
+Four layers. Loci's claims sort into four **claim layers**, and every new claim should say which one it belongs to. MODELED: p_opening and any other fitted quantity. REALIZED: observed in the world, or measured present supply against a norm — gap score, supply ratio, character, recommendations, the first-seen ledger, closures, filings lifecycle, chain snapshots, DOT counts (2026-09-21, D132: gap score, supply ratio, character and recommendations moved here from MODELED — they measure present supply against a baseline, not a model output). SCORED: where modeled meets realized on a schedule, retrodiction, recommendation fill checks, forecast outcomes. LEARNED: what survived a test against realized data and travels, FINDINGS.md, carrying capacity, portability, planner verdicts. The scoreboard, not any single map, is the compounding asset. These four **claim layers** are a different taxonomy from the warehouse's own object layers (staging / measure / score / ledger / calib), which describe storage, not what a claim is entitled to say; do not conflate the two (2026-09-21, D132).
 
 ### 4.6 Data sources
 
-`src/loci/registry.yaml` is the machine-readable registry, drift-checked by `make check`: **44 sources classed**, universal 7, national 10, state 6, city open data 15, city-unique 6. Per-source geography, temporal coverage, refresh, cost, licence, portability and known bias live there, not here, so the drift check can catch an error. The post-raise wishlist generates separately into `docs/PAID-SOURCES.md` (D86: 35 sources, $301,565/yr, none of it spend today).
+`src/loci/registry.yaml` is the machine-readable registry, drift-checked by `make check`: **50 sources classed**, universal 7, national 11, state 7, city open data 19, city-unique 6. Per-source geography, temporal coverage, refresh, cost, licence, portability and known bias live there, not here, so the drift check can catch an error. The post-raise wishlist generates separately into `docs/PAID-SOURCES.md` (D86: 35 sources, $301,565/yr, none of it spend today).
 
 Mirror: `docs/SOURCES.md`, generated by `loci gen-sources`, drift-checked by `loci check-sources`.
 
@@ -155,15 +191,15 @@ Owner rulings and standing engineering rules. A session that wants to reverse on
 |---|---|---|---|---|
 | C1 | The unit of analysis is the address. No hex work. | "why do we keep talking about hexes?????" then "do it, no more hex work" | 2026-09-09 | D38, D56 |
 | C2 | No eligibility gate. Every address stays in the universe. | "I 100% vehemently disagree with 'which addresses count at all'. If an address is truly in a super underdeveloped area, this would completely not count it." | 2026-09-13 | D75 |
-| C3 | Two or more POIs at one address trigger a closure check before either is counted. | "any time we have 2 businesses in the same address, we should do a check if one of them closed down" | 2026-09-14 | D94 |
-| C4 | The screen ranks retail streets, not unmet demand. No decision-value claim in any deliverable until §3.1's gate passes. A card may say *act* in the D74 sense of **worth hand-diligence**; it may never say an opening is likely to survive. | | 2026-09-14 | D88, D74 |
+| C3 | Two or more POIs at one address trigger a closure check before either is counted. Status 2026-09-21: the code counts unresolved co-located pairs as-is and groups only same-category records at one coordinate cell; the fix (collapse or resolve before counting) is ticketed under D132 and moves the supply hash when run. | "any time we have 2 businesses in the same address, we should do a check if one of them closed down" | 2026-09-14 | D94 |
+| C4 | The screen ranks retail streets, not unmet demand. No decision-value claim in any deliverable until §3.1's gate passes. A card may say *diligence*, in the D74 sense of **worth hand-diligence**, or *act* when its worst load-bearing grade clears to A or B; neither ever says an opening is likely to survive. | | 2026-09-14 | D88, D74 |
 | C5 | `analysis.address_observation` verifies and scores. It may never be a feature in the screen. | | 2026-09-14 | D105 |
 | C6 | Screen scope is Manhattan and Brooklyn. | | 2026-09-12 | D78 |
 | C7 | Inventory before adding a table. Pivots and subsets are views; a new measure extends the grain. | | 2026-09-11 | D61 (34 objects to 26) |
 | C8 | Spend budgets enforced in code, with call ledgers and a `--dry-run` path on anything that costs money or writes externally. | | 2026-09-13 | D86 |
 | C9 | Supply-hash freeze discipline. A `poi_status`-changing write moves the shared hash; announce to peers first, and a declared "final" hash is a freeze. A new `sql/*.sql` is itself a hash-moving event. | | 2026-09-15 | D106 |
-| C10 | The canonical order is re-baselined as one pass, currently on supply `ba944e18c57b`. | | 2026-09-15 | D112 |
-| C11 | The supply hash proved clock-dependent and is pinned to a stored as-of in `analysis.supply_asof` (2026-09-15). `loci supply-asof advance` is itself a hash-moving event: announce it, then run the canonical order behind it. | | 2026-09-16 | D115 |
+| C10 | The canonical order is re-baselined as one pass, currently on supply `ed55301203a4` (D121). | | 2026-09-15 | D112 |
+| C11 | The supply hash proved clock-dependent and is pinned to a stored as-of in `analysis.supply_asof` (2026-09-16). `loci supply-asof advance` is itself a hash-moving event: announce it, then run the canonical order behind it. | | 2026-09-16 | D115 |
 | C12 | Every question to the owner goes through buttons, not prose. | | 2026-09-14 | operating rule |
 
 ---
@@ -176,7 +212,7 @@ Owner rulings and standing engineering rules. A session that wants to reverse on
 |---|---|---|---|---|---|
 | Coverage bias (P3) | Stratified Google Places sample on the address frame, 5,633 rows, 137 strata, 649 m disc, missing arm vs present control | 7.6% [6.5 to 8.8] of MN+BK MISSING flags are real coverage holes, about 40k of 523k; no income gradient distinguishable from zero | The gap is mostly real, not a data hole, **at an 800 m network threshold** | Bias-free measurement; validity at 400 m; `tailor_repair` and `hair_barber` demoted; fitness's apparent 35.6% hole rate was a type-map defect | D90 |
 | Retrodiction, entry | Frozen 2023-01-01 screen ranking 12,572 dated 2023 to 2024 openings out of sample, NTA-blocked folds | AUC 0.866 [0.851, 0.881] vs 0.854 without the score; supply coefficient +1.17 [0.87, 1.47] after NTA fixed effects and conditioning on other-category supply | Cost of search | Decision value. The sign is agglomeration, not undersupply | D88 |
-| Retrodiction, per category | Own-category **gap** coefficients, Bonferroni-corrected | Restaurant −0.89 [−1.44, −0.33], p = 0.0018, the only one to survive: no restaurant within 400 m predicted fewer restaurant openings | Nothing positive | Any reading of a thin category as latent demand | D88 |
+| Retrodiction, per category | Own-category **gap** coefficients, Bonferroni-corrected | Restaurant −0.89 [−1.44, −0.33], p = 0.0018, the only one to survive: no restaurant within 400 m straight-line predicted fewer restaurant openings | Nothing positive | Any reading of a thin category as latent demand | D88 |
 | Legality vs herding | Planner's challenge that the lift is merely zoning | Legality sets the level (16% of addresses with no commercially zoned lot within 400 m saw a same-category opening vs 72% on a 20-lot commercial block) but absorbs 0.0002 of the +0.0126 AUC lift; other-category retail density absorbs about 48%. Own-category coefficient net of legality +1.18 [0.88, 1.49] | That the screen ranks inside the legal retail set | That its marginal information is unmet demand | D92 |
 | Survival, LL157 go-dark | Registry go-dark, strict n = 12,713 / 1,074 events | AUC 0.549 vs 0.535; sign flips with the outcome definition | Nothing | Any survival or viability claim | D88 |
 | Ground truth | Supervised browser check at recommendation anchors | 19 anchors: 12 supply_missed, 7 confirmed_gap, 103 observations, 5 warehouse POIs found permanently closed. Caveats: convenience at 410 m and laundry at 405 m sit inside measurement error of the 400 m cutoff, and 4 East 8th's 0.00x proved a status-coverage hole, not a gap | A P3 falsifier at named anchors | Catchment-wide validity at n = 19, or model integration | D107 |
@@ -228,7 +264,7 @@ The owner is bullish that Gowanus needs a bathhouse. Under the take-it-first rul
 |---|---|
 | Site | One named Gowanus address |
 | Supply at t0 | Hand enumeration under `docs/ground-truth-protocol.md`, since no Loci layer holds it |
-| Baseline | The citywide rate of new bathhouse, sauna and banya openings per catchment-year, enumerated by hand at t0. Every §6 row carries a "vs"; this is AC-1's |
+| Baseline | The citywide rate of new bathhouse, sauna and banya openings per catchment-year, enumerated by hand at t0. Every §6 row carries a "vs"; this is AC-1's. **Superseded by D123**: citywide rate 1.7 openings/yr (2019–2026, 95% CI 0.9–2.9), 3.4/yr since 2024, plus the named pipeline, by owner ruling |
 | Prediction A | Number of new such venues opening inside the catchment within 12 months, and whether that **beats the baseline**. Predicting zero against a near-zero base rate resolves nothing |
 | Prediction B | The owner's own operator diligence (rent, fit-out, licensing) confirms or contradicts the desk reading |
 
@@ -244,11 +280,13 @@ Three conversations: one tenant-rep broker, one lender or feasibility shop, one 
 
 ### AC-3. A survival or viability label, or the stop rule fires
 
-Either a label clears one of §3.1's three pre-registered floors on its named date, or on **2027-07-01** the stop rule fires and this charter amends itself to say Loci claims cost of search until a new closure source is admitted with its own floor and date. Both branches resolve AC-3; silence does not.
+Either a label clears one of §3.1's four pre-registered floors on its named date, or on **2027-07-01** the stop rule fires and this charter amends itself to say Loci claims cost of search until a new closure source is admitted with its own floor and date. Both branches resolve AC-3; silence does not.
 
-### AC-4. A card reaching *act* with economics above grade D
+### AC-4. A card reaching *diligence* or better, with economics at C or better
 
-*Act* means **worth hand-diligence**, never *likely to survive* (C4). The governing rule is D74's fail-closed one: a card may not say *act* while any load-bearing claim is grade D.
+**Note:** the title above used to read "A card reaching *act* with economics above grade D," which conflated the two verdicts; *act* never meant worth-hand-diligence, that was always *diligence* (2026-09-21, D132).
+
+*Diligence* means **worth hand-diligence**; *act* is the higher verdict, reached only when a card's worst load-bearing grade clears to A or B. Neither ever means *likely to survive* (C4). The governing rule is D74's fail-closed one: a card may not say *diligence* or *act* while any load-bearing claim is grade D.
 
 The first full allocator memo already renders at **grade C**, on Gowanus-core hardware, `docs/recommendations/3004260001-2026-09-16.md` (D115, GTM-172 Done); the other three 2026-09-16 reports grade D with lead category convenience. So AC-4 is no longer "reach C"; it is **reach a state where economics is not the binding grade**. Today economics is grade C for restaurant only and D everywhere else, and the portability audit says an *act* grade needs a paid economics input in every city including NYC (D93).
 
@@ -275,7 +313,7 @@ Do not relitigate these.
 | Retail gap causes residential growth | β = +0.069 (p = 4.7e-16), wrong-signed; pre-trend broken (β = +0.27); placebo clean | D1 |
 | A thin category as latent demand | Restaurant own-category gap −0.89 [−1.44, −0.33], p = 0.0018, Bonferroni-surviving: no restaurant within 400 m predicted fewer openings | D88 |
 | Business-level survival from open data | Not identified. Foursquare ascertains ~3% of closures; LL157 go-dark is a null; KM and Cox refused against a 48-event floor | D88 |
-| Hexes as the spatial unit | Replaced by the address; hex tables are frozen history | D38, D56 |
+| Hexes as the spatial unit | Replaced by the address; a hex distance table survives only as the reach-tier calibration input | D38, D56 |
 | An eligibility gate on which addresses count | Removed by owner ruling | D75 |
 | Citi Bike activity growth as a feature | delta-AUC null against a pre-registered +0.005 floor | D111 |
 | Pharmacy age fit | Refused on its F2 gate at every re-fit | D69, D71, D106, D112 |
@@ -324,7 +362,7 @@ StreetEasy content is internal-analysis-only. DOT camera frames, Google Places c
 Every deliverable routes through one person's judgment and calendar. An asset and a concentration risk at once.
 
 ### 9.12 Radius choice is the live MAUP
-v1 listed hex resolution as the modifiable-areal-unit threat. The hexes are gone; the radius replaced them. Three radii are in play (§4.2), the cards are read at 400 m, the coverage audit validated an 800 m network threshold through a 649 m disc, and **no 800 to 400 m sensitivity sweep has been run**. Two of D107's seven confirmed gaps sat at 405 m and 410 m, inside measurement error of the cutoff, which is what this threat looks like in practice. Until a sweep exists, treat any count that moves across 400 m as unverified.
+v1 listed hex resolution as the modifiable-areal-unit threat. The hexes are gone; the radius replaced them. Four radii are in play (§4.2), the cards are read at 400 m, the coverage audit validated an 800 m network threshold through a 649 m disc, and **no 800 to 400 m sensitivity sweep has been run**. The fourth radius, the 400 m straight-line forecast radius, is frozen for comparability with D88 and never appears in a screen measure or on a card, so it sits outside this sweep question entirely (2026-09-21, D132). Two of D107's seven confirmed gaps sat at 405 m and 410 m, inside measurement error of the cutoff, which is what this threat looks like in practice. Until a sweep exists, treat any count that moves across 400 m as unverified.
 
 ---
 
@@ -355,7 +393,7 @@ NYC-first is a data decision, not a code decision.
 - Nationally available sources live in `src/loci/sources/universal/`.
 - `src/loci/score/` and `src/loci/model/` contain no NYC-specific column names or assumptions.
 
-Validated rather than asserted (D45, D46, D93). The registry carries `portability`, `feeds` and `degrades_to` on all 44 sources; `loci gen-portability` emits `docs/PORTABILITY.md` and `make check` fails on drift. Classes: universal 7, national 10, state 6, city open data 15, city-unique 6; 17 of the 44 are judgement calls and carry their uncertainty note. The most load-bearing portable input is the OSM pedestrian network, without which every network distance reverts to a straight line; the most load-bearing portable *signal* is a permit status date. Every calibrated constant is NYC-fitted, and an *act* grade needs a paid economics input in every city including this one.
+Validated rather than asserted (D45, D46, D93). The registry carries `portability`, `feeds` and `degrades_to` on all 50 sources; `loci gen-portability` emits `docs/PORTABILITY.md` and `make check` fails on drift. Classes: universal 7, national 11, state 7, city open data 19, city-unique 6; 17 of the 50 are judgement calls and carry their uncertainty note. The most load-bearing portable input is the OSM pedestrian network, without which every network distance reverts to a straight line; the most load-bearing portable *signal* is a permit status date. Every calibrated constant is NYC-fitted, and an *act* grade needs a paid economics input in every city including this one.
 
 The Citi Bike reader was proven portable by ingesting one real Chicago Divvy month (D111). That is the pattern: prove a reader on one month of a second city's data before designing around it.
 
@@ -405,4 +443,4 @@ The three axis-specific threats, all of which AC-1 must answer:
 - **Willingness to travel is assumed.** The catchment radius is the single biggest lever; never report one radius.
 - **Chain pipeline.** A gap may already be under LOI by a national operator. That is outside the data, and per GTM-192 the filings pool cannot see it for these categories at any threshold, so it is manual diligence per top pick.
 
-**A9. Hex-era axis modules removed (2026-09-17).** `model/momentum.py` (ACS momentum, A5's panel reader), `model/rising.py` (Axis 2 buy-list) and `score/dnci.py` (A4's composite) were deleted in this commit after a fresh grep found no importer in `src/loci`; their hex tables were dropped under D61. Three of the six modules the inventory named as dead are NOT dead and stay: `model/invest.py` is imported by `report/render.py` for the D18 `ECON` minimum-viable-catchment table, and `model/premium.py` / `model/ignition.py` are wired as the `loci premium` and `loci ignition` commands (parked under D116, not cancelled). Delete those only with the commands and the `ECON` import moved.
+**A9. Hex-era axis modules removed (2026-09-17).** `model/momentum.py` (ACS momentum, A5's panel reader), `model/rising.py` (Axis 2 buy-list) and `score/dnci.py` (A4's composite) were deleted in this commit after a fresh grep found no importer in `src/loci`; their hex tables are not a claim surface (D61) — a hex distance table survives only as the calibration input for reach tiers, recomputed rarely. Three of the six modules the inventory named as dead are NOT dead and stay: `model/invest.py` is imported by `report/render.py` for the D18 `ECON` minimum-viable-catchment table, and `model/premium.py` / `model/ignition.py` are wired as the `loci premium` and `loci ignition` commands (parked under D116, not cancelled). Delete those only with the commands and the `ECON` import moved.
