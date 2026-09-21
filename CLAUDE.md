@@ -99,22 +99,63 @@ and directs; cheaper models do the work.
   (`wc`, `git status`, `git diff --stat`) and tiny edits where spawning an agent would
   cost more than the edit.
 - **Model routing by task type:**
-  - **Haiku** — mechanical work: commits, doc regeneration, CHECKPOINT/QUESTIONS edits
-    from dictated text, file moves, running an existing command and reporting output.
-  - **Sonnet** — reading and summarizing docs or diffs, running and interpreting
-    analyses, writing straightforward code against a clear spec, drafting tickets.
+  - **Haiku** — anything mechanical, not just dictated edits: commits, doc regeneration,
+    CHECKPOINT/QUESTIONS edits from dictated text, file moves, running an existing command
+    and reporting its output. If a human wouldn't need to think to do it, it's Haiku.
+  - **Sonnet** — the default for everything else: reading and summarizing docs or diffs,
+    *running and interpreting* analyses, writing straightforward code against a clear
+    spec, drafting tickets. "Analysis" and "design" work — executing a plan, writing the
+    code for it, interpreting its output — stays on Sonnet unless it's the judgment call
+    below.
   - **Opus** (or the project's specialist agents: `contrarian`, `statistician`,
-    `data-scientist`, `investor`, `urban-planner`) — judgment-heavy work: modeling
-    choices, methodology review, whether a result survives scrutiny.
+    `data-scientist`, `investor`, `urban-planner`) — the judgment layer only: modeling
+    *choices* (which form, which tradeoff), methodology review, and verdicts on whether a
+    result survives scrutiny. Not analysis execution, not routine code, not "this is
+    important so use the best model" — only calls that need the review, not the running.
+    Corrected 2026-09-21: an earlier note said "analysis/design on Opus" broadly, which
+    routed Sonnet-shaped work (running/interpreting analyses, straightforward code) onto
+    Opus and was a real driver of the week the token budget ran out early.
 - **Every dispatch gets a one-line spec shown to the owner first** so it can be vetoed
   before tokens are spent. Independent dispatches run in parallel.
+- **Long-running dispatches get a heartbeat, not a silent wait.** A dispatch expected to
+  run unattended (an overnight sweep, a multi-hour ingest) needs a cheap liveness check
+  (a progress line, a timeout) so a stall is caught in minutes, not discovered days later
+  and paid for twice — once for the run that silently died, once for the session that had
+  to recover and re-verify it. Established 2026-09-21 after a sidewalk-count sweep (D131)
+  stalled before reporting and needed a full separate recovery session four days later.
+- **Agent reports back stay terse — findings, not file dumps.** A dispatch relays a short
+  structured result (what it found, the verdict, the evidence) rather than pasting the raw
+  file or transcript it read. This keeps the coordinating session's own context — and so
+  its per-turn cost — from growing regardless of which model did the underlying work.
+- **Check for concurrent sessions before large reads or full-suite runs.** If another
+  session may be working the same project (a peer message, an uncommitted diff that isn't
+  yours), coordinate scope before independently re-reading the same large docs or re-running
+  the full test suite / check-tickets / check-sources / check-warehouse — those are real
+  duplicated spend across sessions, not just merge risk.
 - **Start of session:** a Sonnet agent briefs from `docs/CHECKPOINT.md` and
   `docs/QUESTIONS.md` (charter, phase, scope arc, uncommitted work, blockers, most
   load-bearing open questions). Fable digests that into a short picture and proposes
   **one narrow deliverable** for the session. Focus is decided together, not assumed.
+- **"One narrow deliverable" means one shippable unit** — one feature, one analysis, one
+  artifact — not a bundle of unrelated ones landed in the same commit because an agent
+  was already in there. A commit message with more than ~3 top-level "built:" items is a
+  sign the session's scope was never actually narrow; that is a retro flag, not a badge.
+  Established 2026-09-21 after a single session (D131) shipped sidewalk-count, footprint
+  ingestion, three aerial analyses, and four unrelated overnight data ingests together —
+  several sessions' worth of spend compressed into one, which is how the week's token
+  budget ran out early.
+- **Mid-session re-scope gate:** if the work in progress grows past the one-line spec
+  that was shown to the owner (a new ingest, a new analysis type, "while I'm in here I'll
+  also..."), stop and surface the addition as its own one-line spec for explicit approval
+  before continuing — the same gate new dispatches already get, applied to scope growth
+  inside a running one.
 - **Scope-creep pressure valve:** anything interesting that is not the session's focus
   becomes a `docs/QUESTIONS.md` entry, never code. Batch these into one Haiku edit at
   the end of the session rather than editing as they arise.
+- **Weekly budget pacing:** at the start of each session, Fable notes remaining weekly
+  quota against days remaining in the week. If burn rate is ahead of pace, that session's
+  proposed deliverable gets narrower, not the next one — don't discover the shortfall only
+  when quota is already gone.
 - **End of session:** Haiku updates `CHECKPOINT.md` (phase, decision log, session log,
   next actions) and appends the batched questions. Fable verifies the stale-header
   problem did not recur: the phase line and next-actions list must match the body.
@@ -124,6 +165,11 @@ and directs; cheaper models do the work.
 - **Verify before committing to a dependency, not after.** Probe the real capability —
   extensions, schema features, API response shape — in a throwaway script before designing
   around it.
+- **Pre-flight the data shape before a full-scale ingest.** Check a small sample against
+  what the pipeline expects (columns present, no stale-cache assumptions) before kicking
+  off the full run — a crash partway through means paying for the debug cycle on top of
+  the run itself. A CBP ingest (D131) crashed on `int(NaN)` from a stale cache missing a
+  year column; caught on a sample, that's a one-line fix instead of a failed overnight run.
 - **Machine-check the docs against the code.** Wherever a human-readable table mirrors a
   machine-readable file, write the drift check. It catches real errors.
 - **Enforce spend budgets in code**, not in comments, and give anything that costs money or
