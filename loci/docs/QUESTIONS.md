@@ -1213,6 +1213,26 @@ decisions pending an owner ruling, not descriptive-tier research questions.
 - **Answered by:** `Citi Bike phase 2: origin-destination leakage per NTA × category ('where residents of this gap area go') and the card line`
 - **Current answer:** Answered 2026-09-16 (owner, D120): residual-rank placebo with blind thresholds replaces the intersection null; 4 of 15 category-specific.
 
+### D59 — Café revenue band on café addresses.
+- **Status:** open
+- **Answered by:** (not ticketed)
+- **Current answer:** `cafe_bakery` revenue is unshipped by design (fails placebo, D81), so the Fazenda page had to explain away a restaurant p50 of $1.4M (`capacity_bound` TRUE on a `retailarea` 0 condo lot = the 2,000 sq ft default × $700). Should the report/page render "not modelled" for cafés instead of the restaurant row, and should `capacity_bound` refuse on `retailarea` 0 rather than default a footprint? Status: open (2026-09-17, Session 42).
+
+### D60 — Floor area on condo lots.
+- **Status:** open
+- **Answered by:** (not ticketed)
+- **Current answer:** PLUTO `retailarea` is 0 on condo billing lots (177 Mott / 372 Broome), and the DOF storefront registry carries sq ft only once a lease is filed. Is there a per-unit source (DOF condo unit BBLs, ACRIS, LL84 for larger buildings) that gives shop floor area before the registry catches up? Fazenda's $37,500 rent miss was entirely floor area. Status: open (2026-09-17, Session 42).
+
+### D61 — Ledger lag for new openings.
+- **Status:** open
+- **Answered by:** (not ticketed)
+- **Current answer:** Fazenda (opened summer 2026) is first-seen 2026-09 backfill_censored from a DOHMH permit alone; absent from Overture (2026-09-01) and Foursquare (2026-09-02). How long do new openings take to appear in each commercial source, and should the DOHMH permit be the official first-seen kind for food? Bears on the recommendations ledger's time-to-fill (D89). Status: open (2026-09-17, Session 42).
+
+### D62 — Commuter origin–destination for Gowanus.
+- **Status:** open
+- **Answered by:** (not ticketed)
+- **Current answer:** Loci has LODES WAC (jobs located here) but no OD or RAC, so "where do Gowanus workers come from / residents go" is unanswerable; MTA station-level ridership is not stored as a time series either. Worth loading LODES OD before the AC-1 trade-area sheet (D116-2 / D124-2), which needs a transit-time catchment? Status: open (2026-09-17, Session 42).
+
 ---
 
 ## Dropped

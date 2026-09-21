@@ -641,6 +641,8 @@ T = [
 
 
 def generate() -> tuple[int, int, int]:
+("E4 · Validation and Artifact", "Operator pages: Deux Luxe + Fazenda records and scoring; declare unknown floor area on retailarea-0 lots", M, 5, "validation,rigor,docs",
+ "Two SoHo operator pages issued under the AC-6 recommendation loop: Deux Luxe (384 Broome, $1.5M/yr) and the first predictive page, Fazenda (177 Mott, $470k first-year counter sales, survival p=0.75, scored 2027-09-17). Fazenda's first answer scored a MISS: rent $15,000/mo on under 1,000 sq ft vs $37,500 on 2,500 sq ft guessed — per-foot rate right, floor area wrong >2.5x with no data behind it (PLUTO retailarea 0 on the condo lot).\n\nWhy: a guessed floor area propagated into rent, rent share and break-even and flipped the record's conclusion; declaring the unknown keeps the scoreable guesses honest. Work: (a) score remaining Fazenda/Deux Luxe answers into the records' §7 as they arrive; (b) change the page template so retailarea-0 lots say 'I could not see your floor area' and ask sq ft first; (c) full Fazenda first-year comparison 2027-09-17.\n\nOpened 2026-09-21 (CHECKPOINT D130). Pushed to Linear 2026-09-21 as GTM-207."),
     """Write docs/TICKETS.md and the Linear exports. Returns (issues, milestones, points)."""
     rows = []
     for row in T:
