@@ -5234,6 +5234,15 @@ sidewalk_app = typer.Typer(add_completion=False, help=(
 app.add_typer(sidewalk_app, name="sidewalk-count")
 
 
+def _sidewalk_schema(con) -> None:
+    """024 (the table) then 053 (the sweep columns), idempotent. The sampler's
+    writers apply their own migrations because they open a plain writer, not
+    the pipeline connection that replays the whole sql/ directory."""
+    for name in ("024_sidewalk_count.sql", "053_sidewalk_sweep.sql"):
+        con.execute((locidb.SQL_DIR / name).read_text())
+
+
+
 def _sidewalk_resolve(con, camera: str | None, near: str | None, radius_m: float):
     """--camera id | --near 'lat,lon' -> one Camera, printing the alternatives."""
     from loci.model import sidewalk_count as sw
@@ -5314,7 +5323,7 @@ def sidewalk_sample(
 
     con = _connect_retrying(read_only=False)
     try:
-        con.execute((locidb.SQL_DIR / "024_sidewalk_count.sql").read_text())
+        _sidewalk_schema(con)
         n = sw.write_rows(con, out["rows"])
     finally:
         con.close()
@@ -5327,38 +5336,248 @@ def sidewalk_sample(
 
 @sidewalk_app.command("schedule")
 def sidewalk_schedule(
-    camera: str = typer.Option(..., "--camera", help="staging.dot_camera.camera_id"),
-    days: int = typer.Option(14, "--days", help="how many days the plan covers"),
-    interval_s: float = typer.Option(10.0, "--interval-s"),
-    minutes: float = typer.Option(10.0, "--minutes", help="minutes per daypart block"),
+    install: bool = typer.Option(
+        False,
+        "--install",
+        help="write data/launchd/*.plist AND load them into "
+        "~/Library/LaunchAgents (the only write outside the repo)",
+    ),
+    uninstall: bool = typer.Option(False, "--uninstall", help="bootout + remove the three jobs"),
+    status: bool = typer.Option(
+        False, "--status", help="are the three jobs written/installed/loaded?"
+    ),
+    max_cameras: int = typer.Option(
+        None, "--max-cameras", help="OWNER throttle baked into the plists; default ALL"
+    ),
+    camera: str = typer.Option(
+        None, "--camera", help="legacy: print the per-camera daypart plan instead"
+    ),
+    days: int = typer.Option(14, "--days", help="(with --camera) how many days the plan covers"),
 ) -> None:
-    """Emit the launchd-friendly sampling plan. RUNS NOTHING, WRITES NOTHING."""
+    """The WEEKLY SWEEP schedule: three launchd jobs (am 07:00, md 12:00, pm 16:00)
+    on Tue + Thu, every MN+BK camera, one frame per 10 min.
+
+    With no flag: render the plists to data/launchd/ (gitignored) and print
+    them. --install is the owner's step; nothing here runs on import.
+    """
+    from loci.model import sidewalk_count as sw
+
+    if camera:
+        con = _connect_retrying(read_only=True)
+        try:
+            cam = sw.get_camera(con, camera)
+        finally:
+            con.close()
+        plan = sw.schedule_plan(cam, days=days)
+        t = Table(title=f"{cam.name} ({cam.camera_id}) — {days}-day plan")
+        for c in plan.columns:
+            t.add_column(str(c), justify="right" if plan[c].dtype.kind in "if" else "left")
+        for r in plan.itertuples(index=False):
+            t.add_row(
+                *[
+                    f"{x:,}"
+                    if isinstance(x, int)
+                    else (f"{x:g}" if isinstance(x, float) else str(x))
+                    for x in r
+                ]
+            )
+        console.print(t)
+        return
+
+    if status:
+        t = Table(title="sidewalk sweep launchd jobs")
+        for c in ("window", "hours", "label", "plist_in_repo", "installed", "loaded"):
+            t.add_column(c)
+        for r in sw.schedule_status():
+            t.add_row(
+                r["window"],
+                r["hours"],
+                r["label"],
+                str(r["plist_in_repo"]),
+                str(r["installed"]),
+                str(r["loaded"]),
+            )
+        console.print(t)
+        return
+    if uninstall:
+        for n in sw.schedule_uninstall():
+            console.print(n)
+        return
+    if install:
+        for n in sw.schedule_install(max_cameras=max_cameras):
+            console.print(n)
+        console.print(
+            "[dim]Tue + Thu, 07:00 / 12:00 / 16:00 local; each sweep stops itself at "
+            "the window's close. `loci sidewalk-count schedule --status` to check; "
+            "logs under data/sidewalk/logs/.[/]"
+        )
+        return
+    paths = sw.write_launchd_plists(max_cameras=max_cameras)
+    for pth in paths:
+        console.print(f"[green]wrote[/] {pth}")
+    console.print(
+        f"[dim]{len(paths)} plists rendered, nothing installed. "
+        f"`loci sidewalk-count schedule --install` loads them (owner step). "
+        f"Cameras: every MN+BK camera in staging.dot_camera"
+        + (f", throttled to {max_cameras}" if max_cameras else " (no limit)")
+        + ".[/]"
+    )
+
+
+@sidewalk_app.command("sweep")
+def sidewalk_sweep(
+    window: str = typer.Option(..., "--window", help="am | md | pm (DOT windows, local time)"),
+    max_cameras: int = typer.Option(
+        None, "--max-cameras", help="OWNER throttle; default = every MN+BK camera"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="one tick of at most 5 cameras, nothing written"
+    ),
+    keep_frames: bool = typer.Option(
+        False, "--keep-frames", help="QA only: also write JPEGs under data/frames/"
+    ),
+    no_flush: bool = typer.Option(
+        False, "--no-flush", help="leave the rows in the spool; do not touch the warehouse"
+    ),
+) -> None:
+    """One DOT window, every MN+BK camera, one frame per 10 min. Spools, then flushes.
+
+    Rows are aggregate per camera x timestamp (persons + the free vehicle
+    classes); frames are counted in memory and dropped. The legal exposure and
+    the privacy rule are recorded verbatim in model/sidewalk_count.py.
+    """
     from loci.model import sidewalk_count as sw
 
     con = _connect_retrying(read_only=True)
     try:
-        cam = sw.get_camera(con, camera)
+        cams = sw.sweep_cameras(con, max_cameras=max_cameras)
     finally:
         con.close()
+    if not cams:
+        console.print(
+            "[red]no cameras[/] in staging.dot_camera for MN+BK — `loci dot-cameras ingest` first"
+        )
+        raise typer.Exit(1)
 
-    plan = sw.schedule_plan(cam, days=days, interval_s=interval_s,
-                            minutes_per_daypart=minutes)
-    t = Table(title=f"{cam.name} ({cam.camera_id}) — {days}-day plan")
-    for c in plan.columns:
-        t.add_column(str(c), justify="right" if plan[c].dtype.kind in "if" else "left")
-    for r in plan.itertuples(index=False):
-        t.add_row(*[f"{x:,}" if isinstance(x, int) else
-                    (f"{x:g}" if isinstance(x, float) else str(x)) for x in r])
+    out = sw.sweep(
+        cams,
+        window,
+        dry_run=dry_run,
+        keep_frames=keep_frames,
+        log=lambda m: console.print(f"[dim]{m}[/]"),
+    )
+    rep, plan = out["report"], out["plan"]
+    console.print(
+        f"[bold]{rep['run_id']}[/] · {plan['cameras']} cameras · "
+        f"{plan['ticks']} ticks to {plan['end_local']:%H:%M} local · "
+        f"fetched {rep['fetched']} · unique {rep['unique']} · "
+        f"errors {rep['errors']} · scene changed {rep.get('scene_changed', 0)} "
+        f"(first seen {rep.get('scene_first_seen', 0)})"
+    )
+    if rep.get("note"):
+        console.print(f"[yellow]{rep['note']}[/]")
+    if dry_run:
+        console.print("[dim]--dry-run: nothing spooled, nothing written.[/]")
+        return
+    if out["spool"] is not None:
+        console.print(f"spooled -> {out['spool']}")
+    if no_flush:
+        return
+    con = _connect_retrying(read_only=False, retries=4, wait_s=30.0)
+    try:
+        _sidewalk_schema(con)
+        fl = sw.flush(con)
+    finally:
+        con.close()
+    console.print(
+        f"[green]ok[/] flushed {fl['files']} spool file(s): {fl['rows_written']:,} "
+        f"new rows -> analysis.sidewalk_count ({fl['rows_read'] - fl['rows_written']:,} "
+        f"already stored)"
+    )
+
+
+@sidewalk_app.command("flush")
+def sidewalk_flush() -> None:
+    """Move spooled sweep rows (data/sidewalk/spool/) into analysis.sidewalk_count."""
+    from loci.model import sidewalk_count as sw
+
+    con = _connect_retrying(read_only=False)
+    try:
+        _sidewalk_schema(con)
+        fl = sw.flush(con)
+    finally:
+        con.close()
+    for run, n_read, n_new in fl["runs"]:
+        console.print(f"  {run}: {n_read:,} rows read, {n_new:,} new")
+    console.print(f"[green]ok[/] {fl['files']} file(s), {fl['rows_written']:,} new rows")
+
+
+@sidewalk_app.command("report")
+def sidewalk_report(
+    camera: str = typer.Option(None, "--camera", help="one camera_id"),
+    nta: str = typer.Option(
+        None, "--nta", help="every camera within 250 m of this NTA's addresses"
+    ),
+) -> None:
+    """Daypart profile of the latest run vs the camera's OWN history.
+
+    Within-camera only. A ratio needs >= HISTORY_MIN_FRAMES history frames since
+    the camera's last scene change; otherwise it is blank, not zero.
+    """
+    import pandas as pd
+
+    from loci.model import sidewalk_count as sw
+
+    if bool(camera) == bool(nta):
+        raise typer.BadParameter("pass exactly one of --camera or --nta")
+    con = _connect_retrying(read_only=True)
+    try:
+        df = sw.report(con, camera_id=camera, nta=nta)
+    finally:
+        con.close()
+    if df.empty:
+        console.print("[yellow]no rows[/] for that selection")
+        raise typer.Exit(0)
+    t = Table(title="latest run vs own history — persons per FRAME")
+    cols = [
+        "camera",
+        "day_type",
+        "daypart",
+        "latest_run",
+        "latest_frames",
+        "latest_persons",
+        "history_runs",
+        "history_frames",
+        "history_persons",
+        "ratio",
+        "latest_car",
+        "latest_truck",
+        "latest_bus",
+        "latest_bicycle",
+        "scene_changed_in_history",
+    ]
+    for c in cols:
+        t.add_column(
+            c, justify="left" if c in ("camera", "day_type", "daypart", "latest_run") else "right"
+        )
+    for r in df.itertuples(index=False):
+        d = r._asdict()
+        t.add_row(
+            *[
+                (
+                    ""
+                    if d[c] is None or (isinstance(d[c], float) and pd.isna(d[c]))
+                    else (f"{d[c]:.2f}" if isinstance(d[c], float) else str(d[c])[:26])
+                )
+                for c in cols
+            ]
+        )
     console.print(t)
-    total = int(plan["frames_total"].sum())
-    console.print(f"[bold]{len(plan)}[/] blocks per cycle · "
-                  f"[bold]{total:,}[/] frames over {days} days · "
-                  f"~{total * 0.11 / 60:.0f} min of CPU at 0.11 s/frame")
-    console.print("[dim]launch_local is the MIDPOINT of each daypart, not its edge: a "
-                  "block starting at 06:00 sharp measures the quietest ten minutes of "
-                  "am_peak and calls it the peak. Each block is a separate "
-                  "`loci sidewalk-count sample --camera … --minutes … ` invocation, "
-                  "sized to sit inside MAX_FRAMES_PER_RUN.[/]")
+    console.print(
+        "[dim]Each row compares a camera with ITSELF. Vehicle classes are free "
+        "COCO outputs, validated against nothing. A history that spans a "
+        "scene change is cut at the change.[/]"
+    )
 
 
 @sidewalk_app.command("stats")
@@ -11532,3 +11751,282 @@ def storefront_pipeline_blind(
 # above, and a block that only adds lines at the bottom cannot conflict.
 # ===========================================================================
 
+
+footprints_app = typer.Typer(
+    add_completion=False,
+    help=(
+        "NYC Building Footprints (OTI, 5zhs-2jue): one polygon per BIN, citywide, "
+        "with the LiDAR-derived roof height. The join everything aerial hangs on."
+    ),
+)
+app.add_typer(footprints_app, name="footprints")
+
+aerial_app = typer.Typer(
+    add_completion=False,
+    help=(
+        "Ortho change, awnings and convertible stock from the NYC 6-inch orthos and "
+        "building footprints. Nadir imagery: a facade is invisible, a two-year bin dates "
+        "nothing, and every output is a heuristic behind an owner review page."
+    ),
+)
+app.add_typer(aerial_app, name="aerial")
+
+
+def _aerial_schema(con) -> None:
+    from loci import db as _db
+
+    for name in ("054_aerial.sql", "054_aerial.sql.draft"):
+        p = _db.SQL_DIR / name
+        if p.exists():
+            con.execute("LOAD spatial")
+            con.execute(p.read_text())
+            return
+
+
+def _aerial_bbox(gowanus: bool, bbox: str | None, boroughs: str | None):
+    from loci.model import aerial
+
+    if gowanus:
+        return aerial.GOWANUS_BBOX
+    if bbox:
+        try:
+            a, b, c, d = (float(x) for x in bbox.split(","))
+        except ValueError:
+            raise typer.BadParameter("--bbox is 'min_lat,min_lon,max_lat,max_lon'") from None
+        return (a, b, c, d)
+    if boroughs:
+        # MN+BK envelope (Brooklyn's south shore to Inwood). Water tiles are
+        # cheap; a clip to the shoreline would be a limit on the pull.
+        boros = set(_parse_boroughs(boroughs))
+        env = {"MN": (40.698, -74.025, 40.882, -73.906), "BK": (40.566, -74.047, 40.740, -73.856)}
+        parts = [env[b] for b in boros if b in env]
+        if not parts:
+            raise typer.BadParameter("--boroughs must name MN and/or BK")
+        return (
+            min(p[0] for p in parts),
+            min(p[1] for p in parts),
+            max(p[2] for p in parts),
+            max(p[3] for p in parts),
+        )
+    raise typer.BadParameter("pass --gowanus, --bbox or --boroughs")
+
+
+@footprints_app.command("ingest")
+def footprints_ingest(
+    file: Path = typer.Option(
+        None, "--file", help="GeoJSON export; default the latest under data/raw"
+    ),
+) -> None:
+    """Whole-city DELETE/INSERT of staging.building_footprint from the GeoJSON export."""
+    from loci.sources.cities.nyc import building_footprints as bf
+
+    con = _connect_retrying(read_only=False)
+    try:
+        _aerial_schema(con)
+        rep = bf.ingest(con, file)
+    finally:
+        con.close()
+    console.print(
+        f"[green]ok[/] {rep['rows']:,} footprints ({rep['bbls']:,} BBLs, "
+        f"{rep['demolition_rows']} tagged Demolition) from {rep['file']}"
+    )
+
+
+@aerial_app.command("pull")
+def aerial_pull(
+    years: str = typer.Option("2022,2024", "--years"),
+    gowanus: bool = typer.Option(False, "--gowanus"),
+    bbox: str = typer.Option(None, "--bbox", help="min_lat,min_lon,max_lat,max_lon"),
+    boroughs: str = typer.Option(None, "--boroughs", help="MN,BK"),
+    zoom: int = typer.Option(None, "--zoom", help="default the native 6-inch level (20)"),
+    concurrency: int = typer.Option(None, "--concurrency"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="count tiles, fetch nothing"),
+) -> None:
+    """Every tile over the area into data/raw/nyc_orthoimagery/. Whole tiles, no clip."""
+    from loci.sources.cities.nyc import orthoimagery as ortho
+
+    box = _aerial_bbox(gowanus, bbox, boroughs)
+    z = zoom or ortho.NATIVE_ZOOM
+    for y in (int(v) for v in years.split(",")):
+        x0, y0, x1, y1 = ortho.tile_range(box, z)
+        n = (x1 - x0 + 1) * (y1 - y0 + 1)
+        if dry_run:
+            console.print(f"{y} z{z}: {n:,} tiles over {box} (~{n * 9 / 1024:.0f} MB)")
+            continue
+        rep = ortho.pull(
+            y,
+            box,
+            z,
+            concurrency=concurrency or ortho.CONCURRENCY,
+            log=lambda m: console.print(f"[dim]{m}[/]"),
+        )
+        console.print(
+            f"[green]{y}[/] z{z}: {rep['tiles_in_bbox']:,} tiles, "
+            f"{rep['cached_before']:,} cached, {rep['fetched']:,} fetched, "
+            f"{rep['errors']:,} errors"
+        )
+
+
+@aerial_app.command("change")
+def aerial_change(
+    gowanus: bool = typer.Option(False, "--gowanus", help="the canal corridor bbox (AC-1)"),
+    bbox: str = typer.Option(None, "--bbox", help="min_lat,min_lon,max_lat,max_lon"),
+    years: str = typer.Option("2022,2024", "--years"),
+    limit: int = typer.Option(None, "--limit", help="score only the first N lots (a probe)"),
+    review: Path = typer.Option(None, "--review", help="review html path; default data/aerial/"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="list the lots, score nothing, write nothing"
+    ),
+) -> None:
+    """Ortho change on every D72 permitted lot in the box -> analysis.lot_aerial_change
+    plus the owner's 100-lot review page (memo §5 row 3 gate)."""
+    from loci.model import aerial
+
+    box = _aerial_bbox(gowanus, bbox, None)
+    y_from, y_to = (int(v) for v in years.split(","))
+    con = _connect_retrying(read_only=True)
+    try:
+        lots = aerial.permitted_lots(con, box)
+    finally:
+        con.close()
+    named = sum(1 for lt in lots if lt.named_site)
+    fp = sum(1 for lt in lots if lt.geom_source == "footprint")
+    console.print(
+        f"{len(lots)} lots in {box}: {fp} with footprints, {len(lots) - fp} lot boxes, "
+        f"{named} named sites (memo §4)"
+    )
+    if dry_run:
+        for lt in lots[:20]:
+            console.print(
+                f"  {lt.bbl} {lt.dob_status or '—':8} {lt.geom_source:9} {lt.named_site or ''}"
+            )
+        raise typer.Exit(0)
+    if limit:
+        lots = lots[:limit]
+    rows = aerial.run_change(lots, (y_from, y_to), log=lambda m: console.print(f"[dim]{m}[/]"))
+    by = Counter(r["change_class"] for r in rows)
+    console.print("classes: " + ", ".join(f"{k} {v}" for k, v in sorted(by.items())))
+    out = review or (
+        aerial.OUT_DIR / ("gowanus_change_review.html" if gowanus else "change_review.html")
+    )
+    aerial.review_html(
+        rows,
+        out,
+        title=f"Ortho change {y_from} → {y_to}: {'Gowanus' if gowanus else 'bbox'} permitted lots",
+    )
+    console.print(f"review page -> {out}")
+    con = _connect_retrying(read_only=False)
+    try:
+        _aerial_schema(con)
+        n = aerial.write_change(con, rows)
+    finally:
+        con.close()
+    console.print(f"[green]ok[/] {n:,} rows -> {aerial.OUT_TABLE} (ungated: owner review pending)")
+
+
+@aerial_app.command("awnings")
+def aerial_awnings(
+    corridor: str = typer.Option(
+        None, "--corridor", help="one D82 corridor label; default all twelve"
+    ),
+    year: int = typer.Option(2024, "--year"),
+    review: Path = typer.Option(None, "--review"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="count buildings and street points only"),
+) -> None:
+    """Awning strips on the street faces of every footprint on the twelve D82
+    corridors -> analysis.building_awning plus a 100-face review page."""
+    from loci.model import aerial_awning as aw
+
+    corrs = aw.CORRIDORS
+    if corridor:
+        corrs = tuple(c for c in aw.CORRIDORS if c[0].lower().startswith(corridor.lower()))
+        if not corrs:
+            raise typer.BadParameter(
+                f"no corridor starts with {corridor!r}; have {[c[0] for c in aw.CORRIDORS]}"
+            )
+    con = _connect_retrying(read_only=True)
+    try:
+        if dry_run:
+            for c in corrs:
+                fps, pts = aw.corridor_buildings(con, c)
+                console.print(
+                    f"  {c[0]:26} {len(fps):5} footprints in box, {len(pts):4} street points"
+                )
+            raise typer.Exit(0)
+        rows = aw.run_awnings(con, corrs, year=year, log=lambda m: console.print(f"[dim]{m}[/]"))
+        ll = None
+        try:
+            ll = con.execute("""
+                SELECT bbl, CASE WHEN vacant_1231 THEN 'vacant' ELSE 'occupied' END AS state
+                FROM analysis.storefront_latest""").fetchdf()
+        except Exception:  # optional context only
+            ll = None
+    finally:
+        con.close()
+    n_pos = sum(1 for r in rows if r["awning_faces"] > 0)
+    console.print(f"{len(rows)} corridor buildings faced; {n_pos} with an awning face")
+    out = review or (aw.OUT_DIR / "awning_review.html")
+    aw.review_html(rows, out, ll)
+    console.print(f"review page -> {out}")
+    con = _connect_retrying(read_only=False)
+    try:
+        _aerial_schema(con)
+        n = aw.write_awnings(con, rows, corridors=corrs, year=year)
+    finally:
+        con.close()
+    console.print(f"[green]ok[/] {n:,} rows -> {aw.OUT_TABLE} (ungated: owner review pending)")
+
+
+@aerial_app.command("convertible")
+def aerial_convertible(
+    gowanus: bool = typer.Option(False, "--gowanus"),
+    boroughs: str = typer.Option("MN,BK", "--boroughs"),
+    review: Path = typer.Option(None, "--review"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    """One-storey / parking / vacant floorplates >= 500 m2 -> analysis.lot_convertible
+    plus the top-30 review page."""
+    from loci.model import aerial_convertible as cv
+    from loci.sources.cities.nyc import orthoimagery as ortho
+
+    boros = tuple(_parse_boroughs(boroughs))
+    con = _connect_retrying(read_only=True)
+    try:
+        df = cv.find(con, boroughs=boros, bbox=cv.GOWANUS_BBOX if gowanus else None)
+    finally:
+        con.close()
+    by = df["lot_class"].value_counts().to_dict()
+    console.print(
+        f"{len(df):,} candidates: "
+        + ", ".join(f"{k} {v:,}" for k, v in by.items())
+        + f"; {int(df['in_gowanus'].sum()):,} in the Gowanus box"
+    )
+    if dry_run:
+        raise typer.Exit(0)
+    crops = {}
+    for r in df.head(cv.REVIEW_TOP).itertuples(index=False):
+        d = 0.0006
+        try:
+            m = ortho.mosaic(2024, (r.lat - d, r.lon - d, r.lat + d, r.lon + d))
+            from loci.model.aerial import _jpeg_b64
+
+            crops[r.bbl] = _jpeg_b64(m.img, 320)
+        except ortho.OrthoUnavailable:
+            pass
+    out = review or (
+        cv.OUT_DIR / ("convertible_gowanus_review.html" if gowanus else "convertible_review.html")
+    )
+    cv.review_html(
+        df,
+        out,
+        crops,
+        title=f"Convertible stock — top {cv.REVIEW_TOP}{' (Gowanus)' if gowanus else ' (MN+BK)'}",
+    )
+    console.print(f"review page -> {out}")
+    con = _connect_retrying(read_only=False)
+    try:
+        _aerial_schema(con)
+        n = cv.write(con, df)
+    finally:
+        con.close()
+    console.print(f"[green]ok[/] {n:,} rows -> {cv.OUT_TABLE} (ungated: owner review pending)")

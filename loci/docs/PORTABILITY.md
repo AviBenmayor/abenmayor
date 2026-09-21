@@ -13,14 +13,14 @@ Owner ask, 2026-09-14: *"what are the critical inputs necessary to be able to ex
 | Class | n | What it means for a second city |
 |---|---|---|
 | **universal** | 7 | Works on day one, anywhere on earth. Nothing to procure. |
-| **national (US federal)** | 10 | Works on day one in any US city. Carries its own portable bias. |
+| **national (US federal)** | 11 | Works on day one in any US city. Carries its own portable bias. |
 | **state** | 7 | Re-plumbed per state. Publication quality varies enormously; expect some states to publish nothing usable. |
-| **city open data (different schema)** | 17 | An equivalent exists but the schema is different. This is the real cost of a second city: an adapter per source. |
+| **city open data (different schema)** | 19 | An equivalent exists but the schema is different. This is the real cost of a second city: an adapter per source. |
 | **city-unique (no equivalent exists)** | 6 | No equivalent exists. The stage degrades, permanently — see §4. |
 
-**47 sources classed.** 17 of them (36%) need no per-city work at all.
+**50 sources classed.** 18 of them (36%) need no per-city work at all.
 
-**20 of the 47 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
+**22 of the 50 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
 
 ---
 
@@ -175,10 +175,13 @@ establishment counts, DOT sidewalk counts, the D88 retrodiction.
 | Census ZIP Code Business Patterns (ZBP), via the County Business Patterns (CBP) API | national (US federal) | No external establishment-count benchmark, so anchor coverage ratios (the 0.85 / 0.90 numbers that justified the childcare and pharmacy anchors) cannot be computed. |
 | Citi Bike System Data (trip files) | national (US federal) *(med conf.)* | The only two-directional movement series in the registry is lost: demand keeps subway ENTRIES, which publish the morning tap-in and never the evening arrival, and which read zero for 65% of Brooklyn addresses -- so `bike_ends_400m`, the only arrival-side measure Loci has, cannot be built and the destination-versus- commuter reading of a corner goes back to being an assumption. |
 | HUD aggregated USPS vacancy data | national (US federal) | No independent residential vacancy series, so the residential half of vacancy rests on ACS 5-year smoothing alone. |
+| NYC LiDAR (2017 topobathymetric; USGS 2014) | national (US federal) *(med conf.)* | Building heights fall back to PLUTO NumFloors x a storey height, which cannot tell a one-storey shed with a mezzanine from a two-storey taxpayer. |
+| NYC Building Footprints (OTI) | city open data (different schema) | Per-lot masks for the ortho change layer fall back to a PLUTO lot-area square, and the awning and convertible layers close: no street face, no roof height. Overture buildings exist everywhere but are ODbL, which contaminates a derivative database (memo §2). |
 | NYC DOE Demographic Snapshot (school-level enrollment + composition) | city open data (different schema) *(med conf.)* | The demand side stays entirely ACS-shaped: no unsampled, annual read on the pool of children a childcare- or family-oriented storefront draws on, and no independent check on whether under_18_share / under_5_share are still tracking a neighborhood's actual child population in the years between 5-year ACS vintages. |
 | DOHMH New York City Restaurant Inspection Results | city open data (different schema) | Restaurant, cafe and bar lose their near-census anchor: those three categories revert to aggregator coverage and the CONTEXT 7.1 undercount becomes unmeasurable. |
 | NYC DOT Bi-Annual Pedestrian Counts | city open data (different schema) *(med conf.)* | The access proxies (transit_entries_400m, jobs_400m, homes_400m) lose their only external check, so the D76 rank correlation cannot be computed and the proxy stays an assumption. |
 | NYC DOT traffic cameras (NYCTMC public feed) | city open data (different schema) *(med conf.)* | The frame-sampler route to a measured footfall number closes; nothing else in the free registry can produce a person count. |
+| NYC orthoimagery (OTI) -- 6-inch true-ortho, biennial | city open data (different schema) *(med conf.)* | The ortho change, awning and convertible-stock layers close; nothing else in the free registry sees a lot from above at 15 cm. NAIP (60 cm, leaf-on, public domain) is the national fallback and cannot see an awning. |
 | NYC DOF Storefronts Reported Vacant or Not (Local Law 157 of 2019) | city-unique (no equivalent exists) | No storefront-vacancy layer: the card's space section grades D everywhere, the 'and this ground floor 120 m away is empty' sentence disappears, and the D88 go-dark retrodiction has no outcome variable at all. |
 | NYC DOT VivaCity sidewalk sensors (data-sharing ask) | city-unique (no equivalent exists) *(med conf.)* | No continuous sidewalk sensor, so counts stay biannual seven-hour snapshots and no daypart validation is possible. |
 
@@ -545,7 +548,9 @@ second-city plan starts from the doubt rather than rediscovering it.
 | NYC DOT Bi-Annual Pedestrian Counts | city open data (different schema) | med | Many cities publish some pedestrian counts; a 37-round, 19-year biannual panel at fixed points is rare, and the restricted-range problem (counts sited on busy commercial corridors) travels to every city that has one. |
 | NYC DOT traffic cameras (NYCTMC public feed) | city open data (different schema) | med | Public traffic-camera APIs exist in many cities; unpublished bearing and field of view make any count a count on an unknown catchment, wherever it is done. |
 | NYC DOT VivaCity sidewalk sensors (data-sharing ask) | city-unique (no equivalent exists) | med | The vendor sells everywhere; the DEPLOYMENT is a specific NYC DOT procurement, and the data are not published as open data anywhere Loci has found. |
+| NYC LiDAR (2017 topobathymetric; USGS 2014) | national (US federal) | med | USGS 3DEP covers most US metros at 1-8 pts/m2; the derived roof-height column on a city's footprints file is the part that varies. |
 | NYC Energy and Water Data Disclosure (Local Law 84 / LL133) | city open data (different schema) | med | Roughly 40 US cities have a benchmarking ordinance, but the laundry-hookup columns are a New York reporting artefact, not part of the standard template. |
+| NYC orthoimagery (OTI) -- 6-inch true-ortho, biennial | city open data (different schema) | med | Most large US cities publish leaf-off orthos on an ArcGIS tile cache or a WMTS; the tile arithmetic here is standard XYZ and the only NYC-specific thing is the service name. |
 | NYC MapPLUTO (Primary Land Use Tax Lot Output) | city-unique (no equivalent exists) | med | A parcel file with residential units exists in nearly every US county assessor. What is NYC-specific is the bundle: UnitsRes + BldgArea/RetailArea/OfficeArea + ResidFAR/BuiltFAR + BldgClass + LandUse on one row, citywide, free, twice a year. Expect to rebuild floor area and zoning capacity from two or three separate files. |
 | NYS SLA Current Pending Licenses | state | med | A pending/applications queue is far rarer than the active-licence file; most ABC authorities publish only what has issued. |
 | NYS Liquor Authority Current Inactive Licenses | state | med | Far fewer states publish the inactive companion than publish the active file, so this is the rung most likely to be missing in city number two. |

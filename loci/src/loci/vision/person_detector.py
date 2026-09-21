@@ -79,8 +79,20 @@ PT_SHA256 = "0ebbc80d4a7680d14987a577cd21342b65ecfd94632bd9a8da63ae6417644ee1"
 #: imgsz=640, dynamic=False, simplify=False. 10,701,722 bytes.
 ONNX_SHA256 = "3770b4e016505653e57761cb307f066686da2bb0d05a93da1af2b8a8d2c8fbc1"
 
-#: COCO class index for `person`. The only class this project reads.
+#: COCO class index for `person`. The class every count in this module is
+#: named for; the four vehicle classes below ride along for free.
 PERSON_CLASS = 0
+
+#: THE FREE EXTRA CLASSES (scope memo 2026-09-17 §1c: "YOLO11n already detects
+#: car, truck, bus, bicycle: van and bike counts are free (store more classes)").
+#: The network scores all 80 COCO classes in the same forward pass, so reading
+#: four more columns of the output costs nothing; NMS runs per class. These
+#: are stored beside `n_persons` as `n_car` etc. and are NOT validated against
+#: anything -- DOT's hand counts are pedestrians only -- so they are context
+#: at best. Motorcycle (3) is deliberately left out: a 352x240 frame cannot
+#: separate a motorcycle from a bicycle with a rider, and pooling them into
+#: `bicycle` would be a silent redefinition.
+EXTRA_CLASSES: dict[str, int] = {"bicycle": 1, "car": 2, "bus": 5, "truck": 7}
 
 #: Square letterbox side the network was exported at (imgsz=640).
 INPUT_SIZE = 640
@@ -106,6 +118,9 @@ class DetectionResult:
     width: int
     height: int
     seconds: float
+    #: The free extra COCO classes at CONF_LOW, keyed by EXTRA_CLASSES name.
+    #: Empty for detectors that cannot produce them (HOG), never invented.
+    extra: dict[str, int] = dataclasses.field(default_factory=dict)
 
 
 def sha256(data: bytes) -> str:
@@ -200,6 +215,23 @@ def decode_jpeg(data: bytes) -> np.ndarray:
         return np.asarray(im.convert("RGB"), dtype=np.uint8)
 
 
+def _class_scores(pred: np.ndarray, class_idx: int) -> np.ndarray:
+    """Surviving box confidences for one class, descending, after NMS.
+
+    `pred` is (n_anchors, 4 + n_classes) with sigmoid'd class scores and no
+    separate objectness (YOLOv8/11 head).
+    """
+    conf = pred[:, 4 + class_idx]
+    m = conf >= CONF_LOW
+    if not m.any():
+        return np.empty(0)
+    cx, cy, bw, bh = pred[m, 0], pred[m, 1], pred[m, 2], pred[m, 3]
+    boxes = np.stack([cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2], axis=1)
+    scores = conf[m]
+    keep = _nms(boxes, scores)
+    return np.sort(scores[keep])[::-1] if len(keep) else np.empty(0)
+
+
 class OnnxPersonDetector:
     """YOLO11n (COCO) through onnxruntime, person class only."""
 
@@ -234,19 +266,19 @@ class OnnxPersonDetector:
         pred = np.squeeze(out, 0)
         if pred.shape[0] < pred.shape[1]:
             pred = pred.T
-        conf = pred[:, 4 + PERSON_CLASS]
-        m = conf >= CONF_LOW
-        cx, cy, bw, bh = pred[m, 0], pred[m, 1], pred[m, 2], pred[m, 3]
-        boxes = np.stack([cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2], axis=1)
-        scores = conf[m]
-        keep = _nms(boxes, scores)
-        kept = np.sort(scores[keep])[::-1] if len(keep) else np.empty(0)
+        kept = _class_scores(pred, PERSON_CLASS)
+        # One forward pass already scored every COCO class; reading four more
+        # columns is free and each class gets its own NMS (a bus is not
+        # suppressed by the car parked in front of it).
+        extra = {name: len(_class_scores(pred, idx))
+                 for name, idx in EXTRA_CLASSES.items()}
         return DetectionResult(
             n_persons=int(len(kept)),
             n_persons_conf50=int((kept >= CONF_HIGH).sum()),
             scores=tuple(float(s) for s in kept),
             width=w, height=h,
             seconds=time.perf_counter() - t0,
+            extra=extra,
         )
 
 

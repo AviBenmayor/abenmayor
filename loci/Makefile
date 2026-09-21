@@ -24,7 +24,8 @@ check:         ## Registry + URL sweep + QUESTIONS drift + decisions + ledger co
 	              tests/test_webmap_forecast.py tests/test_recommend.py \
 	              tests/test_google_types_drift.py tests/test_address_legality.py \
 	              tests/test_recommendation_legality.py \
-	              tests/test_ground_truth.py -q
+	              tests/test_ground_truth.py tests/test_sidewalk_sweep.py \
+	              tests/test_aerial.py -q
 
 tickets:       ## Regenerate docs/TICKETS.md + docs/linear-*.{csv,json}
 	uv run loci gen-tickets

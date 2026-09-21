@@ -1935,6 +1935,153 @@ sources:
       STRAIGHT-LINE metres (`loci dot-counts address-context`) -- context only,
       entering no score, grade or rank.
 
+  - id: nyc_orthoimagery
+    name: NYC orthoimagery (OTI) -- 6-inch true-ortho, biennial
+    tier: city
+    city: nyc
+    role: control
+    status: verified
+    portability:
+      class: city_open_data
+      feeds: [validation]
+      confidence: med
+      degrades_to: >
+        The ortho change, awning and convertible-stock layers close; nothing else
+        in the free registry sees a lot from above at 15 cm. NAIP (60 cm, leaf-on,
+        public domain) is the national fallback and cannot see an awning.
+      note: >
+        Most large US cities publish leaf-off orthos on an ArcGIS tile cache or a
+        WMTS; the tile arithmetic here is standard XYZ and the only NYC-specific
+        thing is the service name.
+    url: https://maps.nyc.gov/tiles
+    api: https://tiles.arcgis.com/tiles/yG5s3afENB5iO9fj/arcgis/rest/services/NYC_Orthos_2024/MapServer
+    metadata: https://github.com/CityOfNewYork/nyc-geo-metadata/blob/master/Metadata/Metadata_AerialImagery.md
+    bulk: https://gis.ny.gov/orthoimagery
+    license: CC BY 4.0
+    cadence: biennial
+    geography: raster, 256 px Web Mercator tiles, level 20 = 0.149 m/px
+    temporal: {start: 1924, end: 2024, grain: biennial since 2004; historic 1924, 1951, 1996, 2001-2}
+    cost: {amount: 0, unit: total}
+    fields: [year, z, x, y, jpeg]
+    bias: >
+      NADIR, LEAF-OFF, MID-MARCH. A facade is invisible; frontage width is already
+      PLUTO LotFront; a two-year bin dates nothing finer than "between the two
+      flights". Sidewalk sheds are plywood the colour of a tar roof; a parked box
+      truck is a bright rectangle where an awning would be; a crane's shadow and a
+      tarpaulin both change pixels. True-ortho removes building lean, so a
+      footprint polygon lands on its roof, which is what makes a per-lot mask
+      honest at all. Every consumer states these on its output and behind an
+      owner review page.
+    notes: >
+      VERIFIED 2026-09-17. The memo's WMTS host (https://maps.nyc.gov/tiles) serves
+      its TMS (tms/1.0.0/photo/<year>/) for 1924, 1951, 1996, 2001-2 and 2004-2018
+      only; /photo/2022 and /photo/2024 redirect to www.nyc.gov and 403. The 2020,
+      2022 and 2024 orthos are on OTI's ArcGIS Online tile cache
+      (tiles.arcgis.com/tiles/yG5s3afENB5iO9fj/.../NYC_Orthos_<year>/MapServer,
+      copyrightText "NYC OTI", 256x256 MIXED = JPEG, EPSG:3857 standard origin, LODs
+      to 23; tile order is /tile/{z}/{y}/{x}, ROW then COLUMN). One z20 tile over
+      Gowanus (3 Ave / Union St) showed a cleared lot in 2022 and a new roof in
+      2024, which is the whole AC-1 use. Reader:
+      sources/cities/nyc/orthoimagery.py; `loci aerial pull` takes whole tiles over
+      a bbox into data/raw/nyc_orthoimagery/<year>/<z>/<x>/<y>.jpg (owner rule:
+      never limit a pull -- a lot's request is never clipped to its footprint).
+      Consumers: analysis.lot_aerial_change (`loci aerial change`),
+      analysis.building_awning (`loci aerial awnings`), and the review crops for
+      analysis.lot_convertible. CARD CONTEXT ONLY, every one of them, and ungated
+      until the owner has checked the review pages under data/aerial/.
+
+  - id: nyc_building_footprints
+    name: NYC Building Footprints (OTI)
+    tier: city
+    city: nyc
+    role: control
+    status: verified
+    dataset_id: 5zhs-2jue
+    portability:
+      class: city_open_data
+      feeds: [validation]
+      confidence: high
+      degrades_to: >
+        Per-lot masks for the ortho change layer fall back to a PLUTO lot-area
+        square, and the awning and convertible layers close: no street face, no
+        roof height. Overture buildings exist everywhere but are ODbL, which
+        contaminates a derivative database (memo §2).
+      note: >
+        Nearly every large US city publishes building footprints; the roof height
+        column is the rarer part and is what the convertible finder needs.
+    url: https://data.cityofnewyork.us/City-Government/Building-Footprints/5zhs-2jue
+    api: https://data.cityofnewyork.us/api/geospatial/5zhs-2jue?method=export&format=GeoJSON
+    metadata: https://github.com/CityOfNewYork/nyc-geo-metadata/blob/main/Metadata/Metadata_BuildingFootprints.md
+    license: NYC Open Data terms
+    cadence: continuous (rowsUpdatedAt 2026-09-13 at verification)
+    geography: polygon (one per BIN), EPSG:4326
+    temporal: {start: current, end: current, grain: snapshot}
+    cost: {amount: 0, unit: total}
+    fields: [bin, base_bbl, mappluto_bbl, geom, height_roof, ground_elevation, construction_year, feature_code, last_status_type, last_edited_date, geom_source]
+    bias: >
+      `construction_year` before 2017 is RPAD (the assessor's roll), not imagery.
+      `height_roof` is FEET at the HIGHEST roof point -- a parapet or a bulkhead
+      adds a storey. A lot carries many BINs and a BIN can straddle lots, so every
+      consumer unions by base_bbl and never assumes one polygon per lot.
+      `last_status_type = 'Demolition'` rows are kept: they are the 2022 side of a
+      2022 -> 2024 change.
+    notes: >
+      VERIFIED 2026-09-17: the GeoJSON export holds 1,083,030 features over
+      818,190 base_bbl, 13 tagged Demolition; keys exactly {name, base_bbl,
+      shape_area, construction_year, ground_elevation, mappluto_bbl, objectid,
+      feature_code, shape_length, height_roof, last_status_type, bin,
+      last_edited_date, geom_source, doitt_id}. Ingested WHOLE (all five boroughs)
+      by `loci footprints ingest` through DuckDB spatial's ST_Read (~35 s) into
+      staging.building_footprint -- the paged Socrata JSON route was rejected
+      because it is an hour of requests for the same bytes. Reader:
+      sources/cities/nyc/building_footprints.py. Feeds the three aerial measures
+      and is the LiDAR-derived height source for analysis.lot_convertible (see
+      nyc_lidar).
+
+  - id: nyc_lidar
+    name: NYC LiDAR (2017 topobathymetric; USGS 2014)
+    tier: city
+    city: nyc
+    role: control
+    status: verified
+    dataset_id: 7sc8-jtbz
+    portability:
+      class: national
+      feeds: [validation]
+      confidence: med
+      degrades_to: >
+        Building heights fall back to PLUTO NumFloors x a storey height, which
+        cannot tell a one-storey shed with a mezzanine from a two-storey taxpayer.
+      note: >
+        USGS 3DEP covers most US metros at 1-8 pts/m2; the derived roof-height
+        column on a city's footprints file is the part that varies.
+    url: https://gis.ny.gov/lidar
+    api: https://data.cityofnewyork.us/City-Government/Topobathymetric-LiDAR-Data-2017-/7sc8-jtbz
+    bulk: https://portal.opentopography.org/usgsDataset?dsid=NY_NewYorkCity
+    license: public domain (USGS 3DEP) / NYC Open Data terms
+    cadence: irregular (2014, 2017)
+    geography: point cloud, LAS/LAZ tiles
+    temporal: {start: 2014, end: 2017, grain: collection}
+    cost: {amount: 0, unit: total}
+    fields: [x, y, z, classification, return_number]
+    bias: >
+      THE LATEST PUBLIC NYC LIDAR IS 2017. The scope memo (2026-09-17) names a
+      2021 collection; verified the same day, https://gis.ny.gov/lidar lists New
+      York City for 2014 (USGS) and 2017 (topobathymetric) and no 2021, and Open
+      Data 7sc8-jtbz is the 2017 set. "2021 already stale in Gowanus" (memo §2) is
+      2017 here, staler: a 2018-2024 building reads at its PREDECESSOR'S height
+      unless OTI re-measured it from imagery (footprints `geom_source`). Says
+      nothing about tenancy.
+    notes: >
+      CONSUMED THROUGH THE FOOTPRINTS, NOT THE POINT CLOUD. OTI derives
+      `height_roof` on nyc_building_footprints from this collection and maintains
+      it from imagery; analysis.lot_convertible reads max(height_roof) per lot.
+      The raw LAZ (terabytes, bulk FTP/AWS) is not pulled to recompute a column
+      the city already publishes -- that is not a limit on the data, it is a
+      refusal to duplicate it; if a canopy-over-the-walk-graph or a floorplate
+      volume check (memo §2 row 2) is ever built, the pull goes here and the
+      reader is a new module. No table of its own.
+
   - id: mta_bus_gtfs
     name: MTA Bus GTFS static (stops)
     tier: city

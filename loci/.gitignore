@@ -38,3 +38,9 @@ data/frames/
 data/retrodiction/
 data/forecast_challenge/
 data/ground_truth/
+# sidewalk sweep working files (spool parquet, scene-hash state, logs) and the
+# generated launchd plists -- local, never committed (memo 2026-09-17 §1e)
+data/sidewalk/
+data/launchd/
+# aerial change / awning / convertible review pages and cached ortho tiles
+data/aerial/

@@ -2,7 +2,7 @@
 
 **GENERATED — do not edit.** Rendered by `loci gen-sources` from the non-wishlist entries in [`src/loci/registry.yaml`](../src/loci/registry.yaml). `loci check-sources` fails if this file differs from a fresh render, so a claim here is a claim in the registry with its dated evidence beside it.
 
-Registry verified 2026-09-02. **47 sources** in or committed to the pipeline, grouped by role. The post-raise wishlist is generated separately into [`docs/PAID-SOURCES.md`](PAID-SOURCES.md); the per-source portability classing is generated into [`docs/PORTABILITY.md`](PORTABILITY.md).
+Registry verified 2026-09-02. **50 sources** in or committed to the pipeline, grouped by role. The post-raise wishlist is generated separately into [`docs/PAID-SOURCES.md`](PAID-SOURCES.md); the per-source portability classing is generated into [`docs/PORTABILITY.md`](PORTABILITY.md).
 
 ## Business locations, present day
 
@@ -54,13 +54,16 @@ Registry verified 2026-09-02. **47 sources** in or committed to the pipeline, gr
 | **MTA Subway Hourly Ridership: Beginning 2025** | `5wq4-mkjj` | city | station complex (point), split to entrances via i9wp-a4ja | $0 | verified | ENTRIES ARE NOT FOOTFALL, and this is the single most important thing to say about the column built from them … |
 | **MTA Subway Stations** | `39hk-dx4f` | city | point | $0 | planned | Station centroid understates walk distance from far entrances. |
 | **NYC borough boundaries, shoreline, and Neighborhood Tabulation Areas** | - | city | polygon | $0 | planned | none material |
+| **NYC Building Footprints (OTI)** | `5zhs-2jue` | city | polygon (one per BIN), EPSG:4326 | $0 | verified | `construction_year` before 2017 is RPAD (the assessor's roll), not imagery … |
 | **NYC Street Centerline (CSCL)** | `inkn-q76z` | city | line | $0 | verified | shape_length is WEB MERCATOR metres (x1.32 at NYC latitude), NOT a length; segmentlength is US feet and disagrees with the geometry on a minority of rows (p05 0.30, p95 1.64 of … |
 | **NYC DOE Demographic Snapshot (school-level enrollment + composition)** | `s52a-8aq6`, `c7ru-d68s`, `vmmu-wj3w`, `nie4-bv6q` | city | one row per school (DBN), no coordinates on the snapshot itself. The address join is NOT school-point proximity -- it is address-in-polygon against the DOE elementary school zone file (dataset cmjf-yawu, "School Zones 2024-2025 (Elementary School)": the_geom MultiPolygon + dbn, confirmed tabular and current), because enrollment is a school-ZONE-grain signal, not a school-POINT one (charter/private/out-of-zone leakage means a school's own address is not where its pupils live). wg9x-4ke6 ("2019-2020 School Locations", geocoded, lat/lon per DBN) is the fallback point join if a zone polygon is ever unavailable for a DBN; it is the newest tabular NYC Open Data school-location vintage found and is itself six years stale.
  | $0 | planned | ENROLLMENT IS NOT RESIDENT CHILDREN: charter, private and out-of-zone leakage all sit outside a zoned public school's roster … |
 | **NYC DOF Storefronts Reported Vacant or Not (Local Law 157 of 2019)** | `92iy-9c3n` | city | point (storefront), with BBL, BIN, NTA and census tract | $0 | verified | SELF-REPORTED by property owners, and NON-FILING IS INVISIBLE: a landlord who does not file does not appear as vacant, they do not appear at all, and there is no non-response flag … |
 | **NYC DOT Bi-Annual Pedestrian Counts** | `cqsj-cfgu` | city | point (screenline location) | $0 | verified | NOT A SAMPLE OF THE CITY … |
 | **NYC DOT traffic cameras (NYCTMC public feed)** | - | city | point (signalised intersection) | $0 | verified | THE SITING IS THE BIAS … |
+| **NYC LiDAR (2017 topobathymetric; USGS 2014)** | `7sc8-jtbz` | city | point cloud, LAS/LAZ tiles | $0 | verified | THE LATEST PUBLIC NYC LIDAR IS 2017 … |
 | **NYC Energy and Water Data Disclosure (Local Law 84 / LL133)** | `5zyy-y8am`, `7x5e-2fxh`, `usc3-8zwd`, `wcm8-aq5w`, `4tys-3tzj`, `4t62-jm4m`, `77q4-nkfh`, `r6ub-zhff` | city | tax lot | $0 | verified | COVERAGE IS A SIZE FILTER, NOT A SAMPLE … |
+| **NYC orthoimagery (OTI) -- 6-inch true-ortho, biennial** | - | city | raster, 256 px Web Mercator tiles, level 20 = 0.149 m/px | $0 | verified | NADIR, LEAF-OFF, MID-MARCH … |
 | **NYC MapPLUTO (Primary Land Use Tax Lot Output)** | - | city | tax lot | $0 | planned | Assessment-derived; ZoneDist reflects mapped zoning, not variances or overlays in effect. |
 | **OSM pedestrian network via OSMnx** | - | universal | graph | $0 | planned | Sidewalk-level detail is uneven; most NYC walk routing runs on the centerline graph, which slightly understates crossing friction. |
 | **StreetEasy listing pages (advertised in-building laundry, via Tavily)** | - | city | point | $0 | verified | ADVERTISING, NOT INSPECTION — "Laundry in building" is a claim made to let a lease; nobody verified it … |
