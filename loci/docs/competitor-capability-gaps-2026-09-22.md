@@ -46,6 +46,14 @@ ranking. The genuinely new findings from this pass are #1 (flood/climate,
 nothing in the wishlist touches it) and #2 (a free fix already identified
 but not shipped).
 
+**Notion reconciliation (2026-09-22):** cross-checking the owner's 13
+additional Notion Competitors DB entries (§4) against this ranking did not
+change it. CenterCheck (§3) is the only new sourcing candidate the
+reconciliation raised, and its own limitation — card-panel coverage skews
+to ~600 major chains and is "weak on independents" per the owner's own
+Notion note — keeps it below the five items above rather than promoting it
+into them, since Loci's daily-needs categories are mostly independents.
+
 ---
 
 ## 2. Capability matrix
@@ -61,16 +69,16 @@ ingested). **Missing** = nothing in the active pipeline addresses it.
 | Supply gap / void / whitespace analysis | Placer.ai (Void Analysis), GrowthFactor (Void.AI) | **Have**, differently shaped | `supply-ratio` command, address-level, all 15 categories, continuous (no eligibility filter, D75). Placer's Void Analysis needs a branded panel signature and is effectively chain-level with no dataset SKU (GTM.md §2) |
 | Development / opening-closing pipeline tracking | GrowthFactor (PlannedDev), most enterprise platforms | **Have** — Loci's other differentiator | 232,667 filings across 7 agency feeds reconciled to 135,912 business-at-BBL pipelines (D80, GTM.md) |
 | Chain expansion / competitor tracking | RetailStat, Coresight, most platforms | **Partial** | 902-brand chains watchlist with per-brand expansion signals (`chains/` module) exists; no vendor feed, one detect snapshot so far (registry wishlist #23 RetailStat, #24 Coresight, gap f) |
-| Foot traffic / visit counts | Placer.ai, Unacast, Pass_by, Azira, Advan, GrowthFactor (TrafficRX) — the single most common claim in this survey | **Partial** | `transit_entries_400m` + DOT camera counts (114 points) + Citibike are card context only, never a grade input (D76: 65% of Brooklyn addresses read zero). Registry wishlist #1–2 (Advan, Placer.ai), gap (a) |
-| Sales forecasting | SiteZeus, Kalibrate, Tango, GrowthFactor, Placer (implied via visits) | **Partial** | `revenue.py`: restaurant is the only category that passes its backtest (grade C); 9 of 15 categories shipped "not modelled" (D81) |
-| Cannibalization modeling | SiteZeus, Tango, Placer.ai, GrowthFactor | **Missing** | Not a Loci concept — Loci screens address-level daily-needs *supply*, not a single brand's store network; no per-brand portfolio model exists or is planned |
-| Consumer spend | SafeGraph Spend, Mastercard/CARTO, Earnest Analytics | **Missing** | Economics grade is D for 9/15 categories; only national CEX quintiles back the revenue model, no purchased or observed spend (gap b, registry wishlist #3, #15, #16) |
-| Demographics / psychographic segmentation | Esri Tapestry, Spatial.ai (PersonaLive), CARTO+Mastercard | **Partial** | ACS 5-yr tract estimates interpolated to address (income, age); no behavioral/lifestyle segments (gap h, registry wishlist #10 Esri, #27 Spatial.ai) |
-| Rent comps / asking rent | CoStar, CompStak, Crexi, Kalibrate | **Missing** | No rent number in the active pipeline at all; feasibility gate "reasons about rent without a rent number" (`PAID-SOURCES.md` gap c). Free fix identified (REBNY/Cushman/CBRE corridor PDFs) but not yet in `registry.yaml` |
+| Foot traffic / visit counts | Placer.ai, Unacast, Pass_by, Azira, Advan, GrowthFactor (TrafficRX) — the single most common claim in this survey | **Partial** | `transit_entries_400m` + DOT camera counts (114 points) + Citibike are card context only, never a grade input (D76: 65% of Brooklyn addresses read zero). Registry wishlist #1–2 (Advan, Placer.ai), gap (a). Notion DB reconciliation (2026-09-22) adds three more claimants — PiinPoint (mobile location/traffic data), MyTraffic (10 m-accurate footfall, 18 countries + US), Geod (foot traffic as a portfolio-scenario input) — reinforcing this as the survey's most-claimed capability |
+| Sales forecasting | SiteZeus, Kalibrate, Tango, GrowthFactor, Placer (implied via visits) | **Partial** | `revenue.py`: restaurant is the only category that passes its backtest (grade C); 9 of 15 categories shipped "not modelled" (D81). Notion DB reconciliation adds PiinPoint ("Marketmatch"), Locate.ai ("outperform the market by 15%," unverified), and Plotr ("Pulse Price") as further claimants; none of the three publishes a backtest |
+| Cannibalization modeling | SiteZeus, Tango, Placer.ai, GrowthFactor | **Missing** | Not a Loci concept — Loci screens address-level daily-needs *supply*, not a single brand's store network; no per-brand portfolio model exists or is planned. Notion DB reconciliation adds PiinPoint (network simulations for expansion/renewal/closure) and Geod (portfolio-wide open/close/convert scenario modeling), both selling this explicitly as a multi-store network product, not a single-site feature — reinforcing that it's a different product surface than Loci's single-address screen |
+| Consumer spend | SafeGraph Spend, Mastercard/CARTO, Earnest Analytics | **Missing** | Economics grade is D for 9/15 categories; only national CEX quintiles back the revenue model, no purchased or observed spend (gap b, registry wishlist #3, #15, #16). Notion DB reconciliation adds CenterCheck (card-transaction sales estimates) as a new paid candidate not yet in `registry.yaml` — see §3 |
+| Demographics / psychographic segmentation | Esri Tapestry, Spatial.ai (PersonaLive), CARTO+Mastercard | **Partial** | ACS 5-yr tract estimates interpolated to address (income, age); no behavioral/lifestyle segments (gap h, registry wishlist #10 Esri, #27 Spatial.ai). Notion DB reconciliation: SiteSeer names its demographic/behavioral backbone as AGS, Environics Analytics, MRI-Simmons and PlaceIQ — none of the four are in `registry.yaml` |
+| Rent comps / asking rent | CoStar, CompStak, Crexi, Kalibrate | **Missing** | No rent number in the active pipeline at all; feasibility gate "reasons about rent without a rent number" (`PAID-SOURCES.md` gap c). Free fix identified (REBNY/Cushman/CBRE corridor PDFs) but not yet in `registry.yaml`. Notion DB reconciliation adds three more competitors monetizing a rent number Loci lacks: RestaurantSiteFinder's rent calculator (revenue needed to hold rent <8%), Plotr's "Pulse Price" dynamic real-estate pricing model, and Accruent Lucernex's lease-administration platform |
 | Property ownership / vacancy | CoStar, Reonomy, PropertyShark, CARTO | **Partial** | Free PLUTO/ACRIS ingested (ownership, no debt/contact); LL157 storefront registry is annual and self-reported, non-filing is invisible (gap g, registry wishlist #25 Reonomy) |
-| POI truth / open-closed verification | LiveXYZ (implicit ground truth), most panel vendors | **Partial** | Multi-source corroboration + dedup (D101); closure ascertainment only ~3% via Foursquare; supervised `ground-truth` module exists but is verification-only, never a screen feature (gap e, registry wishlist #7 LiveXYZ) |
+| POI truth / open-closed verification | LiveXYZ (implicit ground truth), most panel vendors | **Partial** | Multi-source corroboration + dedup (D101); closure ascertainment only ~3% via Foursquare; supervised `ground-truth` module exists but is verification-only, never a screen feature (gap e, registry wishlist #7 LiveXYZ). Notion DB reconciliation: Plotr's Enterprise-tier "store closure prediction" is a meaningfully different claim — Plotr claims to *predict* closures, Loci's module only *verifies/corroborates* status after the fact (D101) |
 | Visitor origin | Placer.ai, Unacast (trade area), Azira | **Missing** | No mobile panel. LEHD LODES (`lodes_wac`, active) gives workplace commute flows, not shopping-trip origin — a workday proxy, not a substitute |
-| Drive-time trade areas | Esri, Alteryx, CARTO, Kalibrate, Tango | **Missing by design** | Loci is walk-network only (NYC daily-needs framing); no drive-time isochrone capability exists or is planned — a deliberate scope choice, not an oversight |
+| Drive-time trade areas | Esri, Alteryx, CARTO, Kalibrate, Tango | **Missing by design** | Loci is walk-network only (NYC daily-needs framing); no drive-time isochrone capability exists or is planned — a deliberate scope choice, not an oversight. Notion DB reconciliation adds Maptive (Drive Time Polygons) and Geod (drive-time trade areas with traffic-pattern weighting) as further claimants — does not change the scope decision |
 | Climate / flood risk overlay | GrowthFactor ("Climate Intelligence") | **Missing** | Nothing in `registry.yaml` (active or wishlist) touches flood zones; free FEMA/NYC layer identified in this pass (§3 below) |
 | Co-tenancy / tenant-mix fit recommendation | Placer.ai (Void Analysis ranking), CARTO | **Missing** | Chain watchlist tracks who is expanding, not who fits next to whom; no recommendation-engine layer exists |
 
@@ -134,6 +142,20 @@ only, not shopping-trip origin). Every source that measures actual visitor
 origin (Placer.ai, Unacast, Azira, Veraset) is a paid mobile panel already
 surveyed and ranked in the wishlist (gap a). Not re-litigated here.
 
+### Consumer spend / sales estimates (gap b) — new candidate from the Notion reconciliation
+
+- **CenterCheck** — paid, verified pricing: \$4K/yr single state, \$600/mo
+  regional, \$1,250/mo national per seat. Store-level sales estimates from
+  anonymized Visa/Mastercard/Discover/Amex card-transaction data (not a
+  modeled proxy), plus customer-origin and demographics.
+  https://centercheck.com · not in `registry.yaml` (checked: no
+  `centercheck` id, active or wishlist). The owner's own Notion note calls
+  it "~600 chains, weak on independents" and flags it as a "possible data
+  partnership" rather than a straight buy — Loci's daily-needs categories
+  skew heavily independent, so this only partially closes gap (b). Worth a
+  conversation, not a P1 purchase; not promoted into §1's top line for that
+  reason.
+
 ---
 
 ## 4. Competitor claims, with URLs
@@ -155,6 +177,55 @@ surveyed and ranked in the wishlist (gap a). Not re-litigated here.
 | **Alteryx** | Spatial + demographic + performance data unified for drive-time catchments, competitive-landscape analysis, predictive location-potential models, no-code workflows | [alteryx.com — site selection solution brief (PDF)](https://www.alteryx.com/wp-content/uploads/media/solution-brief/solutions-brief-site-selection.pdf) |
 | **CoStar** | Property/lease listings, comps, market analytics for CRE brokers and lenders (already in Loci's own price map, GTM.md §3) | GTM.md internal citation; [pricelevel.com/vendors/costar](https://www.pricelevel.com/vendors/costar/pricing) |
 | **SizeUp / LocalIntel** | Free, EDO-white-labelled market analysis for small businesses — competitive benchmarks, customer/supplier/competitor identification, "where to locate" guidance | [company.sizeup.com — small business PDF](http://company.sizeup.com/wp-content/uploads/2019/09/SizeUpLBI-Utilities-Digital.pdf), [selectmesa.com/small-businesses-startups/tools/mesa-sizeup](https://selectmesa.com/small-businesses-startups/tools/mesa-sizeup) |
+| **PiinPoint** | Site-selection + network-planning platform: "Sitematch" automated site scoring/submission, "Marketmatch" predictive sales forecasting, mobile-location traffic/customer-origin data, demographic insights, trade-area mapping, cannibalization modeling, network simulations for expansion/renewal/closure decisions | [piinpoint.com](https://www.piinpoint.com) |
+| **Atlas** | AI-native GIS ("Navi" conversational map-building assistant) with live-synced data connectors, automated buffer/exclusion spatial analysis, portfolio dashboards, site selection/screening — positions itself as GIS for non-specialists | [atlas.co](https://atlas.co) |
+| **Maptive** | Spreadsheet-to-map GIS with 60+ features: Territory Manager, Heat Mapping, Drive Time Polygons, US/Canada census demographic overlay, retail site-selection and CRE trade-area support | [maptive.com](https://www.maptive.com) |
+| **RestaurantSiteFinder** | Concept+address → 1–10 opportunity score and GO/NO-GO verdict; competitor map from Google Places + review sentiment; 3 suggested concepts; rent calculator (revenue needed to hold rent <8%); Premium adds hourly foot traffic, PDF export, site comparison. Direct site fetch returned only the page title (thin/gated content) — capability claims below are from the owner's own Notion notes | Notion DB; [restaurantsitefinder.com](https://restaurantsitefinder.com) |
+| **Locate.ai** | "Portfolio Intelligence" scoring 1,100+ variables/site, "Market Roadmap" ranking all US markets, revenue forecasting, cannibalization-risk assessment, site pipeline management, lease-execution advisory; claims sites picked via the platform "outperform the market by 15%" (unverified) | [locate.ai](https://locate.ai) |
+| **Plotr** (formerly IdealSpot) | Location data + "real-time consumer trends" for site and pricing decisions; Notion adds a "Pulse Price" dynamic real-estate pricing model and store-closure prediction at the Enterprise tier — notably *predictive*, where Loci's ground-truth module is verification-only | [plotr.com](https://plotr.com) |
+| **Accruent Lucernex** | Real-estate lifecycle software for lease administration and site/construction planning; Notion adds "predictive store performance" as a claimed capability (site fetch surfaced no elaboration) | [accruent.com](https://www.accruent.com) |
+| **MyTraffic** | "Gini" AI geospatial assistant analyzing footfall, competitive density, demographics; DataLibrary, AudienceLabs (digital-to-store conversion), SmartMonitor (shopping-center analytics); claims 10M locations at 10 m accuracy across 18 European countries + US; clients include Carrefour, Five Guys | [mytraffic.io](https://www.mytraffic.io) |
+| **CenterCheck** | Store-level sales estimates from anonymized Visa/Mastercard/Discover/Amex card-transaction data ("not proxies"), customer-origin/demographics, client-ready reporting; covers ~600 major chains (Target, Chick-fil-A, Whole Foods, etc.). New sourcing candidate — see §3 | [centercheck.com](https://centercheck.com) |
+| **MapZot.AI** | Site claims AccuSite.AI, TrafficRX, Mobilytics, Globe.AI, Void.AI, PlannedDev — **identical named features to GrowthFactor's own product suite** (row above). Likely the same underlying product, a reseller/white-label relationship, or shared marketing copy rather than an independent capability set; not counted as a distinct new capability source | [mapzot.ai](https://www.mapzot.ai) |
+| **SiteSeer** | Demographic Reports, Void Analysis, Territory Planning, Heat Maps, custom dashboards; powered by third-party panels AGS, Environics Analytics, MRI-Simmons, PlaceIQ (none in `registry.yaml`) | [siteseer.com](https://www.siteseer.com) |
+| **Geod** | Network-scenario software: simulate openings/closings/conversions and measure portfolio-wide impact, not single-site; drive-time trade areas, Census+POI demographics, competition weighting by brand substitutability, per-store cannibalization, and — notably — decomposable scoring that "reconciles predictions against actual outcomes," i.e. a competitor explicitly claiming to backtest itself | [geod.app](https://www.geod.app) |
+| **Sitewise** | No public URL in the owner's Notion row (Website field blank). Owner's own notes: "market-planning specialist," category Decision tool (chains), status "Not yet researched" — no capability claim to evaluate yet | Notion DB only, no URL |
+
+### Owner-recorded notes on already-covered competitors (Notion reconciliation)
+
+The owner's Notion rows for the 10 competitors already in the table above
+add pricing, funding, and risk-framing detail this memo didn't have. None
+contradicts a capability claim; all are additive.
+
+- **GrowthFactor** — Notion adds funding/scale detail absent from this
+  memo: \$5.2M seed (Mar 2026), ~\$1M ARR, 30+ customers, owner's Threat
+  rating "High." Its Labs Discovery tier is priced at \$5K/30 days but
+  gated behind 40+ mature stores of the buyer's own — a bar most Loci
+  prospects (single-location or early-stage) will not clear.
+- **Placer.ai** — Notion adds \$1.5B valuation / ~\$100M ARR (2024) and a
+  verified price band (~\$12K–50K/yr, freemium tier exists); owner rates
+  it Threat "Medium," not "High," despite foot traffic being the survey's
+  most-claimed capability (§1 #5) — the owner's own risk read is more
+  measured than the capability gap alone would suggest.
+- **Esri ArcGIS Business Analyst** — Notion prices the base product at
+  ~\$2,500/user/yr, materially below the \$5,200/yr `registry.yaml`
+  wishlist #10 price for "Business Analyst Advanced" — likely different
+  SKUs (base vs. Advanced tier), not a contradiction, but worth confirming
+  before purchase.
+- **SizeUp** — Notion adds a GTM-relevant detail this memo lacks: SizeUp's
+  distribution is through SBA lenders, banks, and econ-dev orgs — the same
+  lender channel Loci is targeting. A potential channel conflict or
+  partnership angle, not just a capability competitor.
+- **Buxton** — Notion's framing ("consultative, slow, expensive," Threat
+  "Low") is consistent with the memo's "legacy, analyst-led" read; adds a
+  price point (~\$20K+/yr).
+- **Unacast** — Notion rates Threat "Low" despite claiming visitor origin
+  (a Missing capability for Loci) — the owner reads it as more of a data
+  vendor than a decision-tool threat, consistent with the memo's
+  "borderline data vendor" framing.
+- **SiteZeus, CARTO, Kalibrate, Tango** — Notion's notes (enterprise
+  pricing, consulting-led, vertical-specific) are consistent with the
+  memo; no new capability claim or contradiction.
 
 ### Claims that look like marketing no data could actually back
 
@@ -198,4 +269,5 @@ competitor list, and contributed nothing to this survey. Capability claims
 were pulled from each vendor's own marketing/docs pages via web search
 2026-09-22; prices were not re-verified here — `PAID-SOURCES.md` already
 carries dated, sourced pricing for every vendor that is also a Loci
-wishlist entry.
+wishlist entry. Reconciled against the owner's Notion Competitors database
+on 2026-09-22 (23 rows; 13 added).
