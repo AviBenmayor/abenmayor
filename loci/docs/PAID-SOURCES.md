@@ -2,7 +2,7 @@
 
 **GENERATED — do not edit.** Rendered by `loci gen-paid-sources` from the `status: wishlist` entries in [`src/loci/registry.yaml`](../src/loci/registry.yaml). `loci check-sources` fails if this file differs from a fresh render, so a price here is a price in the registry with its dated evidence beside it.
 
-Surveyed 2026-09-13 against vendor pricing pages, published terms, public procurement records and 2025–2026 press. **36 candidates** — 10 P1, 18 P2, 8 P3.
+Surveyed 2026-09-13 against vendor pricing pages, published terms, public procurement records and 2025–2026 press. **39 candidates** — 10 P1, 19 P2, 10 P3.
 
 **Gap letters** map to the named holes in `docs/CONTEXT.md` and `docs/CHECKPOINT.md`: (a) Foot traffic · (b) Spend and the economics grade · (c) Rent per square foot · (d) Openings, closings and the tenant pipeline · (e) POI truth · (f) Chain expansion · (g) Ownership and vacancy · (h) Demographics beyond ACS · (i) Sidewalk counts.
 
@@ -10,9 +10,9 @@ Surveyed 2026-09-13 against vendor pricing pages, published terms, public procur
 
 | | Annual USD |
 |---|---|
-| Whole wishlist, as booked (verified price where one exists, tier floor otherwise) | **$311,565** |
-| Whole wishlist, every entry at its tier floor | $223,200 |
-| The subset with a VERIFIED price (13 of 36 entries) | $86,457 |
+| Whole wishlist, as booked (verified price where one exists, tier floor otherwise) | **$343,565** |
+| Whole wishlist, every entry at its tier floor | $253,200 |
+| The subset with a VERIFIED price (14 of 39 entries) | $98,457 |
 | P1 only, as booked | $74,300 |
 
 ---
@@ -37,26 +37,29 @@ Surveyed 2026-09-13 against vendor pricing pages, published terms, public procur
 | 14 | P2 | **BestTime.app busyness API** — BestTime.app | foot traffic | a | $1–10k/yr | **$1,152/yr** (verified) | The ToS could not be fully extracted and contains no discoverable resale prohibition — but absence of evidence is not permission … | low | high |
 | 15 | P2 | **Earnest Analytics (Vela / Orion), incl. ZIP-level in-store spend** — Earnest Analytics (acquired by Consumer Edge, April 2025) | spend | b | quote only | $10,000/yr (tier floor — no price published) | RED FLAG — the Dash terms restrict use to an 'investment/financial services firm or internal business analysis' and bar assembling a database from … | med | med |
 | 16 | P2 | **Mastercard Retail Location Insights** — Mastercard Data & Services (delivered with CARTO) | spend | b | quote only | $10,000/yr (tier floor — no price published) | Terms page blocked automated access; unconfirmed … | high | med |
-| 17 | P2 | **Crexi Intelligence** — Crexi | rent | c | $1–10k/yr | $2,988/yr (reported) | No litigation history found against it and a materially more permissive posture than CoStar, but terms for embedding in a sold product are unverified. | med | med |
-| 18 | P2 | **PincusCo NYC real-estate deal tracking** — PincusCo Media | pipeline | d | $1–10k/yr | **$1,500/yr** (verified) | Editorial subscription; systematic extraction into a sold product would need permission. | high | high |
-| 19 | P2 | **Placekey** — Placekey (SafeGraph-originated open standard) | POI | e | $1–10k/yr | **$3,000/yr** (verified) | Open standard, partners include SafeGraph, Veraset, CARTO, Esri, Cuebiq, Regrid … | low | high |
-| 20 | P2 | **Yelp Places API (formerly Fusion)** — Yelp | POI | e | $1–10k/yr | **$2,748/yr** (verified) | Standard API terms with caching limits; opening dates, closure dates and review-velocity fields are NOT documented and are likely absent, which is … | low | high |
-| 21 | P2 | **Outscraper Google Maps extraction** — Outscraper | POI | e | <$1k/yr | $300/yr (reported) | MATERIAL RISK — scraping Google Maps breaches Google's terms (a contract issue, not a CFAA crime per case law), and Outscraper's marketing grants no … | low | high |
-| 22 | P2 | **Google Maps Businesses dataset** — Bright Data | POI | e | $1–10k/yr | **$250/yr** (verified) | Same Google-terms exposure as Outscraper; no explicit resale licence granted … | low | high |
-| 23 | P2 | **RetailStat Location (incl. former Creditntell)** — RetailStat | chains | f | quote only | $10,000/yr (tier floor — no price published) | Unpublished. | high | med |
-| 24 | P2 | **Coresight US Store Openings/Closures Tracker** — Coresight Research | chains | f | quote only | $10,000/yr (tier floor — no price published) | Research subscription; republication restricted. | high | med |
-| 25 | P2 | **Reonomy** — Altus Group | property | g | $1–10k/yr | **$4,800/yr** (verified) | Self-serve seat is for internal use; bulk/derived redistribution requires the enterprise feed and separate terms. | med | high |
-| 26 | P2 | **PropertyShark** — Yardi | property | g | $1–10k/yr | **$719/yr** (verified) | UI-only by design; bulk or automated extraction is restricted. Most of the underlying content is already free in PLUTO/ACRIS, which Loci ingests. | high | high |
-| 27 | P2 | **PersonaLive segmentation** — Spatial.ai | demographics | h | $10–50k/yr | **$5,100/yr** (verified) | Redistribution terms for a resold product are not published and need direct confirmation. | med | med |
-| 28 | P2 | **Computer vision on NYC DOT traffic camera frames (BUILD, not buy)** — self-built on NYCTMC feeds | sidewalk | i | hardware/compute | $4,320/yr (reported) | MATERIAL RISK — no published, versioned terms-of-use text is retrievable (the site is a JS SPA and the terms link is client-side routed), but NYC … | high | med |
-| 29 | P3 | **Dewey Data (Advan/SafeGraph reseller channel)** — Dewey Data | foot traffic | a | $1–10k/yr | **$3,600/yr** (verified) | DISQUALIFIED … | low | high |
-| 30 | P3 | **CE Vision** — Consumer Edge | spend | b | quote only | $10,000/yr (tier floor — no price published) | Public terms of use bar reselling, redistributing or creating derivative commercial products without written consent. | med | med |
-| 31 | P3 | **CoStar Retail** — CoStar Group | rent | c | $10–50k/yr | $15,000/yr (reported) | NON-STARTER as written. CoStar is the most litigious vendor in this space, with 30+ copyright and trade-secret suits on record (CoStar v … | high | high |
-| 32 | P3 | **D&B Data Blocks / Direct+ / Hoovers** — Dun & Bradstreet | pipeline | d | $10–50k/yr | $41,400/yr (reported) | Enterprise licences are per-use-case; redistribution requires specific terms. | med | med |
-| 33 | P3 | **Firefly (US foodservice operator database)** — Datassential | chains | d | quote only | $10,000/yr (tier floor — no price published) | Datassential's published Additional Product Terms explicitly bar embedding their data or reports into a third-party product for resale … | high | high |
-| 34 | P3 | **Lightcast job postings + LMI** — Lightcast (formerly Emsi Burning Glass) | pipeline | d | $10–50k/yr | **$7,500/yr** (verified) | Terms explicitly bar redistributing the dataset to third parties on an on-demand or standalone basis — usable as an internal signal only. | med | high |
-| 35 | P3 | **Vexcel Intelligence** — Vexcel Data Program (Vexcel Imaging US, Inc.) | property | e | quote only | $10,000/yr (tier floor — no price published) | DISQUALIFYING as written … | med | low |
-| 36 | P3 | **PRIZM Premier / Claritas 360** — Claritas | demographics | h | quote only | $10,000/yr (tier floor — no price published) | Sharpest licence restriction found in the entire survey … | med | high |
+| 17 | P2 | **Facteus card transaction data** — Facteus | spend | b | quote only | $10,000/yr (tier floor — no price published) | UNVERIFIED — no terms-of-service text could be retrieved … | med | low |
+| 18 | P2 | **Crexi Intelligence** — Crexi | rent | c | $1–10k/yr | $2,988/yr (reported) | No litigation history found against it and a materially more permissive posture than CoStar, but terms for embedding in a sold product are unverified. | med | med |
+| 19 | P2 | **PincusCo NYC real-estate deal tracking** — PincusCo Media | pipeline | d | $1–10k/yr | **$1,500/yr** (verified) | Editorial subscription; systematic extraction into a sold product would need permission. | high | high |
+| 20 | P2 | **Placekey** — Placekey (SafeGraph-originated open standard) | POI | e | $1–10k/yr | **$3,000/yr** (verified) | Open standard, partners include SafeGraph, Veraset, CARTO, Esri, Cuebiq, Regrid … | low | high |
+| 21 | P2 | **Yelp Places API (formerly Fusion)** — Yelp | POI | e | $1–10k/yr | **$2,748/yr** (verified) | Standard API terms with caching limits; opening dates, closure dates and review-velocity fields are NOT documented and are likely absent, which is … | low | high |
+| 22 | P2 | **Outscraper Google Maps extraction** — Outscraper | POI | e | <$1k/yr | $300/yr (reported) | MATERIAL RISK — scraping Google Maps breaches Google's terms (a contract issue, not a CFAA crime per case law), and Outscraper's marketing grants no … | low | high |
+| 23 | P2 | **Google Maps Businesses dataset** — Bright Data | POI | e | $1–10k/yr | **$250/yr** (verified) | Same Google-terms exposure as Outscraper; no explicit resale licence granted … | low | high |
+| 24 | P2 | **RetailStat Location (incl. former Creditntell)** — RetailStat | chains | f | quote only | $10,000/yr (tier floor — no price published) | Unpublished. | high | med |
+| 25 | P2 | **Coresight US Store Openings/Closures Tracker** — Coresight Research | chains | f | quote only | $10,000/yr (tier floor — no price published) | Research subscription; republication restricted. | high | med |
+| 26 | P2 | **Reonomy** — Altus Group | property | g | $1–10k/yr | **$4,800/yr** (verified) | Self-serve seat is for internal use; bulk/derived redistribution requires the enterprise feed and separate terms. | med | high |
+| 27 | P2 | **PropertyShark** — Yardi | property | g | $1–10k/yr | **$719/yr** (verified) | UI-only by design; bulk or automated extraction is restricted. Most of the underlying content is already free in PLUTO/ACRIS, which Loci ingests. | high | high |
+| 28 | P2 | **PersonaLive segmentation** — Spatial.ai | demographics | h | $10–50k/yr | **$5,100/yr** (verified) | Redistribution terms for a resold product are not published and need direct confirmation. | med | med |
+| 29 | P2 | **Computer vision on NYC DOT traffic camera frames (BUILD, not buy)** — self-built on NYCTMC feeds | sidewalk | i | hardware/compute | $4,320/yr (reported) | MATERIAL RISK — no published, versioned terms-of-use text is retrievable (the site is a JS SPA and the terms link is client-side routed), but NYC … | high | med |
+| 30 | P3 | **Dewey Data (Advan/SafeGraph reseller channel)** — Dewey Data | foot traffic | a | $1–10k/yr | **$3,600/yr** (verified) | DISQUALIFIED … | low | high |
+| 31 | P3 | **CE Vision** — Consumer Edge | spend | b | quote only | $10,000/yr (tier floor — no price published) | Public terms of use bar reselling, redistributing or creating derivative commercial products without written consent. | med | med |
+| 32 | P3 | **CoStar Retail** — CoStar Group | rent | c | $10–50k/yr | $15,000/yr (reported) | NON-STARTER as written. CoStar is the most litigious vendor in this space, with 30+ copyright and trade-secret suits on record (CoStar v … | high | high |
+| 33 | P3 | **D&B Data Blocks / Direct+ / Hoovers** — Dun & Bradstreet | pipeline | d | $10–50k/yr | $41,400/yr (reported) | Enterprise licences are per-use-case; redistribution requires specific terms. | med | med |
+| 34 | P3 | **Firefly (US foodservice operator database)** — Datassential | chains | d | quote only | $10,000/yr (tier floor — no price published) | Datassential's published Additional Product Terms explicitly bar embedding their data or reports into a third-party product for resale … | high | high |
+| 35 | P3 | **Lightcast job postings + LMI** — Lightcast (formerly Emsi Burning Glass) | pipeline | d | $10–50k/yr | **$7,500/yr** (verified) | Terms explicitly bar redistributing the dataset to third parties on an on-demand or standalone basis — usable as an internal signal only. | med | high |
+| 36 | P3 | **Vexcel Intelligence** — Vexcel Data Program (Vexcel Imaging US, Inc.) | property | e | quote only | $10,000/yr (tier floor — no price published) | DISQUALIFYING as written … | med | low |
+| 37 | P3 | **Dataplor POI + foot traffic** — Dataplor | POI | e | quote only | $10,000/yr (tier floor — no price published) | DISQUALIFYING as written … | high | low |
+| 38 | P3 | **BatchData Property Search API** — BatchData | property | g | $10–50k/yr | **$12,000/yr** (verified) | Default terms are internal-use-only and explicitly prohibit resale, sublicensing or redistribution without an executed Reseller Addendum (VP-level … | med | high |
+| 39 | P3 | **PRIZM Premier / Claritas 360** — Claritas | demographics | h | quote only | $10,000/yr (tier floor — no price published) | Sharpest licence restriction found in the entire survey … | med | high |
 
 ---
 
@@ -179,6 +182,17 @@ parameter lambda its first out-of-sample test.
 - *Price:* No price found anywhere — Vendr, G2 and press are all blank. A Vendr '$100-125k' Mastercard entry could not be attributed to this specific product.
 - *Licence:* Terms page blocked automated access; unconfirmed. Mastercard's adjacent SpendingPulse product explicitly bars redistribution, which is a signal about house style.
 - *Evidence:* [https://carto.com/solutions/mastercard/](https://carto.com/solutions/mastercard/) (2026-09-13)
+
+**P2 · Facteus card transaction data** (Facteus) — $10,000/yr (tier floor — no price published), med effort, low confidence
+
+- *Closes:* (b) Spend — a second store/address-grain card-panel option alongside SafeGraph Spend, which would let D81's leakage parameter lambda be checked against a second independent panel rather than accepted "right by construction" on one.
+- *Why this rank:* Matches SafeGraph Spend's address grain, which is the only reason to rank it above the ZIP-grain (Earnest) and census-block (Mastercard) alternatives, but it does not outrank SafeGraph itself: SafeGraph at least has a characterizable license_note, while Facteus's marketing is internally inconsistent on panel size (185M+ cards on its own solutions page vs 22M+ on its unclaimed Datarade profile vs a third-party comparison citing 40M+) and no licence text was found to verify redistribution rights at all.
+- *Grain:* Store-level (merchant location) — comparable to SafeGraph Spend's POI grain and finer than Earnest's ZIP or Mastercard's census block.
+- *NYC coverage:* National panel described as 20+ banks/credit unions/fintechs, 185M+ active cards and 5M+ merchant locations on Facteus's own marketing; no NYC or borough-level panel share published, and the panel-size figure itself is not consistent across Facteus's own sources.
+- *Cannot see:* Card-panel share is unpublished and the reported panel size varies by 8x across Facteus's own materials (22M-185M cards), which is a data-quality flag on the vendor's public claims, not just an unaudited panel. Cash spend is invisible, same structural bias as every card-panel vendor in this category.
+- *Price:* No published price anywhere; entirely demo-gated, no G2/Vendr/AWS listing price found. Cost books the quote_only floor.
+- *Licence:* UNVERIFIED — no terms-of-service text could be retrieved. Facteus's own privacy notice identifies the operating entity as a data broker under Texas law, which at minimum requires registry compliance but says nothing about redistribution rights. Commercial site-selection use is not marketed the way Advan's or Placer's is, so permission for a sold, card-facing product would need to be negotiated and confirmed before use, not assumed.
+- *Evidence:* [https://facteus.com/solutions-for-business](https://facteus.com/solutions-for-business) (2026-09-22) · [https://facteus.com/data](https://facteus.com/data) (2026-09-22) · [https://datarade.ai/data-providers/facteus/profile](https://datarade.ai/data-providers/facteus/profile) (2026-09-22)
 
 ### (c) Rent per square foot
 
@@ -461,6 +475,8 @@ Each of these was a plausible buy until something specific killed it. The reason
 | **Firefly (US foodservice operator database)** — Datassential | d | $10,000/yr (tier floor — no price published) | Duplicates Loci's strongest existing asset (DOHMH near-census) and is resale-restricted. Technomic/Ignite has the same shape and no published terms at all. Datassential's published Additional Product Terms explicitly bar embedding their data or reports into a third-party product for resale … |
 | **Lightcast job postings + LMI** — Lightcast (formerly Emsi Burning Glass) | d | **$7,500/yr** (verified) | Right idea, wrong grain; revisit only if Lightcast can demonstrate address-resolved postings. Terms explicitly bar redistributing the dataset to third parties on an on-demand or standalone basis — usable as an internal signal only. |
 | **Vexcel Intelligence** — Vexcel Data Program (Vexcel Imaging US, Inc.) | e | $10,000/yr (tier floor — no price published) | Mostly an upgrade of an input Loci already has for free (nyc_orthoimagery: finer resolution, 3x/yr vs biennial refresh, plus oblique and AI attributes) rather than a new capability, and the licence explicitly names Loci's own use case (site-selection/real-estate analytics) as prohibited. P3 on licence grounds, same as CoStar — checked and rejected so it isn't relitigated, though worth revisiting if Vexcel ever offers a redistribution rider. DISQUALIFYING as written … |
+| **Dataplor POI + foot traffic** — Dataplor | e | $10,000/yr (tier floor — no price published) | Product fit for gap (e) is genuinely strong — a second, differently-sourced human-validated POI layer alongside LiveXYZ (P1) — but the licence explicitly forbids the two uses Loci would actually make of it (redistribution on a sold card; AI/LLM training or inference over the records), which is a harder block than an unpublished price. P3 on licence grounds, checked and rejected so it is not relitigated, worth revisiting only if Dataplor offers a redistribution/AI-use rider. DISQUALIFYING as written … |
+| **BatchData Property Search API** — BatchData | g | **$12,000/yr** (verified) | Same shape of finding as PropertyShark (P2): a national product whose core property/ownership/lien content duplicates NYC open data Loci already has for free. Unlike PropertyShark it is not NYC-native (no BBL key, no borough panel-density figure), and its one genuinely new field — owner contact for skip tracing — is a capability the screen has no current use for (Loci is not an owner-outreach product). P3 rather than P2 because the free-data overlap is total for the fields the screen actually uses, and the differentiated field is unused. Default terms are internal-use-only and explicitly prohibit resale, sublicensing or redistribution without an executed Reseller Addendum (VP-level sign-off, flowdown of restrictions to sub-customers, revocable on 30 … |
 | **PRIZM Premier / Claritas 360** — Claritas | h | $10,000/yr (tier floor — no price published) | Industry standard and contractually incompatible; Spatial.ai or Esri are the workable substitutes. Sharpest licence restriction found in the entire survey … |
 
 ---

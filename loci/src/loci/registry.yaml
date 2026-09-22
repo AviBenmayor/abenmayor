@@ -4127,3 +4127,203 @@ sources:
       Cost books Vendr's $41,400/yr median across 109 deals.
     evidence:
       - {url: "https://www.dnb.com/products/marketing-sales/dnb-hoovers/pricing.html", date: 2026-09-13}
+
+  - id: paid_facteus_transaction_data
+    name: Facteus card transaction data
+    vendor: Facteus
+    tier: universal
+    role: control
+    status: wishlist
+    category: spend
+    priority: P2
+    url: "https://facteus.com/data"
+    access: >
+      API, plus AWS Data Exchange, Snowflake Marketplace, Google Cloud Analytics
+      Hub and Databricks Marketplace listings. Demo-gated; unclaimed Datarade
+      profile.
+    grain: >
+      Store-level (merchant location) — comparable to SafeGraph Spend's POI grain
+      and finer than Earnest's ZIP or Mastercard's census block.
+    refresh: Daily, with a 1-2 day lag.
+    measures: >
+      Spend, % change in spend, transaction counts, % change in transactions, AOV
+      and % change in AOV per merchant location, sourced from bank/fintech card
+      panels rather than a single network.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: med
+    confidence: low
+    price_note: >
+      No published price anywhere; entirely demo-gated, no G2/Vendr/AWS listing
+      price found. Cost books the quote_only floor.
+    license_note: >
+      UNVERIFIED — no terms-of-service text could be retrieved. Facteus's own
+      privacy notice identifies the operating entity as a data broker under Texas
+      law, which at minimum requires registry compliance but says nothing about
+      redistribution rights. Commercial site-selection use is not marketed the way
+      Advan's or Placer's is, so permission for a sold, card-facing product would
+      need to be negotiated and confirmed before use, not assumed.
+    closes_gap: >
+      (b) Spend — a second store/address-grain card-panel option alongside
+      SafeGraph Spend, which would let D81's leakage parameter lambda be checked
+      against a second independent panel rather than accepted "right by
+      construction" on one.
+    priority_reason: >
+      Matches SafeGraph Spend's address grain, which is the only reason to rank it
+      above the ZIP-grain (Earnest) and census-block (Mastercard) alternatives, but
+      it does not outrank SafeGraph itself: SafeGraph at least has a characterizable
+      license_note, while Facteus's marketing is internally inconsistent on panel
+      size (185M+ cards on its own solutions page vs 22M+ on its unclaimed Datarade
+      profile vs a third-party comparison citing 40M+) and no licence text was
+      found to verify redistribution rights at all.
+    nyc_coverage: >
+      National panel described as 20+ banks/credit unions/fintechs, 185M+ active
+      cards and 5M+ merchant locations on Facteus's own marketing; no NYC or
+      borough-level panel share published, and the panel-size figure itself is not
+      consistent across Facteus's own sources.
+    bias: >
+      Card-panel share is unpublished and the reported panel size varies by 8x
+      across Facteus's own materials (22M-185M cards), which is a data-quality flag
+      on the vendor's public claims, not just an unaudited panel. Cash spend is
+      invisible, same structural bias as every card-panel vendor in this category.
+    evidence:
+      - {url: "https://facteus.com/solutions-for-business", date: 2026-09-22}
+      - {url: "https://facteus.com/data", date: 2026-09-22}
+      - {url: "https://datarade.ai/data-providers/facteus/profile", date: 2026-09-22}
+
+  - id: paid_dataplor_poi
+    name: Dataplor POI + foot traffic
+    vendor: Dataplor
+    tier: universal
+    role: poi
+    status: wishlist
+    category: poi
+    priority: P3
+    url: "https://www.dataplor.com/"
+    access: >
+      DaaS subscription; delivery via S3, SFTP, Snowflake, Box or Google Drive in
+      CSV/JSON. Explorer web UI also available. Demo-gated; no self-serve pricing.
+    grain: >
+      Per-POI records (370M+ global claimed) plus a separate foot-traffic layer
+      keyed to the same POIs.
+    refresh: >
+      Places refreshed weekly; foot traffic updated monthly.
+    measures: >
+      POI attributes (name, category, address, hours, contact) collected via a
+      human-in-the-loop verification process layered on AI/ML extraction, plus a
+      2025-launched mobility/foot-traffic product on the same POI keys.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: high
+    confidence: low
+    price_note: >
+      No published price anywhere; entirely demo-gated. Dataplor's own sample
+      agreement describes annual-in-advance DaaS subscriptions with multiyear terms
+      but states no dollar figures. Cost books the quote_only floor.
+    license_note: >
+      DISQUALIFYING as written. Dataplor's published sample Primary Services
+      Agreement restricts Records to "internal business purposes" and explicitly
+      bars selling, reselling, distributing, licensing, sublicensing, renting or
+      otherwise making the Services/Records available to any third party;
+      publishing or exposing Records via an API, dashboard or public tool; using
+      Records to train ML/AI models; and contributing Records to data clean rooms
+      or open datasets. Every one of those is close to what a Loci card sold to a
+      third party, or an LLM-based matching pipeline built on the data, would do. A
+      negotiated redistribution/AI-use rider would be required before any use
+      beyond internal review — same posture as Vexcel and Datassential, both
+      already P3 on licence grounds.
+    closes_gap: >
+      (e) POI truth — human-in-the-loop validation is a real answer to the "who
+      verifies this is actually open" question that Loci's free POI sources (Google
+      Places scrapes, OSM, city licensing data) cannot answer on their own, and the
+      companion foot-traffic layer would double as a second (a) Foot traffic
+      candidate on the same keys.
+    priority_reason: >
+      Product fit for gap (e) is genuinely strong — a second, differently-sourced
+      human-validated POI layer alongside LiveXYZ (P1) — but the licence explicitly
+      forbids the two uses Loci would actually make of it (redistribution on a sold
+      card; AI/LLM training or inference over the records), which is a harder block
+      than an unpublished price. P3 on licence grounds, checked and rejected so it
+      is not relitigated, worth revisiting only if Dataplor offers a
+      redistribution/AI-use rider.
+    nyc_coverage: >
+      Global POI count (370M+) is published; no NYC or US-specific panel density
+      figure found. LiveXYZ and Loci's existing free POI sources are NYC-native by
+      comparison.
+    bias: >
+      "Human-in-the-loop" is Dataplor's own characterization of its QA process, not
+      an independently audited accuracy figure; no NYC-specific validation rate is
+      published. Foot-traffic layer is newer (launched 2025) and monthly refresh is
+      coarser than the weekly POI refresh it rides on.
+    evidence:
+      - {url: "https://www.dataplor.com/foot-traffic-data/", date: 2026-09-22}
+      - {url: "https://www.dataplor.com/resources/blog/new-mobility-product-debuts/", date: 2026-09-22}
+      - {url: "https://www.dataplor.com/sample-primary-services-agreement/", date: 2026-09-22}
+
+  - id: paid_batchdata_property
+    name: BatchData Property Search API
+    vendor: BatchData
+    tier: universal
+    role: control
+    status: wishlist
+    category: property
+    priority: P3
+    url: "https://batchdata.io/pricing"
+    access: >
+      REST API (pay-as-you-go and monthly tiers), plus bulk data delivery. No
+      contract or minimum required on the entry tiers.
+    grain: >
+      Per-property record, national (155M+ US properties); not BBL-keyed, would
+      need address/parcel matching onto Loci's schema.
+    refresh: Daily.
+    measures: >
+      240+ core property data points, 140+ mortgage/open-lien points, 20+
+      pre-foreclosure points, plus skip-tracing owner contact (phone, email,
+      mailing address, DNC status) as a separate add-on product.
+    price_tier: 10k_50k_yr
+    cost: {amount: 12000, unit: year}
+    cost_basis: verified
+    integration_effort: med
+    confidence: high
+    price_note: >
+      VERIFIED published tiers on batchdata.io/pricing: Property Data Growth
+      $1,000/mo (100k records/mo) up to Enterprise $10,000/mo (3M records/mo).
+      Skip Tracing is priced separately, $2,000-$20,000/mo across the same tiers.
+      Cost books the cheapest Property Data tier, $1,000/mo = $12,000/yr.
+    license_note: >
+      Default terms are internal-use-only and explicitly prohibit resale,
+      sublicensing or redistribution without an executed Reseller Addendum
+      (VP-level sign-off, flowdown of restrictions to sub-customers, revocable on
+      30 days' notice), and cap any single extraction at 3% of the database. Real
+      estate analytics and site selection are named as permitted internal uses.
+      Same posture as Reonomy: usable internally out of the box, but a sold
+      Loci card would need the negotiated reseller path.
+    closes_gap: >
+      (g) Property — mainly by way of owner-contact enrichment (skip tracing),
+      which PLUTO and ACRIS do not provide; the ownership, assessment, mortgage and
+      lien fields themselves substantially overlap what Loci already ingests for
+      free from PLUTO/ACRIS/DOF.
+    priority_reason: >
+      Same shape of finding as PropertyShark (P2): a national product whose core
+      property/ownership/lien content duplicates NYC open data Loci already has for
+      free. Unlike PropertyShark it is not NYC-native (no BBL key, no borough
+      panel-density figure), and its one genuinely new field — owner contact for
+      skip tracing — is a capability the screen has no current use for (Loci is not
+      an owner-outreach product). P3 rather than P2 because the free-data overlap is
+      total for the fields the screen actually uses, and the differentiated field is
+      unused.
+    nyc_coverage: >
+      National dataset described as 155M+ properties from 3,200+ sources
+      (county records, assessors, MLS); no NYC-specific coverage or match-rate
+      figure published, unlike PLUTO/ACRIS which Loci already validates directly
+      against NYC's own parcel key.
+    bias: >
+      Aggregated from third-party sources (county records, MLS, proprietary feeds)
+      with no BBL key, so NYC records would need an address-match step that can
+      silently drop or misjoin condo/co-op and multi-unit parcels — exactly where
+      PLUTO/ACRIS, keyed natively to BBL, do not have that failure mode.
+    evidence:
+      - {url: "https://batchdata.io/pricing", date: 2026-09-22}
+      - {url: "https://batchdata.io/terms-of-service", date: 2026-09-22}
