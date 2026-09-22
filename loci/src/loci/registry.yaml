@@ -79,7 +79,7 @@ sources:
     name: OpenStreetMap (Overpass API)
     tier: universal
     role: poi
-    status: planned
+    status: verified
     portability:
       class: universal
       feeds: [poi_supply, ledger]
@@ -96,7 +96,36 @@ sources:
       CRITICAL. Undercounts small business in lower-income and immigrant
       neighborhoods -- the same areas the thesis flags as underserved.
       See CONTEXT.md 7.1.
-    notes: Third opinion on POI presence; also the tag vocabulary of record.
+    notes: >
+      Third opinion on POI presence; also the tag vocabulary of record.
+      D139 (2026-09-22, owner ruling): admitted into the LIVE staging.poi
+      supply alongside overture_places and foursquare_os_places -- until now
+      the adapter existed, was tested, and was even carried in
+      score/supply.py's AGGREGATOR_SOURCES and score/dedup.py's canonical-
+      selection _TAIL, but staging.poi held zero osm_overpass rows (an
+      E1-era decision reaffirmed as recently as the D137 brewery re-run,
+      2026-09-22, which deliberately left OSM at the pre-flight dry-run
+      stage only). No code change was needed to wire it in -- dedup.py,
+      supply.py, model/poi_presence.py and portability.py already treated
+      osm_overpass as the third universal aggregator; ingesting it was the
+      only missing step. source_rank (score/dedup.py _TAIL) keeps OSM
+      SECOND, between overture_places and foursquare_os_places -- that
+      ordering predates this decision (present since the first commit of
+      dedup.py) and is kept on precedent rather than re-derived, but it is
+      also defensible on the merits: OSM is volunteer-mapped with uneven
+      completeness and stale closures (this bias note), which argues for
+      ranking it below a curated aggregator for CANONICAL NAME/GEOMETRY
+      selection -- and overture_places itself already ingests raw OSM data
+      as one of its upstream conflation sources, so ranking bare OSM
+      directly below Overture (which has already deduped and cleaned it
+      once) before foursquare_os_places is not a promotion of OSM's raw
+      trustworthiness, just a stable existing tie-break. Full uncapped
+      ingest 2026-09-22: preflight sample (44,010 raw elements, the true
+      unfiltered citywide total) showed no category where OSM approached,
+      let alone exceeded, the combined overture_places + foursquare_os_places
+      raw count -- convenience was the closest at ~75% of their combined
+      total, every other category well under half -- so no dedup blow-up
+      risk from amenity-node/way duplication was expected or observed.
 
   - id: nyc_dohmh_restaurants
     name: DOHMH New York City Restaurant Inspection Results

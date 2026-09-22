@@ -18,7 +18,7 @@ Registry verified 2026-09-02. **55 sources** in or committed to the pipeline, gr
 | **NYS Active Appearance Enhancement and Barber Business Licensees** | `y3u4-jbgh` | city | point | $0 | planned | SURVIVORSHIP-BIASED. Active licenses only; closed salons are absent entirely. Never use to construct openings/closings series. |
 | **NYS Medicaid Enrolled Provider Listing — retail pharmacies** | `keti-qx5t` | city | point | $0 | verified | ANCHOR for the pharmacy category (was 0.000 coverage vs 1,330 MN+BK ZBP establishments) … |
 | **NYS Liquor Authority Current Active Licenses** | `9s3h-dpkz` | city | point | $0 | verified | Active licenses only, BUT a companion inactive-licenses file (6dg3-2z7i) exists, so — unlike NYS DOS — closures are recoverable … |
-| **OpenStreetMap (Overpass API)** | - | universal | point/polygon | $0 | planned | CRITICAL. Undercounts small business in lower-income and immigrant neighborhoods -- the same areas the thesis flags as underserved. See CONTEXT.md 7.1. |
+| **OpenStreetMap (Overpass API)** | - | universal | point/polygon | $0 | verified | CRITICAL. Undercounts small business in lower-income and immigrant neighborhoods -- the same areas the thesis flags as underserved. See CONTEXT.md 7.1. |
 | **Overture Maps Places** | - | universal | point | $0 | planned | Inherits OSM/Meta/Microsoft coverage gaps. Category schema is coarse for personal services (salons, laundromats). |
 | **USDA SNAP Retailer Locator** | - | universal | point | $0 | verified | Near-census of stores that ACCEPT SNAP … |
 
