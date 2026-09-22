@@ -140,3 +140,19 @@ categories:
         by construction, and that is a property of NAICS, not of the anchor.
         `low` is not in the confidence vocabulary (zbp.py); medium is the
         floor and this note carries the rest.
+
+  brewery:
+    - naics: "312120"
+      confidence: medium
+      note: >
+        Breweries -- the production NAICS, and definitional for that half of
+        the category. UNDER-counts the other half: brewpubs and taprooms
+        commonly file under the restaurant/bar codes (722511/722410) instead,
+        which this code does not reach, so a zbp-compare ratio here is a
+        FLOOR on brewpub-style brewery supply, not a census of it (the
+        opposite bias from bathhouse_sauna's 812199, which OVER-counts).
+        `low` is not in the confidence vocabulary (zbp.py); medium is the
+        floor and this note carries the rest. No live CBP pull has been run
+        for this code yet (no warehouse access this session) -- TODO(brewery):
+        run `loci zbp-compare` once ingested and record the real establishment
+        count here the way bathhouse_sauna's 849/56-ZIP figure is recorded.

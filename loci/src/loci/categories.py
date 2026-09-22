@@ -42,6 +42,18 @@ CATEGORIES: dict[str, Category] = {c.slug: c for c in (
     # prevalence-gap premise (near-zero willingness to travel) does not hold,
     # so its gaps annotate, they do not lead (categories.yaml headline: false).
     Category("bathhouse_sauna", 4, "Bathhouse / sauna"),
+    # 17th slug (owner rulings 2026-09-22, D137). NOT folded into `bar` --
+    # own category, covering taprooms, brewpubs-as-breweries AND
+    # production-only brewers. Landed through the fail-closed checklist only
+    # as far as G0 (this file + the mirrored yamls/adapters); G3-G8 need a
+    # warehouse fit and are NOT passed -- see the CHECKPOINT entry (D137).
+    # Placed in tier 3 (food & gathering) alongside bar/restaurant/cafe_bakery
+    # rather than tier 4 like bathhouse_sauna: unlike a bathhouse, a brewery is
+    # a food-and-drink venue with the same walk-catchment shape as a bar, not
+    # a destination amenity. Ships as a non-filtering signal
+    # (categories.yaml headline: false) exactly like bathhouse_sauna until
+    # G3-G8 pass on real ingested supply.
+    Category("brewery", 3, "Brewery / taproom"),
 )}
 
 TIER_WEIGHTS: dict[int, float] = {1: 0.40, 2: 0.20, 3: 0.25, 4: 0.15}

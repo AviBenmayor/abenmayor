@@ -206,7 +206,10 @@ def test_caveat_set_is_exactly_the_four_paper_discretionary_categories_plus_bath
     # (CEX "Fees and admissions" elasticity 0.40 > 0.35, spend.yaml) and the
     # owner widened this exact-set pin on 2026-09-17 (GTM-198) rather than
     # have the number hand-set below the cut to keep the set at four.
-    assert caveat_categories() == {"restaurant", "cafe_bakery", "bar", "fitness", "bathhouse_sauna"}
+    # brewery joins too (D137, 2026-09-22): elasticity 0.50, spend.yaml's
+    # flagged placeholder copy of bar's own CEX row.
+    assert caveat_categories() == {"restaurant", "cafe_bakery", "bar", "fitness",
+                                    "bathhouse_sauna", "brewery"}
 
 
 # --- (b2) drift ----------------------------------------------------------

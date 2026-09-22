@@ -236,7 +236,16 @@ flagged: [pharmacy]
 # false`, a "Fees and admissions" / "Personal care services" blend) and no
 # isolable EC cell (812199 is tattoo, tanning and day spas too) -- benchmark-
 # only by both tests, economics grade D (checklist G11).
-benchmark_only: [childcare, bank, clinic, hardware, tailor_repair, bathhouse_sauna]
+# brewery (D137, 2026-09-22): DIFFERENT reason from the five above -- it
+# shares a real CEX line with `bar` (spend.yaml `reliable: false` only
+# because the bar/brewery split is an unsourced placeholder, not because the
+# line itself is unusable) and NAICS 312120 is a real, isolable EC cell,
+# unlike bathhouse_sauna's 812199. It is benchmark-only because no ingest has
+# run yet to fit lambda against it (no warehouse access this session), not
+# because either test structurally fails. Move it OUT of this list once
+# `loci revenue fit` has run against real supply and a `categories:` block
+# entry exists below for it (naics: ["312120"]).
+benchmark_only: [childcare, bank, clinic, hardware, tailor_repair, bathhouse_sauna, brewery]
 
 # ------------------------------------------------------------------ the CEX
 # Table 1101 (national, by income quintile) supplies the SHAPE; Table 3004 (New

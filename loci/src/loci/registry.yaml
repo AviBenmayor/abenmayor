@@ -282,6 +282,14 @@ sources:
       Verified 2026-09-02: 59,846 rows statewide, 24,711 in NYC, 98.5%
       georeferenced. Restaurant and retail (beer/liquor store) licenses are
       NOT emitted — DOHMH and SNAP anchor those.
+      D137 (2026-09-22): this feed's Brewer / Micro-Brewer / Micro-Brewer 3
+      Year / Farm Brewer licence types are now classified `brewer` (not
+      `other`) in the standalone alcohol-overlay layer only
+      (sources/cities/nyc/alcohol_licences.yaml) — NOT wired into staging.poi.
+      The `brewery` Loci category therefore still has NO registry POI anchor
+      here or anywhere else; it ships on the universal aggregators
+      (overture_places/foursquare_places/osm_overpass) alone, same P1-open
+      state bathhouse_sauna was admitted in.
 
   - id: nys_sla_inactive_licenses
     name: NYS Liquor Authority Current Inactive Licenses

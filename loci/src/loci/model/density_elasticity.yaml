@@ -523,3 +523,10 @@ categories:
     regime: not_fitted
     not_fitted_because: fit pending first ingest on the announced hash (GTM-198 G7)
     fitted_on: *id001
+  # 17th slug (D137, 2026-09-22): the same honest pre-ingest state as
+  # bathhouse_sauna above. `loci density-elasticity fit` re-writes this row
+  # once brewery has been ingested on an announced hash.
+  brewery:
+    regime: not_fitted
+    not_fitted_because: fit pending first ingest on the announced hash (D137 G7)
+    fitted_on: *id001

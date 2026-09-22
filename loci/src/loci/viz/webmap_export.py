@@ -225,7 +225,14 @@ COLORS = {"hardware": "#b5541f", "convenience": "#2f7d5c", "clinic": "#3d6fb4",
           # bathhouse_sauna (GTM-198): chosen as the hex with the largest
           # minimum Lab distance from the other 15 (dE76 27.2, nearest
           # childcare); re-validate the pair set in dark mode before publishing.
-          "bathhouse_sauna": "#c02f8f"}
+          "bathhouse_sauna": "#c02f8f",
+          # brewery (D137, 2026-09-22): chosen the same way -- largest minimum
+          # Lab distance from the other 16 (dE76 33.7, nearest fitness);
+          # re-validate in dark mode before publishing. webmap/index.html
+          # carries the SAME palette by hand (this module's own header note)
+          # and needs this entry added too -- NOT done here, a peer session
+          # holds that file uncommitted.
+          "brewery": "#abc431"}
 
 H3_RES = 9
 COORD_DP = 5  # ~1 m at NYC latitude; halves the JSON size vs full float repr

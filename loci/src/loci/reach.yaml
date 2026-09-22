@@ -54,3 +54,9 @@ reach_m:
   # `loci reach-table --write` will print, not a guess at a smaller one.
   # Re-run after the first ingest that maps the slug (GTM-198).
   bathhouse_sauna: 2450
+  # brewery: NOT computed (no warehouse access this session, D137). Same
+  # right-censor placeholder as bathhouse_sauna above (2450 m; hex_poi_distance
+  # holds no pairs past 30 min) rather than a guess at a smaller number --
+  # TODO(brewery): run `loci reach-table --write` after the first ingest and
+  # replace with the real p80 hex-to-nearest distance.
+  brewery: 2450

@@ -79,6 +79,13 @@ TAG_CATEGORY: dict[tuple[str, str], str] = {
     # `shop=massage` is NOT mapped (812199 neighbour, not the category).
     ("leisure", "sauna"): "bathhouse_sauna",
     ("amenity", "public_bath"): "bathhouse_sauna",
+    # brewery (D137, 2026-09-22): the two documented OSM tags (wiki
+    # Key:craft, Key:microbrewery). `microbrewery=yes` is a secondary tag
+    # Overpass returns whatever `amenity=*` the same node also carries
+    # (bar/pub/restaurant) -- mapped unconditionally to `brewery` per the
+    # WIDE-slug owner ruling: a taproom is a brewery, not a bar, here.
+    ("craft", "brewery"): "brewery",
+    ("microbrewery", "yes"): "brewery",
 }
 
 # Group tag lookups by OSM key so one Overpass query (with a regex value

@@ -184,6 +184,12 @@ GOOGLE_TYPES: dict[str, list[str]] = {
     # validator count a nail spa as a bathhouse. `massage`/`massage_spa` and
     # `wellness_center` are 812199 neighbours, not the category.
     "bathhouse_sauna": ["sauna", "public_bath"],
+    # brewery (D137, 2026-09-22): Table A has BOTH `brewery` and `brewpub` as
+    # distinct types (verified on the place-types page). Both are included --
+    # unlike the SLA "Restaurant Brewer" carve-out (model/filing_categories.yaml),
+    # this validator checks against the full WIDE category definition
+    # (taprooms, brewpubs-as-breweries, production-only brewers all count).
+    "brewery": ["brewery", "brewpub"],
 }
 
 

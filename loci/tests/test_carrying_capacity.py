@@ -352,7 +352,8 @@ def test_shipped_fit_is_internally_consistent():
     # GTM-198 (owner 2026-09-17): bathhouse_sauna has no capacity fit until the
     # first ingest on the announced hash; the file carries a fit_hash, so a
     # hand row is impossible by construction. Exact unfitted set, on purpose.
-    assert set(CATEGORIES) - set(doc["categories"]) == {"bathhouse_sauna"}
+    # brewery joins the set D137 (2026-09-22), same reason.
+    assert set(CATEGORIES) - set(doc["categories"]) == {"bathhouse_sauna", "brewery"}
     assert set(doc["categories"]) <= set(CATEGORIES)
     assert doc["fit_hash"] == cc.fit_hash(doc)
     for cat, rec in doc["categories"].items():

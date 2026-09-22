@@ -122,8 +122,8 @@ def test_residual_ranks_average_exactly_one_half():
     density, _, _, _ = _world()
     ranks, aux = bo.destination_residual_rank(density)
     means = ranks.groupby("category")["r"].mean()
-    assert len(means) == 16
-  # 16, not 15: family widened to sixteen by owner ruling 2026-09-17 (GTM-198, bathhouse_sauna)
+    assert len(means) == 17
+  # 17, not 16: family widened to seventeen by owner ruling 2026-09-22 (D137, brewery)
     assert np.allclose(means.to_numpy(), 0.5, atol=1e-12)
     assert set(aux) == set(CATS)
     # the auxiliary R2 is the POWER of the test, not a diagnostic afterthought
@@ -150,8 +150,8 @@ def test_an_origin_under_the_trip_floor_is_null_never_zero():
     thin = pd.DataFrame({"origin_nta": "MN0101", "destination_nta": dests,
                          "trips": 1.0})
     w = bo.trip_weighted_rank(thin, ranks, min_trips=200)
-    assert len(w) == 16
-  # 16, not 15: family widened to sixteen by owner ruling 2026-09-17 (GTM-198, bathhouse_sauna)
+    assert len(w) == 17
+  # 17, not 16: family widened to seventeen by owner ruling 2026-09-22 (D137, brewery)
     assert w["w_rank"].isna().all()
 
 
@@ -221,8 +221,8 @@ def test_there_is_one_family_of_sixteen_and_no_structural_exclusion():
     assert bo.EXPECTED_UNINFORMATIVE <= set(CATEGORIES)
     assert not hasattr(bo, "EXCLUDED_WEEKDAY_HOURS")
     rep = _run("total", n_perm=120, n_boot=120)
-    assert len(rep["per_category"]) == 16
-  # 16, not 15: family widened to sixteen by owner ruling 2026-09-17 (GTM-198, bathhouse_sauna)
+    assert len(rep["per_category"]) == 17
+  # 17, not 16: family widened to seventeen by owner ruling 2026-09-22 (D137, brewery)
     assert set(rep["per_category"]["category"]) == set(CATS)
     assert rep["per_category"]["expected_uninformative"].sum() == 5
 
@@ -249,8 +249,8 @@ def test_trips_following_total_density_move_no_category():
     all fifteen categories look supplied."""
     rep = _run("total")
     w = rep["per_category"].set_index("category")["median_W"]
-    assert len(w) == 16
-  # 16, not 15: family widened to sixteen by owner ruling 2026-09-17 (GTM-198, bathhouse_sauna)
+    assert len(w) == 17
+  # 17, not 16: family widened to seventeen by owner ruling 2026-09-22 (D137, brewery)
     assert w.abs().max() < 0.10, w.sort_values()
     assert not rep["kill_rule"]["fired"]
 
@@ -430,7 +430,7 @@ def test_the_resweep_dry_run_writes_nothing(swept):
     rep = bo.resweep_failing_categories(swept, verdicts)
     assert rep["dry_run"] is True
     assert rep["rows_nulled"] == 0
-    assert rep["rows_matched"] == 48   # 3 x 16 (family of sixteen, owner ruling 2026-09-17)
+    assert rep["rows_matched"] == 51   # 3 x 17 (family of seventeen, owner ruling 2026-09-22, D137)
     assert all(v == 3 for v in _filled(swept).values())
 
 
@@ -462,7 +462,7 @@ def test_the_resweep_refuses_a_confounded_run_unless_told(swept):
     rep = bo.resweep_failing_categories(swept, report, dry_run=False,
                                         confounded=True)
     assert rep["categories"] == CATS
-    assert rep["rows_nulled"] == 48    # 3 x 16 (family of sixteen, owner ruling 2026-09-17)
+    assert rep["rows_nulled"] == 51    # 3 x 17 (family of seventeen, owner ruling 2026-09-22, D137)
     assert all(v == 0 for v in _filled(swept).values())
 
 
@@ -540,7 +540,7 @@ def test_the_printed_page_leads_with_the_diagnostics():
     assert out.index("diagnostics") < out.index("per-category verdicts")
     assert "Moran" in out and "cosine" in out
     assert "robustness" in out
-    assert "ONE family of 16" in out   # sixteen since the owner ruling of 2026-09-17
+    assert "ONE family of 17" in out   # seventeen since the owner ruling of 2026-09-22 (D137, brewery)
     assert "expected uninformative" in out
     assert "D43 gate" in out
 

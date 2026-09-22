@@ -375,3 +375,37 @@ categories:
                                # (~40k); order of magnitude only.
     reliable: false
     daytime_augmented: false
+
+  brewery:
+    cex_mapping: >
+      Same CEX line as `bar` -- "Alcoholic beverages," CEX Table 3004 (NY MSA)
+      / Table 1101 (national) -- there is no separate line, or any published
+      split, for a brewery/taproom vs a bar; CEX does not distinguish drinking
+      venues by type at all. TODO(brewery): source a real away-from-home
+      brewery/taproom share if one becomes available; none exists today.
+    annual_spend: 556                # TODO(brewery): PLACEHOLDER, not a distinct
+                                      # BLS figure -- copied from bar's
+                                      # annual_spend_ny_msa (0.653 * 851) rather
+                                      # than inventing a bar/brewery split with
+                                      # no evidentiary basis. Two categories
+                                      # drawing on the identical CEX dollar is a
+                                      # known double-count risk if this file is
+                                      # ever summed across categories (it is not
+                                      # today -- each category's Pool is
+                                      # computed independently in revenue.py).
+    income_elasticity: 0.50          # = bar, same CEX line, so the derived
+                                      # necessity/discretionary class cannot
+                                      # differ from bar's for a reason this
+                                      # file does not have.
+    source: ny_msa_2023_2024_allocated
+    mapping_note: >
+      Not a BLS number for brewery specifically -- see cex_mapping above.
+      `reliable: false` (unlike bar, which is `true` despite sharing the same
+      unverified 65.3% away-from-home share) because brewery additionally
+      inherits an unresolved bar/brewery split placeholder on top of that.
+    ocr_low: 0.06                     # = bar (no brewery-specific comp; benchmarks.yaml n=0)
+    ocr_high: 0.10
+    gla_sqft_low: 2000                 # taproom + small production floor; order of
+    gla_sqft_high: 8000                 # magnitude only, not sourced from a comp
+    reliable: false
+    daytime_augmented: false

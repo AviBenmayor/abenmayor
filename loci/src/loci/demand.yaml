@@ -250,3 +250,15 @@ categories:
       at almost every address (CONTEXT.md §7 AC-1 point 5), so the annotation
       marks nearly every low-income address, which is a statement about the
       category's prevalence, not about demand. GTM-198, 2026-09-17.
+  brewery:
+    evidence: cex
+    note: >
+      Not covered by the paper (there is no "brewery" line item in Meltzer &
+      Schuetz). CEX "Alcoholic beverages" -- the SAME line `bar` uses -->
+      spend.yaml elasticity 0.50 -> DISCRETIONARY at the 0.35 cut, joining the
+      caveat set alongside restaurant/cafe_bakery/bar/fitness/bathhouse_sauna.
+      Sharing bar's elasticity is not a choice this file makes independently:
+      spend.yaml's brewery row is a flagged placeholder copy of bar's own row
+      (no BLS line distinguishes the two), so this class is only as trustworthy
+      as bar's already-flagged 65.3% away-from-home assumption, compounded by
+      the unresolved bar/brewery split. D137, 2026-09-22.

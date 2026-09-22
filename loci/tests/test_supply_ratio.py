@@ -514,6 +514,7 @@ def test_baseline_yaml_declares_its_radius_and_universe():
     # GTM-198 G8 (owner 2026-09-17): bathhouse_sauna's baseline lands with the
     # first ingest on the announced hash; until then the unfitted set is
     # exactly that one slug, and a hand-written row would be a fabrication.
-    assert set(ALLCATS) - set(doc["categories"]) == {"bathhouse_sauna"}
+    # brewery joins the set D137 (2026-09-22), same reason.
+    assert set(ALLCATS) - set(doc["categories"]) == {"bathhouse_sauna", "brewery"}
     assert set(doc["categories"]) <= set(ALLCATS)
     assert HAIRCUT_PATH.exists()

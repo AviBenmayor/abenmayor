@@ -36,6 +36,8 @@ distance_min:
   nails_beauty:  8
   hair_barber:   8
   childcare:     8
+  brewery:       8   # TODO(brewery): owner to confirm; placed at bar's tier by
+                      # analogy (D137, 2026-09-22), not an independent owner ruling
   # 12 min / 960 m -- occasional-use conveniences
   hardware:      12
   clinic:        12
@@ -55,6 +57,7 @@ distance_m:
   nails_beauty:  640
   hair_barber:   640
   childcare:     640
+  brewery:       640   # TODO(brewery): owner to confirm; see distance_min above
   hardware:      960
   clinic:        960
   tailor_repair: 960

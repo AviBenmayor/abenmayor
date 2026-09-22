@@ -24,9 +24,19 @@ CREATE TABLE IF NOT EXISTS staging.alcohol_licences (
     description    VARCHAR NOT NULL,      -- raw licence type, as published
     licence_class  VARCHAR,               -- SLA numeric class code ("0340")
     classification VARCHAR NOT NULL        -- on_premises | off_premises_liquor |
-                                           -- off_premises_beer | other | unknown
+                                           -- off_premises_beer | brewer | other |
+                                           -- unknown (`brewer` added D137,
+                                           -- 2026-09-22 -- named `brewer`, NOT
+                                           -- `brewery`: that string is the Loci
+                                           -- POI category, categories.py, and
+                                           -- the two vocabularies must never
+                                           -- collide. This literal only reaches
+                                           -- a FRESH warehouse -- an existing
+                                           -- one needs sql/056_brewery.sql.draft
+                                           -- applied as a migration, per the
+                                           -- sql/036 category_guess precedent)
         CHECK (classification IN ('on_premises', 'off_premises_liquor',
-                                  'off_premises_beer', 'other', 'unknown')),
+                                  'off_premises_beer', 'brewer', 'other', 'unknown')),
     name           VARCHAR,               -- dba, falling back to legal name
     address        VARCHAR,
     zip            VARCHAR,

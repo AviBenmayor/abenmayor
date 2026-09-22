@@ -4,7 +4,7 @@
 
 ## The daily-needs bundle
 
-Sixteen categories in four weighted tiers. Tier weights are judgment calls, stated explicitly so a reader can disagree with them precisely.
+Seventeen categories in four weighted tiers. Tier weights are judgment calls, stated explicitly so a reader can disagree with them precisely.
 
 | Tier | w | # | Category | NAICS 2022 | Headline |
 |---|---|---|---|---|---|
@@ -24,6 +24,7 @@ Sixteen categories in four weighted tiers. Tier weights are judgment calls, stat
 |  |  | 14 | Bank branch | 522110 | yes |
 |  |  | 15 | Hardware / home supply | 444140 | yes |
 |  |  | 16 | Bathhouse / sauna | 812199 | no |
+| **T3 Food & gathering** | **0.25** | 17 | Brewery / taproom | 312120 | no |
 
 ### Demoted from headline claims
 
@@ -33,6 +34,7 @@ Sixteen categories in four weighted tiers. Tier weights are judgment calls, stat
 - Tailor / repair
 - Clinic / urgent care
 - Bathhouse / sauna
+- Brewery / taproom
 
 ### Pinned definitions
 

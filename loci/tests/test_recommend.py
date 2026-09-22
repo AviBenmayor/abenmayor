@@ -308,8 +308,9 @@ def test_the_ladder_lives_in_exactly_one_place():
 def test_the_four_demoted_categories_are_the_ruled_set():
     # bathhouse_sauna added by owner ruling 2026-09-17 (GTM-198): admitted as a
     # non-filtering signal, headline: false from the day it landed.
+    # brewery joins the set D137 (2026-09-22), same reason.
     assert rec.non_headline_categories() == frozenset(
-        {"clinic", "tailor_repair", "hair_barber", "bathhouse_sauna"})
+        {"clinic", "tailor_repair", "hair_barber", "bathhouse_sauna", "brewery"})
 
 
 def test_a_demoted_category_can_never_lead_a_card():
@@ -320,9 +321,10 @@ def test_a_demoted_category_can_never_lead_a_card():
     facts["categories"]["hair_barber"]["ratio_median"] = 0.02
     facts["categories"]["clinic"]["ratio_median"] = 0.03
     facts["categories"]["bathhouse_sauna"]["ratio_median"] = 0.04   # demoted 2026-09-17
+    facts["categories"]["brewery"]["ratio_median"] = 0.05   # demoted 2026-09-22 (D137)
     ranked = rec.rank_categories(facts)
     assert ranked[0] not in rec.non_headline_categories()
-    assert set(ranked[-4:]) == rec.non_headline_categories(), \
+    assert set(ranked[-5:]) == rec.non_headline_categories(), \
         "demoted categories sort behind every headline category, whatever the ratio"
     assert len(ranked) == len(CATEGORIES), "demotion drops nothing from the run"
     # and it holds when the caller asks for a subset that is ONLY demoted
@@ -593,6 +595,9 @@ def test_the_g9_grade_table_on_the_real_warehouse():
     # on this warehouse -- asserted separately so the fifteen-slug pin below
     # stays exact and a later B/A for the slug cannot land unnoticed.
     assert graded.pop("bathhouse_sauna") == "C"
+    # brewery (D137, 2026-09-22): same situation, confirmed live on this
+    # warehouse (no ingest has run) -- grades C for the same reason.
+    assert graded.pop("brewery") == "C"
     assert graded == WAREHOUSE_GRADES
 
     assert cov["clinic"]["coverage_n_missing"] == 0, "clinic has no Google type map (D30)"

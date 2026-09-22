@@ -566,17 +566,18 @@ def test_poi_match_radius_is_a_same_building_distance_not_a_block():
 
 
 def test_commercial_poi_categories_is_the_full_retail_registry():
-    """Documents the decision the seed left open: every one of the 16
-    registered categories is retail/food/personal-service, so all 16 count as
+    """Documents the decision the seed left open: every one of the 17
+    registered categories is retail/food/personal-service, so all 17 count as
     a 'commercial POI'. A future NON-retail category added to the registry
     would silently start granting 'grandfathered' unless this test is
     updated alongside it -- which is the point of pinning it. 16th, 2026-09-17:
     bathhouse_sauna (NAICS 812199, a personal-care service premises) IS a
-    commercial use, so it joins the set."""
+    commercial use, so it joins the set. 17th, 2026-09-22 (D137): brewery
+    (NAICS 312120, a production/retail premises) IS a commercial use too."""
     from loci.categories import CATEGORIES
 
     assert al.commercial_poi_categories() == frozenset(CATEGORIES)
-    assert len(al.commercial_poi_categories()) == 16
+    assert len(al.commercial_poi_categories()) == 17
 
 
 # ===================================================== 4. generated-SQL parity

@@ -20,6 +20,13 @@
 #                        the licence (restaurants, bars, clubs, hotels, venues)
 #   off_premises_liquor  package sales of liquor/wine to take away
 #   off_premises_beer    package sales of beer/cider only (grocery, drug store)
+#   brewer                a NYS brewer-class production licence (D137,
+#                        2026-09-22) -- see the note at `brewer` below for why
+#                        this is its own class rather than `other`. NOT named
+#                        `brewery` deliberately: that string is the Loci POI
+#                        category (categories.py), and
+#                        test_the_overlay_is_not_a_sixteenth_category pins
+#                        that the two vocabularies never share a value.
 #   other                real licences that are not a public-facing drinking or
 #                        buying storefront: wholesalers, importers, producers,
 #                        and conveyances
@@ -32,6 +39,7 @@ labels:
   on_premises: On-premises
   off_premises_liquor: Off-premises — liquor / wine store
   off_premises_beer: Off-premises — beer (grocery, drug store)
+  brewer: Brewer (producer; may or may not pour on-site)
   other: Other (wholesale, producer, conveyance)
   unknown: Unclassified
 
@@ -90,14 +98,28 @@ descriptions:
   manufacturer's temporary: other
   importer: other
   brand owner: other
-  # Producers. AMBIGUOUS: NY farm and micro manufacturer licences allow an
-  # on-site tasting room by right, so some of these ARE places you can drink.
-  # The licence class does not say which, and inventing an on-premises dot for
-  # a warehouse would be worse than under-calling it, so they stay `other`.
-  brewer: other
-  micro-brewer: other
-  micro-brewer 3 year: other
-  farm brewer: other
+  # Brewer-class producers (D137, 2026-09-22; owner ruling on the `brewery`
+  # Loci category, GTM-213 era): moved OFF `other` and onto their own
+  # `brewer` class (named `brewer`, not `brewery` -- see the header note on
+  # why the two vocabularies must not share a string). The AMBIGUITY that
+  # kept them under `other` (NY farm and micro manufacturer licences allow an
+  # on-site tasting room by right, so some of these ARE places you can drink
+  # and some are a warehouse) is the SAME ambiguity the `brewery` category's
+  # owner ruling resolves the other way: "includes ALL breweries -- taprooms,
+  # brewpubs-as-breweries, AND production-only brewers." Inventing an
+  # on-premises DRINKING dot for a closed production facility would still be
+  # wrong (a different overlay class, on_premises, means something
+  # narrower), so these are their own `brewer` class rather than folded into
+  # `on_premises` -- but they are no longer silently lumped into the generic
+  # wholesale/producer/conveyance bucket either.
+  brewer: brewer
+  micro-brewer: brewer
+  micro-brewer 3 year: brewer
+  farm brewer: brewer
+  # NOT moved: cider, wine and spirits producers below carry the identical
+  # on-site-tasting-room ambiguity but are a different Loci category question
+  # entirely (no `cidery`/`winery`/`distillery` category exists), so they stay
+  # `other` unchanged.
   farm cidery: other
   cider producer: other
   winery: other

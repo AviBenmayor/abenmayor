@@ -40,7 +40,7 @@ KNOWN_MISSING_GOOGLE_TYPE = frozenset({"clinic"})
 #: Asserted as an EXACT set: the moment `loci supply-ratio --fit-baseline`
 #: writes the row, this constant must be emptied or the test fails -- a fit
 #: that lands silently is the same defect as a row that never lands.
-UNFITTED_PENDING_INGEST = frozenset({"bathhouse_sauna"})
+UNFITTED_PENDING_INGEST = frozenset({"bathhouse_sauna", "brewery"})
 
 
 def _load(rel: str) -> dict:

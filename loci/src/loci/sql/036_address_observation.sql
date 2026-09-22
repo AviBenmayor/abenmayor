@@ -107,10 +107,11 @@ CREATE TABLE IF NOT EXISTS analysis.address_observation (
                         'hair_barber', 'nails_beauty', 'tailor_repair',
                         'restaurant', 'cafe_bakery', 'bar',
                         'childcare', 'clinic', 'fitness', 'bank', 'hardware',
-                        'bathhouse_sauna')),   -- 16th slug, GTM-198 (2026-09-17).
-                                           --   This literal only reaches a FRESH
-                                           --   warehouse (CREATE IF NOT EXISTS);
-                                           --   an existing one is rebuilt by
+                        'bathhouse_sauna', 'brewery')),   -- 17th slug, D137
+                                           --   (2026-09-22). This literal only
+                                           --   reaches a FRESH warehouse
+                                           --   (CREATE IF NOT EXISTS); an
+                                           --   existing one is rebuilt by
                                            --   `loci migrate-warehouse --step
                                            --   observation_category_check --apply`
                                            --   (migrate.py), at the ingest step,

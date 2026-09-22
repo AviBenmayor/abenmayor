@@ -1182,10 +1182,11 @@ THRESHOLDS_PENDING_MESSAGE = "thresholds pending ratification"
 SPECIFICITY_N_PERM = 10_000
 #: P1/P5. Two thousand resamples, for both bootstraps.
 SPECIFICITY_N_BOOT = 2_000
-#: P2. One family of SIXTEEN, q = 0.10 (the D111 precedent). No second q.
-#: Fifteen until 2026-09-17; widened to sixteen by owner ruling (GTM-198,
-#: bathhouse_sauna) -- P8 forbids a structural exclusion, so the new slug
-#: joins the family rather than being carved out of it.
+#: P2. One family of SEVENTEEN, q = 0.10 (the D111 precedent). No second q.
+#: Fifteen until 2026-09-17, then sixteen (GTM-198, bathhouse_sauna); widened
+#: to seventeen by owner ruling (D137, brewery) -- P8 forbids a structural
+#: exclusion, so each new slug joins the family rather than being carved out
+#: of it.
 SPECIFICITY_BH_Q = 0.10
 #: P3. |median W| >= 0.05 is about four rank positions of seventy-nine; the rank
 #: grid itself is 1/79 = 0.0127, so this is four grid steps, not one.

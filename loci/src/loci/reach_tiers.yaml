@@ -339,3 +339,24 @@ categories:
       this category is the A8 trade-area method, not this screen.
     citations:
       - "Centers for Disease Control and Prevention, 'Development of a Nationally Representative Built Environment Measure of Access to Exercise Opportunities.' Preventing Chronic Disease 12:E140, 2015 -- 1 mi to a recreational facility (urban); used as an ANALOG via fitness, not an on-point citation: the CDC facility list is NAICS 713940, not 812199."
+
+  brewery:
+    reach_m: 400
+    basis: analog
+    owner_m: 640
+    owner_min: 8
+    justification: >
+      No walk-distance access literature covers breweries or taprooms
+      specifically, and none was searched fresh for this slug -- mapped by
+      analogy to `bar` (reach_m 400, owner_m 640/8 min) instead, on the same
+      reasoning the owner used for bar's own weak Walk Score analog: a
+      brewery taproom is visited with roughly the same frequency and
+      catchment as a bar, and the WIDE-slug ruling (D137) folds
+      brewpubs/taprooms into this category rather than leaving them in bar,
+      so the two categories should not diverge on reach without a reason to.
+      A pure production brewery with no taproom is not a walk-to destination
+      at all (closer to bathhouse_sauna's honest caveat above), but the
+      universal aggregators cannot distinguish the two at ingest, so one
+      tier covers both. TODO(brewery): revisit once the first ingest shows
+      what share of mapped rows are taproom-shaped vs production-only.
+    citations: []

@@ -236,6 +236,11 @@ sources:
       "Restaurant": restaurant
       "Summer Restaurant": restaurant
       "Winter Restaurant": restaurant
+      # Intentional (D137, 2026-09-22): a `brewery` Loci category now exists,
+      # but a brewpub filed under this SLA class serves food first -- stays
+      # `restaurant` here, unchanged, even though the wider `brewery`
+      # category definition (categories.yaml) counts brewpubs-as-breweries
+      # elsewhere (the universal aggregators).
       "Restaurant Brewer": restaurant       # brewpub: brews and serves food
       "Food & Beverage Business": bar
       "Summer Food & Beverage Business": bar

@@ -153,6 +153,15 @@ PRIMARY_CATEGORY: dict[str, str] = {
     # moves ~4,300 rows out of that category's supply set.
     "sauna": "bathhouse_sauna",
     "onsen": "bathhouse_sauna",
+    # brewery (D137, 2026-09-22). Verified against the live NYC extract
+    # (data/raw/overture_places_nyc.parquet): `brewery` is a real primary
+    # category (168 rows); `brewpub` is NOT -- it does not exist in this
+    # extract (0 rows, and not in the taxonomy browser's food_and_drink
+    # branch either), so it is deliberately not added here. A brewpub reads
+    # as `bar`/`pub`/`gastropub`/`restaurant` in Overture, indistinguishable
+    # from any other one -- not name-guessed the way bathhouse_sauna's spa
+    # sub-tags are, because there is no narrow/wide split for this slug.
+    "brewery": "brewery",
     # bank (Overture uses "banks", plural, not "bank")
     "banks": "bank",
     "bank_credit_union": "bank",

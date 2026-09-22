@@ -106,6 +106,14 @@ LEAF_CATEGORY: dict[str, str] = {
     # ("Sauna at Equinox ..."), condo amenity rooms and the odd contractor --
     # the D52(b) shared-premises problem; MIN_REFRESHED drops most ghosts.
     "sauna": "bathhouse_sauna", "bath house": "bathhouse_sauna",
+    # brewery (D137, 2026-09-22) -- real 2026-08-11 taxonomy leaf "Dining and
+    # Drinking > Brewery" (387 NYC rows), a TOP-LEVEL leaf under Dining and
+    # Drinking, not nested under the Bar group -- verified directly against
+    # the live extract, so it is unaffected by GROUP_CATEGORY's "dining and
+    # drinking > bar" prefix rule. See the brewery-priority check in
+    # map_leaf() below for the ~10% of rows where a Bar/Restaurant label is
+    # listed before this leaf in `fsq_category_labels`.
+    "brewery": "brewery",
 }
 
 
@@ -133,6 +141,20 @@ def map_leaf(labels, name: str | None = None) -> str | None:
         labels = [labels]
     if any((p or "").split(">")[-1].strip().lower() in DROP_LEAVES for p in labels):
         return None
+    # brewery PRIORITY CHECK (D137, 2026-09-22), ahead of the per-path loop.
+    # `fsq_category_labels` is an UNORDERED-by-relevance list, and a live
+    # measurement (2026-09-22) found 40 of 387 NYC rows carrying the leaf
+    # "Dining and Drinking > Brewery" list a generic "... > Bar" or
+    # "... > Restaurant" label FIRST -- which the per-path loop below would
+    # match via GROUP_CATEGORY before ever reaching the brewery leaf,
+    # mis-classifying ~10% of breweries as bars/restaurants under plain
+    # first-path-wins traversal. Checked across ALL labels, ahead of order,
+    # so a brewery is never shadowed by a co-occurring Bar/Restaurant label --
+    # consistent with the owner ruling that a taproom (bar-shaped) is still a
+    # brewery, not a bar.
+    if any(low.split(">")[-1].strip() == "brewery"
+           for low in ((p or "").strip().lower() for p in labels)):
+        return "brewery"
     for path in labels:
         low = (path or "").strip().lower()
         leaf = low.split(">")[-1].strip()

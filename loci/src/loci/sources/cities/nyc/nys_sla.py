@@ -143,8 +143,13 @@ class NysSlaAdapter(SourceAdapter):
 CLASSIFICATION_PATH = pathlib.Path(__file__).resolve().parent / "alcohol_licences.yaml"
 
 #: Every value `classify()` may return. The map yaml is checked against it.
+#: `brewer` added D137 (2026-09-22): the four SLA brewer-class producer
+#: licences, previously lumped into `other`. Named `brewer`, NOT `brewery` --
+#: `brewery` is the Loci POI category (categories.py) and
+#: test_the_overlay_is_not_a_sixteenth_category pins that this tuple and
+#: CATEGORIES never share a value.
 CLASSIFICATIONS = ("on_premises", "off_premises_liquor", "off_premises_beer",
-                   "other", "unknown")
+                   "brewer", "other", "unknown")
 
 #: SLA publishes the county; the rest of the project speaks two-letter borough
 #: codes (analysis.address_gaps, viz/webmap_export.BOROUGH_NAMES).

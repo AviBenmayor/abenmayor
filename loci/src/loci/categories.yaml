@@ -436,3 +436,68 @@ categories:
       # ingested for this slug; registry.yaml nyc_dohmh_pool_permits.
       dohmh: ["in-house cafe permit on the restaurant roster, matched by premises address + name_terms -- a floor, not a census"]
       dohmh_pools: ["facility_name keyword (bath|banya|sauna|spa|schvitz|russian|turkish|korean) -- keyword match, NOT a licence category; registry.yaml nyc_dohmh_pool_permits"]
+
+  brewery:
+    label: "Brewery / taproom"
+    # OWNER RULINGS 2026-09-22 (D137): (1) its OWN category, NOT folded into
+    # `bar` -- a brewery is where the beer is made, a bar is not. (2) WIDE
+    # slug: includes ALL breweries -- taprooms, brewpubs-as-breweries, AND
+    # production-only brewers with no public tasting room. Unlike
+    # bathhouse_sauna there is no name-term disambiguation problem: every
+    # source below tags "brewery" as its own thing, not as a sub-tag of a
+    # much larger bucket (contrast Overture's `spas`/`day_spa`), so no
+    # `name_terms` pattern is needed or defined.
+    # 17th slug -- landed through docs/CATEGORY-EXPANSION.md as far as G0 only
+    # (this row + the mirrored yamls/adapters). G3-G8 (anchor coverage, dedup
+    # rank, census validation, demand, density-elasticity) all need a
+    # warehouse fit against real ingested supply and are NOT passed -- see
+    # the CHECKPOINT entry (D137). SHIPS AS A NON-FILTERING SIGNAL
+    # (docs/CATEGORY-EXPANSION.md §4), same as bathhouse_sauna: headline
+    # stays false, the slug can reorder or annotate a card and never gates
+    # one; removing it must leave gap_score, lead_category, n_missing and the
+    # missing set of the other sixteen byte-identical.
+    ships_as: signal
+    headline: false
+    naics_2022: ["312120"]   # Breweries (production). Brewpubs and taprooms
+                             # commonly file under the restaurant/bar codes
+                             # (722410/722511) instead, NOT double-mapped here
+                             # -- see zbp_naics.yaml (confidence: medium) and
+                             # model/filing_categories.yaml's "Restaurant
+                             # Brewer" note.
+    naics_2017: ["312120"]  # unchanged across the 2022 recode
+    sources:
+      # OSM: the two documented tags for the use (OSM wiki Key:craft,
+      # Key:microbrewery). `microbrewery=yes` is a secondary tag Overpass
+      # returns regardless of whatever `amenity=*` a taproom also carries
+      # (bar/pub/restaurant) -- mapped unconditionally to `brewery` per the
+      # WIDE-slug ruling above: a taproom is a brewery, not a bar, under this
+      # definition. See sources/universal/osm_overpass.py TAG_CATEGORY.
+      osm: ["craft=brewery", "microbrewery=yes"]
+      # Overture: verified against the live NYC extract used by this project
+      # (data/raw/overture_places_nyc.parquet, 2026-09-22 query) rather than
+      # guessed from the taxonomy docs -- `categories.primary = 'brewery'`
+      # (168 rows). `brewpub` does NOT exist as a primary category in this
+      # extract (checked directly; zero rows, and not in the taxonomy
+      # browser's food_and_drink branch either) -- a brewpub reads as
+      # `bar`/`pub`/`gastropub`/`restaurant` there, indistinguishable from any
+      # other bar or restaurant, so it is not name-guessed the way
+      # bathhouse_sauna's spa sub-tags are.
+      overture: [brewery]
+      # Foursquare: real 2026-08-11 taxonomy leaf "Dining and Drinking >
+      # Brewery" (387 NYC rows) -- a top-level leaf under Dining and
+      # Drinking, NOT nested under the Bar group, so it is unaffected by
+      # GROUP_CATEGORY's "dining and drinking > bar" prefix rule. See
+      # foursquare_places.py LEAF_CATEGORY and the brewery-priority check in
+      # map_leaf() (10% of tagged rows also carry a Bar/Restaurant label
+      # listed FIRST, which would otherwise shadow the brewery leaf under the
+      # existing first-path-wins traversal).
+      foursquare: ["brewery"]
+      # NYS SLA: Brewer / Micro-Brewer / Micro-Brewer 3 Year / Farm Brewer
+      # licence types exist (sources/cities/nyc/alcohol_licences.yaml) but are
+      # NOT wired into staging.poi as a `brewery` anchor here -- that file is
+      # scoped to the standalone alcohol-overlay map layer only (its own
+      # docstring), not POI supply, and nys_sla.py's BAR_DESCRIPTIONS/
+      # normalize() is unchanged. `brewery` currently has no registry.yaml
+      # POI anchor (P1 open), same as bathhouse_sauna; see registry.yaml
+      # nys_sla_liquor_licenses notes.
+      sla: ["Brewer/Micro-Brewer/Micro-Brewer 3 Year/Farm Brewer classified `brewer` in the alcohol overlay only -- not a POI-supply anchor; registry.yaml"]

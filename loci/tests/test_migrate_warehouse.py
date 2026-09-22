@@ -266,8 +266,11 @@ def _old_observation_fixture(tmp_path):
     con = duckdb.connect(str(tmp_path / "o.duckdb"))
     con.execute("CREATE SCHEMA analysis")
     ddl = migrate._observation_create_ddl().replace("__TARGET__", "analysis.address_observation")
-    ddl = ddl.replace(",\n                        'bathhouse_sauna')", ")")
+    # Strips BOTH new slugs (bathhouse_sauna 2026-09-17, brewery 2026-09-22,
+    # D137) to simulate the genuinely-old fifteen-slug CHECK.
+    ddl = ddl.replace(",\n                        'bathhouse_sauna', 'brewery')", ")")
     assert "'bathhouse_sauna'" not in ddl
+    assert "'brewery'" not in ddl
     con.execute(ddl)
     con.execute("""INSERT INTO analysis.address_observation
         (observation_id, rec_id, category, status, created_at, observed_at, category_guess)
@@ -275,7 +278,7 @@ def _old_observation_fixture(tmp_path):
                ('o2', 'r1', 'grocery', 'vacant', now(), now(), NULL)""")
     assert not migrate.probe_observation_category_check(con)
     assert all(f"'{s}'" in migrate._observation_check_text(con)
-               for s in CATEGORIES if s != "bathhouse_sauna")
+               for s in CATEGORIES if s not in ("bathhouse_sauna", "brewery"))
     return con
 
 
