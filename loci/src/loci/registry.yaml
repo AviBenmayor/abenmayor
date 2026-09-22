@@ -2323,6 +2323,169 @@ sources:
       the route is real but indirect: it opens if Loci ever runs work under a
       DOT or MPO contract. Revisit only then.
 
+  - id: fema_nfhl
+    name: FEMA National Flood Hazard Layer (NFHL)
+    tier: universal
+    role: control
+    status: planned
+    portability:
+      class: national
+      feeds: [demand]
+      confidence: high
+      degrades_to: >
+        No flood-zone overlay at all: the feasibility gate keeps reasoning about
+        site risk with no climate/flood signal, the same blind spot GrowthFactor
+        markets against Loci as "Climate Intelligence" (competitor-capability-gaps
+        doc, gap row "Climate / flood risk overlay").
+    url: https://www.fema.gov/flood-maps/national-flood-hazard-layer
+    access: https://hazards.fema.gov/gis/nfhl/rest/services/public/NFHL/MapServer  # ArcGIS REST/Feature Service (S_FLD_HAZ_AR layer = flood hazard zone polygons); bulk per-county shapefile/geodatabase also downloadable via the FEMA Map Service Center (msc.fema.gov) "Search All Products"; OGC WMS/WFS also published (WFS capped at 1000 features/request, fine for a per-borough or per-tile pull, not a single national pull)
+    format: ArcGIS Feature Service (REST/WFS/WMS) + downloadable shapefile/geodatabase by county
+    geography: flood zone polygon (S_FLD_HAZ_AR — FEMA flood zone designations X / AE / VE / A / 0.2 PCT ANNUAL CHANCE etc.), county-partitioned; NYC = Bronx/Kings/New York/Queens/Richmond counties
+    temporal: {start: null, end: current, grain: FEMA map-revision cycle (irregular, years between revisions per panel, not real-time)}
+    license: Public domain — U.S. federal government work (44 U.S.C. 105); no redistribution or commercial-use restriction found on fema.gov or hazards.fema.gov. Verified 2026-09-22.
+    cost: {amount: 0, unit: total}
+    bias: >
+      Authoritative flood-INSURANCE zone, not a flood-RISK score: a parcel can be
+      outside every FEMA zone and still flood (see NYC's own coastal + sea-level-rise
+      layers below), and effective-map vintage varies by panel — some NYC panels
+      still reflect the 1983/2007 PFIRM rather than the 2015 preliminary remap, so
+      "current effective" is not "current best science." No building-level detail,
+      polygon only.
+    notes: >
+      Chosen over the NYC Flood Hazard Mapper (DCP) as the ingestable primary
+      source: the Mapper is DCP's own interactive front-end (built on FEMA PFIRM
+      panels PLUS NYC-specific coastal-storm and sea-level-rise projection layers,
+      https://www.lisresilience.org/resource/nyc-flood-hazard-mapper) and its NYC
+      Open Data "download" links are marked "coming soon" on the ArcGIS
+      Experience page (https://experience.arcgis.com/experience/0d0603210dde48ad92b77d0efd14eff6,
+      checked 2026-09-22) — no working bulk export found today, so it is a good
+      secondary/visual reference but not a machine-ingestable source as of this
+      research pass. Revisit: if/when NYC Open Data actually publishes the
+      Mapper's coastal + SLR layers (not just the FEMA base), add them as a
+      SEPARATE entry (city_unique portability class, since sea-level-rise
+      projection is NYC-specific analysis, not a FEMA re-publish) rather than
+      folding into this one — this entry is FEMA-authored data only.
+      JOIN METHOD: point-in-polygon. Loci's address/BBL points already carry
+      lat/lon (PLUTO); intersect against the S_FLD_HAZ_AR polygon layer (NAD83,
+      reproject as needed) to assign each address/BBL a FEMA flood zone code.
+      No join key needed beyond geometry — this is a spatial join, not an
+      attribute join, so it slots into `poi_supply`/`demand` staging the same
+      way nyc_flood-adjacent boundary layers already do (see registry entries
+      using geography: polygon, e.g. line ~2171).
+    evidence:
+      - {url: "https://www.fema.gov/flood-maps/national-flood-hazard-layer", date: "2026-09-22"}
+      - {url: "https://hazards.fema.gov/femaportal/resources/flood_map_svc.htm", date: "2026-09-22"}
+      - {url: "https://experience.arcgis.com/experience/a7568f00bed147e788c2de0284236673/page/NFHL-Layer-Downloads", date: "2026-09-22"}
+      - {url: "https://www.lisresilience.org/resource/nyc-flood-hazard-mapper", date: "2026-09-22"}
+      - {url: "https://experience.arcgis.com/experience/0d0603210dde48ad92b77d0efd14eff6", date: "2026-09-22"}
+
+  # ---------------------------------------------------------------- Corridor asking rent
+  - id: rebny_retail_reports
+    name: REBNY Manhattan & Brooklyn Retail Reports (corridor asking rent)
+    tier: city
+    city: nyc
+    role: control
+    status: planned
+    portability:
+      class: city_unique
+      feeds: [demand]
+      confidence: med
+      degrades_to: >
+        No rent number anywhere in the pipeline (the gap PAID-SOURCES.md names
+        directly: "the feasibility gate reasons about rent without a rent
+        number"), so the only way to add one remains a paid vendor (CoStar,
+        CompStak, Crexi).
+      note: >
+        REBNY is a NYC-specific trade association; the FUNCTION (a local real
+        estate board publishing biannual corridor asking-rent surveys) exists in
+        other metros under different brands and is not guaranteed to be free
+        there, so this is classed city_unique rather than city_open_data.
+    url: https://www.rebny.com/reports
+    access: https://www.rebny.com/reports/manhattan-retail-report-first-half-2026 ; https://www.rebny.com/reports/brooklyn-retail-report-2025  # each release gets its own rebny.com/reports/<slug> page; no index API or bulk archive — pages must be scraped/extracted per release (Tavily extract, same pattern as the streeteasy_listings entry) or read manually and hand-entered
+    format: html report page per release (prose + summary tables; no CSV/API; a print/PDF version may exist behind member login but was not found free/public in this pass)
+    geography: >
+      named retail corridor (street segment), NOT point/parcel — Manhattan report
+      covers 16 corridors (e.g. "Madison Avenue 57th-72nd", "SoHo Broadway"),
+      Brooklyn report covers roughly 10-12 corridors (varies by release); REBNY
+      defines each corridor's exact block range in the report text, not as a
+      published shapefile
+    temporal:
+      start: 2016
+      end: current
+      grain: >
+        Manhattan report: semiannual (H1/H2) since at least Spring 2016, confirmed
+        continuous through H1 2026 (10 years of history via the rebny.com/reports
+        archive, checked 2026-09-22). Brooklyn report: launched Winter/Q1 2016 as
+        semiannual, but recent releases (2024, 2025) are titled as single annual
+        reports covering ~10-month windows — cadence has drifted from biannual to
+        roughly annual; verify per-release before assuming a fixed 6-month grain.
+    license: >
+      rebny.com Terms of Use (last updated 2020-04-17, checked 2026-09-22):
+      Website Content "shall not be copied, reproduced, displayed, used, sold or
+      otherwise distributed or modified without the express prior written consent
+      of REBNY"; the only license granted is to "print a single copy of limited
+      portions... solely for your personal, non-commercial use." No public API,
+      bulk-download or redistribution grant. VERDICT: free to read and free to
+      derive internal analysis from (the published corridor rent figures
+      themselves are facts, not copyrightable expression), but redistributing
+      REBNY's own report text/tables, or any Loci product surface that reproduces
+      REBNY's corridor rent numbers as REBNY's, needs express written permission
+      first — internal-use-only until that permission is obtained, same posture
+      as the streeteasy_listings entry already in the registry.
+    cost: {amount: 0, unit: total}
+    bias: >
+      SURVEY, not a census: REBNY's own retail committee members (brokers)
+      supply the corridor data, so it reflects brokerage-visible listings on
+      REBNY's chosen "prime" corridors only — Loci's tens of thousands of
+      non-corridor MN+BK addresses get no rent read from this source at all,
+      only the ~16-28 named corridors do. Asking rent, not achieved/effective
+      rent (concessions, free-rent periods and built-out TI are not netted out).
+      Corridor boundaries and count have changed release to release (16 in H1
+      2026 vs 17 in some earlier Fall 2016 coverage per secondary reporting),
+      so a time series needs the corridor NAME reconciled release to release,
+      not assumed stable.
+    notes: >
+      Chosen over Cushman & Wakefield MarketBeat Manhattan Retail (free,
+      quarterly, ~12 corridors) and CBRE Manhattan Retail Figures (free,
+      quarterly, 16-corridor blended) as the primary registry entry because
+      REBNY is the only one of the three with a confirmed FREE BROOKLYN
+      equivalent (Brooklyn Retail Report, launched 2016) — Cushman and CBRE's
+      free retail reports found in this pass are Manhattan-only, and Colliers/
+      Newmark publish no NYC retail corridor report at all (Newmark's public
+      $54.60/sf figure is a NATIONAL number, not NYC — already noted in
+      PAID-SOURCES.md). This is the one free option scoped to exactly Loci's
+      D78 MN+BK screen, matching both boroughs Loci actually covers. Cushman
+      MarketBeat and CBRE Retail Figures are reasonable SECOND OPINIONS on the
+      Manhattan-only corridors (cross-check against REBNY's numbers) but were
+      not drafted as separate entries here — add them later as a cross-
+      validation source if REBNY's Manhattan figures ever look off, rather than
+      as a primary ingest.
+      JOIN METHOD: address-to-corridor assignment, not a key join. REBNY
+      corridors are named street segments (e.g. "Broadway, Houston-Canal");
+      Loci would need to (a) hand-digitize each corridor's block range as a
+      line/buffer geometry per release (REBNY does not publish one), then (b)
+      assign each address/BBL within a walking-distance buffer of a named
+      corridor to that corridor's asking-rent figure as a CONTEXT feature, not
+      an address-level rent estimate — this is a coarse borough/corridor-level
+      control, the same resolution ceiling PAID-SOURCES.md already flags for
+      any of the free options (REBNY/Cushman/CBRE alike).
+      SCHEMA/VALIDATION CONCERN: no dataset_id (there is no queryable dataset,
+      only per-release web pages), so registry.py's dataset_id-drift check does
+      not apply — same as several other html-scrape entries (e.g.
+      streeteasy_listings). `geography` is a free-text description, not one of
+      the point/polygon strings used elsewhere; registry.py does not enum-
+      validate `geography` so this validates fine, but a future portability/
+      sources-doc render should be checked for readable output given the length
+      of this entry's temporal.grain string.
+    evidence:
+      - {url: "https://www.rebny.com/reports/manhattan-retail-report-first-half-2026", date: "2026-09-22"}
+      - {url: "https://www.rebny.com/reports/brooklyn-retail-report-2025", date: "2026-09-22"}
+      - {url: "https://www.rebny.com/reports/spring-2016-manhattan-retail-report", date: "2026-09-22"}
+      - {url: "https://nyrej.com/print/34387", date: "2026-09-22"}
+      - {url: "https://www.rebny.com/terms-of-use", date: "2026-09-22"}
+      - {url: "https://www.cushmanwakefield.com/en/united-states/insights/us-marketbeats/new-york-city-area-marketbeats/manhattan-retail", date: "2026-09-22"}
+      - {url: "https://www.cbre.com/insights/figures/manhattan-retail-figures-q2-2026", date: "2026-09-22"}
+
   # ---- wishlist (paid, post-raise) ----
   #
   # Sources Loci would BUY once there is money to buy them. Surveyed 2026-09-13

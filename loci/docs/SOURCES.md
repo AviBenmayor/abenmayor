@@ -2,7 +2,7 @@
 
 **GENERATED — do not edit.** Rendered by `loci gen-sources` from the non-wishlist entries in [`src/loci/registry.yaml`](../src/loci/registry.yaml). `loci check-sources` fails if this file differs from a fresh render, so a claim here is a claim in the registry with its dated evidence beside it.
 
-Registry verified 2026-09-02. **50 sources** in or committed to the pipeline, grouped by role. The post-raise wishlist is generated separately into [`docs/PAID-SOURCES.md`](PAID-SOURCES.md); the per-source portability classing is generated into [`docs/PORTABILITY.md`](PORTABILITY.md).
+Registry verified 2026-09-02. **52 sources** in or committed to the pipeline, grouped by role. The post-raise wishlist is generated separately into [`docs/PAID-SOURCES.md`](PAID-SOURCES.md); the per-source portability classing is generated into [`docs/PORTABILITY.md`](PORTABILITY.md).
 
 ## Business locations, present day
 
@@ -48,6 +48,7 @@ Registry verified 2026-09-02. **50 sources** in or committed to the pipeline, gr
 | Source | Dataset ID | Tier | Geography | Cost | Status | Known bias |
 |---|---|---|---|---|---|---|
 | **Citi Bike System Data (trip files)** | `citibike-tripdata` | city | point (dock) | $0 | verified | NOT A PEDESTRIAN COUNT, and this is the most important thing to say about anything built from it … |
+| **FEMA National Flood Hazard Layer (NFHL)** | - | universal | flood zone polygon (S_FLD_HAZ_AR — FEMA flood zone designations X / AE / VE / A / 0.2 PCT ANNUAL CHANCE etc.), county-partitioned; NYC = Bronx/Kings/New York/Queens/Richmond counties | $0 | planned | Authoritative flood-INSURANCE zone, not a flood-RISK score: a parcel can be outside every FEMA zone and still flood (see NYC's own coastal + sea-level-rise layers below), and … |
 | **MTA Bus GTFS static (stops)** | - | city | point | $0 | planned | Stop presence, not service frequency; frequency needs the schedule join. |
 | **MTA Subway Entrances and Exits 2024** | `i9wp-a4ja` | city | point | $0 | verified | A 2024 SNAPSHOT: entrances close for construction and the file does not track it … |
 | **MTA Subway Hourly Ridership 2020-2024** | `wujg-7c2s` | city | station complex | $0 | verified | Pandemic-era window; 2020-21 levels are not representative. |
@@ -66,6 +67,8 @@ Registry verified 2026-09-02. **50 sources** in or committed to the pipeline, gr
 | **NYC orthoimagery (OTI) -- 6-inch true-ortho, biennial** | - | city | raster, 256 px Web Mercator tiles, level 20 = 0.149 m/px | $0 | verified | NADIR, LEAF-OFF, MID-MARCH … |
 | **NYC MapPLUTO (Primary Land Use Tax Lot Output)** | - | city | tax lot | $0 | planned | Assessment-derived; ZoneDist reflects mapped zoning, not variances or overlays in effect. |
 | **OSM pedestrian network via OSMnx** | - | universal | graph | $0 | planned | Sidewalk-level detail is uneven; most NYC walk routing runs on the centerline graph, which slightly understates crossing friction. |
+| **REBNY Manhattan & Brooklyn Retail Reports (corridor asking rent)** | - | city | named retail corridor (street segment), NOT point/parcel — Manhattan report covers 16 corridors (e.g. "Madison Avenue 57th-72nd", "SoHo Broadway"), Brooklyn report covers roughly 10-12 corridors (varies by release); REBNY defines each corridor's exact block range in the report text, not as a published shapefile
+ | $0 | planned | SURVEY, not a census: REBNY's own retail committee members (brokers) supply the corridor data, so it reflects brokerage-visible listings on REBNY's chosen "prime" corridors only … |
 | **StreetEasy listing pages (advertised in-building laundry, via Tavily)** | - | city | point | $0 | verified | ADVERTISING, NOT INSPECTION — "Laundry in building" is a claim made to let a lease; nobody verified it … |
 
 ## Validation

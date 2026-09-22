@@ -8,19 +8,19 @@ Owner ask, 2026-09-14: *"what are the critical inputs necessary to be able to ex
 
 ## 1. The registry by portability class
 
-`class` answers *where can a second city get this*, and it is deliberately not the same question as `tier`. A `city`-tier source is usually **not** unique to the city: another city publishes the same fact under a different schema. Only 6 rows in the registry have no equivalent anywhere else.
+`class` answers *where can a second city get this*, and it is deliberately not the same question as `tier`. A `city`-tier source is usually **not** unique to the city: another city publishes the same fact under a different schema. Only 7 rows in the registry have no equivalent anywhere else.
 
 | Class | n | What it means for a second city |
 |---|---|---|
 | **universal** | 7 | Works on day one, anywhere on earth. Nothing to procure. |
-| **national (US federal)** | 11 | Works on day one in any US city. Carries its own portable bias. |
+| **national (US federal)** | 12 | Works on day one in any US city. Carries its own portable bias. |
 | **state** | 7 | Re-plumbed per state. Publication quality varies enormously; expect some states to publish nothing usable. |
 | **city open data (different schema)** | 19 | An equivalent exists but the schema is different. This is the real cost of a second city: an adapter per source. |
-| **city-unique (no equivalent exists)** | 6 | No equivalent exists. The stage degrades, permanently — see §4. |
+| **city-unique (no equivalent exists)** | 7 | No equivalent exists. The stage degrades, permanently — see §4. |
 
-**50 sources classed.** 18 of them (36%) need no per-city work at all.
+**52 sources classed.** 19 of them (37%) need no per-city work at all.
 
-**22 of the 50 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
+**23 of the 52 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
 
 ---
 
@@ -84,6 +84,7 @@ development pipeline.
 |---|---|---|
 | Census American Community Survey, 5-year estimates | national (US federal) | No income, tenure, age or household size: the supply baseline loses its controls, so a thin count can no longer be separated from a poor one, and demand_now is ungraded. |
 | Citi Bike System Data (trip files) | national (US federal) *(med conf.)* | The only two-directional movement series in the registry is lost: demand keeps subway ENTRIES, which publish the morning tap-in and never the evening arrival, and which read zero for 65% of Brooklyn addresses -- so `bike_ends_400m`, the only arrival-side measure Loci has, cannot be built and the destination-versus- commuter reading of a corner goes back to being an assumption. |
+| FEMA National Flood Hazard Layer (NFHL) | national (US federal) | No flood-zone overlay at all: the feasibility gate keeps reasoning about site risk with no climate/flood signal, the same blind spot GrowthFactor markets against Loci as "Climate Intelligence" (competitor-capability-gaps doc, gap row "Climate / flood risk overlay"). |
 | HUD aggregated USPS vacancy data | national (US federal) | No independent residential vacancy series, so the residential half of vacancy rests on ACS 5-year smoothing alone. |
 | IRS SOI county-to-county migration | national (US federal) | Nothing. Five units citywide is too coarse for any stage; recorded so the exclusion stays deliberate. |
 | LEHD LODES Workplace Area Characteristics (LODES8) | national (US federal) | jobs_400m disappears: the daytime half of demand is gone and the character model loses one of its three witnesses for corporate vs retail. |
@@ -94,9 +95,10 @@ development pipeline.
 | NYC DOE Demographic Snapshot (school-level enrollment + composition) | city open data (different schema) *(med conf.)* | The demand side stays entirely ACS-shaped: no unsampled, annual read on the pool of children a childcare- or family-oriented storefront draws on, and no independent check on whether under_18_share / under_5_share are still tracking a neighborhood's actual child population in the years between 5-year ACS vintages. |
 | NYC Energy and Water Data Disclosure (Local Law 84 / LL133) | city open data (different schema) *(med conf.)* | In-building laundry evidence is lost, so the laundry haircut falls back to priors: addressable_demand drops from A to its prior_grade B for the one category that has a haircut at all. |
 | NYC MapPLUTO (Primary Land Use Tax Lot Output) | city-unique (no equivalent exists) *(med conf.)* | The screen has no sampling frame. analysis.address IS 'PLUTO lots WHERE UnitsRes > 0', so without it there is no universe, no dasymetric ancillary, no commercial zoning capacity control (required by CONTEXT 1.3), and no retail floor area for D82 character or the D91 capacity ceiling. |
+| REBNY Manhattan & Brooklyn Retail Reports (corridor asking rent) | city-unique (no equivalent exists) *(med conf.)* | No rent number anywhere in the pipeline (the gap PAID-SOURCES.md names directly: "the feasibility gate reasons about rent without a rent number"), so the only way to add one remains a paid vendor (CoStar, CompStak, Crexi). |
 | StreetEasy listing pages (advertised in-building laundry, via Tavily) | city-unique (no equivalent exists) *(med conf.)* | Laundry evidence coverage drops below recommend_grades' evidence_coverage_a of 0.50, so addressable_demand for laundry falls from A to the prior_grade B. |
 
-**Stage `demand` depends on 2 city-unique sources** — NYC MapPLUTO (Primary Land Use Tax Lot Output), StreetEasy listing pages (advertised in-building laundry, via Tavily). It cannot be reproduced at full strength anywhere else.
+**Stage `demand` depends on 3 city-unique sources** — NYC MapPLUTO (Primary Land Use Tax Lot Output), REBNY Manhattan & Brooklyn Retail Reports (corridor asking rent), StreetEasy listing pages (advertised in-building laundry, via Tavily). It cannot be reproduced at full strength anywhere else.
 
 ### `lifecycle`
 
@@ -301,7 +303,7 @@ status date.
 
 ## 4. The city-unique sources, and what is lost without each
 
-6 rows have no equivalent anywhere else. These are the permanent degradations — not an
+7 rows have no equivalent anywhere else. These are the permanent degradations — not an
 adapter to write, a capability a second city does not have.
 
 ### MTA Subway Hourly Ridership 2020-2024
@@ -359,6 +361,19 @@ US county assessor. What is NYC-specific is the bundle: UnitsRes +
 BldgArea/RetailArea/OfficeArea + ResidFAR/BuiltFAR + BldgClass + LandUse on one row,
 citywide, free, twice a year. Expect to rebuild floor area and zoning capacity from two
 or three separate files.
+
+### REBNY Manhattan & Brooklyn Retail Reports (corridor asking rent)
+
+*Feeds:* `demand` · *Class confidence:* med
+
+**Lost without it.** No rent number anywhere in the pipeline (the gap PAID-SOURCES.md
+names directly: "the feasibility gate reasons about rent without a rent number"), so the
+only way to add one remains a paid vendor (CoStar, CompStak, Crexi).
+
+**Why nothing replaces it.** REBNY is a NYC-specific trade association; the FUNCTION (a
+local real estate board publishing biannual corridor asking-rent surveys) exists in
+other metros under different brands and is not guaranteed to be free there, so this is
+classed city_unique rather than city_open_data.
 
 ### StreetEasy listing pages (advertised in-building laundry, via Tavily)
 
@@ -554,6 +569,7 @@ second-city plan starts from the doubt rather than rediscovering it.
 | NYC MapPLUTO (Primary Land Use Tax Lot Output) | city-unique (no equivalent exists) | med | A parcel file with residential units exists in nearly every US county assessor. What is NYC-specific is the bundle: UnitsRes + BldgArea/RetailArea/OfficeArea + ResidFAR/BuiltFAR + BldgClass + LandUse on one row, citywide, free, twice a year. Expect to rebuild floor area and zoning capacity from two or three separate files. |
 | NYS SLA Current Pending Licenses | state | med | A pending/applications queue is far rarer than the active-licence file; most ABC authorities publish only what has issued. |
 | NYS Liquor Authority Current Inactive Licenses | state | med | Far fewer states publish the inactive companion than publish the active file, so this is the rung most likely to be missing in city number two. |
+| REBNY Manhattan & Brooklyn Retail Reports (corridor asking rent) | city-unique (no equivalent exists) | med | REBNY is a NYC-specific trade association; the FUNCTION (a local real estate board publishing biannual corridor asking-rent surveys) exists in other metros under different brands and is not guaranteed to be free there, so this is classed city_unique rather than city_open_data. |
 | StreetEasy listing pages (advertised in-building laundry, via Tavily) | city-unique (no equivalent exists) | med | StreetEasy is NYC-only, but the FUNCTION -- a dominant listings portal whose pages advertise in-building amenities -- exists in most metros under another brand. |
 
 ---
