@@ -1,0 +1,60 @@
+-- ---------------------------------------------------------------------------
+-- 056_brewery.sql -- DRAFT, NOT APPLIED. Rename to 056_brewery.sql and run
+-- as a `loci migrate-warehouse` step once a peer session clears the hash
+-- move (D137, 2026-09-22).
+--
+-- Widens two existing CHECK constraints, both of which enumerate the Loci
+-- category / alcohol-overlay-classification vocabulary LITERALLY and cannot
+-- be ALTERed in DuckDB. Same problem, same fix, as the bathhouse_sauna
+-- precedent (sql/036 + migrate.py step_observation_category_check):
+-- CREATE __rebuild -> INSERT SELECT -> assert row count identical -> DROP
+-- old -> RENAME. Neither table's DATA changes; only the CHECK widens.
+--
+--   (a) analysis.address_observation.category_guess -- sql/036's literal now
+--       includes 'brewery' (17th slug). Apply via the EXISTING generic step:
+--         loci migrate-warehouse --step observation_category_check --apply
+--       (it already reads sql/036 and rebuilds against whatever CATEGORIES
+--       requires; no new code needed once sql/036 carries 'brewery').
+--
+--   (b) staging.alcohol_licences.classification -- sql/007's literal now
+--       includes 'brewer' (the four SLA brewer-class producer licences,
+--       previously `other`). No existing generic step covers this table;
+--       the rebuild this draft documents is:
+--
+-- BEGIN TRANSACTION;
+--
+-- CREATE TABLE staging.alcohol_licences__rebuild (
+--     licence_id     VARCHAR PRIMARY KEY,
+--     description    VARCHAR NOT NULL,
+--     licence_class  VARCHAR,
+--     classification VARCHAR NOT NULL
+--         CHECK (classification IN ('on_premises', 'off_premises_liquor',
+--                                   'off_premises_beer', 'brewer', 'other', 'unknown')),
+--     name           VARCHAR,
+--     address        VARCHAR,
+--     zip            VARCHAR,
+--     borough        VARCHAR,
+--     geom           GEOMETRY NOT NULL,
+--     expires_on     DATE,
+--     active         BOOLEAN NOT NULL,
+--     observed_on    DATE
+-- );
+--
+-- INSERT INTO staging.alcohol_licences__rebuild
+--     SELECT licence_id, description, licence_class, classification, name,
+--            address, zip, borough, geom, expires_on, active, observed_on
+--     FROM staging.alcohol_licences;
+--
+-- -- row-count assertion belongs here before the swap, per the _swap()
+-- -- contract in migrate.py -- do not DROP until counts match.
+--
+-- DROP TABLE staging.alcohol_licences;
+-- ALTER TABLE staging.alcohol_licences__rebuild RENAME TO alcohol_licences;
+--
+-- COMMIT;
+--
+-- After the rebuild, re-run `loci ingest-alcohol` (or just re-classify) so
+-- the four brewer-class rows actually carry `brewer` rather than the
+-- pre-migration `other` baked into the copied data -- the swap alone widens
+-- the CHECK, it does not reclassify existing rows.
+-- ---------------------------------------------------------------------------
