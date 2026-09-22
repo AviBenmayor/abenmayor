@@ -13,14 +13,14 @@ Owner ask, 2026-09-14: *"what are the critical inputs necessary to be able to ex
 | Class | n | What it means for a second city |
 |---|---|---|
 | **universal** | 7 | Works on day one, anywhere on earth. Nothing to procure. |
-| **national (US federal)** | 12 | Works on day one in any US city. Carries its own portable bias. |
+| **national (US federal)** | 15 | Works on day one in any US city. Carries its own portable bias. |
 | **state** | 7 | Re-plumbed per state. Publication quality varies enormously; expect some states to publish nothing usable. |
 | **city open data (different schema)** | 19 | An equivalent exists but the schema is different. This is the real cost of a second city: an adapter per source. |
 | **city-unique (no equivalent exists)** | 7 | No equivalent exists. The stage degrades, permanently — see §4. |
 
-**52 sources classed.** 19 of them (37%) need no per-city work at all.
+**55 sources classed.** 22 of them (40%) need no per-city work at all.
 
-**23 of the 52 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
+**24 of the 55 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
 
 ---
 
@@ -85,9 +85,12 @@ development pipeline.
 | Census American Community Survey, 5-year estimates | national (US federal) | No income, tenure, age or household size: the supply baseline loses its controls, so a thin count can no longer be separated from a poor one, and demand_now is ungraded. |
 | Citi Bike System Data (trip files) | national (US federal) *(med conf.)* | The only two-directional movement series in the registry is lost: demand keeps subway ENTRIES, which publish the morning tap-in and never the evening arrival, and which read zero for 65% of Brooklyn addresses -- so `bike_ends_400m`, the only arrival-side measure Loci has, cannot be built and the destination-versus- commuter reading of a corner goes back to being an assumption. |
 | FEMA National Flood Hazard Layer (NFHL) | national (US federal) | No flood-zone overlay at all: the feasibility gate keeps reasoning about site risk with no climate/flood signal, the same blind spot GrowthFactor markets against Loci as "Climate Intelligence" (competitor-capability-gaps doc, gap row "Climate / flood risk overlay"). |
+| FRED (Federal Reserve Bank of St. Louis) — BLS/Fed/NBER macro series | national (US federal) | RQ-001's macro hazard covariates have no series to regress on: the regime-durability model cannot test H1 (macro raising citywide churn) or H2 (macro x ZIP-exposure interactions reordering ranks), and per METHOD.md section 5 must fall back to labeling every spell exit BLOCKED for macro with its ticket id rather than fabricating one. |
 | HUD aggregated USPS vacancy data | national (US federal) | No independent residential vacancy series, so the residential half of vacancy rests on ACS 5-year smoothing alone. |
 | IRS SOI county-to-county migration | national (US federal) | Nothing. Five units citywide is too coarse for any stage; recorded so the exclusion stays deliberate. |
+| IRS SOI ZIP Code Income Tax Statistics | national (US federal) | RQ-001 loses its only ZIP-grain income/filing-count cross-section, so the neighborhood-income covariate in the DEMAND pillar has to fall back to ACS median household income alone, with no independent tax-based check on it. |
 | LEHD LODES Workplace Area Characteristics (LODES8) | national (US federal) | jobs_400m disappears: the daytime half of demand is gone and the character model loses one of its three witnesses for corporate vs retail. |
+| Opportunity Insights — Opportunity Atlas tract covariates & outcomes | national (US federal) *(med conf.)* | RQ-001 loses its only childhood-neighborhood mobility covariate, so a tract's historical socioeconomic-mobility context cannot be checked against its present-day DEMAND pillar reading at all. |
 | Zillow Observed Rent Index / Home Value Index | national (US federal) | No rent index, so affordability context on the card is asserted rather than measured. ZIP grain means it was never load-bearing. |
 | NYC DCP Housing Database — Project-Level Files | city open data (different schema) *(med conf.)* | The arriving-homes spine is gone, so recommend_grades' null_grade fires: arriving_homes grades D and, being load-bearing, the whole card reads 'do not act'. |
 | NYC DOB Certificates of Occupancy (BIS + DOB NOW) | city open data (different schema) *(med conf.)* | The pipeline loses its freshness supplement: 11,407 MN+BK net units that already hold a CO keep reading 'permitted', overstating the forward pipeline. |
@@ -569,6 +572,7 @@ second-city plan starts from the doubt rather than rediscovering it.
 | NYC MapPLUTO (Primary Land Use Tax Lot Output) | city-unique (no equivalent exists) | med | A parcel file with residential units exists in nearly every US county assessor. What is NYC-specific is the bundle: UnitsRes + BldgArea/RetailArea/OfficeArea + ResidFAR/BuiltFAR + BldgClass + LandUse on one row, citywide, free, twice a year. Expect to rebuild floor area and zoning capacity from two or three separate files. |
 | NYS SLA Current Pending Licenses | state | med | A pending/applications queue is far rarer than the active-licence file; most ABC authorities publish only what has issued. |
 | NYS Liquor Authority Current Inactive Licenses | state | med | Far fewer states publish the inactive companion than publish the active file, so this is the rung most likely to be missing in city number two. |
+| Opportunity Insights — Opportunity Atlas tract covariates & outcomes | national (US federal) | med | Confidence is med because the two files are a historical cross-section (birth cohorts 1984-1989, outcomes measured in adulthood) rather than a time series, and no explicit license/redistribution text was found on the publisher's data page in this pass -- see license below. |
 | REBNY Manhattan & Brooklyn Retail Reports (corridor asking rent) | city-unique (no equivalent exists) | med | REBNY is a NYC-specific trade association; the FUNCTION (a local real estate board publishing biannual corridor asking-rent surveys) exists in other metros under different brands and is not guaranteed to be free there, so this is classed city_unique rather than city_open_data. |
 | StreetEasy listing pages (advertised in-building laundry, via Tavily) | city-unique (no equivalent exists) | med | StreetEasy is NYC-only, but the FUNCTION -- a dominant listings portal whose pages advertise in-building amenities -- exists in most metros under another brand. |
 

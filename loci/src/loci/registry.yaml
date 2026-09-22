@@ -979,6 +979,199 @@ sources:
     open_question: "ZIP -> hex crosswalk method. CONTEXT.md 9, item 4."
     notes: Weakest of the four outcomes; label it as such in the memo.
 
+  # Registered 2026-09-22 for RQ-001 (regime durability). METHOD.md section 5
+  # ("Macro. What can and cannot be identified") sets the two testable
+  # hypotheses this feeds: H1 (macro raises citywide churn) and H2 (macro x
+  # ZIP-exposure interactions reorder ranks) -- see docs/research/RQ-001-
+  # regime-durability/METHOD.md and DATA-AUDIT.md (MACRO row: "NOT REGISTERED"
+  # x5 before this entry).
+  - id: fred_macro
+    name: FRED (Federal Reserve Bank of St. Louis) — BLS/Fed/NBER macro series
+    tier: universal
+    role: outcome
+    status: planned
+    portability:
+      class: national
+      feeds: [demand]
+      confidence: high
+      degrades_to: >
+        RQ-001's macro hazard covariates have no series to regress on: the
+        regime-durability model cannot test H1 (macro raising citywide churn)
+        or H2 (macro x ZIP-exposure interactions reordering ranks), and per
+        METHOD.md section 5 must fall back to labeling every spell exit BLOCKED
+        for macro with its ticket id rather than fabricating one.
+    url: https://fred.stlouisfed.org/
+    api: https://fred.stlouisfed.org/graph/fredgraph.csv?id=<SERIES>  # public CSV endpoint, one series per request, no API key required
+    geography: national / NY MSA — no sub-city geography for any series listed here
+    temporal:
+      start: 1990
+      end: current
+      grain: monthly (annual for USREC's underlying NBER dating; most series pulled monthly and can be resampled to the ZIP panel's annual grain)
+    cost: {amount: 0, unit: total}
+    license: >
+      FRED's Terms of Use (fred.stlouisfed.org/legal/, checked 2026-09-22) sort
+      series into three tiers: "Public Domain: Citation requested" (free
+      redistribution with attribution to source + FRED), "Copyrighted: Citation
+      required" (attribution, no redistribution-without-permission language),
+      and "Copyrighted: Pre-approval required" (third-party-owned; the Bank
+      states it "cannot give you such permission" itself). Every series listed
+      below is BLS-, Federal-Reserve- or NBER-produced (44 U.S.C. 105 —
+      no copyright asserted on U.S. government works), so all fall in the
+      Public Domain tier; none of FRED's third-party-copyrighted series are
+      used here.
+    bias: >
+      Every series is CITYWIDE or NATIONAL -- one value per period, no ZIP or
+      tract variation -- so under RQ-001's within-year percentile-rank design a
+      shock that moves everyone changes no ranks: a macro main effect on the
+      aggregate exit rate is close to mechanically null (METHOD.md 5).
+      Identifiable only as (H1) a level effect on the year's exit RATE via a
+      ~24-year, ~3-episode (2001, 2008-09, COVID) descriptive regression, or
+      (H2) via year fixed effects plus macro x ZIP-exposure interactions --
+      never as a per-ZIP causal driver, and year FE is perfectly collinear
+      with any NYC-wide macro series (include one or the other, never both).
+      The NY-area unemployment and leisure/hospitality-employment series stay
+      at state/MSA grain, coarser than the ZIP panel every other DEMAND input
+      uses.
+    fields: [UNRATE, FEDFUNDS, MORTGAGE30US, GS10, CUSR0000SEFV, USREC,
+             CES7072200001]
+    notes: >
+      Series pulled at national grain: UNRATE (civilian unemployment rate),
+      FEDFUNDS (effective federal funds rate), MORTGAGE30US (30-yr fixed
+      mortgage rate), GS10 (10-yr Treasury), CUSR0000SEFV (CPI, food away from
+      home, seasonally adjusted), USREC (NBER-based recession indicator),
+      CES7072200001 (all-employee count, food services & drinking places,
+      NAICS 722). Also planned: NYC/NY-state unemployment and NYC leisure &
+      hospitality employment (both genuinely NY-MSA/state grain in FRED, not a
+      ZIP or borough breakdown) -- their exact FRED series ids are being
+      verified by a separate ingest agent and will land in
+      src/loci/sources/macro.py; list them here once that adapter is built
+      rather than guessing ids now. No adapter yet (status: planned) --
+      matches the fema_nfhl / rebny_retail_reports convention of registering a
+      verified, free, no-key source before its ingest code exists.
+
+  # Registered 2026-09-22 closing the RQ-001 DATA-AUDIT.md governance gap
+  # (RQ001-public-signals-registry-entry): both tables below were ingested by
+  # src/loci/sources/public_signals.py before either had a registry.yaml
+  # entry. `irs_zip_income` and `opportunity_insights_tract` (below) are the
+  # two publishers behind that module's three DEMAND-covariate tables.
+  - id: irs_zip_income
+    name: IRS SOI ZIP Code Income Tax Statistics
+    tier: universal
+    role: outcome
+    status: verified
+    portability:
+      class: national
+      feeds: [demand]
+      confidence: high
+      degrades_to: >
+        RQ-001 loses its only ZIP-grain income/filing-count cross-section, so
+        the neighborhood-income covariate in the DEMAND pillar has to fall back
+        to ACS median household income alone, with no independent tax-based
+        check on it.
+    url: https://www.irs.gov/statistics/soi-tax-stats-individual-income-tax-statistics-zip-code-data-soi
+    access: https://www.irs.gov/pub/irs-soi/zipcode2022.zip  # single national archive; the adapter extracts NY-state rows client-side, see notes
+    geography: zip
+    temporal:
+      start: 2022
+      end: 2022
+      grain: annual
+      note: >
+        Single cross-sectional vintage ingested (tax year 2022, the archive's
+        filename year). IRS publishes a comparable annual ZIP-code file back to
+        the late 1990s; only 2022 has been pulled so far -- this is NOT a
+        panel as registered.
+    cost: {amount: 0, unit: total}
+    license: >
+      Public domain -- U.S. federal government work (44 U.S.C. 105), IRS
+      Statistics of Income Division. No login, key or redistribution
+      restriction found on irs.gov. Not independently re-verified live this
+      pass beyond the URL the adapter already downloads from.
+    bias: >
+      RETURN-based, not population-based: a household filing multiple returns
+      or a ZIP with many part-year/seasonal filers is not a resident count, and
+      non-filers are invisible. AGI is tabulated into IRS size bands, not a
+      continuous distribution, and small (ZIP x AGI-band) cells are suppressed
+      under IRS disclosure rules -- an absent cell is not evidence of zero
+      returns. IRS ZIP boundaries are administrative delivery areas, not Census
+      ZCTA/TIGER boundaries, so a join against ACS or ZBP ZIP geography is an
+      approximation, not an exact match. Single vintage only (see temporal).
+    notes: >
+      Ingested via src/loci/sources/public_signals.py (`irs_zip_income` in the
+      module's `ingest()` dispatch): downloads the one national
+      `zipcode2022.zip` archive, extracts only STATE == 'NY' rows client-side
+      (`extract_irs_zip_ny`), and lands them in
+      `staging.public_irs_zip_income` -- 9,222 rows / 1,537 ZIPs per the
+      RQ-001 DATA-AUDIT.md probe (2026-09-22). Registered now to close that
+      audit's governance gap (RQ001-public-signals-registry-entry: "present but
+      NOT in registry.yaml at all ... ingested ... ungoverned"). Not yet wired
+      into any `analysis.*` table -- a candidate DEMAND-pillar covariate for
+      RQ-001, not a load-bearing input to any shipped score.
+
+  - id: opportunity_insights_tract
+    name: Opportunity Insights — Opportunity Atlas tract covariates & outcomes
+    tier: universal
+    role: outcome
+    status: verified
+    portability:
+      class: national
+      feeds: [demand]
+      confidence: med
+      degrades_to: >
+        RQ-001 loses its only childhood-neighborhood mobility covariate, so a
+        tract's historical socioeconomic-mobility context cannot be checked
+        against its present-day DEMAND pillar reading at all.
+      note: >
+        Confidence is med because the two files are a historical cross-section
+        (birth cohorts 1984-1989, outcomes measured in adulthood) rather than a
+        time series, and no explicit license/redistribution text was found on
+        the publisher's data page in this pass -- see license below.
+    url: https://opportunityinsights.org/data/
+    access: >
+      https://www2.census.gov/ces/opportunity/tract_covariates.csv (Neighborhood
+      Characteristics by Census Tract) ; https://www2.census.gov/ces/opportunity/
+      tract_outcomes_simple.csv (Household Income and Incarceration for Children
+      from Low-Income Households by Census Tract, Race and Gender) -- both
+      Census-hosted CSVs, no login or key
+    geography: tract
+    temporal:
+      start: 1984
+      end: 1989
+      grain: historical-composite
+      note: >
+        NOT an annual series. Children born 1984-1989 (the Opportunity Atlas
+        cohort), outcomes measured in adulthood; each file is a single
+        cross-sectional release, not a vintage that repeats. Per DATA-AUDIT.md:
+        "historical-composite, not annual."
+    cost: {amount: 0, unit: total}
+    license: >
+      No explicit license or redistribution terms found on the Opportunity
+      Insights data page (opportunityinsights.org/data/, checked 2026-09-22);
+      both files are freely downloadable Census-hosted CSVs with no login or
+      API key. Publisher citation: Chetty, Friedman, Hendren, Jones & Porter,
+      "The Opportunity Atlas: Mapping the Childhood Roots of Social Mobility"
+      (Opportunity Insights / Census Bureau). Treat as free-to-read,
+      attribute-on-use pending a firmer license check before any redistribution
+      of the raw files themselves.
+    bias: >
+      Built from de-identified IRS/Census administrative records inside a
+      Census Federal Statistical Research Data Center, not a survey -- subject
+      to Census noise infusion / small-cell suppression. Tract is the child's
+      CHILDHOOD residence (age ~parents' address in the cohort years), not a
+      present-day retail trade area, so this is a historical neighborhood-of-
+      origin measure, not a current demand signal, and it will read stale for
+      any tract that has gentrified or declined since the 1984-1989 cohort.
+      Outcome cells broken out by race and gender carry wide, sometimes
+      suppressed, margins for small tracts.
+    notes: >
+      Ingested via src/loci/sources/public_signals.py (`tract_covariates` and
+      `tract_outcomes` in the module's `OPPORTUNITY` dict / `ingest()`
+      dispatch), landed in `staging.public_tract_covariates` and
+      `staging.public_tract_outcomes` respectively. Registered now to close the
+      same RQ-001 DATA-AUDIT.md governance gap as `irs_zip_income`
+      (RQ001-public-signals-registry-entry). Not yet wired into any
+      `analysis.*` table -- a candidate DEMAND-pillar covariate for RQ-001,
+      not a load-bearing input to any shipped score.
+
   # SUPERSEDES the `nyc_dob_hpd` placeholder (DOB Job Application Filings
   # ic3t-wcy2 + "HPD Housing Database", status: planned, never built). The raw
   # DOB filing feed is the wrong spine: it is one row per FILING with

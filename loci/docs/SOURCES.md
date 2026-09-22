@@ -2,7 +2,7 @@
 
 **GENERATED — do not edit.** Rendered by `loci gen-sources` from the non-wishlist entries in [`src/loci/registry.yaml`](../src/loci/registry.yaml). `loci check-sources` fails if this file differs from a fresh render, so a claim here is a claim in the registry with its dated evidence beside it.
 
-Registry verified 2026-09-02. **52 sources** in or committed to the pipeline, grouped by role. The post-raise wishlist is generated separately into [`docs/PAID-SOURCES.md`](PAID-SOURCES.md); the per-source portability classing is generated into [`docs/PORTABILITY.md`](PORTABILITY.md).
+Registry verified 2026-09-02. **55 sources** in or committed to the pipeline, grouped by role. The post-raise wishlist is generated separately into [`docs/PAID-SOURCES.md`](PAID-SOURCES.md); the per-source portability classing is generated into [`docs/PORTABILITY.md`](PORTABILITY.md).
 
 ## Business locations, present day
 
@@ -34,13 +34,16 @@ Registry verified 2026-09-02. **52 sources** in or committed to the pipeline, gr
 | Source | Dataset ID | Tier | Geography | Cost | Status | Known bias |
 |---|---|---|---|---|---|---|
 | **Census American Community Survey, 5-year estimates** | - | universal | tract | $0 | planned | 5-year smoothing damps recent change. Tract-level MOEs are large and must be carried through interpolation, not discarded. |
+| **FRED (Federal Reserve Bank of St. Louis) — BLS/Fed/NBER macro series** | - | universal | national / NY MSA — no sub-city geography for any series listed here | $0 | planned | Every series is CITYWIDE or NATIONAL -- one value per period, no ZIP or tract variation -- so under RQ-001's within-year percentile-rank design a shock that moves everyone … |
 | **HUD aggregated USPS vacancy data** | - | universal | tract | $0 | planned | Requires HUD user registration. "Vacant" is a carrier judgment; long-term vacancy definitions changed over time. |
+| **IRS SOI ZIP Code Income Tax Statistics** | - | universal | zip | $0 | verified | RETURN-based, not population-based: a household filing multiple returns or a ZIP with many part-year/seasonal filers is not a resident count, and non-filers are invisible … |
 | **NYC DCP Housing Database — Project-Level Files** | `br6q-ssj3` | city | point (building), with BBL and BIN | $0 | verified | Supply-side, and PUBLISHED SEMIANNUALLY: version 25Q4 carries data only to 2026-01-21, so every job filed or permitted since is absent … |
 | **NYC DCWP License Applications** | `ptev-4hud` | city | point, with BBL, BIN and building number + street | $0 | verified | The APPLICATION side of w7w3-xahh, which publishes only issued licences … |
 | **NYC DOB Certificates of Occupancy (BIS + DOB NOW)** | `bs8b-p36w`, `pkdm-hqz6` | city | point (building), with BBL and BIN | $0 | verified | FRESHNESS SUPPLEMENT to nyc_dcp_housing_db, joined on the DOB job number, not a standalone spine (it carries no filing or permit date and no net unit count) … |
 | **DOB NOW: Build - Job Application Filings** | `w9ak-ipjd` | city | point (building), with BBL, BIN and house number + street | $0 | verified | THE FIT-OUT SIGNAL, and the noisiest of the seven … |
 | **NYC DOB Permit Issuance + DOB NOW Approved Permits** | `ipu4-2q9a`, `rbx6-tga4` | city | point (building), with BBL and BIN | $0 | verified | ACTIVITY SUPPLEMENT to nyc_dcp_housing_db, joined on the DOB job number, never a spine (no unit count, no completion) … |
 | **NYS SLA Current Pending Licenses** | `f8i8-k2gm` | city | point (georeference), premises address; NO BBL and NO BIN | $0 | verified | THE EARLIEST SIGNAL THE CITY PUBLISHES … |
+| **Opportunity Insights — Opportunity Atlas tract covariates & outcomes** | - | universal | tract | $0 | verified | Built from de-identified IRS/Census administrative records inside a Census Federal Statistical Research Data Center, not a survey -- subject to Census noise infusion / small-cell … |
 | **Zillow Observed Rent Index / Home Value Index** | - | universal | zip | $0 | planned | ZORI covers ~8.4k ZIPs nationally (a third of ZHVI's). Asking-rent index, listing-density dependent. ZIP is much coarser than an H3 res-9 hex. |
 
 ## Controls and context
