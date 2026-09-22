@@ -1,0 +1,8 @@
+# Stage status for RQ-001 (regime durability). `loci research check` requires each
+# stage's file to exist UNLESS the stage is marked here as pending or blocked (with a
+# reason) — see docs/research/README.md.
+seed: {status: done}
+question: {status: done}
+data_audit: {status: pending, reason: "being written by another agent — do not create or edit DATA-AUDIT.md"}
+notebook: {status: pending, reason: "not started"}
+answer: {status: pending, reason: "not started"}

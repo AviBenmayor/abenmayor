@@ -1,0 +1,50 @@
+# Ouroboros Seed Specification — __RQ_ID__ (IMMUTABLE; changes go through a new generation, not edits)
+# Generated: __DATE__ from a /interview with the owner
+# Saved here rather than loci/.ouroboros/ per the three-top-level-directories standard.
+# Ambiguity Score: TODO
+
+goal: >
+  TODO — one paragraph: the question as the owner would ask it, what the deliverable
+  is (distribution / driver ranking / per-site function / etc.), and what this session
+  ships (framework compliance, data audit, a provisional answer, tickets).
+
+constraints:
+  - "TODO — unit of analysis"
+  - "TODO — definitions that make 'favorable' / the outcome measurable"
+  - "TODO — data tiers and their history depth"
+  - "TODO — Loci structure rule: code in src/loci/, loose scripts become CLI subcommands"
+  - "TODO — tickets generated from tickets.py, never hand-written; CHECKPOINT decision + ticket in one edit"
+  - "TODO — session model: executive directs; Sonnet runs analyses; Opus only judges methodology; Haiku does mechanical edits"
+  - "TODO — concurrent-session safety: check peers before editing cli.py / tickets.py / CHECKPOINT.md / claiming D-ids"
+
+acceptance_criteria:
+  - {id: AC-1, description: "TODO", verification: "TODO"}
+
+ontology_schema:
+  name: __TITLE__
+  description: "TODO"
+  fields:
+    - {name: TODO, type: string, description: "TODO"}
+
+evaluation_principles:
+  - {name: honest_uncertainty, weight: 0.25, description: "Censoring/uncertainty handled, confidence stated, provisional labeled, gaps tied to tickets."}
+  - {name: reproducibility, weight: 0.20, description: "One command reruns the notebook from the warehouse; no hand steps."}
+  - {name: framework_repeatability, weight: 0.20, description: "Follows the standard research-question scaffold with no ad-hoc structure."}
+  - {name: answers_the_buyer, weight: 0.20, description: "Final text directly answers the question as asked."}
+  - {name: drift_resistance, weight: 0.15, description: "Tickets generated from code; check gate catches missing stages/dangling ids."}
+
+exit_conditions:
+  - {name: success, description: "TODO", criteria: "`loci research check` and `loci check-tickets` pass."}
+  - {name: blocked_on_peer, description: "A concurrent session holds cli.py, tickets.py, or CHECKPOINT.md.", criteria: "Peer message or unowned diff in those files → stop, write held text to memory, report."}
+  - {name: data_insufficient, description: "Warehouse can't support the analysis.", criteria: "Audit shows no usable panel → ship framework + audit + tickets; mark blocked ACs BLOCKED with ticket ids, never fabricate."}
+  - {name: scope_growth, description: "Work grows past approved one-line specs.", criteria: "Stop and surface the addition as a new one-line spec for approval."}
+
+metadata:
+  version: "1.0"
+  ambiguity_score: TODO
+  interview_rounds: TODO
+  project_type: brownfield
+  context_references:
+    - {path: "loci/", role: primary, summary: "src/loci CLI, registry.yaml, DuckDB warehouse, tickets.py, docs/CHECKPOINT.md"}
+  existing_patterns: ["CLI subcommands over scripts", "tickets generated from tickets.py", "check-* drift gates", "registry.yaml per source"]
+  existing_dependencies: []

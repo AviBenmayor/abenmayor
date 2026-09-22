@@ -1,0 +1,89 @@
+# DRAFT registry entry for RQ-001 (regime durability) macro series.
+# NOT applied to src/loci/registry.yaml -- a peer session may be editing that
+# file concurrently (see CLAUDE.md concurrent-session rules). This draft
+# matches the field set of existing entries (skimmed usda_snap_retailers and
+# lodes_wac) and should be merged into registry.yaml's `sources` list by
+# whoever next has exclusive access to it, then confirmed by `loci
+# check-sources`.
+#
+# Adapter: src/loci/sources/macro.py (fetch + tidy only; does not touch the
+# warehouse -- see that module's docstring for the full series list and the
+# ids that were probed and did NOT resolve).
+# Verified live 2026-09-22: all 11 FRED series below returned HTTP 200 with
+# a real observation column via
+# https://fred.stlouisfed.org/graph/fredgraph.csv?id=<SERIES_ID>; full
+# history pulled with no caps (owner rule 2026-09-16). Output:
+# data/interim/rq001/macro/macro_monthly.parquet (9,322 rows) and
+# macro_annual.parquet (804 rows).
+
+- id: fred_macro
+  name: "FRED macro series (NYC/NY/US unemployment, rates, CPI, recession, food-services employment)"
+  tier: universal
+  role: control
+  status: planned
+  portability:
+    class: national
+    feeds:
+      - macro_covariates
+    confidence: high
+    degrades_to: >
+      RQ-001's macro hazard test (SEED.yaml AC-10, METHOD.md §5 H1/H2) has no
+      covariates at all: the year-level churn regression and the
+      macro x exposure interaction terms cannot be estimated, and AC-10 must
+      ship marked BLOCKED.
+    note: >
+      Every series is either a US-national aggregate or a specific
+      NY-state/NYC-MSA FRED id (NYUR, NEWY636URN,
+      SMU36935617072200001). The national series port to any city as-is;
+      the NY-scoped ones need the equivalent metro-area FRED id looked up
+      for a new city (same adapter, different SERIES_IDS constant).
+  url: "https://fred.stlouisfed.org/"
+  access: "https://fred.stlouisfed.org/graph/fredgraph.csv?id={SERIES_ID} (public CSV endpoint, no API key)"
+  format: csv
+  geography: "national / New York State / New York-Newark-Jersey City NY-NJ-PA MSA (varies by series id, see macro.py SERIES)"
+  temporal:
+    start: 1914
+    end: 2026
+    grain: "monthly (MORTGAGE30US published weekly, resampled to monthly mean in build_monthly)"
+    note: >
+      Start year varies hugely by series: UNRATE from 1948, USREC from 1854,
+      CUURA101SA0 from 1914 (with large early gaps -- BLS sampled the NY
+      metro CPI only periodically before roughly the 1980s), NYUR from 1976,
+      NEWY636URN/CES7072200001/SMU36935617072200001 from 1990. Every series
+      pulled through the latest available observation (2026-08 for most,
+      2026-07 for NEWY636URN, 2026-09 for the weekly MORTGAGE30US). No
+      rolling window or cap applied to any series (owner rule 2026-09-16).
+  license: public-domain
+  cost:
+    amount: 0
+    unit: total
+  bias: >
+    Level macro cannot move RQ-001's *relative* favorability, because
+    "favorable" is a within-year tercile and a citywide shock moves every
+    ZIP together (METHOD.md §5) -- a macro main effect on the aggregate
+    exit rate is close to mechanically null by construction. The only
+    identified uses are (H1) a purely descriptive year-level churn
+    regression with ~24 years / ~3 recession episodes of effective n, and
+    (H2) macro x exposure cross-sectional interactions with year fixed
+    effects (year FE and a national/NYC-wide yearly series are perfectly
+    collinear -- never include both). NY-metro-specific series
+    (NEWY636URN, SMU36935617072200001) are the NY-Newark-Jersey City MSA,
+    not the five boroughs; CUURA101SA0 is the same MSA's all-items CPI, not
+    a food-away-from-home series -- no NY-metro food-away-from-home FRED id
+    was found (probed CUURA101SEFV: 404). COVID window (2020-03..2021-12,
+    COVID_WINDOW_START/END in macro.py) is a modeling convenience flag, not
+    a causal claim -- separating COVID from the 2020 ACS collection anomaly
+    is explicitly NOT identifiable (METHOD.md §5).
+  notes: >
+    Series pulled: UNRATE (US unemployment), NYUR (NY state unemployment),
+    NEWY636URN (NYC-MSA unemployment, NSA), FEDFUNDS (effective fed funds),
+    MORTGAGE30US (30-yr fixed mortgage, weekly), GS10 (10-yr Treasury),
+    CUSR0000SEFV (CPI food-away-from-home, US, SA), CUURA101SA0 (CPI-U all
+    items, NY-Newark-Jersey City MSA, NSA -- stands in for a NY-metro cost
+    series since no food-away-from-home id exists for the metro), USREC
+    (NBER recession indicator, annual rollup uses MAX not MEAN),
+    CES7072200001 (US food-services & drinking-places employment),
+    SMU36935617072200001 (NYC food-services & drinking-places employment).
+    Ids probed and NOT found (404 or no matching series): NYNRES,
+    LAUCN360610000000003, LAUCT365000000000003, SMU36935610722200001,
+    NYFOOD, NYCPI, CUURA101SEFV.

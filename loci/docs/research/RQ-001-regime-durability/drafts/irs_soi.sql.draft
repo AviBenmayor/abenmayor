@@ -1,0 +1,216 @@
+-- ---------------------------------------------------------------------------
+-- DRAFT -- irs_soi.sql.draft -- RQ-001 (regime durability) DEMAND covariate:
+-- IRS SOI ZIP-code individual income tax statistics, EVERY published tax
+-- year (1998, 2001, 2002, 2004-2022 -- 22 years; 1999/2000/2003 were never
+-- published at ZIP grain by IRS, not a gap in this ingest).
+--
+-- NOT APPLIED. No migration number assigned (peer sessions claim numbers by
+-- chat -- CHECKPOINT.md concurrent-session rules); this file has not been
+-- run against the warehouse, and the warehouse was never opened for writing
+-- while producing it. Whoever applies this: rename to
+-- src/loci/sql/0NN_irs_soi_zip_income.sql with the next free number, then
+-- run through the normal migration path. registry.yaml's `irs_zip_income`
+-- entry (tier: universal, feeds: [demand]) already covers this source --
+-- its `temporal` block should be updated from the single-vintage 2022 note
+-- to this full 1998-2022 range when applied (out of THIS task's scope; this
+-- task was told not to edit registry.yaml).
+--
+-- WHY A SEPARATE ADAPTER FROM public_signals.py: that untracked file (another
+-- session's work) already lands ONE vintage (tax year 2022) of this same
+-- publisher into staging.public_irs_zip_income. This draft's source,
+-- src/loci/sources/irs_soi_history.py, is a standalone module that does not
+-- import from or write to public_signals.py, precisely so it can be written
+-- and run without touching a file that session may still be editing. The two
+-- eventually cover overlapping ground (2022) and should be reconciled --
+-- either public_signals.py's single-vintage table is dropped in favor of
+-- this panel, or this panel is pointed at whatever table public_signals.py
+-- lands in -- but that reconciliation is a deliberate follow-up decision,
+-- not a side effect of this draft.
+--
+-- SOURCE: src/loci/sources/irs_soi_history.py, function `ingest_all()`.
+-- Run once, live, 2026-09-22: 22/22 requested tax years succeeded (log-and-
+-- continue per year; none failed on this run, but the harness is built to
+-- tolerate a bad year without losing the other 21). Output:
+--     data/interim/rq001/irs_soi/irs_zip_income_panel.parquet  (17,453 rows)
+--     data/raw/rq001/irs_soi/  -- retained originals: 1998-2010 are the IRS's
+--       own per-state .xls-in-a-national-zip archives (`{year}zipcode.zip`
+--       through 2015, `zipcode{year}.zip` from 2016), 2011-2022 are the
+--       IRS's own national all-ZIP CSVs (`{yy}zpallagi.csv`) -- both fetched
+--       byte-for-byte, nothing re-encoded before landing.
+--
+-- WHY `raw`, NOT `staging.poi`. This is a ZIP-level tax-filing aggregate,
+-- not a point-of-interest -- no lon/lat, no address, no opened/closed date.
+-- Same convention as raw.zillow_zip_annual / raw.acs_zcta_panel
+-- (zillow_acs.sql.draft) and raw.fred_macro_* (macro.sql.draft) in this same
+-- drafts/ directory. Downstream reads join through explicit code in
+-- model/, never by widening this table or letting score/model read raw
+-- source columns directly.
+--
+-- GRAIN: one row per (zip, tax_year, agi_stub). `agi_stub` is:
+--   NULL  for tax years 1998-2010 ("legacy" era) -- these years' IRS files
+--         publish AGI brackets, but the bracket COUNT (4, 6, or 7) and
+--         boundaries change release to release with no stable definition,
+--         so only the ZIP's already-published TOTAL row is extracted; the
+--         brackets themselves are not landed. NULL therefore means "no
+--         bracket detail available this year," not "bracket 0."
+--   0     for tax years 2011-2022 ("modern" era) -- a SYNTHETIC total row
+--         this adapter computes itself by summing the six real brackets
+--         (1-6) for that (zip, year). Not published by IRS directly as
+--         agi_stub=0 (IRS's own agi_stub=0 rows in the source CSV are
+--         zipcode='00000' STATE totals, which this adapter drops entirely --
+--         they are not a ZIP and would masquerade as one if kept).
+--   1-6   for tax years 2011-2022 only -- IRS's own published AGI brackets,
+--         a stable, named layout across the whole modern era (verified by
+--         direct inspection of 2011 and 2022's column headers, not assumed
+--         from one year). Bracket boundaries: 1=<$25k typically, ...,
+--         6=$200k+ -- see the source CSV's own documentation for the exact
+--         cutpoints; they are IRS's definition, not recomputed here.
+--
+-- COLUMN-MAP ARCHAEOLOGY (why this took five legacy format branches, not
+-- one): every legacy year's actual NY worksheet was downloaded and
+-- inspected directly -- none of the five column maps below (FMT_A through
+-- FMT_F, keyed by year in irs_soi_history.LEGACY_FORMAT_BY_YEAR) are
+-- guessed from a single sample or extrapolated from IRS's documentation
+-- text. Full narrative in irs_soi_history.py's module docstring. Money
+-- amounts are converted from the source's "$ thousands" convention to plain
+-- dollars in this table (irs_soi_history.MONEY_UNIT = 'usd') -- do not
+-- re-multiply by 1000 downstream.
+--
+-- CAVEATS THE DATABASE CANNOT ENFORCE
+--   1. SUPPRESSION IS NULL, NEVER ZERO. Any legacy-year cell IRS marked '*'
+--      (suppressed to avoid disclosure) or '**' (folded into a neighboring
+--      cell) decodes to NULL in n1/agi/n_wages/a_wages, and that ZIP-year's
+--      `any_suppressed` flag is set true (21 rows across the 1998-2010 era
+--      in the 2026-09-22 pull). A NULL here means "IRS would not disclose
+--      this cell," not "zero returns" or "zero income" -- treating it as 0
+--      would fabricate a reported-zero-income ZIP. The modern (2011-2022)
+--      CSV era publishes 0 directly for small cells rather than a
+--      suppression marker, so `any_suppressed` is always false there --
+--      this is a REAL asymmetry in how the two eras handle small-N cells,
+--      not an adapter bug, and a naive cross-era comparison of "zero vs
+--      null" rates would misread it as a data-quality problem.
+--   2. ZIP UNIVERSE DRIFT IS REAL, NOT AN INGEST BUG. Distinct ZIP count per
+--      tax year in the 2026-09-22 pull: 208 (1998) -> 206-208 (2001-2007) ->
+--      191 (2008) -> 184 (2009-2017, with 2016 at 187) -> 183 (2018-2022).
+--      IRS periodically merges/retires low-filing ZIPs into a neighbor
+--      between releases (USPS ZIP churn plus IRS's own disclosure-driven
+--      consolidation) -- a ZIP that appears in 1998 and disappears by 2010
+--      is NOT necessarily evidence the neighborhood emptied out; check
+--      whether the ZIP still exists in USPS/PLUTO before reading a gap in
+--      this panel as a real economic signal. 211 ZIPs appear in the panel
+--      across ALL years combined vs. 217 in the current PLUTO-derived NYC
+--      ZIP universe (`nyc_zips()`) -- the missing 6 never had a matching IRS
+--      ZIP row in any requested year (PO-box-only, single-building, or
+--      park/airport ZIPs with too few returns to ever clear disclosure).
+--   3. AGI BRACKETS ARE NOT COMPARABLE ACROSS THE LEGACY/MODERN SEAM. Even
+--      where a legacy year does carry brackets (not landed here, see GRAIN
+--      above), the bucket definitions changed release to release (4 buckets
+--      in 1998/2001/2002, 6 in 2004/2005, 7 in 2006-2010) before settling
+--      into the modern era's 6-bucket layout in 2011. Any bracket-level
+--      time series must start no earlier than 2011 for this reason -- the
+--      ZIP-total row (n1/agi/n_wages/a_wages) is the only field comparable
+--      across the FULL 1998-2022 span.
+--   4. ZIP vs ZCTA. Like Zillow, this table's `zip` is a USPS ZIP, not a
+--      Census ZCTA -- same caveat and same unbuilt frozen crosswalk as
+--      zillow_acs.sql.draft. Joining this table to raw.acs_zcta_panel or
+--      analysis.nta_trajectory requires that crosswalk; it does not exist
+--      yet and is out of this task's scope.
+--   5. 2008 HAS NO WAGE-RETURN COUNT. IRS's own 2008 ZIP file publishes only
+--      the wage AMOUNT (a_wages), not a matching return count (n_wages IS
+--      NULL for every 2008 row, by source design, not a parse failure --
+--      every other legacy year publishes both).
+--   6. lon/lat: N/A -- no geometry, EPSG or otherwise. ZIP is an attribute
+--      key here, same as in zillow_acs.sql.draft.
+--   7. tax_year is a CALENDAR/FILING year, not an ACS-style multi-year
+--      window -- unlike ACS 5-year estimates (zillow_acs.sql.draft caveat
+--      4), consecutive IRS SOI years share NO sample overlap, so this
+--      series does NOT have the "overlapping windows inflate persistence"
+--      problem ACS does. It has the opposite risk: a single bad filing
+--      season (e.g. 2020's COVID filing-deadline extension) can show up as
+--      a level break that is a FILING-CALENDAR artifact, not an income
+--      change -- check tax_year=2020 specifically before reading any 2019
+--      -> 2020 jump as real.
+-- ---------------------------------------------------------------------------
+
+CREATE SCHEMA IF NOT EXISTS raw;
+
+CREATE TABLE IF NOT EXISTS raw.irs_zip_income_panel (
+    zip             VARCHAR NOT NULL,        -- USPS ZIP, zero-padded to 5 digits -- NOT a ZCTA (see caveat 4)
+    tax_year        INTEGER NOT NULL,
+    agi_stub        INTEGER,                 -- NULL = legacy year (1998-2010, no bracket detail);
+                                              -- 0 = ZIP total (all years); 1-6 = modern-era bracket (2011-2022 only)
+    n1              DOUBLE,                  -- number of returns; NULL = suppressed (legacy years only, see caveat 1)
+    agi             DOUBLE,                  -- adjusted gross income, USD (converted from source's $ thousands)
+    n_wages         DOUBLE,                  -- number of returns reporting wages; NULL where not published (2008) or suppressed
+    a_wages         DOUBLE,                  -- salaries & wages in AGI, USD (converted from source's $ thousands)
+    any_suppressed  BOOLEAN NOT NULL,        -- true if any of n1/agi/n_wages/a_wages was an IRS '*'/'**' suppression marker
+    loaded_at       TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    PRIMARY KEY (zip, tax_year, agi_stub)    -- NOTE: DuckDB permits multiple NULLs in a PK column;
+                                              -- this relies on agi_stub NULL only ever pairing with a UNIQUE (zip, tax_year)
+                                              -- in the legacy era (one total row per zip per year, never repeated) -- true by
+                                              -- construction of irs_soi_history.py's legacy parser, not separately enforced here.
+);
+
+-- Loader (parquet -> table), same deferred-loader pattern as
+-- zillow_acs.sql.draft / macro.sql.draft:
+--   INSERT INTO raw.irs_zip_income_panel
+--   SELECT zip, tax_year, agi_stub, n1, agi, n_wages, a_wages, any_suppressed, current_timestamp
+--   FROM read_parquet('data/interim/rq001/irs_soi/irs_zip_income_panel.parquet');
+-- ---------------------------------------------------------------------------
+
+-- ------------------------------------------------------ validation queries
+-- Run these AFTER a real load (not part of this draft's own execution) to
+-- confirm row counts and totals before trusting the table.
+
+-- 1. Row count matches the parquet output exactly (no silent drop/dup on load).
+-- SELECT count(*) FROM raw.irs_zip_income_panel;
+-- Expected (2026-09-22 pull): 17453.
+
+-- 2. Year coverage is the full requested 22-year set, not a partial pull.
+-- SELECT count(DISTINCT tax_year) AS n_years, min(tax_year), max(tax_year)
+-- FROM raw.irs_zip_income_panel;
+-- Expected: 22 years, 1998-2022 (NOT continuous -- 1999/2000/2003 are real
+-- IRS gaps; a caller iterating tax_year as a continuous range must skip them
+-- explicitly rather than assume every year 1998-2022 is present).
+
+-- 3. ZIP universe count per year matches the drift documented above (a
+-- year far outside this range signals a broken parse for that year, not
+-- real ZIP consolidation).
+-- SELECT tax_year, count(DISTINCT zip) AS n_zips
+-- FROM raw.irs_zip_income_panel WHERE agi_stub IS NULL OR agi_stub = 0
+-- GROUP BY 1 ORDER BY 1;
+-- Expected: 208(1998) / 208(2001) / 208(2002) / 206(2004) / 207(2005) /
+-- 208(2006) / 207(2007) / 191(2008) / 184(2009) / 184(2010) / 184(2011) /
+-- 184(2012) / 184(2013) / 184(2014) / 184(2015) / 187(2016) / 184(2017) /
+-- 183(2018) / 183(2019) / 183(2020) / 183(2021) / 183(2022).
+
+-- 4. Grain split matches expectations: legacy years carry only a total row
+-- per zip (agi_stub NULL), modern years carry a synthetic total (agi_stub=0)
+-- PLUS six real brackets (agi_stub 1-6) per zip.
+-- SELECT tax_year,
+--        count(*) FILTER (WHERE agi_stub IS NULL) AS legacy_total_rows,
+--        count(*) FILTER (WHERE agi_stub = 0) AS modern_total_rows,
+--        count(*) FILTER (WHERE agi_stub BETWEEN 1 AND 6) AS bracket_rows
+-- FROM raw.irs_zip_income_panel GROUP BY 1 ORDER BY 1;
+-- Expected: legacy years (1998-2010) show ONLY legacy_total_rows > 0, the
+-- other two columns 0; modern years (2011-2022) show ONLY modern_total_rows
+-- (= n_zips that year) and bracket_rows (= 6x n_zips that year), legacy_total_rows 0.
+
+-- 5. Suppression is rare and confined to the legacy era (the modern CSV
+-- never emits a suppression marker -- see caveat 1).
+-- SELECT tax_year, count(*) FILTER (WHERE any_suppressed) AS n_suppressed
+-- FROM raw.irs_zip_income_panel GROUP BY 1 HAVING count(*) FILTER (WHERE any_suppressed) > 0 ORDER BY 1;
+-- Expected (2026-09-22 pull): 21 suppressed rows total, all in 1998-2010; 0 in 2011-2022.
+
+-- 6. Per-ZIP total AGI is a plausible NYC dollar level for its era, not a
+-- units/scale bug (e.g. thousands not converted, or a non-NYC ZIP leaking
+-- through the PLUTO-derived filter).
+-- SELECT tax_year, round(avg(agi) / NULLIF(n1, 0)) AS avg_agi_per_return
+-- FROM raw.irs_zip_income_panel WHERE agi_stub IS NULL OR agi_stub = 0
+-- GROUP BY 1 ORDER BY 1;
+-- Sanity range: NYC ZIP-level mean AGI per return has run roughly
+-- $30k-$120k across 1998-2022 in nominal dollars; a value near $0 or in the
+-- billions signals a unit bug, not real data. (This is nominal, not
+-- inflation-adjusted -- deflating to real dollars for the multi-decade panel
+-- per CONTEXT.md is a separate downstream step, not done in this table.)
+-- ---------------------------------------------------------------------------

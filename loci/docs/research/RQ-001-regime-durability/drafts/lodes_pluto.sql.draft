@@ -1,0 +1,160 @@
+-- ---------------------------------------------------------------------------
+-- lodes_pluto.sql.draft -- DRAFT ONLY. NOT applied to the warehouse.
+--
+-- Written by the data-engineer session, 2026-09-22, against the RQ-001
+-- DEMAND (LODES WAC jobs) and COST/land-use (PLUTO) pillars described in
+-- docs/research/RQ-001-regime-durability/{DATA-AUDIT,METHOD}.md.
+--
+-- Source data for these two tables currently lives OUTSIDE the warehouse, as
+-- parquet built by two new adapter modules:
+--   * data/interim/rq001/lodes/lodes_wac_zcta.parquet
+--       <- src/loci/sources/universal/lodes_wac_zcta.py::build_zcta_year_panel
+--   * data/interim/rq001/pluto/pluto_zip_vintage.parquet
+--       <- src/loci/sources/universal/pluto_vintages.py::build_zip_vintage_panel
+--
+-- This file documents the schema those parquet files would land as if/when
+-- RQ-001 promotes them into `analysis`. It is NOT run by any migration
+-- runner and the warehouse was never opened for writing while building it
+-- (CONTEXT.md/CHECKPOINT.md: `data/loci.duckdb` was not touched).
+--
+-- GRAIN NOTE -- ZCTA vs ZIP, deliberately NOT unified here
+-- ---------------------------------------------------------------------------
+-- LODES aggregates to Census ZCTA (2020 vintage, via the LEHD-native block
+-- crosswalk); PLUTO aggregates to postal ZipCode (NYC DCP's own field, which
+-- is a USPS ZIP, not a ZCTA). ZCTA and ZIP disagree on a meaningful minority
+-- of edge cases (ZCTAs are Census-drawn polygons approximating ZIP delivery
+-- areas, not identical to them) -- METHOD.md §1 already anticipates this
+-- ("Postal ZIPs (ZBP) and ZCTAs (ACS) are joined through one frozen
+-- crosswalk"). Silently renaming one key to match the other here would hide
+-- that mismatch instead of surfacing it at the one place (the panel-assembly
+-- join) where METHOD.md says a frozen crosswalk must mediate it. Keep them
+-- as two tables with their own native keys; join with that crosswalk, not
+-- with a bare key-name coercion.
+--
+-- GEOMETRY / SRID -- not applicable here, noted anyway
+-- ---------------------------------------------------------------------------
+-- Neither table below carries a GEOMETRY column -- both are plain annual
+-- aggregates keyed by a ZCTA/ZIP code string, not points or polygons. The
+-- upstream lat/lon PLUTO ships (XCoord/YCoord, latitude/longitude) were NOT
+-- used for this rollup; ZipCode was used directly, exactly as NYC DCP
+-- assigns it per tax lot. If a later stage needs ZCTA/ZIP polygons (e.g. to
+-- compute land area for a density denominator), pull TIGER/Line ZCTA
+-- boundaries explicitly and reproject with ST_Transform -- the DB will not
+-- catch a missing SRID declaration, per CONTEXT.md.
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------- LODES WAC / ZCTA
+-- One row per (zcta, year), 2002-2023, 5 NYC counties only (36005 Bronx,
+-- 36047 Kings, 36061 New York, 36081 Queens, 36085 Richmond). Source: LODES8
+-- WAC (S000/JT00), block -> ZCTA via the LEHD-native xwalk (see the adapter
+-- module docstring for why a second, independently-sourced Census block/ZCTA
+-- relationship file was NOT used).
+CREATE TABLE IF NOT EXISTS analysis.rq001_lodes_wac_zcta (
+    zcta            VARCHAR  NOT NULL,  -- 5-digit ZCTA (string, not int: leading zeros)
+    year            INTEGER  NOT NULL,  -- 2002-2023
+    c000            BIGINT,             -- total jobs, WAC C000 (all workers, JT00)
+    cns07           BIGINT,             -- Retail Trade jobs (NAICS sectors 44-45)
+    cns18           BIGINT,             -- Accommodation & Food Services jobs (NAICS 72)
+    n_blocks        INTEGER  NOT NULL,  -- census blocks contributing to this (zcta, year)
+    block_geography VARCHAR  NOT NULL,  -- provenance string: 'OBSERVED' (2020-2023) vs
+                                         -- 'AREA-RETRO-ALLOCATED from the 2000/2010 block
+                                         -- geography' (2002-2019) -- CONTEXT.md 7.4b. A BIAS,
+                                         -- not noise: correlated with where block boundaries
+                                         -- moved, which correlates with growth. Any query
+                                         -- spanning the 2019/2020 boundary must carry this
+                                         -- column through, not drop it.
+    PRIMARY KEY (zcta, year)
+);
+
+-- --------------------------------------------------------------- PLUTO / ZIP
+-- One row per (zipcode, year), one canonical (latest-major-release) vintage
+-- per calendar year, 2009-2026. 2002-2008 requested by the originating task
+-- but VERIFIED ABSENT at the NYC DCP archive CDN under every filename
+-- pattern tried (see the adapter module docstring) -- not silently dropped,
+-- just not obtainable from this source at this URL.
+CREATE TABLE IF NOT EXISTS analysis.rq001_pluto_zip_vintage (
+    zipcode             INTEGER  NOT NULL,  -- USPS ZIP as recorded in PLUTO's ZipCode field
+    year                INTEGER  NOT NULL,  -- 2009-2026, one canonical vintage per year
+    pluto_version       VARCHAR  NOT NULL,  -- e.g. '23v3' -- which major release this is,
+                                             -- so a caller can tell two adjacent years apart
+                                             -- from a mid-year minor release artifact
+    n_lots              INTEGER,            -- tax lots with a valid (non-null, >0) ZipCode
+    bldgarea_total      DOUBLE,             -- SUM(BldgArea), sq ft
+    comarea_total       DOUBLE,             -- SUM(ComArea), sq ft
+    retailarea_total    DOUBLE,             -- SUM(RetailArea), sq ft
+    assesstot_total     DOUBLE,             -- SUM(AssessTot), NOMINAL dollars -- NOT deflated.
+                                             -- Deflate to real dollars before any cross-year
+                                             -- comparison (CONTEXT.md/CHECKPOINT deflation
+                                             -- convention); this table intentionally stores
+                                             -- the raw nominal sum so the deflator choice is
+                                             -- made once, at the panel-assembly stage, not
+                                             -- baked in here and hidden from later re-runs.
+    unitsres_total      DOUBLE,             -- SUM(UnitsRes), residential units
+    n_lots_with_retail  INTEGER,            -- COUNT(*) WHERE RetailArea > 0
+    dropped_no_zip      INTEGER  NOT NULL,  -- CITYWIDE total lots excluded from every aggregate
+                                             -- above because ZipCode was NULL/0 in that
+                                             -- vintage's raw file -- the SAME value repeated on
+                                             -- every zipcode row for that year (it is not
+                                             -- per-ZIP). Aggregate with max()/first() across a
+                                             -- year, NEVER sum() -- summing it multiplies by
+                                             -- that year's ZIP count (see the validation
+                                             -- queries below, which caught exactly this
+                                             -- mistake). Provenance, not a hole: 0.2-0.7% of
+                                             -- that vintage's lots citywide in every year except
+                                             -- 2018 (2.4%, flagged, unexplained -- see below).
+    PRIMARY KEY (zipcode, year)
+);
+
+-- ---------------------------------------------------------------------------
+-- Validation queries (run against the parquet directly with DuckDB, NOT
+-- against the warehouse -- these tables do not exist there yet). Numbers
+-- below are the actual output of the adapter's real run, 2026-09-22.
+--
+--   SELECT count(*), min(year), max(year), count(DISTINCT zcta)
+--   FROM read_parquet('data/interim/rq001/lodes/lodes_wac_zcta.parquet');
+--   -> 4704 rows, 2002-2023, 215 distinct ZCTAs (per-year count 212-215;
+--      churn is real ZCTA-definition drift across the ACS/Census ZCTA
+--      revisions, not a bug -- each year's own n_blocks/row count is stable
+--      year-over-year, no sudden collapse).
+--
+--   SELECT year, sum(c000) FROM read_parquet('...lodes_wac_zcta.parquet')
+--   GROUP BY year ORDER BY year;
+--   -> e.g. 2002: 3,226,980 total NYC jobs; 2023: 4,585,129. Same order of
+--      magnitude as published NYC total-employment series across the whole
+--      run (no year is an outlier by more than the known 2020 COVID dip),
+--      which is the total-check this module's tests pin.
+--
+--   SELECT count(*), min(year), max(year), count(DISTINCT zipcode)
+--   FROM read_parquet('data/interim/rq001/pluto/pluto_zip_vintage.parquet');
+--   -> 3688 rows, 18 years (2009-2026), 225 distinct ZIPs (190-218 per year;
+--      2009's lower count is fewer ZIPs having ANY lot with a valid ZipCode
+--      that year, consistent with 2009 also having one of the higher
+--      dropped_no_zip counts).
+--
+--   -- dropped_no_zip is a PER-VINTAGE CONSTANT, broadcast onto every ZIP row
+--   -- for that year (it counts lots city-wide, not per ZIP) -- aggregate it
+--   -- with max()/first(), never sum(), or it inflates by the ZIP count for
+--   -- that year. (A first pass at this validation query used sum() and
+--   -- read a false ~200x-inflated "dropped" figure for every year -- caught
+--   -- by cross-checking against a plain Python groupby before trusting it.)
+--   SELECT year, pluto_version, sum(n_lots) AS total_lots,
+--          max(dropped_no_zip) AS dropped_no_zip, count(*) AS n_zips
+--   FROM read_parquet('data/interim/rq001/pluto/pluto_zip_vintage.parquet')
+--   GROUP BY year, pluto_version ORDER BY year;
+--   -> ~838,000-859,000 lots per year citywide, consistent with the
+--      well-known "NYC has about 858,000 tax lots" figure across the whole
+--      run -- no year collapses to a fraction of that, which would indicate
+--      a truncated or mis-parsed vintage. dropped_no_zip runs 1,540-6,274
+--      lots/year (0.2-0.7%) except 2018 (18v2) at 20,535 (2.4%) -- a real,
+--      flagged outlier (not re-smoothed): 2018 is the vintage right before
+--      DCP's move to a single unified CSV, and this run does not establish
+--      why it has 4x its neighbors' unmatched-ZIP rate. A caller who filters
+--      on 2018 land-use totals should know its base is ~2% smaller.
+--
+--   -- Regression check: dropped_no_zip really is constant within a year
+--   -- (confirms no row-level corruption slipped past the fix above):
+--   SELECT year, count(DISTINCT dropped_no_zip) AS n_distinct
+--   FROM read_parquet('data/interim/rq001/pluto/pluto_zip_vintage.parquet')
+--   GROUP BY year HAVING count(DISTINCT dropped_no_zip) > 1;
+--   -> empty (verified 2026-09-22).
+-- ---------------------------------------------------------------------------

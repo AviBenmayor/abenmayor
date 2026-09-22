@@ -1,0 +1,226 @@
+-- ---------------------------------------------------------------------------
+-- DRAFT -- zillow_acs.sql.draft -- RQ-001 (regime durability) COST (Zillow)
+-- and DEMAND (ACS 5yr ZCTA panel) landing tables.
+--
+-- NOT APPLIED. No migration number assigned (peer sessions claim numbers by
+-- chat -- CHECKPOINT.md concurrent-session rules); this file has not been
+-- run against the warehouse, and the warehouse was never opened for writing
+-- while producing it. Whoever applies this: rename to
+-- src/loci/sql/0NN_zillow_acs_zcta.sql with the next free number, confirm
+-- registry.yaml's `zillow_zori_zhvi` and `acs_5yr` entries already cover
+-- this shape (they do -- see registry.yaml lines ~832 and ~960; no registry
+-- edit needed), then run through the normal migration path.
+--
+-- SOURCE: src/loci/sources/universal/zillow.py and
+-- src/loci/sources/universal/acs_zcta_panel.py. Loaders (`build()` /
+-- `build_panel()`) are written and have been run once, live, 2026-09-22.
+-- The parquet outputs they read from:
+--     data/interim/rq001/zillow/zillow_nyc_monthly.parquet   (66,176 rows)
+--     data/interim/rq001/zillow/zillow_nyc_annual.parquet    (5,674 rows)
+--     data/interim/rq001/acs_zcta/acs_zcta_2011.parquet .. acs_zcta_2024.parquet
+--     data/interim/rq001/acs_zcta/acs_zcta_panel.parquet     (2,934 rows, 14 vintages)
+--
+-- WHY `raw`, NOT `staging.poi`. Neither source is a point-of-interest feed --
+-- Zillow is a ZIP-level price/rent index, ACS ZCTA is a ZCTA-level
+-- demographic panel. Neither has lon/lat, an address, or an opened/closed
+-- date, so neither goes through the staging.poi normalized contract
+-- (CONTEXT.md §10). Both land in the `raw` schema (declared empty in
+-- 002_schema.sql), same convention as `raw.fred_macro_monthly/annual` in
+-- this same drafts/ directory (macro.sql.draft). Downstream READS (e.g.
+-- assembling analysis.nta_trajectory, GTM-78, or an RQ-001 ZIP-panel hazard
+-- table) join through explicit code in model/, never by widening these
+-- tables or letting score/model read raw source columns directly.
+--
+-- GRAIN.
+--   raw.zillow_zip_monthly: one row per (zip, month, index). `index` is
+--     'zhvi' or 'zori' -- both landed in ONE table (not two) because they
+--     share every other column and a caller almost always wants "this ZIP's
+--     ZHVI and ZORI side by side," not two separate joins.
+--   raw.zillow_zip_annual: one row per (zip, year, index). `value_mean` is
+--     the plain mean of that year's available monthly observations;
+--     `n_months` records how many fed it (< 12 for 2026's partial year, and
+--     for any ZIP Zillow itself started/stopped covering mid-year) -- NEVER
+--     treat a < 12 year as equivalent to a complete one without checking
+--     n_months first.
+--   raw.acs_zcta_panel: one row per (zcta, acs_year). acs_year is the
+--     5-year window's END year (METHOD.md §2's "dated to their end year"
+--     convention -- what an operator could have known then, roughly a
+--     2-year lag from the window's midpoint).
+--
+-- THE ZIP <-> ZCTA JOIN IS NOT BUILT HERE, ON PURPOSE.
+--   Zillow's `zip` is a USPS ZIP code (RegionType='Zip' in the source CSV).
+--   ACS's `zcta` is a Census ZCTA5 code. The two code spaces are close but
+--   not identical (ZCTAs approximate ZIP delivery areas by 2010/2020 Census
+--   block, and a handful of ZIPs -- PO boxes, single-building ZIPs, ZIPs
+--   born/retired between boundary vintages -- have no ZCTA counterpart or
+--   vice versa). METHOD.md §1 calls for exactly ONE FROZEN ZIP<->ZCTA
+--   crosswalk, used for the whole panel, precisely so a ZIP that gains or
+--   loses its ZCTA match mid-series doesn't manufacture a fake panel
+--   entry/exit. That crosswalk is a separate, not-yet-built artifact (it is
+--   NOT `census_cbp_national.zcta_county_crosswalk()`, which maps ZCTA to
+--   COUNTY, not ZCTA to ZIP -- the two are used for different jobs and must
+--   not be confused). Building it is out of this task's scope. The
+--   commented example below shows the SHAPE that join will take once the
+--   crosswalk table exists -- it is not runnable as-is.
+--
+--   -- EXAMPLE ONLY, NOT RUNNABLE (raw.zip_zcta_crosswalk does not exist):
+--   -- SELECT z.zip, z.year, z.index, z.value_mean,
+--   --        a.zcta, a.acs_year, a.median_hh_income_e, a.zcta_geography_vintage
+--   -- FROM raw.zillow_zip_annual z
+--   -- JOIN raw.zip_zcta_crosswalk xw ON xw.zip = z.zip
+--   -- JOIN raw.acs_zcta_panel a
+--   --   ON a.zcta = xw.zcta
+--   --  AND a.acs_year = (SELECT MIN(acs_year) FROM raw.acs_zcta_panel
+--   --                    WHERE acs_year >= z.year)   -- nearest vintage AT OR AFTER, not interpolated
+--   -- WHERE z.index = 'zhvi';
+--
+-- CAVEATS THE DATABASE CANNOT ENFORCE
+--   1. Zillow ZIP is a POSTAL ZIP, ACS ZCTA is a CENSUS ZCTA -- see above.
+--      No FOREIGN KEY exists or could exist between raw.zillow_zip_annual.zip
+--      and raw.acs_zcta_panel.zcta; they are different code spaces until the
+--      frozen crosswalk is built.
+--   2. `zcta_geography_vintage` (2010 for acs_year 2011-2019, 2020 for
+--      acs_year 2020-2024) is a FLAG, not a crosswalk. A ZCTA code that is
+--      numerically identical across that boundary is NOT guaranteed to
+--      cover the same land area. METHOD.md §9 item 1 lists "the 2020 ZCTA
+--      redraw" as a candidate cause of synchronized fake panel breaks --
+--      any rank/level jump exactly at the 2019->2020 seam in this table
+--      must be checked against that before being read as a real change.
+--   3. `education_table` ('B15002' for acs_year=2011 only, 'B15003' for
+--      2012-2024) flags a TABLE RENUMBERING, not a definition change --
+--      both tables carry "bachelor's degree or higher, population 25+" the
+--      same way, but they were verified independently against
+--      api.census.gov/data/{year}/acs/acs5/variables.json (B15003 absent in
+--      the 2011 vintage) and are not guaranteed sample-identical.
+--   4. ACS 5-year estimates are OVERLAPPING WINDOWS (e.g. acs_year=2015 is
+--      the 2011-2015 average). Adjacent vintages share 4 of 5 years of
+--      underlying sample -- their apparent year-over-year change understates
+--      the true change and their apparent persistence overstates it
+--      (METHOD.md §9 item 1's "overlapping ACS windows inflate persistence").
+--   5. A NULL estimate column (e.g. median_hh_income_e, median_gross_rent_e)
+--      means the Census API returned a suppressed/not-computable cell for
+--      that (zcta, year) -- typically a ZCTA with near-zero population
+--      (an industrial/park/airport ZIP) -- NOT that the value is zero. Zero
+--      is never substituted; see acs_zcta_panel.py's `_clean()`.
+--   6. Every *_share column's numerator is a STRICT SUBSET of its
+--      denominator by construction (age_20_34 subset of B01001_001;
+--      bachelors_plus subset of the 25+-population denominator) -- but the
+--      *_share_m (MOE) columns use the ACS handbook's approximate proportion
+--      formula, which itself assumes numerator/denominator MOE independence.
+--      Treat *_share_m as a conservative (upper-bound-leaning) approximation,
+--      never an exact figure -- same caveat grid/acs.py's `_moe_proportion`
+--      carries for the hex-level demographics.
+--   7. lon/lat: N/A for both tables -- no geometry, EPSG or otherwise. ZIP
+--      and ZCTA are attribute keys, not geometries, in this schema.
+--   8. Zillow's `value_mean` under `n_months < 12` is a PARTIAL-YEAR mean,
+--      not comparable on equal footing to a full-year mean -- most visibly
+--      the current year, but also any ZIP Zillow started/stopped covering
+--      mid-series (a low-inventory ZIP can drop out of ZORI silently).
+-- ---------------------------------------------------------------------------
+
+CREATE SCHEMA IF NOT EXISTS raw;
+
+CREATE TABLE IF NOT EXISTS raw.zillow_zip_monthly (
+    zip          VARCHAR NOT NULL,       -- USPS ZIP, e.g. '11201' -- NOT a ZCTA
+    month        DATE NOT NULL,          -- month-end date, Zillow's own column label
+    index        VARCHAR NOT NULL CHECK (index IN ('zhvi', 'zori')),
+    value        DOUBLE NOT NULL,        -- $ level; ZHVI = smoothed/SA home value, ZORI = smoothed/SA asking rent
+    county_name  VARCHAR NOT NULL,       -- Zillow's own CountyName, provenance only (e.g. 'Kings County')
+    loaded_at    TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    PRIMARY KEY (zip, month, index)
+);
+
+CREATE TABLE IF NOT EXISTS raw.zillow_zip_annual (
+    zip          VARCHAR NOT NULL,
+    year         INTEGER NOT NULL,
+    index        VARCHAR NOT NULL CHECK (index IN ('zhvi', 'zori')),
+    value_mean   DOUBLE NOT NULL,        -- mean of that year's available monthly observations
+    n_months     INTEGER NOT NULL CHECK (n_months BETWEEN 1 AND 12),
+    loaded_at    TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    PRIMARY KEY (zip, year, index)
+);
+
+CREATE TABLE IF NOT EXISTS raw.acs_zcta_panel (
+    zcta                       VARCHAR NOT NULL,   -- Census ZCTA5, NOT a USPS ZIP
+    acs_year                   INTEGER NOT NULL,   -- 5-year window's END year (operator-knowable date)
+    zcta_geography_vintage     INTEGER NOT NULL CHECK (zcta_geography_vintage IN (2010, 2020)),
+    education_table            VARCHAR NOT NULL CHECK (education_table IN ('B15002', 'B15003')),
+
+    population_e               DOUBLE,             -- B01003_001E; NULL = suppressed, never 0
+    population_m               DOUBLE,
+    median_hh_income_e         DOUBLE,             -- B19013_001E
+    median_hh_income_m         DOUBLE,
+    per_capita_income_e        DOUBLE,             -- B19301_001E
+    per_capita_income_m        DOUBLE,
+    workers_16plus_e           DOUBLE,             -- B08301_001E, BY PLACE OF RESIDENCE (not LODES WAC's place-of-work)
+    workers_16plus_m           DOUBLE,
+    occupied_housing_units_e   DOUBLE,             -- B25003_001E
+    occupied_housing_units_m   DOUBLE,
+    median_gross_rent_e        DOUBLE,             -- B25064_001E
+    median_gross_rent_m        DOUBLE,
+
+    age_20_34_e                DOUBLE,             -- B01001 cells 008-012 + 032-036 (sum rule)
+    age_20_34_m                DOUBLE,
+    age_20_34_share            DOUBLE,             -- age_20_34_e / B01001_001E
+    age_20_34_share_m          DOUBLE,             -- ACS handbook proportion-MOE formula
+
+    bachelors_plus_denom_e     DOUBLE,             -- B15003_001E (2012+) or B15002_001E (2011)
+    bachelors_plus_denom_m     DOUBLE,
+    bachelors_plus_e           DOUBLE,             -- bachelor's-and-above numerator, table per education_table
+    bachelors_plus_m           DOUBLE,
+    bachelors_plus_share       DOUBLE,
+    bachelors_plus_share_m     DOUBLE,
+
+    loaded_at                  TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    PRIMARY KEY (zcta, acs_year)
+);
+
+-- Loader is NOT written yet (parquet -> table COPY, e.g.
+--   COPY raw.zillow_zip_annual FROM 'data/interim/rq001/zillow/zillow_nyc_annual.parquet';
+-- or a DuckDB `INSERT INTO ... SELECT * FROM read_parquet(...)`), same
+-- deferred-loader pattern as macro.sql.draft. This file only declares the
+-- target schema.
+-- ---------------------------------------------------------------------------
+
+-- ------------------------------------------------------ validation queries
+-- Run these AFTER a real load (not part of this draft's own execution) to
+-- confirm row counts and totals before trusting the tables.
+
+-- 1. Row counts match the parquet outputs exactly (no silent drop/dup on load).
+-- SELECT 'zillow_zip_monthly' AS tbl, count(*) FROM raw.zillow_zip_monthly
+-- UNION ALL SELECT 'zillow_zip_annual', count(*) FROM raw.zillow_zip_annual
+-- UNION ALL SELECT 'acs_zcta_panel', count(*) FROM raw.acs_zcta_panel;
+-- Expected (2026-09-22 pull): 66176 / 5674 / 2934.
+
+-- 2. NYC ZIP/ZCTA universe size is stable and in the expected ballpark
+--    (5-borough ZIP/ZCTA count, not a random subset of the US).
+-- SELECT index, count(DISTINCT zip) AS n_zips FROM raw.zillow_zip_annual GROUP BY index;
+-- Expected: zhvi ~172, zori ~149 (ZORI covers a sparser ZIP set than ZHVI by construction).
+-- SELECT acs_year, zcta_geography_vintage, count(DISTINCT zcta) AS n_zctas
+-- FROM raw.acs_zcta_panel GROUP BY 1, 2 ORDER BY 1;
+-- Expected: 209 ZCTAs/vintage for acs_year 2011-2020 (2010 boundary), 211 for 2021-2024 (2020 boundary).
+
+-- 3. No year has a suspicious NULL spike relative to its neighbors (a jump
+--    would suggest a broken pull for that vintage specifically, not real
+--    ACS suppression, which should be roughly stable year over year).
+-- SELECT acs_year,
+--        count(*) FILTER (WHERE median_hh_income_e IS NULL) AS null_income,
+--        count(*) FILTER (WHERE median_gross_rent_e IS NULL) AS null_rent,
+--        count(*) AS n
+-- FROM raw.acs_zcta_panel GROUP BY 1 ORDER BY 1;
+
+-- 4. Every *_share value is a legitimate proportion (never negative or > 1;
+--    a violation would mean a numerator/denominator table pairing broke).
+-- SELECT count(*) FROM raw.acs_zcta_panel
+-- WHERE age_20_34_share NOT BETWEEN 0 AND 1
+--    OR bachelors_plus_share NOT BETWEEN 0 AND 1;
+-- Expected: 0.
+
+-- 5. ZHVI's headline totals are plausible NYC dollar levels, not a unit or
+--    scale bug (e.g. cents mistaken for dollars, or a non-NYC ZIP leaking
+--    through the filter).
+-- SELECT year, round(avg(value_mean)) AS avg_zhvi, min(value_mean), max(value_mean)
+-- FROM raw.zillow_zip_annual WHERE index = 'zhvi' GROUP BY 1 ORDER BY 1 DESC LIMIT 5;
+-- Sanity range: NYC ZIP-level ZHVI has run roughly $300k-$3M depending on ZIP and year;
+-- anything near $0 or in the billions signals a unit/filter bug, not real data.
+-- ---------------------------------------------------------------------------

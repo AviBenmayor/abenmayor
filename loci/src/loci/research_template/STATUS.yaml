@@ -1,0 +1,10 @@
+# Stage status for __RQ_ID__. `loci research check` requires each stage's file to
+# exist UNLESS the stage is marked here as pending or blocked (with a reason) — so an
+# in-progress RQ can pass the gate while declaring, in one place, what's still missing
+# and why. A stage left at `done` with its file missing (or removed later) fails the
+# check — this is what stops a folder from silently regressing.
+seed: {status: pending, reason: "not started"}
+question: {status: pending, reason: "not started"}
+data_audit: {status: pending, reason: "not started"}
+notebook: {status: pending, reason: "not started"}
+answer: {status: pending, reason: "not started"}

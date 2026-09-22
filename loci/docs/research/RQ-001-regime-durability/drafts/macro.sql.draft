@@ -1,0 +1,95 @@
+-- ---------------------------------------------------------------------------
+-- DRAFT -- macro.sql.draft -- RQ-001 (regime durability) FRED macro tables.
+--
+-- NOT APPLIED. No migration number assigned (peer sessions claim numbers by
+-- chat -- see CHECKPOINT.md concurrent-session rules); this file has not
+-- been run against the warehouse, and the warehouse was never opened for
+-- writing while producing it. Whoever applies this: rename to
+-- src/loci/sql/0NN_fred_macro.sql with the next free number, confirm the
+-- registry entry in registry-fred_macro.yaml has landed in registry.yaml
+-- first, then run it through the normal migration path.
+--
+-- SOURCE: src/loci/sources/macro.py (adapter docstring has the full series
+-- list, the ids that did NOT resolve, and the failure contract). Loader is
+-- NOT written yet -- this file only declares the target tables so a future
+-- `loci ingest-macro` (or a one-off DuckDB `read_parquet(...)` load) has a
+-- schema to land in. The parquet outputs it should read from:
+--     data/interim/rq001/macro/macro_monthly.parquet  (9,322 rows, 2026-09-22 pull)
+--     data/interim/rq001/macro/macro_annual.parquet   (804 rows, 2026-09-22 pull)
+--
+-- WHY `raw`, NOT `staging.poi`. This is not a point-of-interest source --
+-- it is a national/metro time series with no lon/lat, no address, no
+-- opened/closed date. It never goes through the staging.poi normalized
+-- contract (CONTEXT.md §10) and score/model must not read raw source
+-- columns from anywhere -- so these tables live in the `raw` schema
+-- (declared empty in 002_schema.sql) as a landing zone, and any join into
+-- analysis.nta_trajectory or an RQ-001 hazard table happens through an
+-- explicit year/date join written in model/ code, not by widening this
+-- table.
+--
+-- GRAIN.
+--   raw.fred_macro_monthly: one row per (series_id, date), date = first of
+--     month. MORTGAGE30US is published weekly upstream and is resampled to
+--     a monthly mean in macro.py's build_monthly() -- the parquet/table has
+--     no weekly-native rows for it, only the resampled monthly ones.
+--   raw.fred_macro_annual: one row per (series_id, year). rollup states how
+--     that year's value was derived from the monthly rows: 'mean' for
+--     every rate/index series, 'max' for USREC (one recession month makes
+--     the year a recession year for a hazard-driver join -- a mean would
+--     understate a one-month 2020-04-style spike to near zero).
+--
+-- CAVEATS THE DATABASE CANNOT ENFORCE
+--   1. NOT a claim about NYC specifically for every row. NYUR is NY STATE;
+--      NEWY636URN and SMU36935617072200001 are the New York-Newark-Jersey
+--      City NY-NJ-PA MSA, not the five boroughs; UNRATE/FEDFUNDS/GS10/
+--      CUSR0000SEFV/CES7072200001/USREC are US-NATIONAL. Never join one of
+--      these to a ZIP-level row and imply it is that ZIP's own value --
+--      it is the shared macro backdrop, the same for every trade area in a
+--      given year (see METHOD.md §5: this is exactly why a macro MAIN
+--      EFFECT on relative favorability is close to mechanically null).
+--   2. `covid_window` is a modeling-convenience BOOLEAN
+--      (2020-03-01..2021-12-31, COVID_WINDOW_START/END constants in
+--      macro.py), not a claim about when COVID's economic effects began or
+--      ended. METHOD.md §5 states plainly that separating COVID from the
+--      2020 ACS collection anomaly is NOT identifiable from this data.
+--   3. CUURA101SA0 (NY-metro CPI, all items) stands in for a NY-metro
+--      food-away-from-home series that does not exist under any FRED id
+--      that was probed (CUURA101SEFV: 404). It is a cost-of-living proxy,
+--      not food-specific.
+--   4. Units and blank-handling are NOT enforced by any CHECK constraint --
+--      `units` is a free-text label (percent / index_1982_84_100 /
+--      thousands / binary) and a blank FRED observation is DROPPED
+--      upstream in macro.py's tidy_series(), never coerced to 0. A missing
+--      (series_id, date) row means "FRED had no observation that month,"
+--      not "the value was zero."
+--   5. lon/lat: N/A -- this source has no geometry, EPSG or otherwise.
+--   6. year FE and a national/NYC-wide yearly macro series are perfectly
+--      collinear in any regression that includes both -- a model spec
+--      choice this schema cannot prevent, only METHOD.md §5 states it.
+-- ---------------------------------------------------------------------------
+
+CREATE SCHEMA IF NOT EXISTS raw;
+
+CREATE TABLE IF NOT EXISTS raw.fred_macro_monthly (
+    series_id     VARCHAR NOT NULL,   -- FRED series id, e.g. 'UNRATE', 'NEWY636URN'
+    date          DATE NOT NULL,      -- first of month; MORTGAGE30US resampled from weekly
+    value         DOUBLE NOT NULL,    -- never a coerced 0 for a blank observation (dropped instead)
+    freq          VARCHAR NOT NULL,   -- 'monthly' for every row (see grain note above)
+    units         VARCHAR NOT NULL,   -- 'percent' | 'index_1982_84_100' | 'thousands' | 'binary'
+    title         VARCHAR NOT NULL,   -- FRED's series title, for provenance in a chart legend
+    covid_window  BOOLEAN NOT NULL,   -- 2020-03-01..2021-12-31, modeling convenience only (see caveat 2)
+    loaded_at     TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    PRIMARY KEY (series_id, date)
+);
+
+CREATE TABLE IF NOT EXISTS raw.fred_macro_annual (
+    series_id     VARCHAR NOT NULL,
+    year          INTEGER NOT NULL,
+    value         DOUBLE NOT NULL,
+    units         VARCHAR NOT NULL,
+    title         VARCHAR NOT NULL,
+    rollup        VARCHAR NOT NULL CHECK (rollup IN ('mean', 'max')),  -- 'max' only for USREC
+    covid_window  BOOLEAN NOT NULL,   -- true if ANY month of the year falls in the COVID window
+    loaded_at     TIMESTAMP NOT NULL DEFAULT current_timestamp,
+    PRIMARY KEY (series_id, year)
+);
