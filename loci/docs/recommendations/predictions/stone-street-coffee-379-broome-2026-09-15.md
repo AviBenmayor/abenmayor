@@ -149,12 +149,12 @@ In this order. The first four decide the score.
 
 | Field | Answer | Date heard |
 |---|---|---|
-| Yearly sales (379 Broome only); before or after sales tax; delivery gross or net | | |
-| Rent per month; square feet leased | | |
-| Staff cost per year; headcount; tips on top of wages? | | |
-| Weekday orders; average order | | |
-| Weekend share of the week; customer mix (residents / workers / visitors) | | |
-| Anything that contradicts §1–§3 | | |
+| Yearly sales (379 Broome only); before or after sales tax; delivery gross or net | **≈$1,400,000/year**, 107,000 transactions, ~$13.08 average sale ("we're big on food"). Delivery ≈5% of sales for the year (operator unsure — "maybe"); a recent single week ran 2,300 sales at $12.90 average ($29,670), delivery under 3%. Before/after sales tax and gross-vs-net-of-delivery-commission not specified. vs guessed $1,409,100 (a) / $1,000,000 (b) / $1,160,000 (c): **all three HIT** their low–high ranges; **(a) wins** by ln-error — see the 2026-09-21 answer file for why that is not a validation of the model. Source: the shop's former manager, via text, relayed by the owner. | 2026-09-21 |
+| Rent per month; square feet leased | Exact rent not given; operator says the $10,500/month guess was **"a little low"** — "almost nobody in Nolita has rent under 10k unless they're on a very old lease," implying actual sits above $10,500, likely still under the $15,000 high end (**directional HIT** on range, point guess low). Square footage: **the whole ground floor (2,013 sq ft) plus a basement of equal size** — not the ~1,000 sq ft (half the lot, split with the neighbor) assumed. **MISS** on floor area — see the answer file. | 2026-09-21 |
+| Staff cost per year; headcount; tips on top of wages? | Operator says the $340,000 guess was **"close"** — **HIT** on the dollar figure. Headcount: 2 baristas on the floor, 3 in the kitchen, 1 porter (6 total) — more kitchen-heavy than the record's "two to three people at the busy hours" assumption, consistent with the operator's framing that food is "a big draw," more than a coffee shop that happens to serve it. Tips-on-top-of-wages not answered. | 2026-09-21 |
+| Weekday orders; average order | Not asked in these terms; back-calculated from the sales answer: ≈107,000 orders/year ÷ 52 ≈ 2,058/week vs the record's 1,960/week bottom-up assumption — about 5% higher, **HIT**, order count only modestly low as the record's stated-in-advance caveat anticipated. Average order ≈$13.08 (most recent week $12.90) vs guessed $12.00 — **HIT**, slightly higher, consistent with "big on food." | 2026-09-21 |
+| Weekend share of the week; customer mix (residents / workers / visitors) | "Saturday and Sunday dominate the sales" — confirms the record's Q5 call (Saturday busier than a weekday, unusual for our other shops), directionally. **HIT.** No share number given; resident/worker/visitor mix not answered. | 2026-09-21 |
+| Anything that contradicts §1–§3 | §1's implicit assumption (floor shared with Greecologies next door, ~1,000 sq ft) is contradicted — see the rent/floor row above. §1's framing is sharpened: the operator describes the shop as kitchen-forward, with food "a big draw," more than a coffee shop that happens to sell food — a distinction §1 and §4 did not make. | 2026-09-21 |
 
 **Scoring rule.** For each of the four guesses: **error = ln(our number ÷ the true number)**, smallest
 wins, plus **hit or miss** on whether the truth falls inside our low–high range. Rent, staff cost and
