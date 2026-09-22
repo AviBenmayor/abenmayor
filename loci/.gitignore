@@ -44,3 +44,12 @@ data/sidewalk/
 data/launchd/
 # aerial change / awning / convertible review pages and cached ortho tiles
 data/aerial/
+# chains watchlist snapshots, commercial-listings collector output, and
+# generated data exports (data, never committed) — D133
+data/chains/
+data/commercial_listings/
+data/exports/
+
+# Codex peer session's agent hand-off skills — kept local-only pending an
+# owner decision on whether it ships (D133)
+.codex/

@@ -216,23 +216,49 @@ def supply_predicate(supply_set: str) -> str:
 GATE_CLOSED = True
 
 #: Collapse a same-category co-located group the evidence CANNOT split
-#: (resolution 'unresolved') down to ONE row. OFF, and it stays off pending an
-#: OWNER RULING, because the two readings are genuinely indistinguishable from
-#: here: a large building legitimately holds two restaurants at one geocoded
-#: point, and it equally legitimately holds one restaurant plus its
-#: unrecorded-closed predecessor. Turning this on trades a known over-count for
-#: an unknown under-count; `loci colocation --collapse-unresolved` prints what
-#: it would cost, without applying it.
+#: (resolution 'unresolved') down to ONE row — the deterministic survivor a
+#: positively-open member beats an unknown one, tie-broken by the lowest
+#: poi_id (see the QUALIFY clause below).
 #:
-#: MEASURED REASON TO LEAVE IT OFF (2026-09-14 warehouse, principled set): the
-#: five largest "unresolved" groups hold 72, 39, 38, 36 and 36 restaurants at a
-#: SINGLE coordinate, and their coordinates are Penn Station, JFK and Port
-#: Authority — GEOCODE SINKS, where a whole terminal's food hall is published
-#: at one building point. Collapsing those would delete 71 real restaurants in
-#: one group. Any future ruling to turn this on should first exclude sinks
-#: (e.g. cap the group size, or drop groups whose members span many source
-#: addresses), not flip the flag.
-COLLAPSE_UNRESOLVED = False
+#: OWNER RULING 2026-09-21 (CHECKPOINT D132, GTM-202, superseding the
+#: 2026-09-14/D94 "off pending a ruling" state and QUESTIONS D24): C3's rule
+#: — "any time we have 2 businesses in the same address, we should do a check
+#: if one of them closed down" / "resolve which is still open before
+#: counting; never count two" — applies to an ORDINARY co-located pair, and
+#: this flag is now ON by default so it is actually enforced instead of
+#: merely reported.
+#:
+#: It does NOT apply to a GEOCODE SINK. The five largest "unresolved" groups
+#: measured 2026-09-14 hold 72, 39, 38, 36 and 36 restaurants at a SINGLE
+#: coordinate — Penn Station, JFK and Port Authority, where a whole
+#: terminal's food hall is published at one building point. Collapsing those
+#: would delete dozens of real, distinct restaurants on the strength of
+#: nothing. The owner set the cutoff at SINK_GROUP_SIZE members (below):
+#: a same-category unresolved group at or under that size collapses; a larger
+#: one is a documented CHARTER EXCEPTION — it counts AS-IS and stays flagged
+#: `is_colocated_unresolved`, exactly as every group did before this ruling.
+#: The owner explicitly declined to route sink groups to the paid closure
+#: check instead (2026-09-21: "count as-is, documented exception" was chosen
+#: over that option) — there is no follow-up action pending on a sink group.
+#:
+#: `collapse_unresolved=True` passed explicitly (as opposed to inherited via
+#: this default) OVERRIDES the sink exemption — it is how `loci colocation
+#: --collapse-unresolved` still prices the rejected "collapse everything,
+#: sinks included" alternative without applying it. `collapse_unresolved=
+#: False` reproduces the pre-ruling set exactly (no collapse at all), which
+#: is what the module default was until 2026-09-21.
+COLLAPSE_UNRESOLVED = True
+
+#: The size, in members, ABOVE which a same-category co-located group is
+#: treated as a GEOCODE SINK rather than a genuine duplicate-record artifact
+#: (see COLLAPSE_UNRESOLVED). Owner ruling 2026-09-21: 5. Measured against
+#: the known sinks (36 to 72 members) and the bulk of ordinary co-located
+#: pairs (2 to 3 members) — no real group sits near this line. Compared
+#: against `colocation_n`, the GROUP'S TOTAL SIZE over all canonical POIs
+#: (sql/029_poi_colocation.sql), not the count within any one supply set, so
+#: sink-ness is a property of the coordinate, not of which supply set happens
+#: to be queried.
+SINK_GROUP_SIZE = 5
 
 #: The view canonical_poi_sql reads. analysis.poi_supply_status is
 #: analysis.poi_supply with the status + co-location columns bolted on
@@ -262,9 +288,21 @@ def canonical_poi_sql(supply_set: str = DEFAULT_SUPPLY_SET,
     Since 2026-09-14 it also applies the CLOSURE GATE: `poi_status <>
     'closed'`, where poi_status is model/poi_presence.poi_is_open evaluated in
     analysis.poi_supply_status. Pass `gate_closed=False` to reproduce the
-    pre-gate set exactly (that is how `loci colocation` prints the delta), and
-    `collapse_unresolved=True` to additionally keep one row per unresolved
-    co-located group -- the alternative the owner has not yet ruled on.
+    pre-gate set exactly (that is how `loci colocation` prints the delta).
+
+    Since 2026-09-21 (D132/GTM-202, owner ruling) it also applies the
+    SINK-AWARE COLLAPSE by default: an unresolved same-category co-located
+    group of `colocation_n <= SINK_GROUP_SIZE` members collapses to its one
+    positively-open (else lowest-poi_id) survivor; a larger group is a
+    GEOCODE SINK (a terminal food hall published at one coordinate) and is
+    the charter's documented exception -- it is left exactly as-is, still
+    flagged `is_colocated_unresolved`. Pass `collapse_unresolved=False` to
+    reproduce the pre-ruling set exactly (no collapse at all -- both members
+    of every unresolved group counted, sinks and ordinary pairs alike), or
+    `collapse_unresolved=True` to price the REJECTED alternative of
+    collapsing sinks too (that explicit True overrides the sink exemption;
+    it is how `loci colocation --collapse-unresolved` prints that delta
+    without applying it).
 
     `where` ANDs an extra predicate onto the supply predicate -- the one way
     to read a SCOPED slice of the supply set without hand-writing the view
@@ -303,10 +341,21 @@ def canonical_poi_sql(supply_set: str = DEFAULT_SUPPLY_SET,
         preds.append(f"({where})")
     sql = f"SELECT {cols} FROM {src_view} s WHERE " + " AND ".join(preds)
     if collapse:
+        # `collapse_unresolved is True` (an explicit override, not the
+        # inherited module default) forces the collapse onto sinks too --
+        # `loci colocation --collapse-unresolved`'s pricing of the rejected
+        # alternative. Anything else (None -> the default, or a truthy value
+        # that is not literally True) keeps the sink exemption.
+        force_all_groups = collapse_unresolved is True
+        sink_exempt = "" if force_all_groups else f" OR s.colocation_n > {SINK_GROUP_SIZE}"
         # Deterministic survivor: a positively-open member beats an unknown one
         # ('open' < 'unknown' lexically), then the lowest poi_id, so two runs
         # collapse to the SAME row and supply_hash stays comparable.
+        # `colocation_n` is the group's GLOBAL size (all canonical POIs at
+        # that coordinate, sql/029_poi_colocation.sql), not the count within
+        # this supply set, so sink-ness never depends on which set is queried.
         sql += (" QUALIFY NOT s.is_colocated_unresolved"
+                f"{sink_exempt}"
                 " OR row_number() OVER (PARTITION BY s.colocation_key"
                 " ORDER BY s.poi_status, s.poi_id) = 1")
     return sql
@@ -480,6 +529,10 @@ def supply_hash(con, supply_set: str = DEFAULT_SUPPLY_SET, *, asof=None) -> str:
         # gated out must be distinguishable once written.
         "gate_closed": bool(GATE_CLOSED),
         "collapse_unresolved": bool(COLLAPSE_UNRESOLVED),
+        # D132/GTM-202 (2026-09-21): the collapse rule is a threshold, not
+        # just a boolean, since that ruling -- a future change to the sink
+        # cutoff must move the hash too, same reasoning as gate_closed above.
+        "sink_group_size": int(SINK_GROUP_SIZE),
         "open_evidence_max_age_days": _open_evidence_window(),
         "anchored": anchors,
         "floor_anchors": floors,

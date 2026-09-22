@@ -22,6 +22,7 @@ from loci.model.address_gaps import (
     _refuse_empty_categories,
     compute_gap_metrics,
 )
+from loci.model.conveniences import signal_categories
 
 
 def _line_graph(n=13):
@@ -484,21 +485,74 @@ def test_the_default_scope_is_the_screen_scope():
 
 
 # --- fail-closed on a category with no supply (docs/CATEGORY-EXPANSION.md §1.2)
+# GTM-209 (2026-09-22): the guard now exempts `ships_as: signal` slugs (see
+# `test_signal_category_with_no_supply_is_exempt_from_the_guard` below), so
+# these tests deliberately pick a FILTERING category rather than assume
+# ALLCATS[-1] is one -- it was, before bathhouse_sauna landed as ALLCATS[-1]
+# and became the first slug the assumption no longer holds for.
 
-def test_db_engine_refuses_a_category_with_no_supply_pois():
-    """A slug that exists in categories.py but that no adapter has emitted yet
-    (the state a 16th category is in between G0 and its first ingest) sits at
-    the cap for every address and would lead every card. The DB-backed engine
-    must refuse, naming the slug, rather than rank on a registry state."""
+def test_db_engine_refuses_a_filter_category_with_no_supply_pois():
+    """A FILTERING slug that exists in categories.py but that no adapter has
+    emitted yet (the state a 16th category is in between G0 and its first
+    ingest, before it is ruled a signal) sits at the cap for every address
+    and would lead every card. The DB-backed engine must refuse, naming the
+    slug, rather than rank on a registry state."""
     import pytest
+    signal = signal_categories()
+    filter_cats = [c for c in ALLCATS if c not in signal]
+    assert len(filter_cats) >= 2, "need at least two filtering categories to test both branches"
     by_cat = {c: [(-73.98, 40.75)] for c in ALLCATS}
     _refuse_empty_categories(by_cat)              # complete supply: silent
-    by_cat[ALLCATS[-1]] = []
-    with pytest.raises(EmptyCategoryError, match=ALLCATS[-1]):
+    by_cat[filter_cats[-1]] = []
+    with pytest.raises(EmptyCategoryError, match=filter_cats[-1]):
         _refuse_empty_categories(by_cat)
-    del by_cat[ALLCATS[0]]                        # absent key, same refusal
-    with pytest.raises(EmptyCategoryError, match=ALLCATS[0]):
+    del by_cat[filter_cats[0]]                    # absent key, same refusal
+    with pytest.raises(EmptyCategoryError, match=filter_cats[0]):
         _refuse_empty_categories(by_cat)
+
+
+def test_signal_category_with_no_supply_is_exempt_from_the_guard():
+    """GTM-209 (2026-09-22, CHECKPOINT D134): a `ships_as: signal` slug
+    (bathhouse_sauna today) sitting at zero POIs is the expected pre-ingest
+    state -- the signal-vs-filter rule (docs/CATEGORY-EXPANSION.md §4)
+    already excludes it from every aggregate this guard protects, so it must
+    NOT raise, even though every OTHER category is fully supplied."""
+    signal = signal_categories()
+    assert signal, "no signal category registered -- nothing to test here"
+    by_cat = {c: [(-73.98, 40.75)] for c in ALLCATS}
+    for cat in signal:
+        by_cat[cat] = []
+    _refuse_empty_categories(by_cat)   # must not raise
+
+
+def test_compute_gap_metrics_leaves_gap_score_lead_and_n_missing_untouched_by_a_signal_category():
+    """The charter's own test of a signal (docs/CATEGORY-EXPANSION.md §4):
+    'removing it must leave gap_score, lead_category, n_missing ... byte-
+    identical'. RIG the signal category to an enormous ratio -- a POI at
+    distance 0 measured against a 1 m reach, which would trivially win every
+    argmax and add to every n_missing if it were still in the aggregates --
+    and confirm gap_score/lead_category/n_missing do not move. `ratio` itself
+    DOES still reflect the rig: a signal is computed, never gated."""
+    signal = signal_categories()
+    assert signal
+    sig = next(iter(signal))
+    sig_idx = ALLCATS.index(sig)
+    G, addresses, pois = _fixture()
+    M = _address_nearest_matrix_from_graph(G, addresses, pois, min_component=1)
+    reach = _full_reach(grocery=50.0)
+    baseline = compute_gap_metrics(M, reach, min_present=3)
+
+    rigged_M = M.copy()
+    big = 999_999.0
+    rigged_M[:, sig_idx] = big
+    rigged_reach = dict(reach)
+    rigged_reach[sig] = 1.0   # ratio = 999,999 for the signal column
+    rigged = compute_gap_metrics(rigged_M, rigged_reach, min_present=3)
+
+    assert list(rigged["gap_score"]) == list(baseline["gap_score"])
+    assert list(rigged["lead_category"]) == list(baseline["lead_category"])
+    assert list(rigged["n_missing"]) == list(baseline["n_missing"])
+    assert rigged["ratio"][:, sig_idx].tolist() == [big, big]
 
 
 def test_pure_engine_still_censors_an_empty_category_at_the_cap():

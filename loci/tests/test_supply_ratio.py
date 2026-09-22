@@ -272,6 +272,30 @@ def test_fit_baselines_emits_every_category_even_with_no_rows():
     assert out["tailor_repair"]["n"] == 0
 
 
+def test_fit_baselines_skips_a_swept_category_with_zero_supply(monkeypatch):
+    """GTM-209 (2026-09-22): distinct from the 'not in scope at all' fixture
+    above. A category that WAS swept -- a row exists for every address, exactly
+    what compute_supply_ratio emits for a real (unignested) category like
+    bathhouse_sauna -- but whose supply_400m is 0 EVERYWHERE has no evidence
+    to fit a baseline from. It must be ABSENT from the output entirely, not
+    written as a fabricated `baseline: 0.0` (tests/test_category_registry.py's
+    GTM-198 G8 rule: 'a hand-written row would be a fabrication'). Uses a
+    fake ALLCATS via monkeypatch so this test does not depend on which real
+    slug happens to be unfitted today."""
+    import loci.model.supply_ratio as sr_mod
+
+    monkeypatch.setattr(sr_mod, "ALLCATS", ["grocery", "bathhouse_sauna"])
+    rows = [
+        ("a", "grocery", True, 1000, 2, 2.0),
+        ("b", "grocery", True, 1000, 4, 4.0),
+        ("a", "bathhouse_sauna", True, 1000, 0, 0.0),
+        ("b", "bathhouse_sauna", True, 1000, 0, 0.0),
+    ]
+    out = fit_baselines(_long(rows))
+    assert set(out) == {"grocery"}
+    assert "bathhouse_sauna" not in out
+
+
 def test_baseline_yaml_round_trip(tmp_path):
     doc = {
         "supply_hash": "deadbeef1234", "supply_set": "principled",

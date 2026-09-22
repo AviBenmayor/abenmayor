@@ -501,8 +501,11 @@ END"""
 COORD_DP = 5
 
 #: The four verdicts a co-located group can carry. 'unresolved' is the one that
-#: matters: it is a group the published evidence CANNOT split, and it is
-#: counted AS-IS in supply by default (see score/supply.COLLAPSE_UNRESOLVED).
+#: matters: it is a group the published evidence CANNOT split. Since the
+#: 2026-09-21 owner ruling (D132/GTM-202) it collapses to one counted POI by
+#: default UNLESS the group is a geocode sink (colocation_n over
+#: score/supply.SINK_GROUP_SIZE), which still counts AS-IS -- see
+#: score/supply.COLLAPSE_UNRESOLVED.
 RESOLUTIONS = ("one_closed", "all_closed", "both_open", "unresolved")
 
 

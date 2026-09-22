@@ -554,6 +554,10 @@ def fit_baselines(long_df: pd.DataFrame, eligible_only: bool = True,
     Address-weighted, deliberately: a 400-unit tower and a rowhouse are one
     observation each. `aggregate_per_1k` is the home-weighted alternative and
     ships beside it precisely because the two disagree.
+
+    A category with literally zero POIs anywhere in the swept set is SKIPPED
+    -- absent from the returned dict entirely, not written as a fabricated
+    `baseline: 0.0` (GTM-209, 2026-09-22; see the skip inline below).
     """
     df = long_df
     if eligible_only and "eligible" in df.columns:
@@ -568,6 +572,28 @@ def fit_baselines(long_df: pd.DataFrame, eligible_only: bool = True,
         vals = pd.to_numeric(sub["supply_per_1k"], errors="coerce").dropna()
         homes = pd.to_numeric(sub["homes_400m"], errors="coerce")
         supply = pd.to_numeric(sub["supply_400m"], errors="coerce")
+        # GTM-209 (2026-09-22): a category that WAS swept (rows exist for it
+        # -- distinguishes this from `test_fit_baselines_emits_every_category
+        # _even_with_no_rows`'s "not in scope at all" fixture, which still
+        # gets an explicit None below) but has ZERO principled POIs anywhere
+        # in that sweep (`supply.sum() == 0`, distinct from a category that
+        # merely has a zero MEDIAN like tailor_repair below) has no evidence
+        # to fit a baseline FROM -- a slug admitted to categories.py before
+        # any adapter mapped it (bathhouse_sauna, GTM-198) is a registry
+        # state, not a norm of "1,000 homes get zero of these". Writing
+        # `baseline: 0.0` for it would be exactly the fabrication GTM-198's
+        # own rule forbids ("a hand-written row would be a fabrication",
+        # tests/test_category_registry.py); the category is skipped here and
+        # simply absent from the YAML until it has real supply, matching
+        # `UNFITTED_PENDING_INGEST` in tests/test_category_registry.py and
+        # tests/test_supply_ratio.py::test_baseline_yaml_declares_its_radius_and_universe.
+        # NOT the same test as `ships_as: signal` (address_gaps.py's
+        # signal_categories()) -- this skip is about EVIDENCE, not about
+        # whether the category is allowed to gate a card; once bathhouse_sauna
+        # has even one POI, it gets a real baseline row like any other
+        # category, signal or not.
+        if len(sub) > 0 and float(supply.sum()) == 0.0:
+            continue
         tot_h = float(homes.sum())
         med = float(vals.median()) if len(vals) else None
         agg = (float(supply.sum()) / tot_h * 1000.0) if tot_h > 0 else None

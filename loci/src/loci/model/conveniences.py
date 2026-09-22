@@ -26,6 +26,7 @@ units) tuples, and canonical POIs from staging.poi. No NYC column names here
 """
 from __future__ import annotations
 
+import functools
 import hashlib
 import pathlib
 
@@ -40,8 +41,34 @@ from loci.score.walkgraph import OUT as GRAPH_PATH
 
 PKG = pathlib.Path(__file__).resolve().parents[1]  # src/loci
 CONVENIENCES_PATH = PKG / "conveniences.yaml"
+CATEGORIES_YAML = PKG / "categories.yaml"
 
 ALLCATS = list(CATEGORIES)  # fixed column/report order, tier order from categories.py
+
+
+@functools.cache
+def signal_categories(path: pathlib.Path = CATEGORIES_YAML) -> frozenset[str]:
+    """Slugs shipping as a non-filtering SIGNAL (`ships_as: signal` in
+    categories.yaml) rather than a filter, per the signal-vs-filter rule
+    (docs/CATEGORY-EXPANSION.md §4): "removing it must leave `gap_score`,
+    `lead_category`, `n_missing` and the missing set byte-identical". A
+    signal category is still computed like any other -- nearest_m, ratio,
+    censored all populate -- it is excluded only from those four aggregates
+    and from `address_gaps._refuse_empty_categories`'s empty-set guard: a
+    slug admitted at G0 with no ingest yet (`bathhouse_sauna`, GTM-198) is a
+    REGISTRY STATE, not a citywide gap, and must not be allowed to fabricate
+    one just because it has not been mapped by an adapter yet.
+
+    Same pattern as `model/recommend.non_headline_categories()` (a different
+    categories.yaml flag, `headline`) -- cached because the file cannot
+    change mid-run. Shared by `model/address_gaps.py` and
+    `model/supply_ratio.py` (GTM-209): the two places that iterate ALLCATS
+    and, until this function existed, assumed every slug was a filter.
+    """
+    doc = yaml.safe_load(pathlib.Path(path).read_text())
+    meta = doc.get("categories") or {}
+    return frozenset(slug for slug, entry in meta.items()
+                     if (entry or {}).get("ships_as") == "signal")
 
 
 def load_conveniences(path: pathlib.Path = CONVENIENCES_PATH) -> dict[str, float]:

@@ -75,12 +75,12 @@ the Google sample validates. In that case the map ships restricted to those, and
 - **Current answer:** Open, ticketed GTM-161.
 
 ### D24 — Should unresolved co-located POI pairs from the closure gate collapse, or count as-is?
-- **Status:** open
+- **Status:** answered
 - **Answered by:** `Owner ruling + implementation: unresolved co-located POI pairs collapse or count (QUESTIONS D24)`
 - **Tier:** P1 — decision value for AC-1
 - **Why it matters:** the co-location closure gate (commit a67f03e) flags 2,527 groups / 7,597 POIs as unresolved rather than collapsing them; collapsing would remove 4,270 more POIs from the supply set. The default is OFF (count as-is), which is conservative for supply counts but leaves a known duplication risk uncorrected wherever a group really is one business under two records.
 - **Fails if:** n/a — data-quality/method question; but leaving this open indefinitely means every supply-based count downstream carries an unquantified, undecided bias in one direction.
-- **Current answer:** Open. This is the one item the 2026-09-14 "yes to all 4" ruling (CHECKPOINT D90) did NOT cover — it stays open pending a separate owner ruling.
+- **Current answer:** Answered 2026-09-21/22 (owner ruling, CHECKPOINT D132, GTM-202): an unresolved co-located pair collapses to its one positively-open (else lowest-poi_id) survivor by default, EXCEPT a group above `SINK_GROUP_SIZE` (5) members — a documented geocode-sink exception (Penn Station/JFK/Port Authority, 36–72 members) that counts as-is and is not routed to a paid closure check. Code landed in `score/supply.py` 2026-09-21; the live warehouse re-run that actually moves `supply_hash` landed 2026-09-22 (CHECKPOINT D134): `ed55301203a4` → `1898163ac8ce`, gated supply 133,356 → 130,536 (−2,820, −2.11%), full canonical order re-run end to end.
 
 ### T10 — Which government feeds would make the 10 filing-blind categories visible (NYS DOS professions, OCFS childcare, DOH clinics, DCWP laundry mapping), and at what lead time?
 - **Status:** open

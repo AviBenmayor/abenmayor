@@ -47,14 +47,23 @@
 --     convention and nothing reprojects, because degrees are what is rounded.
 --     The database will not catch a violation of that convention.
 --   * A LARGE BUILDING LEGITIMATELY HOLDS TWO RESTAURANTS.  A co-located pair
---     is a QUESTION, not a defect, which is why 'unresolved' groups are
---     counted AS-IS in supply and the collapse is off by default
---     (score/supply.COLLAPSE_UNRESOLVED) pending an owner ruling.
---   * BIG GROUPS ARE GEOCODE SINKS, NOT BUILDINGS.  The five largest
---     'unresolved' groups on the 2026-09-14 build hold 72 / 39 / 38 / 36 / 36
---     restaurants at ONE coordinate, at Penn Station, JFK and Port Authority:
---     a whole terminal's food hall published at a single building point.  They
---     are the reason the collapse must never simply be switched on.
+--     is a QUESTION, not a defect -- but as of owner ruling 2026-09-21
+--     (CHECKPOINT D132, GTM-202, superseding QUESTIONS D24) an ORDINARY
+--     'unresolved' group (colocation_n <= score/supply.SINK_GROUP_SIZE, 5)
+--     no longer counts both members: it COLLAPSES to its one
+--     positively-open (else lowest-poi_id) survivor, per
+--     score/supply.canonical_poi_sql's QUALIFY clause
+--     (score/supply.COLLAPSE_UNRESOLVED, ON by default since that ruling).
+--   * BIG GROUPS ARE GEOCODE SINKS, NOT BUILDINGS, AND STAY UNCOLLAPSED.  The
+--     five largest 'unresolved' groups on the 2026-09-14 build hold
+--     72 / 39 / 38 / 36 / 36 restaurants at ONE coordinate, at Penn Station,
+--     JFK and Port Authority: a whole terminal's food hall published at a
+--     single building point.  A group above SINK_GROUP_SIZE members is a
+--     documented CHARTER EXCEPTION, not a TODO: the owner ruled 2026-09-21
+--     that it counts AS-IS (still flagged is_colocated_unresolved here) and
+--     is NOT routed to the paid closure check either -- collapsing it, or
+--     queuing it for a paid lookup, would both be wrong, since the ambiguity
+--     is a terminal's geocode, not two records fighting over one storefront.
 --   * GROUPS ARE FORMED OVER ALL CANONICAL POIs, independent of supply set.
 --     A group's size is a property of the data, not of the set the screen
 --     happens to be running; `in_principled` filtering happens downstream.

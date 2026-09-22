@@ -101,7 +101,7 @@ import pandas as pd
 from scipy.sparse.csgraph import dijkstra
 
 from loci.categories import CATEGORIES
-from loci.model.conveniences import ALLCATS, graph_version
+from loci.model.conveniences import ALLCATS, graph_version, signal_categories
 from loci.reach import load_reach
 from loci.score.access import DIST_LIMIT, MIN_COMPONENT, _prune, _to_csr
 from loci.score.supply import DEFAULT_SUPPLY_SET, canonical_poi_sql, supply_hash
@@ -180,7 +180,8 @@ class EmptyCategoryError(RuntimeError):
 
 
 def _refuse_empty_categories(by_cat: dict[str, list]) -> None:
-    """Refuse to screen when a category in ALLCATS has zero supply POIs.
+    """Refuse to screen when a FILTERING category in ALLCATS has zero supply
+    POIs.
 
     Such a category sits at `cap_m` for EVERY address, so `nearest_m /
     reach_m` is its maximum everywhere: it becomes `lead_category` for the
@@ -191,8 +192,20 @@ def _refuse_empty_categories(by_cat: dict[str, list]) -> None:
     measurement, and the screen must say so rather than rank on it. The pure
     engine `_address_nearest_matrix_from_graph` is NOT guarded: its callers
     pass synthetic POI sets that deliberately leave categories empty.
+
+    GTM-209 (2026-09-22): a `ships_as: signal` category (`signal_categories()`)
+    is EXEMPT from this guard. The signal-vs-filter rule
+    (docs/CATEGORY-EXPANSION.md §4) already excludes a signal slug from every
+    aggregate this guard exists to protect (`gap_score`, `lead_category`,
+    `n_missing` -- see `compute_gap_metrics`), so a signal category sitting at
+    zero supply is the expected, harmless pre-ingest state, not the silent
+    failure mode this guard was built to catch. Once a signal category is
+    ingested it is still exempt -- the exemption is a property of `ships_as`,
+    not of the POI count -- because the charter never lets it gate a card
+    regardless of how much supply eventually exists.
     """
-    empty = [c for c in ALLCATS if not by_cat.get(c)]
+    signal = signal_categories()
+    empty = [c for c in ALLCATS if c not in signal and not by_cat.get(c)]
     if empty:
         raise EmptyCategoryError(
             f"{len(empty)} of {len(ALLCATS)} categories have no POI in the supply "
@@ -314,6 +327,7 @@ def address_nearest_matrix(
 def compute_gap_metrics(M: np.ndarray, reach: dict[str, float],
                          window_m: float = WINDOW_M, min_present: int = MIN_PRESENT,
                          cap_m: float = CAP_M,
+                         signal_cats: frozenset[str] | None = None,
                          ) -> dict[str, np.ndarray]:
     """Pure numpy classification from an (n_addresses, 15) nearest-metres
     matrix (ALLCATS column order) and a complete {category: reach_m} dict.
@@ -340,6 +354,24 @@ def compute_gap_metrics(M: np.ndarray, reach: dict[str, float],
     a censored ratio is still the smallest value that ratio could take, so
     the ranking stays monotone and conservative; the flags exist so that a
     renderer prints "beyond 2,400 m -- not measured" instead of the cap.
+
+    SIGNAL EXCLUSION (GTM-209, 2026-09-22). `signal_cats` (default:
+    `conveniences.signal_categories()`, `ships_as: signal` in categories.yaml)
+    is excluded from the row-max/argmax/`>1` count that produce `gap_score`,
+    `lead_category` and `n_missing` -- the signal-vs-filter rule
+    (docs/CATEGORY-EXPANSION.md §4): "removing it must leave gap_score,
+    lead_category, n_missing and the missing set byte-identical". `ratio`
+    ITSELF is still computed for a signal category, unmasked, for every
+    address -- a signal reorders or annotates a card, it never disappears
+    from the table -- so a signal column can still be read off `ratio`
+    directly; it just never wins the argmax or adds to the `>1` count. This
+    is a property of `ships_as`, not of POI count: a signal category stays
+    excluded from these three even after it is fully ingested. `present_count`
+    is deliberately NOT masked -- the charter names only the three aggregates
+    above plus "the missing set" (== the `ratio > 1` membership this function
+    also masks for `n_missing`); `present_count` is a separate descriptive
+    statistic D75 already demoted to "not a filter", and masking it is a
+    different, un-ruled-on question.
     """
     missing_cats = sorted(set(CATEGORIES) - set(reach))
     if missing_cats:
@@ -348,6 +380,8 @@ def compute_gap_metrics(M: np.ndarray, reach: dict[str, float],
             f"{', '.join(missing_cats)}"
         )
     reach_arr = np.array([reach[c] for c in ALLCATS], dtype=np.float64)
+    signal_cats = signal_categories() if signal_cats is None else signal_cats
+    filter_mask = np.array([c not in signal_cats for c in ALLCATS], dtype=bool)
 
     present_count = (M <= window_m).sum(axis=1)
     # D75: retired. TRUE for every address, by owner ruling -- kept as a
@@ -356,15 +390,18 @@ def compute_gap_metrics(M: np.ndarray, reach: dict[str, float],
     censored = M >= cap_m
 
     ratio = M / reach_arr[None, :]
-    max_ratio = ratio.max(axis=1)
-    is_max = ratio == max_ratio[:, None]
+    # Signal columns excluded from the row-max/argmax/`>1` count ONLY -- the
+    # `ratio` returned below is the full, unmasked matrix.
+    filter_ratio = np.where(filter_mask[None, :], ratio, -np.inf)
+    max_ratio = filter_ratio.max(axis=1)
+    is_max = filter_ratio == max_ratio[:, None]
     # tie-break: among the tied max-ratio categories, the one with the
     # LARGER raw nearest_m is the more conspicuous absence.
     nearest_masked = np.where(is_max, M, -np.inf)
     lead_idx = nearest_masked.argmax(axis=1)
     rows = np.arange(len(M))
     lead_excess = M[rows, lead_idx] - reach_arr[lead_idx]
-    n_missing = (ratio > 1.0).sum(axis=1)
+    n_missing = ((ratio > 1.0) & filter_mask[None, :]).sum(axis=1)
     lead_category = np.array([ALLCATS[i] for i in lead_idx], dtype=object)
     lead_censored = censored[rows, lead_idx]
 
