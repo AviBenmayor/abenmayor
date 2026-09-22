@@ -8,19 +8,19 @@ Owner ask, 2026-09-14: *"what are the critical inputs necessary to be able to ex
 
 ## 1. The registry by portability class
 
-`class` answers *where can a second city get this*, and it is deliberately not the same question as `tier`. A `city`-tier source is usually **not** unique to the city: another city publishes the same fact under a different schema. Only 7 rows in the registry have no equivalent anywhere else.
+`class` answers *where can a second city get this*, and it is deliberately not the same question as `tier`. A `city`-tier source is usually **not** unique to the city: another city publishes the same fact under a different schema. Only 8 rows in the registry have no equivalent anywhere else.
 
 | Class | n | What it means for a second city |
 |---|---|---|
 | **universal** | 7 | Works on day one, anywhere on earth. Nothing to procure. |
-| **national (US federal)** | 15 | Works on day one in any US city. Carries its own portable bias. |
+| **national (US federal)** | 17 | Works on day one in any US city. Carries its own portable bias. |
 | **state** | 7 | Re-plumbed per state. Publication quality varies enormously; expect some states to publish nothing usable. |
 | **city open data (different schema)** | 19 | An equivalent exists but the schema is different. This is the real cost of a second city: an adapter per source. |
-| **city-unique (no equivalent exists)** | 7 | No equivalent exists. The stage degrades, permanently — see §4. |
+| **city-unique (no equivalent exists)** | 8 | No equivalent exists. The stage degrades, permanently — see §4. |
 
-**55 sources classed.** 22 of them (40%) need no per-city work at all.
+**58 sources classed.** 24 of them (41%) need no per-city work at all.
 
-**24 of the 55 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
+**25 of the 58 classifications are judgement calls** (`confidence: med` or `low`) and carry a note saying what the uncertainty is. They are listed with their notes in §6.
 
 ---
 
@@ -83,6 +83,7 @@ development pipeline.
 | Source | Class | Without it |
 |---|---|---|
 | Census American Community Survey, 5-year estimates | national (US federal) | No income, tenure, age or household size: the supply baseline loses its controls, so a thin count can no longer be separated from a poor one, and demand_now is ungraded. |
+| Decennial Census (SF1/SF3/DHC), ZCTA geography, 2000/2010/2020 | national (US federal) | No pre-ACS demand baseline: RQ-002's 1994-2010 pre-trend match (and any project's need for a pre-2010 population/housing read) has nothing to rest on except LODES/ZBP (1998+, establishment counts only, no population/housing/income/rent). |
 | Citi Bike System Data (trip files) | national (US federal) *(med conf.)* | The only two-directional movement series in the registry is lost: demand keeps subway ENTRIES, which publish the morning tap-in and never the evening arrival, and which read zero for 65% of Brooklyn addresses -- so `bike_ends_400m`, the only arrival-side measure Loci has, cannot be built and the destination-versus- commuter reading of a corner goes back to being an assumption. |
 | FEMA National Flood Hazard Layer (NFHL) | national (US federal) | No flood-zone overlay at all: the feasibility gate keeps reasoning about site risk with no climate/flood signal, the same blind spot GrowthFactor markets against Loci as "Climate Intelligence" (competitor-capability-gaps doc, gap row "Climate / flood risk overlay"). |
 | FRED (Federal Reserve Bank of St. Louis) — BLS/Fed/NBER macro series | national (US federal) | RQ-001's macro hazard covariates have no series to regress on: the regime-durability model cannot test H1 (macro raising citywide churn) or H2 (macro x ZIP-exposure interactions reordering ranks), and per METHOD.md section 5 must fall back to labeling every spell exit BLOCKED for macro with its ticket id rather than fabricating one. |
@@ -177,6 +178,7 @@ establishment counts, DOT sidewalk counts, the D88 retrodiction.
 | Google Places API — Nearby Search | universal | No independent ground truth: the CONTEXT 7.1 coverage-bias audit cannot be run and the card's coverage section can never reach A (recommend_grades validated_grade). |
 | Strava Metro (street-segment activity counts) | universal | Loses a crowd-sourced movement second opinion. Never load-bearing -- it is cycling- and fitness-selected, and access is gated on an application. |
 | Census County Business Patterns (CBP), national -- counties, metros and ZIPs | national (US federal) | The carrying-capacity comparison loses its only external frame: NYC's establishments-per-resident can still be measured but not placed against any other metro, so "is this rate high" has no answer and no second city can be chosen on evidence. |
+| Census TIGER/Line ZCTA5 polygons (2000, 2010, 2020 vintages) | national (US federal) | No polygon layer to spatially join any lon/lat-grain table (POI opens/closes, licence intervals, address records -- none of which carry a zip column) to a ZIP/ZCTA. Every ZIP-tier pillar in RQ-002's DATA-AUDIT.md (BUSINESSES, RESIDENTIAL RENT via ZORI/ACS) is blocked on this join existing at all. |
 | Census ZIP Code Business Patterns (ZBP), via the County Business Patterns (CBP) API | national (US federal) | No external establishment-count benchmark, so anchor coverage ratios (the 0.85 / 0.90 numbers that justified the childcare and pharmacy anchors) cannot be computed. |
 | Citi Bike System Data (trip files) | national (US federal) *(med conf.)* | The only two-directional movement series in the registry is lost: demand keeps subway ENTRIES, which publish the morning tap-in and never the evening arrival, and which read zero for 65% of Brooklyn addresses -- so `bike_ends_400m`, the only arrival-side measure Loci has, cannot be built and the destination-versus- commuter reading of a corner goes back to being an assumption. |
 | HUD aggregated USPS vacancy data | national (US federal) | No independent residential vacancy series, so the residential half of vacancy rests on ACS 5-year smoothing alone. |
@@ -187,10 +189,11 @@ establishment counts, DOT sidewalk counts, the D88 retrodiction.
 | NYC DOT Bi-Annual Pedestrian Counts | city open data (different schema) *(med conf.)* | The access proxies (transit_entries_400m, jobs_400m, homes_400m) lose their only external check, so the D76 rank correlation cannot be computed and the proxy stays an assumption. |
 | NYC DOT traffic cameras (NYCTMC public feed) | city open data (different schema) *(med conf.)* | The frame-sampler route to a measured footfall number closes; nothing else in the free registry can produce a person count. |
 | NYC orthoimagery (OTI) -- 6-inch true-ortho, biennial | city open data (different schema) *(med conf.)* | The ortho change, awning and convertible-stock layers close; nothing else in the free registry sees a lot from above at 15 cm. NAIP (60 cm, leaf-on, public domain) is the national fallback and cannot see an awning. |
+| NYC DOF Property Assessment Roll — Assessment History (market/assessed value) | city-unique (no equivalent exists) *(med conf.)* | No free commercial-rent proxy at all for ground-floor-retail lots; RQ-002's COMMERCIAL RENT pillar would have to rely solely on DOF Storefront Registry vacancy (a non-rent, 7-year-window proxy) or the on-hold commercial-listings collector (GTM-212). |
 | NYC DOF Storefronts Reported Vacant or Not (Local Law 157 of 2019) | city-unique (no equivalent exists) | No storefront-vacancy layer: the card's space section grades D everywhere, the 'and this ground floor 120 m away is empty' sentence disappears, and the D88 go-dark retrodiction has no outcome variable at all. |
 | NYC DOT VivaCity sidewalk sensors (data-sharing ask) | city-unique (no equivalent exists) *(med conf.)* | No continuous sidewalk sensor, so counts stay biannual seven-hour snapshots and no daypart validation is possible. |
 
-**Stage `validation` depends on 2 city-unique sources** — NYC DOF Storefronts Reported Vacant or Not (Local Law 157 of 2019), NYC DOT VivaCity sidewalk sensors (data-sharing ask). It cannot be reproduced at full strength anywhere else.
+**Stage `validation` depends on 3 city-unique sources** — NYC DOF Property Assessment Roll — Assessment History (market/assessed value), NYC DOF Storefronts Reported Vacant or Not (Local Law 157 of 2019), NYC DOT VivaCity sidewalk sensors (data-sharing ask). It cannot be reproduced at full strength anywhere else.
 
 ### `chains`
 
@@ -306,7 +309,7 @@ status date.
 
 ## 4. The city-unique sources, and what is lost without each
 
-7 rows have no equivalent anywhere else. These are the permanent degradations — not an
+8 rows have no equivalent anywhere else. These are the permanent degradations — not an
 adapter to write, a capability a second city does not have.
 
 ### MTA Subway Hourly Ridership 2020-2024
@@ -326,6 +329,20 @@ assigned to a station.
 
 **Lost without it.** transit_entries_400m cannot be built, which removes the only foot-
 traffic proxy in the whole registry (D76) and leaves the card with no daypart signal.
+
+### NYC DOF Property Assessment Roll — Assessment History (market/assessed value)
+
+*Feeds:* `validation` · *Class confidence:* med
+
+**Lost without it.** No free commercial-rent proxy at all for ground-floor-retail lots;
+RQ-002's COMMERCIAL RENT pillar would have to rely solely on DOF Storefront Registry
+vacancy (a non-rent, 7-year-window proxy) or the on-hold commercial-listings collector
+(GTM-212).
+
+**Why nothing replaces it.** DOF publishes no citywide commercial-rent series at all
+(RPIE income/expense filings are collected but never released record-level);
+assessed/market value of ground-floor-retail lots is the best FREE proxy available, one
+step removed from an actual rent figure.
 
 ### NYC DOF Storefronts Reported Vacant or Not (Local Law 157 of 2019)
 
@@ -562,6 +579,7 @@ second-city plan starts from the doubt rather than rediscovering it.
 | DOB NOW: Build - Job Application Filings | city open data (different schema) | med | Permit-application feeds are common; a work-type breakdown fine enough to isolate a sign permit or a place of assembly is not. |
 | NYC DOB Permit Issuance + DOB NOW Approved Permits | city open data (different schema) | med | The generic requirement is a permit file carrying a RENEWAL or status date, not just an issue date. Many permit datasets publish issuance only, which is exactly the column that makes this stage work. |
 | NYC DOE Demographic Snapshot (school-level enrollment + composition) | city open data (different schema) | med | Nearly every US school district publishes an annual enrollment-by-school file with race/poverty/ELL breakdowns -- state education departments require it for Title I and civil-rights reporting. The SCHEMA (DBN, the specific race/ELL/poverty columns) is NYC DOE's; the underlying fact of an annual per-school headcount is not NYC-unique. |
+| NYC DOF Property Assessment Roll — Assessment History (market/assessed value) | city-unique (no equivalent exists) | med | DOF publishes no citywide commercial-rent series at all (RPIE income/expense filings are collected but never released record-level); assessed/market value of ground-floor-retail lots is the best FREE proxy available, one step removed from an actual rent figure. |
 | Active NYC Health Code Regulated Child Care Programs | state | med | NYC is unusual in that the CITY licenses group child care (Art. 47); in most states the roster is a state agency file. Portable, but from a different publisher. |
 | NYC DOT Bi-Annual Pedestrian Counts | city open data (different schema) | med | Many cities publish some pedestrian counts; a 37-round, 19-year biannual panel at fixed points is rare, and the restricted-range problem (counts sited on busy commercial corridors) travels to every city that has one. |
 | NYC DOT traffic cameras (NYCTMC public feed) | city open data (different schema) | med | Public traffic-camera APIs exist in many cities; unpublished bearing and field of view make any count a count on an unknown catchment, wherever it is done. |
