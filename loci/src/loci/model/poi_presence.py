@@ -29,9 +29,24 @@ WHAT THIS MODULE GUARANTEES
    snapshot's month is STRICTLY NEWER than the row's `last_seen_month`.
 2. NO SILENT MIS-JOIN. `cluster_id` is not stable across dedup re-runs (see
    sql/018), so identity is carried by a content hash first and a
-   name+distance link second, and every ledger row whose `last_seen_month` is
-   behind the newest snapshot has its `cluster_id_latest` NULLed. A stale join
-   returns nothing rather than the wrong storefront.
+   name+distance link second, and every ledger row NOT touched by the current
+   snapshot run has its `cluster_id_latest` NULLed. A stale join returns
+   nothing rather than the wrong storefront.
+
+   D138 (2026-09-22): "not touched by the current run" is judged by
+   `last_snapshot_at`, NOT `last_seen_month`. A full source re-ingest can
+   reassign integer `cluster_id`s and be re-run for the SAME calendar month
+   (e.g. twice in one September), and the old guard's `last_seen_month <
+   month` string comparison is a no-op in that case -- the untouched row's
+   `last_seen_month` already equals the current month from its EARLIER run
+   that same month, so it never gets NULLed. Its stale `cluster_id_latest`
+   then collides with whatever DIFFERENT storefront the fresh dedup run
+   assigned that same integer to, and `coverage_check`'s "one ledger row per
+   live cluster" invariant catches two ledger rows -- two distinct
+   histories -- claiming one `cluster_id`. `last_snapshot_at` moves on every
+   write (see `_UPSERT`), so comparing it against THIS run's own timestamp
+   correctly finds "not touched just now" regardless of month granularity.
+   See `tests/test_poi_presence.py::test_a_same_month_reingest_does_not_fuse_cluster_ids`.
 3. THE LINK IS NEVER LOOSER THAN THE DEDUP. It reuses
    `score.dedup.norm_tokens` / `names_match` / `MATCH_METERS`, the same rule
    that formed the cluster in the first place. Widening it here would fuse
@@ -1153,11 +1168,21 @@ def snapshot(con, *, month: str | None = None, dry_run: bool = False,
         con.register("_presence_in", frame)
         con.execute(_UPSERT)
         # A stale cluster_id is worse than none: it would silently attach this
-        # month's dedup numbering to a location we did not see this month.
+        # RUN's dedup numbering to a location this run did not touch.
+        #
+        # D138: this used to read `WHERE last_seen_month < ?` (bound to
+        # `month`). That is a no-op when `snapshot()` runs twice inside the
+        # SAME calendar month -- as a full source re-ingest's re-run does --
+        # because an untouched row's `last_seen_month` already equals `month`
+        # from its earlier run that same month. Comparing `last_snapshot_at`
+        # (which every touched row just moved to `now`, above) against THIS
+        # run's own `now` instead finds "not written just now" regardless of
+        # month granularity, which is what the stale-join guard actually
+        # needs. See the module docstring, point 2.
         con.execute(
             "UPDATE analysis.poi_presence "
             "SET cluster_id_latest = NULL, poi_id_latest = NULL "
-            "WHERE last_seen_month < ?", [month])
+            "WHERE last_snapshot_at < ?", [now])
         con.execute("COMMIT")
     except Exception:
         con.execute("ROLLBACK")

@@ -1197,3 +1197,16 @@ Open items handed to whoever runs the ingest: (a) the four SLA brewer-class lice
 Opened 2026-09-22 (CHECKPOINT D137).
 
 Pushed to Linear 2026-09-22 as GTM-213.",Backlog,1,3,"ingest,score",Loci,E10 · Category Expansion
+Fix the D79 cluster_id-instability bug that fused ledger rows across a same-month re-ingest (D138),"`loci poi-snapshot`'s `coverage_check` failed after the D137 brewery re-run: 94 `cluster_id`s were each claimed by two `analysis.poi_presence` rows (restaurant 50, nails_beauty 23, cafe_bakery 12, brewery 2, others) — two distinct storefront histories fused onto one live cluster.
+
+Root cause: D79's own stale-cluster guard in `model/poi_presence.snapshot()` tested `last_seen_month < month`, a MONTH-GRANULARITY comparison. It is a no-op when `poi-snapshot` is re-run for the SAME calendar month after a full source re-ingest reshuffles `cluster_id` numbering (exactly what the D137 brewery re-run's two re-ingests + one dedup re-run + one same-month poi-snapshot re-run did): an unmatched row's `last_seen_month` already equalled the current month from its earlier run that same month, so its stale `cluster_id_latest` was never cleared and collided with whatever different storefront today's fresh dedup numbering reused that integer for.
+
+Fixed: the guard now compares `last_snapshot_at` (which moves to the run's own timestamp on every row the upsert actually touches) against that same timestamp, instead of `last_seen_month` against `month` — this finds ""not touched by this run"" correctly regardless of month boundaries. Regression test `test_a_same_month_reingest_does_not_fuse_cluster_ids` reproduces the fusion directly (re-ingest with a shuffled/reused `cluster_id` inside one month) and asserts `coverage_check` stays clean.
+
+Live warehouse repaired to match: backed up, then `cluster_id_latest`/`poi_id_latest` nulled on exactly the 94 rows whose `last_snapshot_at` predated the live max (the same 94 the fixed code would have nulled) — split, not deleted; ledger row count unchanged (219,458); all history fields untouched. `coverage_check` dupes 94 → 0; `loci check-presence`'s coverage portion FAIL → ok. Side effect: 2 of the 94 rows had carried a closure (via a pre-category-admission ledger identity) that is no longer join-visible to the live POI's `poi_status`, moving those 2 POIs `closed → unknown` (the conservative D79 default) and the supply hash `5ee548b8c4ac → c36a96a86cab`.
+
+Why urgent: a D139 OSM re-ingest runs immediately after this session, and without the fix it would risk fusing histories again the same way.
+
+Separately flagged, NOT in this ticket's scope: `check-presence` still fails on an unrelated, pre-existing surface — 12 ledger rows carrying a location_key an applied `poi_key_map` (D101/D103) moved away from, confirmed present before this session too and needing its own ticket.
+
+Opened 2026-09-22 (CHECKPOINT D138). Pushed to Linear 2026-09-22 as GTM-215.",Backlog,1,2,"ingest,score",Loci,E1 · Ingest and Grid

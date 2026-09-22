@@ -258,6 +258,52 @@ def test_a_dedup_renumbering_does_not_lose_a_location(con):
     assert {k for _, _, _, _, _, _, k in _ledger(con).values()} == keys_before
 
 
+def test_a_same_month_reingest_does_not_fuse_cluster_ids(con):
+    """D138 REGRESSION. A full source re-ingest can be re-run for the SAME
+    calendar month (e.g. twice in one September) and reshuffle integer
+    `cluster_id`s in the process. If a location drops out entirely (its
+    source ids shuffled away) and a fresh dedup run reuses ITS OLD integer
+    for a completely different storefront, the old `last_seen_month < month`
+    stale-nulling guard was a no-op -- the departed row's `last_seen_month`
+    already equalled `month` from the earlier run this same month, so it
+    never got NULLed, and `coverage_check` found two ledger rows (two
+    distinct histories) both claiming one live `cluster_id`. This is exactly
+    the 94-row fusion the D137 brewery re-run's `poi-snapshot` hit."""
+    pp.snapshot(con, month="2026-09", today=TODAY)
+    zanzibar_cluster = next(r["cluster_id"] for r in BASE if r["poi_id"] == "b1")
+
+    # Simulate the re-ingest: Zanzibar Hardware's source ids are gone (as a
+    # full re-ingest can shuffle away), and dedup's fresh numbering reuses
+    # its OLD integer cluster_id for an unrelated new storefront.
+    reingested = [r for r in BASE if r["poi_id"] != "b1"] + [
+        _poi("shuffled1", "overture_places", "Fresh Arrival Clinic", "clinic",
+             *MN, zanzibar_cluster)]
+    _make(con, reingested)
+
+    # Re-run for the SAME month, as the D137 addendum's same-day re-run did.
+    pp.snapshot(con, month="2026-09", today=TODAY)
+
+    errors, stats = pp.coverage_check(con)
+    assert errors == [], errors
+    assert stats["uncovered_clusters"] == 0
+
+    zanzibar_row = con.execute(
+        "SELECT cluster_id_latest FROM analysis.poi_presence "
+        "WHERE display_name = 'Zanzibar Hardware'").fetchone()
+    assert zanzibar_row == (None,)          # split off, never fused
+
+    clinic_row = con.execute(
+        "SELECT cluster_id_latest FROM analysis.poi_presence "
+        "WHERE display_name = 'Fresh Arrival Clinic'").fetchone()
+    assert clinic_row == (zanzibar_cluster,)  # the fresh owner keeps its own id
+
+    dupes = con.execute(
+        "SELECT cluster_id_latest FROM analysis.poi_presence "
+        "WHERE cluster_id_latest IS NOT NULL GROUP BY 1 HAVING count(*) > 1"
+    ).fetchall()
+    assert dupes == []
+
+
 def test_a_small_coordinate_move_is_carried_by_the_name_link(con):
     """Enough to cross the 4-dp rounding boundary the minted key uses, well
     inside dedup's 40 m match radius. The hash alone would mint a new key; the
