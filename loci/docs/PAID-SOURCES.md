@@ -2,7 +2,7 @@
 
 **GENERATED — do not edit.** Rendered by `loci gen-paid-sources` from the `status: wishlist` entries in [`src/loci/registry.yaml`](../src/loci/registry.yaml). `loci check-sources` fails if this file differs from a fresh render, so a price here is a price in the registry with its dated evidence beside it.
 
-Surveyed 2026-09-13 against vendor pricing pages, published terms, public procurement records and 2025–2026 press. **35 candidates** — 10 P1, 18 P2, 7 P3.
+Surveyed 2026-09-13 against vendor pricing pages, published terms, public procurement records and 2025–2026 press. **36 candidates** — 10 P1, 18 P2, 8 P3.
 
 **Gap letters** map to the named holes in `docs/CONTEXT.md` and `docs/CHECKPOINT.md`: (a) Foot traffic · (b) Spend and the economics grade · (c) Rent per square foot · (d) Openings, closings and the tenant pipeline · (e) POI truth · (f) Chain expansion · (g) Ownership and vacancy · (h) Demographics beyond ACS · (i) Sidewalk counts.
 
@@ -10,9 +10,9 @@ Surveyed 2026-09-13 against vendor pricing pages, published terms, public procur
 
 | | Annual USD |
 |---|---|
-| Whole wishlist, as booked (verified price where one exists, tier floor otherwise) | **$301,565** |
-| Whole wishlist, every entry at its tier floor | $213,200 |
-| The subset with a VERIFIED price (13 of 35 entries) | $86,457 |
+| Whole wishlist, as booked (verified price where one exists, tier floor otherwise) | **$311,565** |
+| Whole wishlist, every entry at its tier floor | $223,200 |
+| The subset with a VERIFIED price (13 of 36 entries) | $86,457 |
 | P1 only, as booked | $74,300 |
 
 ---
@@ -55,7 +55,8 @@ Surveyed 2026-09-13 against vendor pricing pages, published terms, public procur
 | 32 | P3 | **D&B Data Blocks / Direct+ / Hoovers** — Dun & Bradstreet | pipeline | d | $10–50k/yr | $41,400/yr (reported) | Enterprise licences are per-use-case; redistribution requires specific terms. | med | med |
 | 33 | P3 | **Firefly (US foodservice operator database)** — Datassential | chains | d | quote only | $10,000/yr (tier floor — no price published) | Datassential's published Additional Product Terms explicitly bar embedding their data or reports into a third-party product for resale … | high | high |
 | 34 | P3 | **Lightcast job postings + LMI** — Lightcast (formerly Emsi Burning Glass) | pipeline | d | $10–50k/yr | **$7,500/yr** (verified) | Terms explicitly bar redistributing the dataset to third parties on an on-demand or standalone basis — usable as an internal signal only. | med | high |
-| 35 | P3 | **PRIZM Premier / Claritas 360** — Claritas | demographics | h | quote only | $10,000/yr (tier floor — no price published) | Sharpest licence restriction found in the entire survey … | med | high |
+| 35 | P3 | **Vexcel Intelligence** — Vexcel Data Program (Vexcel Imaging US, Inc.) | property | e | quote only | $10,000/yr (tier floor — no price published) | DISQUALIFYING as written … | med | low |
+| 36 | P3 | **PRIZM Premier / Claritas 360** — Claritas | demographics | h | quote only | $10,000/yr (tier floor — no price published) | Sharpest licence restriction found in the entire survey … | med | high |
 
 ---
 
@@ -459,6 +460,7 @@ Each of these was a plausible buy until something specific killed it. The reason
 | **D&B Data Blocks / Direct+ / Hoovers** — Dun & Bradstreet | d | $41,400/yr (reported) | Costs roughly an order of magnitude more than Data Axle and lacks the one field the gap needs. Enterprise licences are per-use-case; redistribution requires specific terms. |
 | **Firefly (US foodservice operator database)** — Datassential | d | $10,000/yr (tier floor — no price published) | Duplicates Loci's strongest existing asset (DOHMH near-census) and is resale-restricted. Technomic/Ignite has the same shape and no published terms at all. Datassential's published Additional Product Terms explicitly bar embedding their data or reports into a third-party product for resale … |
 | **Lightcast job postings + LMI** — Lightcast (formerly Emsi Burning Glass) | d | **$7,500/yr** (verified) | Right idea, wrong grain; revisit only if Lightcast can demonstrate address-resolved postings. Terms explicitly bar redistributing the dataset to third parties on an on-demand or standalone basis — usable as an internal signal only. |
+| **Vexcel Intelligence** — Vexcel Data Program (Vexcel Imaging US, Inc.) | e | $10,000/yr (tier floor — no price published) | Mostly an upgrade of an input Loci already has for free (nyc_orthoimagery: finer resolution, 3x/yr vs biennial refresh, plus oblique and AI attributes) rather than a new capability, and the licence explicitly names Loci's own use case (site-selection/real-estate analytics) as prohibited. P3 on licence grounds, same as CoStar — checked and rejected so it isn't relitigated, though worth revisiting if Vexcel ever offers a redistribution rider. DISQUALIFYING as written … |
 | **PRIZM Premier / Claritas 360** — Claritas | h | $10,000/yr (tier floor — no price published) | Industry standard and contractually incompatible; Spatial.ai or Esri are the workable substitutes. Sharpest licence restriction found in the entire survey … |
 
 ---

@@ -3253,6 +3253,88 @@ sources:
     evidence:
       - {url: "https://www.propertyshark.com/mason/Subscriptions", date: 2026-09-13}
 
+  - id: paid_vexcel_intelligence
+    name: Vexcel Intelligence
+    vendor: Vexcel Data Program (Vexcel Imaging US, Inc.)
+    tier: universal
+    role: control
+    status: wishlist
+    category: property
+    priority: P3
+    url: "https://vexceldata.com/intelligence/"
+    access: >
+      Vexcel Platform: API, an MCP server (integrates with Claude/ChatGPT), a web
+      Viewer, Studio, a MapControl SDK, and ArcGIS Image Services. Demo-gated;
+      no self-serve signup.
+    grain: >
+      Per-building/per-property AI attributes (Elements) plus the underlying
+      oblique/ortho tiles and DSM the attributes are extracted from.
+    refresh: >
+      Metro areas including NYC's five boroughs refreshed up to 3x/year: twice at
+      7.5cm ortho, once at 15cm; oblique on a separate, unpublished cadence within
+      the same metro tier.
+    measures: >
+      Oblique imagery (7.5cm, 45-degree, all four sides of a building),
+      TrueOrtho/Urban Ortho (7.5cm) and Wide Area Ortho (15cm), Digital Surface
+      Models, multispectral tiles, plus an "Elements" AI layer: 40+ pre-built
+      property/building attributes (roof condition, roadway features,
+      post-disaster damage), custom object detection, and natural-language
+      semantic search over the imagery via vector embeddings.
+    price_tier: quote_only
+    cost: {amount: 10000, unit: year}
+    cost_basis: quote_only
+    integration_effort: med
+    confidence: low
+    price_note: >
+      No published price anywhere; entirely demo-gated, no G2/Vendr/procurement
+      figure found for Vexcel specifically. Cost books the quote_only floor.
+      Comparable single-metro aerial subscriptions (Nearmap 3-yr municipal
+      contract, Danbury CT, $45,487-$50,149/yr 2026; EagleView municipal project
+      ~$48,989) sit in the 10k_50k_yr band for ortho refresh alone — Vexcel's
+      broader multi-modal platform (oblique + DSM + AI Elements) is plausibly
+      priced above that band, but that is inference from adjacent vendors, not a
+      Vexcel quote.
+    license_note: >
+      DISQUALIFYING as written. The Sept 2024 EULA (vexceldata.com/eula/) defines
+      "Commercial Purpose" as redistribution, retransmission or publication for a
+      third party's benefit, including use in any materials or services for which
+      fees are received, and the standard licence grants "Internal Use" only,
+      excluding Commercial Purpose — site-selection and real-estate analytics are
+      named examples of Commercial Purpose. "Derivatives" (attributes extracted by
+      analyzing the imagery, i.e. exactly what the Elements layer produces) may
+      not be distributed, sold, rented or sublicensed under Section 2.2(a); AI
+      inputs are restricted to a private instance under 2.2(c), so the Elements
+      output cannot feed a shared/customer-facing model either. A sold Loci card
+      built on Vexcel imagery or Elements would breach the EULA outright; a
+      negotiated enterprise/redistribution licence would be required before any
+      use beyond internal review.
+    closes_gap: >
+      (e) POI truth — weakly, and unvalidated: oblique imagery shows building
+      facades and storefront frontage that the nadir-only free ortho cannot, which
+      could in principle support a storefront-vacancy/condition visual signal, but
+      no such analysis exists today and the case is speculative, not demonstrated.
+    priority_reason: >
+      Mostly an upgrade of an input Loci already has for free (nyc_orthoimagery:
+      finer resolution, 3x/yr vs biennial refresh, plus oblique and AI attributes)
+      rather than a new capability, and the licence explicitly names Loci's own
+      use case (site-selection/real-estate analytics) as prohibited. P3 on licence
+      grounds, same as CoStar — checked and rejected so it isn't relitigated,
+      though worth revisiting if Vexcel ever offers a redistribution rider.
+    nyc_coverage: >
+      Confirmed: Manhattan, Brooklyn, Queens, Staten Island and the Bronx are
+      covered under the metro tier (7.5cm ortho + oblique), refreshed up to 3x/yr.
+    bias: >
+      AI-derived attributes are model output over imagery, not ground truth —
+      same class of risk as any computer-vision layer (occlusion, seasonal leaf-on
+      obscuring facades, false detections on the "40+ attributes" list unaudited
+      by Loci). Imagery-only: it cannot see inside a storefront or confirm a
+      business is trading, only that a building looks a certain way from outside.
+    evidence:
+      - {url: "https://vexceldata.com/intelligence/", date: 2026-09-22}
+      - {url: "https://vexceldata.com/countries/united-states/new-york/", date: 2026-09-22}
+      - {url: "https://vexceldata.com/eula/", date: 2026-09-22}
+      - {url: "https://nctcog.org/getContentAsset/ec64eb73-aa78-4dd6-ae3f-3453a72219df/dfc3d011-8f63-43f6-9ed8-4b444333a1d0/Subscription_Pricing_2025.pdf", date: 2025-12}
+
   - id: paid_yelp_places_api
     name: Yelp Places API (formerly Fusion)
     vendor: Yelp
