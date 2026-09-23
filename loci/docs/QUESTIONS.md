@@ -1024,6 +1024,58 @@ decisions pending an owner ruling, not descriptive-tier research questions.
 - **Why it matters:** A bare homepage and a Getty image-search page passed the web-hit filter on the 2026-09-15 notes. Cosmetic for a no-trade note; for a full memo a source with no date is not evidence. Proposed rule: require a parsed publication date within the memo's window or drop the hit and count it in the footer.
 - **Current answer:** —
 
+#### Part B — homework
+
+### M17 — Why do 14 poi_presence ledger rows still carry a location_key that an applied poi_key_map (D101/D103) moved away from? · *governance / data integrity*
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** (not yet ticketed) — poi_key_map half-migration repair
+- **Tier:** P2 — measurement
+- **Why it matters:** `loci check-presence` exits 1 on these rows, so a real failure in that check cannot be told apart from this known one. The count rose from 12 to 14 across the D139 re-run.
+- **How to answer:** run `loci poi-keys apply` in dry-run, diff against the pre-D138 backup, and find why the D101/D103 migration half-landed.
+- **Fails if:** re-applying the key map moves ledger rows or the supply hash in ways that can't be explained.
+- **Current answer:** Not investigated. Present before session 46, flagged in D138/D139.
+
+### M18 — What are the real reach cap, reach tiers, walk-time convenience, annual spend and ZBP confidence for brewery? · *measurement*
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** Run the category-expansion checklist for brewery (D137) (E10 · Category Expansion) — GTM-213
+- **Tier:** P2 — measurement
+- **Why it matters:** all five are copied from `bar` or set to censor values, so brewery's gap scores rest on placeholders until they are sourced.
+- **How to answer:** pull CBP 312120 for NYC ZIPs, CEX alcoholic-beverages split, and the observed brewery trade-area distances from the 227 canonical rows.
+- **Fails if:** brewery supply is too thin to fit a reach curve, in which case it stays benchmark_only.
+- **Current answer:** Placeholders, all tagged TODO(brewery).
+
+### M19 — Should test_bike_od's placebo matrix-shape check (hardcoded 15×15, now 17×17) be re-derived like test_bike_od_specificity was? · *governance*
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** (not yet ticketed) — test_bike_od placebo shape
+- **Tier:** P3 — hygiene
+- **Why it matters:** it has failed since the 16-category widening, so the bike_od test file is permanently red and hides new failures.
+- **How to answer:** derive the shape from len(CATEGORIES) the way test_bike_od_specificity now does, and confirm no placebo verdict depends on the old family.
+- **Fails if:** the placebo diagonal or off-diagonal verdicts change at 17 categories.
+- **Current answer:** Known failing, untouched in session 46.
+
+### M20 — Was D137's recorded ending supply hash (5ee548b8c4ac) also never measured? · *governance*
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** (not yet ticketed) — D137 hash provenance
+- **Tier:** P3 — hygiene
+- **Why it matters:** the pre-D138 backup (taken after D137, before any D138 write) hashes to 6e31e9e6dfcc, not 5ee548b8c4ac, so D137's logged value is probably wrong the same way D138's was. A hash that can't be reproduced defeats the freeze protocol.
+- **How to answer:** recompute supply_hash read-only on the post-D137 state (the pre-D138 backup) and check how the D137 agent measured it.
+- **Fails if:** something wrote to hash inputs between 16cbb48 and the pre-D138 backup, which would be a real, unannounced supply change.
+- **Current answer:** Not checked. D138's hashes were corrected in 8e40d08.
+
+### M21 — Should the check-tickets Stop hook only block the session that authored the unpushed decision? · *governance / tooling*
+- **Status:** open
+- **Prediction:** —
+- **Answered by:** (owner)
+- **Tier:** P3 — hygiene
+- **Why it matters:** on 2026-09-22 the hook fired about 40 times in session abenmayor-dd while abenmayor-9f's 20 D140 tickets were mid-push, and a PreToolUse copy also blocked read-only git probes. Every session on the tree pays a turn per stop for another session's in-flight work, and the pressure to clear it caused a duplicate Linear push (GTM-237).
+- **How to answer:** owner picks one: scope the check to decisions with uncommitted diffs in the current worktree, or add a grace period for tickets.py rows edited in the last N minutes.
+- **Fails if:** scoping lets a truly abandoned unpushed decision slip past every session.
+- **Current answer:** Raised by abenmayor-dd, carried in session 46's end pass.
+
 ---
 
 ## Answered
