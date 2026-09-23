@@ -1,0 +1,78 @@
+# Proposed registry.yaml entry for RQ-002's DOF assessment-history loader.
+# NOT applied to src/loci/registry.yaml by this session (instructed not to
+# edit registry.yaml directly). Shape mirrors the existing `zillow_zori_zhvi`
+# and `nyc_dof_storefront_registry` entries. Paste under the DOF section of
+# registry.yaml, near `nyc_dof_storefront_registry`, when a session picks
+# this up for real registration.
+
+- id: nyc_dof_assessment_history
+  name: NYC DOF Property Assessment Roll — Assessment History (market/assessed value)
+  tier: city
+  city: nyc
+  role: outcome
+  status: planned
+  portability:
+    class: city_unique
+    feeds: [cost]
+    confidence: med
+    degrades_to: >
+      No free commercial-rent proxy at all for ground-floor-retail lots; RQ-002's
+      COMMERCIAL RENT pillar would have to rely solely on DOF Storefront Registry
+      vacancy (a non-rent, 7-year-window proxy) or the on-hold commercial-listings
+      collector (GTM-212).
+    note: >
+      DOF publishes no citywide commercial-rent series at all (RPIE income/expense
+      filings are collected but never released record-level); assessed/market value
+      of ground-floor-retail lots is the best FREE proxy available, one step removed
+      from an actual rent figure.
+  url: https://data.cityofnewyork.us/browse?q=Property%20Valuation%20and%20Assessment%20Data
+  dataset_id: "m8p6-tp4b,kevu-8hby,yjxr-fw8i,8y4t-faws"   # four datasets, one per fiscal-year range; see module docstring
+  api: https://data.cityofnewyork.us/resource/{dataset_id}.json
+  geography: tax lot (BBL); latitude/longitude present only in yjxr-fw8i (FY2011-2019)
+  temporal:
+    start: 2010
+    end: 2027
+    grain: annual (fiscal year, July-June)
+    gap_years: [2020, 2021, 2022]   # no live Socrata table covers these; see module docstring
+  cost: {amount: 0, unit: total}
+  fields: [bbl, fiscal_year, source_dataset, borough, block, lot, building_class,
+           tax_class, zip_code, address, market_value_total, market_value_land,
+           assessed_value_actual_total, assessed_value_actual_land,
+           assessed_value_transitional_total, assessed_value_transitional_land,
+           gross_sqft, retail_sqft, residential_units, total_units,
+           latitude, longitude]
+  bias: >
+    ASSESSED/MARKET VALUE IS NOT RENT. DOF assessed value for income-producing
+    (tax class 4) lots is itself derived from an income-capitalization model DOF
+    runs internally (using RPIE filings never published record-level), so it is a
+    doubly-indirect proxy: value implies a capitalized income stream, which implies
+    a rent roll, neither observed directly. FOUR DIFFERENT SOURCE SCHEMAS ACROSS
+    THE PANEL: FY2010 (m8p6-tp4b tax class 1 + kevu-8hby tax classes 2/3/4, split
+    by tax class, no transitional-value field, no lat/lon, gross sqft but no
+    retail-sqft breakdown), FY2011-2019 (yjxr-fw8i, one combined table, adds
+    lat/lon and a transitional assessed value via avtot2/avland2, but NO sqft
+    field of any kind), FY2023-2027 (8y4t-faws, richest schema: adds
+    retail_area_gross/office_area_gross, no lat/lon). A cell that is NULL in one
+    era and populated in another is a SCHEMA gap, not a value of zero -- never
+    impute across the boundary. GAP YEARS FY2020-2022 have no live Socrata table;
+    DOF's nyc.gov archive (fixed-width text/Access files) may hold them but was
+    not parsed in this pass. 8Y4T-FAWS PUBLISHES BOTH THE TENTATIVE AND FINAL
+    ROLL FOR THE SAME BBL/YEAR (period='1' vs '3') plus utility special-franchise
+    sub-account rows (rectype='3', bldg_class='U0') under the parent BBL -- the
+    loader filters to period='3' AND rectype='1' only; do not re-pool. The
+    avtot2/avland2 "transitional" mapping on yjxr-fw8i follows DOF's documented
+    AVROLL file layout but was not independently re-verified against a current
+    DOF glossary in this pass (mapping_confidence: medium). Building class and
+    tax class are DOF's own point-in-time codes and can change for the same BBL
+    across years (a lot re-classified from residential to mixed-use) --
+    filtering "ground-floor retail" (tax class 4, K*/S*/O* building classes,
+    mixed-use lots) must be done PER YEAR, never by a single current-year filter
+    applied backward across the whole panel.
+  notes: >
+    Built for RQ-002 (docs/research/RQ-002-greenpoint-towers-retail/). Loader:
+    src/loci/sources/cities/nyc/dof_assessment_history.py. Output partitioned
+    parquet at data/interim/rq002/dof_assessment/fy=<year>/*.parquet, NOT yet
+    loaded into the DuckDB warehouse (no staging/analysis table exists for this
+    source as of this draft). Citywide, unfiltered pull -- ZIP/borough filtering
+    happens downstream in the RQ-002 notebook, per the standing "never limit a
+    free data pull" rule.

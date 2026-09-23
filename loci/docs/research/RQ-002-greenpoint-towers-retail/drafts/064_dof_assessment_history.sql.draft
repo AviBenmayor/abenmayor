@@ -1,0 +1,80 @@
+-- ---------------------------------------------------------------------------
+-- 064_dof_assessment_history.sql (DRAFT -- not applied; rename off .draft when
+-- a session actually lands this in the warehouse).
+--
+-- Loads the RQ-002 DOF assessment-history parquet
+-- (data/interim/rq002/dof_assessment/fy=<year>/*.parquet, written by
+-- src/loci/sources/cities/nyc/dof_assessment_history.py) into a new
+-- staging table, one row per (BBL, fiscal_year, source_dataset).
+--
+-- GRAIN: (bbl, fiscal_year) is NOT unique on its own for FY2010, where
+-- m8p6-tp4b (tax class 1) and kevu-8hby (tax classes 2/3/4) are two
+-- disjoint-by-tax-class files that both cover FY2010 -- a BBL appears in
+-- at most ONE of the two (a lot has one tax class), so (bbl, fiscal_year)
+-- IS unique in practice, but source_dataset is kept in the primary key as a
+-- defensive measure rather than trusting that disjointness silently.
+--
+-- DO NOT build a downstream view that sums market_value_total across
+-- source_dataset for a single (bbl, fiscal_year) -- there is never more than
+-- one row to sum, and a future bug that adds an overlapping source for the
+-- same year would silently double every value if this table allowed it.
+-- ---------------------------------------------------------------------------
+
+CREATE SCHEMA IF NOT EXISTS staging;
+
+CREATE TABLE IF NOT EXISTS staging.dof_assessment_history (
+    bbl                                 VARCHAR NOT NULL,
+    fiscal_year                         INTEGER NOT NULL,
+    source_dataset                      VARCHAR NOT NULL,
+    borough                             VARCHAR,
+    block                               INTEGER,
+    lot                                 INTEGER,
+    building_class                      VARCHAR,
+    tax_class                           VARCHAR,
+    zip_code                            VARCHAR,
+    address                             VARCHAR,
+    market_value_total                  DOUBLE,
+    market_value_land                   DOUBLE,
+    assessed_value_actual_total         DOUBLE,
+    assessed_value_actual_land          DOUBLE,
+    assessed_value_transitional_total   DOUBLE,
+    assessed_value_transitional_land    DOUBLE,
+    gross_sqft                          DOUBLE,
+    retail_sqft                         DOUBLE,
+    residential_units                   DOUBLE,
+    total_units                         DOUBLE,
+    latitude                            DOUBLE,
+    longitude                           DOUBLE,
+    ingested_at                         TIMESTAMP,
+    PRIMARY KEY (bbl, fiscal_year, source_dataset)
+);
+
+-- Load pattern (run once per fiscal-year partition on disk, idempotent via
+-- DELETE+INSERT keyed on fiscal_year so a re-run of a corrected year does not
+-- append a duplicate stripe):
+--
+--   DELETE FROM staging.dof_assessment_history WHERE fiscal_year = :fy;
+--   INSERT INTO staging.dof_assessment_history
+--   SELECT bbl, fiscal_year, source_dataset, borough, block, lot,
+--          building_class, tax_class, zip_code, address,
+--          market_value_total, market_value_land,
+--          assessed_value_actual_total, assessed_value_actual_land,
+--          assessed_value_transitional_total, assessed_value_transitional_land,
+--          gross_sqft, retail_sqft, residential_units, total_units,
+--          latitude, longitude, ingested_at
+--   FROM read_parquet('data/interim/rq002/dof_assessment/fy=:fy/*.parquet');
+--
+-- Validation query (row counts per year, proving no fiscal year silently
+-- doubled and no gap year silently got zero rows without being flagged):
+--
+--   SELECT fiscal_year, source_dataset, count(*) AS n_bbl,
+--          count(*) FILTER (WHERE bbl IS NULL) AS n_bad_bbl,
+--          round(median(market_value_total), 0) AS median_market_value
+--   FROM staging.dof_assessment_history
+--   GROUP BY fiscal_year, source_dataset
+--   ORDER BY fiscal_year, source_dataset;
+--
+-- Expected: one row per (fiscal_year, source_dataset) pair the loader
+-- actually wrote (see dof_assessment_history.DATASETS), n_bad_bbl = 0 always,
+-- FY2020/2021/2022 ABSENT entirely (not present with zero rows -- absent, a
+-- known unfilled gap; see KNOWN_GAP_FISCAL_YEARS in the loader module).

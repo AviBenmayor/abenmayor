@@ -1,0 +1,103 @@
+# DRAFT registry.yaml entries for RQ-002 (Greenpoint towers, docs/research/
+# RQ-002-greenpoint-towers-retail/). NOT applied to src/loci/registry.yaml --
+# per this task's brief, that file is a peer edit. Shape matches the
+# existing `zillow_zori_zhvi` / `acs_5yr` entries verbatim (portability
+# block, degrades_to, bias, temporal, cost, notes).
+#
+# Adapters: src/loci/sources/universal/census_zcta_boundaries.py,
+#           src/loci/sources/universal/census_decennial_zcta.py
+
+  - id: census_tiger_zcta
+    name: Census TIGER/Line ZCTA5 polygons (2000, 2010, 2020 vintages)
+    tier: universal
+    role: outcome
+    status: planned
+    portability:
+      class: national
+      feeds: [geography]
+      confidence: high
+      degrades_to: >
+        No polygon layer to spatially join any lon/lat-grain table (POI
+        opens/closes, licence intervals, address records -- none of which
+        carry a zip column) to a ZIP/ZCTA. Every ZIP-tier pillar in RQ-002's
+        DATA-AUDIT.md (BUSINESSES, RESIDENTIAL RENT via ZORI/ACS) is blocked
+        on this join existing at all.
+    url: https://www2.census.gov/geo/tiger/
+    geography: zcta (national, all ~33k ZCTAs per vintage, not NYC-filtered
+      on the primary output; an NYC-prefix subset file is written alongside
+      for convenience)
+    temporal: {start: 2000, end: 2020, grain: decadal (redrawn each census)}
+    cost: {amount: 0, unit: total}
+    requires_key: null
+    bias: >
+      A ZCTA is the Census Bureau's own areal approximation of USPS ZIP
+      delivery routes, not the ZIP code itself -- PO-box/non-residential ZIPs
+      have no ZCTA of their own. Boundaries are redrawn once a decade; a ZCTA5
+      code that is numerically identical across vintages is NOT guaranteed to
+      cover the same area (verified 2010-vs-2020 boundary counts differ for
+      NYC-prefix ZCTAs: 209 vs 209 total but not necessarily the same set/shape).
+      Shipped in NAD83 (EPSG:4269) by TIGER/Line; this adapter reprojects to
+      EPSG:4326 explicitly (not a silent relabel) before writing any output.
+    open_question: >
+      No ZIP-merge crosswalk here (11211+11249, 10021+10065+10075,
+      11101+11109) -- a peer session (RQ-001, abenmayor-9f) owns that.
+    notes: >
+      Adapter also exports `assign_zcta(lon, lat, vintage)` / `assign_zcta_df`
+      (STRtree-backed point-in-polygon), verified against Manhattan Ave &
+      Greenpoint Ave (-73.9543, 40.7302) -> 11222 at all three vintages.
+
+  - id: census_decennial_zcta
+    name: Decennial Census (SF1/SF3/DHC), ZCTA geography, 2000/2010/2020
+    tier: universal
+    role: outcome
+    status: planned
+    portability:
+      class: national
+      feeds: [demand]
+      confidence: high
+      degrades_to: >
+        No pre-ACS demand baseline: RQ-002's 1994-2010 pre-trend match (and
+        any project's need for a pre-2010 population/housing read) has
+        nothing to rest on except LODES/ZBP (1998+, establishment counts
+        only, no population/housing/income/rent).
+    url: https://www.census.gov/data/developers/data-sets/decennial-census.html
+    api: https://api.census.gov/data/2020/dec/dhc
+    geography: zcta (national, all ZCTAs each vintage actually returns --
+      33,178 in 2000, 33,120 in 2010, 33,774 in 2020; not forced to a common
+      ZCTA list, since ZCTA definitions differ by vintage)
+    temporal: {start: 2000, end: 2020, grain: decadal}
+    cost: {amount: 0, unit: total}
+    requires_key: CENSUS_API_KEY
+    bias: >
+      THREE DIFFERENT PRODUCTS, NOT ONE SERIES HELD CONSTANT. 2000 pulls
+      population/housing/tenure from SF1 (full count) but median household
+      income and median gross rent from SF3 (a ~1-in-6 SAMPLE -- these two
+      2000 fields carry sampling error despite being "decennial"). 2010 has
+      NO income or rent field at all (SF3/the long form was discontinued;
+      replaced by the now-annual ACS) -- population/housing/tenure only.
+      2020's redistricting file (PL 94-171) does NOT serve ZCTA geography at
+      all (confirmed live: 400 "unknown/unsupported geography hierarchy");
+      this adapter uses the later-released DHC file instead, which does
+      serve ZCTA and carries the same population/housing/tenure fields, but
+      DHC likewise carries no income/rent variable. Table H004
+      (owner/renter breakdown) changes shape between 2000 (2 cells: owner,
+      renter) and 2010 (3 cells: owner-w/-mortgage, owner-free-and-clear,
+      renter) -- 2010's owner_occupied is a derived sum, not a native cell.
+      ZCTA definitions differ by vintage; a ZCTA absent from one vintage's
+      Census response is flagged `present=False` in the combined long panel,
+      never dropped or zero-filled.
+    open_question: >
+      No income/rent series after 2000 from decennial sources alone -- any
+      2010/2020 rent or income trend must come from ACS instead (acs_5yr),
+      which is a different sampling design (annual 5-yr rolling window vs a
+      single census-day count) and should not be spliced into this series as
+      if it were the same instrument.
+    notes: >
+      Adapter also emits `zcta_pop_interpolated_2000_2020.parquet`: one row
+      per (zcta, year) 2000..2020, linear-interpolated PIECEWISE between
+      whichever decennial anchors that zcta actually has (a real kink is
+      possible and expected at 2010, not a single straight line across the
+      full 20-year span). A zcta with only one anchor present gets exactly
+      that one row (no extrapolation). Columns fixed at
+      `zcta, year, pop, method, is_anchor` -- consumed by a peer session
+      (RQ-001, abenmayor-9f); do not rename without checking with them.

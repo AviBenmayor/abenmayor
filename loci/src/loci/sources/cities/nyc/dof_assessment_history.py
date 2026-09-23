@@ -233,16 +233,48 @@ DATASETS: list[DatasetSpec] = [
 
 
 def dataset_columns(dataset_id: str, session: requests.Session | None = None) -> list[str]:
+    """Retried like every other network call this module makes — a transient
+    reset on this one-off metadata GET must not be allowed to kill a
+    multi-hour background pull that is otherwise healthy (it did exactly
+    that once, live, on 2026-09-22: FY2015's assert_schema hit a bare
+    ConnectionResetError with no retry and took the whole process down after
+    FY2010-2014 had already landed cleanly)."""
     sess = session or requests.Session()
-    resp = sess.get(f"{DOMAIN}/api/views/{dataset_id}.json",
-                     headers=_headers(), timeout=TIMEOUT)
-    resp.raise_for_status()
-    return [c.get("fieldName") for c in resp.json().get("columns", [])]
+    url = f"{DOMAIN}/api/views/{dataset_id}.json"
+    last: object = None
+    for attempt in range(RETRIES):
+        try:
+            resp = sess.get(url, headers=_headers(), timeout=TIMEOUT)
+            if resp.status_code >= 500:
+                last = f"HTTP {resp.status_code}"
+                time.sleep(3 + 4 * attempt)
+                continue
+            resp.raise_for_status()
+            return [c.get("fieldName") for c in resp.json().get("columns", [])]
+        except requests.RequestException as exc:   # pragma: no cover - network
+            last = exc
+            time.sleep(3 + 4 * attempt)
+    raise DofAssessmentError(
+        f"GET {url} failed after {RETRIES} attempts ({last}). Refusing to "
+        f"continue — a schema check that silently gave up would let a "
+        f"renamed column pass unnoticed."
+    )
 
 
-def assert_schema(spec: DatasetSpec, session: requests.Session | None = None) -> None:
+#: assert_schema is called once per (dataset, fiscal year) in build_year, but
+#: the live schema cannot change mid-run -- caching by dataset_id turns N
+#: redundant metadata GETs (one per year) into 1 per dataset per process,
+#: which is both faster and removes N-1 needless points of failure on a
+#: multi-hour background pull.
+_SCHEMA_CHECKED: set[str] = set()
+
+
+def assert_schema(spec: DatasetSpec, session: requests.Session | None = None,
+                   *, force: bool = False) -> None:
     """Pre-flight schema check: raise before pulling a single row if the live
     dataset no longer exposes a column this module's $select depends on."""
+    if spec.dataset_id in _SCHEMA_CHECKED and not force:
+        return
     present = set(dataset_columns(spec.dataset_id, session=session))
     required = set(REQUIRED_COLUMNS[spec.dataset_id])
     missing = required - present
@@ -252,6 +284,7 @@ def assert_schema(spec: DatasetSpec, session: requests.Session | None = None) ->
             f"re-derive REQUIRED_COLUMNS from {DOMAIN}/api/views/{spec.dataset_id}.json "
             f"before pulling."
         )
+    _SCHEMA_CHECKED.add(spec.dataset_id)
 
 
 def _fetch_page(session: requests.Session, url: str, params: dict) -> list[dict]:

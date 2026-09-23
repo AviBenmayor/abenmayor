@@ -1,0 +1,64 @@
+-- ---------------------------------------------------------------------------
+-- 063_census_zcta.sql -- DRAFT, NOT APPLIED. Migration number 063 claimed for
+-- this ticket (RQ-002, docs/research/RQ-002-greenpoint-towers-retail/). This
+-- file is a proposal for promoting the two research-only adapters
+--   src/loci/sources/universal/census_zcta_boundaries.py
+--   src/loci/sources/universal/census_decennial_zcta.py
+-- into the warehouse, once a session actually wires the ingest CLI subcommand
+-- and registers the two sources in registry.yaml (drafts/registry-census.yaml
+-- in this same directory). Per this task's rules, NOTHING here has been run
+-- against the real database -- both adapters currently only write parquet
+-- under data/interim/rq002/.
+--
+-- GEOMETRY CARRIES NO SRID. `geom` below is EPSG:4326 BY CONVENTION (no SRID
+-- in DuckDB) -- the adapter reprojects TIGER/Line's native NAD83 (EPSG:4269)
+-- to EPSG:4326 explicitly before this table would ever be loaded; this
+-- migration does not and cannot enforce that on its own.
+--
+-- ZCTA DEFINITIONS CHANGE BY VINTAGE. `zcta_boundary.vintage` and
+-- `decennial_zcta.decennial_year` are BOTH part of the primary key on
+-- purpose -- a ZCTA5 code that is numerically identical across vintages is
+-- NOT guaranteed to cover the same area or the same population. Joining
+-- `decennial_zcta` rows across vintages by `zcta` alone, without also
+-- carrying the vintage/year, would silently treat two different polygons as
+-- one continuous time series.
+--
+-- `decennial_zcta.present` is the "flag absent, don't drop" convention from
+-- the adapter: a ZCTA missing from one vintage's Census response gets a row
+-- with `present = FALSE` and NULL metrics for that (zcta, decennial_year),
+-- not a missing row and not a zero-filled one.
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS staging.zcta_boundary (
+    zcta            VARCHAR NOT NULL,   -- 5-digit ZCTA5 code, zero-padded
+    vintage         INTEGER NOT NULL,   -- 2000 / 2010 / 2020
+    geom            GEOMETRY NOT NULL,  -- POLYGON/MULTIPOLYGON, EPSG:4326 BY CONVENTION
+    PRIMARY KEY (zcta, vintage)
+);
+
+CREATE TABLE IF NOT EXISTS staging.decennial_zcta (
+    zcta                        VARCHAR NOT NULL,   -- 5-digit ZCTA5 code, zero-padded
+    decennial_year              INTEGER NOT NULL,   -- 2000 / 2010 / 2020
+    present                     BOOLEAN NOT NULL,   -- FALSE = zcta absent from this vintage's Census response
+    population                  DOUBLE,
+    housing_units                DOUBLE,
+    occupied_housing_units       DOUBLE,
+    owner_occupied               DOUBLE,             -- 2010: derived sum (mortgage + free-and-clear); see adapter docstring
+    renter_occupied              DOUBLE,
+    median_household_income      DOUBLE,             -- 2000 ONLY (SF3 sample); NULL for 2010/2020 (no decennial income field exists)
+    median_gross_rent            DOUBLE,             -- 2000 ONLY (SF3 sample); NULL for 2010/2020 (no decennial rent field exists)
+    datasets                    VARCHAR,             -- comma-joined Census dataset ids actually pulled (provenance)
+    PRIMARY KEY (zcta, decennial_year)
+);
+
+-- Interpolated yearly population, 2000-2020, one row per (zcta, year).
+-- Schema fixed to match the adapter's own contract with a peer session
+-- (RQ-001, abenmayor-9f) -- do not rename these columns without checking.
+CREATE TABLE IF NOT EXISTS staging.zcta_pop_interpolated (
+    zcta       VARCHAR NOT NULL,
+    year       INTEGER NOT NULL,
+    pop        DOUBLE,
+    method     VARCHAR NOT NULL,   -- 'anchor' | 'linear_interp'
+    is_anchor  BOOLEAN NOT NULL,
+    PRIMARY KEY (zcta, year)
+);

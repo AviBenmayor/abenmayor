@@ -1,0 +1,118 @@
+# Ouroboros Seed Specification — RQ-002 (IMMUTABLE; changes go through a new generation, not edits)
+# Generated: 2026-09-22 from a 3-round /interview with the owner
+# Saved here rather than loci/.ouroboros/ per the three-top-level-directories standard.
+# Ambiguity Score: 0.19
+
+goal: >
+  Answer Loci research question RQ-002 — "in Greenpoint, when the massive housing
+  developments went up, how did it change the retail landscape? when did businesses
+  move in? who came before the demand came? who came after? did the number of
+  businesses increase? did rent increase and by how much? when did the towers go up?
+  what was the area like before?" — as (1) a tower-by-tower timeline of the
+  post-2005-rezoning residential development in ZIP 11222, including the pipeline still
+  under construction; (2) a 1994-to-latest annual panel of storefront-retail
+  establishment counts by category, residential rent, commercial rent (free proxies,
+  confidence stated), and population/income for 11222 against an analysis-chosen
+  control ZIP; (3) named lists of pioneer and follower businesses under two anchor
+  cuts (the 2005 rezoning, and tower-by-tower first occupancy); and (4) a
+  difference-in-differences estimate of the towers' effect on business count and rent,
+  with a parallel-trends check, labeled descriptive vs. causal per what the data
+  supports. This session ships QUESTION.md, SEED.yaml, DATA-AUDIT.md, an executed
+  notebook, ANSWER.md, methodology review, and the Linear ticket tree, following the
+  research-question framework established by RQ-001.
+
+constraints:
+  - "Unit of analysis is ZIP 11222 for the panel and the control comparison — chosen because it lets CBP/ZBP establishment counts run back to 1994; named businesses are still identified at address grain from DOHMH/SLA but reported at the ZIP level (owner 2026-09-22)."
+  - "Scope is all storefront retail — food & drink, grocery, services, shops — broken down by Loci category, not restaurants alone."
+  - "Rent is reported in two kinds, never conflated: residential (Zillow ZORI/ZHVI, ACS median gross rent) and commercial. Commercial rent uses free proxies only (listing snapshots, DOF market/assessed value of ground-floor-retail lots, press-reported asking rents) with confidence stated per estimate; a paid CoStar/REBNY historical commercial-rent series is scoped as a ticket only, nothing bought without an explicit owner budget ruling."
+  - "A control ZIP is used and is chosen by the analysis, not assumed: nearest match on 1994-2010 pre-trend (establishments, rent, income) among North Brooklyn / western Queens ZIPs; 11211 (Williamsburg) is excluded because it also received waterfront towers. The full ranked candidate list and the pre-trend distance are recorded, not just the winner."
+  - "Two anchors are reported side by side, never collapsed to one: (a) the 2005 Greenpoint-Williamsburg rezoning, and (b) tower-by-tower first occupancy (TCO) with the resulting new-units-per-year series. Pioneers = opened before the anchor; followers = opened after; computed once per anchor cut."
+  - "Who came before/after is reported two ways: category counts by year, and a named list of notable pioneer and follower businesses with first-seen dates (DOHMH first inspection or SLA first license), web-verified rather than taken from the raw record alone."
+  - "Towers are sourced from free DOB job filings/permits, Certificates of Occupancy, and PLUTO: residential, roughly >=10 stories, in ZIP 11222, since 2005; each is web-verified, and the still-under-construction pipeline is included and flagged (e.g. Greenpoint Landing phases, 77 Commercial / Eagle + West, 145 Kent / Bell Slip area, Huron/India St towers - to be verified, not assumed)."
+  - "The pre-2005 'what was it like before' baseline comes from the same panel used everywhere else in this RQ (CBP/ZBP business mix, ACS/decennial population and income, residential rent, PLUTO land use of the waterfront lots) plus a sourced narrative, not a separately-sourced history section."
+  - "No hex tables anywhere in this RQ; address or ZIP grain only (standing Loci rule, owner 2026-09-13/09-16 — hex-only work is not done work)."
+  - "Free sources are pulled in full — no rolling windows, caps, or samples (standing owner rule 2026-09-16); paid sources stay out unless the owner rules an explicit budget."
+  - "A difference-in-differences estimate against the chosen control is reported with a pre-trend (parallel-trends) check; every claim is labeled descriptive or causal per what the data supports — DiD output is never presented as merely descriptive, and a descriptive comparison is never dressed up as causal."
+  - "Publishing is an executed .ipynb plus ANSWER.md in the repo only — no HTML artifact, no Notion mirror, for this question."
+  - "Loci structure: code in src/loci/, loose scripts become CLI subcommands, this RQ's docs live under docs/research/RQ-002-greenpoint-towers-retail/, generated data gitignored."
+  - "Tickets generated from tickets.py, never hand-written; a CHECKPOINT decision and its ticket land in one edit (check-tickets hook) — and only after peer sessions 6d (D138) and 9f (D140) have committed their own pending edits to tickets.py/CHECKPOINT.md."
+  - "Session model: executive directs; Sonnet runs analyses and writes code; Opus and the specialist agents (contrarian, statistician, urban-planner) only render judgment/verdicts, never execute analysis or write routine code; Haiku does mechanical edits."
+  - "The research-question framework itself (src/loci/research.py, the template, the research-question skill) is owned by session abenmayor-9f this round and is not edited by this RQ's content work."
+  - "New decision ids are D141 and up; new SQL migrations are numbered 063 and up; commits touch only this session's own hunks, staged by explicit patch."
+  - "RQ-002's Linear parent issue sits under the 'Research questions' milestone in the Loci project; every ticket under it is generated from tickets.py."
+
+acceptance_criteria:
+  - {id: AC-1, description: "docs/research/RQ-002-greenpoint-towers-retail/ contains QUESTION.md, SEED.yaml, DATA-AUDIT.md, an executed notebook, ANSWER.md, and STATUS.yaml.", verification: "ls the folder; notebook has non-empty outputs in every code cell that STATUS.yaml marks done."}
+  - {id: AC-2, description: "QUESTION.md records the question as asked, every interview ruling, definitions, tiers/unit, and out-of-scope items; every constraint in this seed traces to a line in QUESTION.md.", verification: "Inspection; each constraint bullet above has a matching QUESTION.md bullet."}
+  - {id: AC-3, description: "A tower timeline table lists, per tower: name, address/BBL, unit count, stories, DOB filing date, permit date, TCO/first-occupancy date, and source(s); plus a derived new-units-per-year series; pipeline (not-yet-occupied) towers are flagged.", verification: "Notebook/DATA-AUDIT table has one row per tower with all named fields populated or explicitly marked missing; pipeline column present."}
+  - {id: AC-4, description: "A yearly panel from 1994 to the latest available year exists for 11222 and the control ZIP: establishments by category (CBP/ZBP), residential rent, income, and population, with both anchor years marked.", verification: "Notebook cell renders the panel table/plot; anchor years (2005 rezoning; TCO series) are marked on it."}
+  - {id: AC-5, description: "Control ZIP selection is shown with the full ranked candidate list (North Brooklyn / western Queens ZIPs, 11211 excluded) and each candidate's pre-trend distance.", verification: "Notebook/DATA-AUDIT table lists every candidate ZIP, its distance score, and the rank; the chosen ZIP is the top rank."}
+  - {id: AC-6, description: "Named pioneer and follower businesses are listed under both anchor cuts (rezoning; TCO), each with first-seen date and source (DOHMH/SLA, web-verified).", verification: "Two tables (one per anchor) each list business name, first-seen date, source, and pioneer/follower flag."}
+  - {id: AC-7, description: "The business-count change question is answered: level and percent change in establishment counts, before/after each anchor, for 11222 vs. the control.", verification: "ANSWER.md states the level and % change under both anchors, with the control comparison alongside."}
+  - {id: AC-8, description: "The residential rent change question is answered: level and percent change, before/after each anchor, for 11222 vs. the control.", verification: "ANSWER.md states the level and % change under both anchors, with the control comparison alongside."}
+  - {id: AC-9, description: "Commercial rent is estimated from the free proxies with a stated confidence level, or is marked partial/blocked with a ticket id where the proxies can't support an estimate.", verification: "ANSWER.md/notebook shows commercial-rent estimates each tagged with a confidence level, or BLOCKED/PARTIAL with a ticket id."}
+  - {id: AC-10, description: "A difference-in-differences estimate of the towers' effect (on business count and rent) against the control is reported with an explicit parallel-trends check, and every resulting claim is labeled descriptive or causal.", verification: "Notebook cell shows the DiD estimate, the pre-trend check result, and the descriptive/causal label attached to each headline claim."}
+  - {id: AC-11, description: "A 'before' baseline section describes 11222 pre-2005 from the same panel (business mix, population, income, rent, PLUTO land use of waterfront lots) plus sourced narrative.", verification: "Notebook/ANSWER.md has a baseline section covering all five listed inputs with citations."}
+  - {id: AC-12, description: "ANSWER.md gives a plain-language answer to each of the eight owner sub-questions (retail-landscape change; when businesses moved in; who came before demand; who came after; did business count increase; did rent increase and by how much; when did towers go up; what was the area like before), each with confidence and gaps mapped to ticket ids, labeled v0/provisional.", verification: "ANSWER.md has one answered item per owner sub-question, each tagged v0/provisional with a confidence note and any gap's ticket id."}
+  - {id: AC-13, description: "Validation: contrarian, statistician, and urban-planner review the methodology and findings; each is either RUN (with result) or TICKETED (with id).", verification: "ANSWER.md lists all three reviewers, each marked RUN with a summarized verdict or TICKETED with an id."}
+  - {id: AC-14, description: "The notebook reruns end to end from the warehouse with `loci research run RQ-002` (or the documented research_app invocation, until wired into cli.py).", verification: "Clean run succeeds; output notebook cell count matches source; invocation used is recorded in DATA-AUDIT.md or ANSWER.md."}
+  - {id: AC-15, description: "Tickets for this RQ are generated from tickets.py; RQ-002 has a Linear parent issue under the 'Research questions' milestone; `loci check-tickets` and `loci research check` both pass.", verification: "`loci check-tickets` and `loci research check` exit 0; Linear MCP returns the RQ-002 parent under that milestone."}
+  - {id: AC-16, description: "CHECKPOINT.md has a new dated decision entry (D141 or higher) for RQ-002, with its ticket defined in the same edit, written only after peers 6d (D138) and 9f (D140) have committed.", verification: "`loci check-tickets` passes; the decision id appears in both CHECKPOINT.md and tickets.py; git log shows it postdates 6d's and 9f's commits."}
+
+ontology_schema:
+  name: GreenpointTowerRetail
+  description: "Tower delivery, business openings/closures, rent, and control-ZIP comparison for the Greenpoint (ZIP 11222) rezoning-era retail question."
+  fields:
+    - {name: tower_id, type: string, description: "Tower identity key (BBL or address-derived)."}
+    - {name: name, type: string, description: "Development/building name, web-verified."}
+    - {name: address_bbl, type: string, description: "Street address and/or BBL."}
+    - {name: units, type: number, description: "Residential unit count."}
+    - {name: stories, type: number, description: "Building height in stories."}
+    - {name: filing_date, type: string, description: "DOB job filing date."}
+    - {name: permit_date, type: string, description: "DOB permit issuance date."}
+    - {name: tco_date, type: string, description: "Certificate of Occupancy / first-occupancy date; null if pipeline."}
+    - {name: pipeline_flag, type: boolean, description: "True if not yet occupied as of the analysis date."}
+    - {name: source, type: array, description: "DOB/PLUTO record ids plus web-verification source(s)."}
+    - {name: zip, type: string, description: "ZIP code — 11222 (treatment) or the chosen control."}
+    - {name: category, type: string, description: "Loci retail category for an establishment or an EstablishmentYear row."}
+    - {name: year, type: number, description: "Panel year, 1994 to latest."}
+    - {name: establishment_count, type: number, description: "CBP/ZBP establishment count for (zip, category, year)."}
+    - {name: source_series, type: string, description: "Data source for a given panel row (e.g. census_cbp, census_zbp, acs_5yr, zillow_zori_zhvi)."}
+    - {name: business_id, type: string, description: "Named business identity key (address + name)."}
+    - {name: business_name, type: string, description: "Business name, web-verified."}
+    - {name: business_address, type: string, description: "Street address."}
+    - {name: first_seen_date, type: string, description: "DOHMH first inspection or SLA first license date."}
+    - {name: pioneer_flag, type: object, description: "Pioneer/follower flag per anchor cut: {rezoning: pioneer|follower, tco: pioneer|follower}."}
+    - {name: rent_kind, type: string, description: "'residential' or 'commercial'."}
+    - {name: rent_value, type: number, description: "Rent/value level for (zip, kind, year)."}
+    - {name: rent_confidence, type: string, description: "Confidence label for a commercial-rent estimate ('high'/'med'/'low'/'blocked')."}
+    - {name: control_candidate_zip, type: string, description: "Candidate control ZIP considered."}
+    - {name: pretrend_distance, type: number, description: "1994-2010 pre-trend distance score for a control candidate."}
+    - {name: control_rank, type: number, description: "Rank of the candidate; rank 1 is the chosen control."}
+    - {name: anchor_kind, type: string, description: "'rezoning' or 'tco'."}
+    - {name: anchor_date, type: string, description: "Date value for the anchor (2005 rezoning date, or a specific tower's TCO date feeding the new-units-per-year series)."}
+    - {name: did_estimate, type: object, description: "Difference-in-differences result: outcome, coefficient, se, pretrend_check_result, label (descriptive|causal)."}
+
+evaluation_principles:
+  - {name: honest_uncertainty, weight: 0.25, description: "Commercial-rent confidence stated per estimate, DiD labeled descriptive vs causal per the pre-trend check, v0 labeled provisional, gaps tied to tickets; no number more precise than the free-proxy data supports."}
+  - {name: reproducibility, weight: 0.20, description: "One command (`loci research run RQ-002`) reruns the notebook from the warehouse; no hand steps; data audit matches registry.yaml."}
+  - {name: framework_repeatability, weight: 0.20, description: "Follows the RQ-001 scaffold exactly (same file set, same stage sequence) with no ad-hoc structure of its own."}
+  - {name: answers_the_buyer, weight: 0.20, description: "ANSWER.md directly answers all eight of the owner's original sub-questions in plain language, not just the DiD headline."}
+  - {name: drift_resistance, weight: 0.15, description: "Tickets generated from tickets.py; `loci research check` and `loci check-tickets` catch missing stages or dangling ticket ids."}
+
+exit_conditions:
+  - {name: success, description: "All 16 ACs verified this session.", criteria: "`loci research check` and `loci check-tickets` pass; notebook executes; Linear returns the 'Research questions' milestone with an RQ-002 parent."}
+  - {name: blocked_on_peer, description: "A concurrent session holds cli.py, tickets.py, or CHECKPOINT.md, or peers 6d/9f have not yet committed.", criteria: "Peer message or unowned diff in those files, or 6d (D138) / 9f (D140) not yet committed → stop, write held text to memory, report."}
+  - {name: data_insufficient, description: "Warehouse/free sources can't support a given AC (e.g. no usable commercial-rent proxy for a period, or DOB/PLUTO can't resolve a tower's TCO date).", criteria: "Ship what the data supports; mark the specific AC BLOCKED or PARTIAL with a ticket id; never fabricate a date, count, or rent figure."}
+  - {name: scope_growth, description: "Work grows past the approved one-line specs (e.g. a new data source, a new anchor, a second control ZIP beyond the ranking).", criteria: "Stop and surface the addition as a new one-line spec for owner approval before continuing."}
+
+metadata:
+  version: "1.0"
+  ambiguity_score: 0.19
+  interview_rounds: 3
+  project_type: brownfield
+  context_references:
+    - {path: "loci/", role: primary, summary: "src/loci CLI, registry.yaml, DuckDB warehouse, tickets.py, docs/CHECKPOINT.md"}
+    - {path: "docs/research/RQ-001-regime-durability/", role: pattern, summary: "First research question through this framework; RQ-002 follows its folder shape and stage sequence exactly."}
+  existing_patterns: ["CLI subcommands over scripts", "tickets generated from tickets.py", "check-* drift gates", "registry.yaml per source", "research-question framework (research.py + template + skill) from RQ-001"]
+  existing_dependencies: ["census_cbp", "census_zbp", "acs_5yr", "zillow_zori_zhvi", "nyc_dohmh_restaurants", "nys_sla_liquor_licenses", "nys_sla_inactive_licenses", "nyc_dob_certificates_of_occupancy", "nyc_dob_permit_issuance", "nyc_dob_now_job_filings", "nyc_pluto", "nyc_dcp_housing_db"]
