@@ -321,6 +321,14 @@ criterion-validity reading, beyond the fact that both still fail.
    episode drops, but none Holm-significant to begin with** — robustness evidence
    for a null result, not a new finding. e2's 2020-22 drop is mechanically
    uninformative (see caveat above).
+8. **Named-ZIP miss review (GTM-257, 2026-09-23, `NAMED-ZIP-REVIEW.md`).** Of
+   the 9 misses, 5 are index blind spots (two of them the definition risks
+   registered in advance) and 4 are pre-registration errors. None is primarily a
+   data break. The shared cause: composite A's "favorable" is the pre-discovery
+   state, so its exits come about 8–10 years before the operator window closes
+   (1/8 template ZIPs hit, 4/6 level-test ZIPs hit). B-owner and B-tenant each
+   score 2/14 and fail the 10128 hard gate: they swap "poor = favorable" for
+   "rich = favorable".
 
 **Net**: v0.2 fixed the two chartered construction issues (the demand gate, the
 tenant null) and added the macro robustness check. **None of this overturns v0.1's
