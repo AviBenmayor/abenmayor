@@ -1,0 +1,10 @@
+# Stage status for RQ-003. `loci research check` requires each stage's file to
+# exist UNLESS the stage is marked here as pending or blocked (with a reason) — so an
+# in-progress RQ can pass the gate while declaring, in one place, what's still missing
+# and why. A stage left at `done` with its file missing (or removed later) fails the
+# check — this is what stops a folder from silently regressing.
+seed: {status: done}
+question: {status: done}
+data_audit: {status: done}
+notebook: {status: blocked, reason: "waits for GTM-226 address tier + the Q8 closure-completeness gate (DATA-AUDIT.md: recorded restaurant closure rates 18-350x below published benchmarks in every borough, root cause is an unwired DOHMH closure signal — see RQ003-dohmh-closure-signal-wiring)"}
+answer: {status: blocked, reason: "waits on notebook, same blockers"}

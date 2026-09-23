@@ -1974,6 +1974,61 @@ Commits: `507d23c` (registry.yaml — osm_overpass status `planned` → `verifie
 ### 2026-09-22 — Session 46 (abenmayor-6d, Opus executive; closed 2026-09-23): brewery category (D137), cluster_id fusion fix (D138), OSM admitted into live supply (D139)
 Owner asked to add breweries as a Loci category and ruled: own category, not folded into `bar`, with a wide definition (taprooms, brewpubs-as-breweries and production-only brewers). D137 landed code (ea431c3), re-derived test_bike_od_specificity for 17 categories (owner chose re-derive over xfail; no verdict flipped), and ran the full re-run (16cbb48): 227 canonical breweries, 55 SLA licences reclassified to the new `brewer` overlay class. That re-run exposed 94 fused ledger histories. The owner chose to fix them in-session: D138 (2678a62) found that D79's stale-cluster guard compared months, fixed it to compare run timestamps, and split the 94 rows without deleting any. The owner then ruled to add OSM to live supply: D139 (507d23c, 89fdac0, 30f4aef). Clinic rose 26.3% because it has no anchor; the owner kept those rows and ticketed an anchor (GTM-238). A read-only check showed D138's logged hashes were never measured, and the correction is annotated in D138 (8e40d08). Ticket fix: D135's claimed GTM-213 had never been pushed; it was re-pushed as GTM-214. A D139 push race with a peer made GTM-237 a duplicate of GTM-236. Coordinated with peers abenmayor-9d, abenmayor-9f and abenmayor-dd on D-ids, migrations (057–059 reserved by 6d, unused) and file order throughout.
 
+**D142 — All 8 RQ-001 v0.1 follow-up questions locked in as tickets + QUESTIONS.md entries, sequenced; RQ-003 opened as their parent; foot-traffic quote outcome recorded on GTM-227.** *(2026-09-23, owner ruling; GTM-216/GTM-239 area, milestone "Research questions")*
+
+**Why.** RQ-001's post-results reviews (v0.1/v0.2, GTM-230) surfaced 8 follow-up
+questions that had been living only in review notes and prose, not tracked as work.
+Owner ruling 2026-09-23: track all 8, in the same tickets.py + QUESTIONS.md pattern
+every other Loci decision uses, and sequence them explicitly rather than leaving
+them as an undifferentiated pile.
+
+**The 8 questions, their routing, and their QUESTIONS.md ids:** Q1 anchor
+"favorable" to new-restaurant 3+yr survival → RQ-004 (future, needs interview),
+blocked by Q8 (D64). Q2 owner vs tenant / own-vs-lease → already answered within
+RQ-001 B-owner/B-tenant and RQ-003's tenure proxy (D65). Q3 does a regime exit hurt
+incumbents who opened during it → RQ-003 opened as its own parent/tracking RQ,
+interview + SEED.yaml scaffolded this session, blocked by GTM-226 and Q8 (D66). Q4
+early-warning signals (licenses, permits, chains, listings) → RQ-005 (future, ZIP
+tier feasible now) (D67). Q5 why young favorable spells churn 5–10x faster →
+RQ-001 follow-up, blocked by GTM-226 (D68). Q6 citywide/borough exit waves →
+RQ-006 (future, ZIP tier feasible now) (D69). Q7 why the urban-planner's
+pre-registration missed 9/14 named ZIPs → RQ-001 validation hand review, relates
+GTM-229 (D70). Q8 is DOHMH/SLA closure data complete enough (reproduces published
+NYC attrition within ±25%, citywide + per borough) → the prerequisite
+data-quality gate, blocking Q1 and Q3, running now inside RQ-003's DATA-AUDIT.md
+(D71). Owner-approved sequence: **Q8 → Q7 → Q3 (audit) → Q6/Q4 (ZIP tier now) → Q1
+(after Q8) → Q5/Q3-analysis (after GTM-226)**.
+
+**RQ-003 scaffolded, not run.** `docs/research/RQ-003-regime-exit-incumbents/`
+carries SEED.yaml and QUESTION.md as of this session; STATUS.yaml marks
+`data_audit`/`notebook`/`answer` pending — the Q8 closure-completeness audit is
+in progress inside it but not complete, so RQ-003's files stay uncommitted this
+session pending that audit finishing.
+
+**Foot-traffic quote outcome (GTM-227, no new ticket per the owner's routing):**
+`docs/research/RQ-001-regime-durability/FOOT-TRAFFIC-QUOTES.md` (2026-09-23)
+surveyed 12 device-panel vendors and found **DON'T BUY** — no provider, free or
+paid, has verified POI-level history before January 2017 (Placer.ai $8k–31k/yr
+and Advan/SafeGraph ~$10k+/yr enterprise or $3,600/yr academic via Dewey, both
+tied at the earliest verified start); a purchase would buy only a post-2017
+calibration layer on the most recent ~55–60% of RQ-001's study window, never the
+pre-2017 base rate the question actually asks about. GTM-227's description was
+updated in Linear and in `tickets.py` with this finding rather than opening a new
+ticket, per the owner's routing instruction.
+
+**8 new ticket rows pushed live** under the "Research questions" milestone
+(GTM-2NN, stamped below once pushed): the Q8 data-quality gate (Urgent — a cheap
+verification that de-risks two downstream RQs), the RQ-003 parent (Q3), RQ-004
+(Q1, deferred), RQ-005 (Q4, deferred), RQ-006 (Q6, deferred), the RQ-001
+spell-age follow-up (Q5), the RQ-001 planner-miss hand review (Q7), and a
+record-keeping ticket for the already-answered Q2 (Done). Full text: `src/loci/tickets.py`.
+
+### 2026-09-23 — Session (RQ-001 v0.1 follow-up questions tracked; RQ-003 opened; foot-traffic don't-buy recorded): D142
+- All 8 RQ-001 v0.1 follow-up questions (post-results review, GTM-230) locked in as `src/loci/tickets.py` rows under the "Research questions" milestone and `docs/QUESTIONS.md` entries D64–D71, with the owner's sequence (Q8 → Q7 → Q3 → Q6/Q4 → Q1 → Q5) recorded in both places.
+- RQ-003 (does a regime exit hurt an incumbent who opened during it) opened as its own parent RQ: interview + SEED.yaml scaffolded in `docs/research/RQ-003-regime-exit-incumbents/`; STATUS.yaml shows every later stage pending, so its files stay uncommitted this session.
+- GTM-227's foot-traffic quote outcome (DON'T BUY — no verified panel history before Jan 2017) written into its description in Linear and `tickets.py`, per the owner's routing (no new ticket).
+- `docs/TICKETS.md`, `docs/linear-import.csv`, `docs/linear-tickets.json` regenerated via `loci gen-tickets`; `loci check-tickets` and `loci check-questions` both green.
+
 ## Next actions
 
 D130-1) **Score Fazenda's remaining answers as they arrive (sales so far, staff, orders/ticket, clothing share, counter's floor share) into §7 of the record; full first-year comparison 2027-09-17.** Deux Luxe: all four questions open.
@@ -2024,6 +2079,15 @@ D122-1) **GTM-204 DOE Demographic Snapshot ingest** — full history of all four
 D122-2) **Add B11003/B11005 (households with children / couples without children) to grid/acs.py GETVARS** on the next ACS refresh so the composition read can answer the "childless couples" question directly rather than by proxy.
 
 D135-1) **Write adapters for the two free planned sources from session 45: `fema_nfhl` (flood zone per address via point-in-polygon on PLUTO lot points) and `rebny_retail_reports` (digitise the MN+BK corridor geometry, then assign corridor asking rent by proximity; internal use only). Each is its own deliverable.** Needs a tickets.py definition and a QUESTIONS entry when scheduled.
+
+D142-1) **Run the Q8 closure-completeness audit to a verdict** (RQ-003's DATA-AUDIT.md): does Loci's DOHMH/SLA-derived closure count reproduce a published NYC restaurant attrition figure within ±25%, citywide and per borough. First in the owner-approved sequence — blocks D142-2 and D142-6.
+D142-2) **RQ-003 descriptive/exploratory stages (ZIP tier)** can proceed now; the incumbent-survival claim itself waits on D142-1 and GTM-226 (address-tier panel).
+D142-3) **Hand-review the 9/14 named-ZIP misses from GTM-229** and write the per-ZIP diagnosis (index blind spot vs data gap vs planner error vs genuine surprise); roll any pattern into RQ-001's Confidence section.
+D142-4) **RQ-006 (exit temporal clustering) and RQ-005 (early-warning signals)** — both feasible at the ZIP tier now; open their own interview pass when scheduled.
+D142-5) **RQ-004 (anchor "favorable" to 3+yr new-restaurant survival)** — needs its own interview pass; do not start before D142-1 clears.
+D142-6) **RQ-001 follow-up: why do young favorable spells churn 5–10x faster** — blocked by GTM-226 (address-tier panel needed to isolate a clean spell-age effect).
+D142-7) **Stamp the real GTM ids for the 8 D142 tickets back into `tickets.py` and QUESTIONS.md's `Answered by` lines** once pushed, and regenerate `docs/TICKETS.md`/`linear-import.csv`/`linear-tickets.json`.
+D142-8) **Delete `data/loci.duckdb.pre-reclaim-2026-09-16`** once the owner confirms (duplicate of D121-4/D131-3 — one delete covers all three).
 
 D141-1) **RQ-002 v1 re-review (GTM-241): dispatch contrarian + statistician + urban-planner against the executed v1 notebook** (docs/research/RQ-002-greenpoint-towers-retail/notebook.ipynb) — v0 was reviewed (FAIL/FAIL/AMEND) and every fix is applied in v1, but v1 itself has not been reviewed; ANSWER.md's Validation table lists this row TICKETED until it lands.
 

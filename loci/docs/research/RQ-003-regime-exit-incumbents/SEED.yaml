@@ -1,0 +1,53 @@
+# Ouroboros Seed Specification — RQ-003 (IMMUTABLE; changes go through a new generation)
+# Generated: 2026-09-23 from a 3-round /interview with the owner
+# Ambiguity Score: 0.18
+
+goal: "Answer RQ-003 — 'When a neighborhood's favorable regime ends, does that hurt the restaurants that opened during the favorable stretch, or is an exit usually the neighborhood succeeding while incumbents do fine?' — by comparing post-exit survival and replacement of restaurants that opened during a favorable spell against same-cohort restaurants in areas that stayed favorable, split by exit cause (cost-led vs demand/supply-led), under RQ-001 definitions A and B-tenant. This session ships interview, seed, scaffold and data audit only; the analysis waits for the address tier."
+
+constraints:
+  - "Outcome = restaurant survival (closure within 3 and 5 years after the area's exit) PLUS replacement (what occupied the storefront next: restaurant, chain, other use, vacancy) from the POI ledger and the LL157 storefront registry (2019+)."
+  - "Design = difference-in-differences: incumbents (opened during a favorable spell) in areas that exit vs the same opening cohorts in areas that stayed favorable."
+  - "Exits split by cause (cost-led vs demand-led vs supply-led), using RQ-001's exit attribution."
+  - "Exits come from RQ-001 definitions A and B-tenant, compared; not B-owner."
+  - "Horizons: 3 and 5 years after exit."
+  - "Tenure (owner vs tenant) inferred approximately from PLUTO/DOF lot ownership signals and labelled approximate."
+  - "Sample: RQ-001's ZIP tier has too few completed exits; the analysis runs only once the address tier (GTM-226) exists. Do not pool across the sensitivity grid or substitute raw shocks."
+  - "Gate (owner ruling = Q8): closure data is complete enough only if DOHMH/SLA-recorded closures reproduce published NYC restaurant attrition within ±25%, overall and in every borough; otherwise scope RQ-003 to the boroughs/years that pass."
+  - "Loci standards: address grain, no hexes, tickets generated from tickets.py, model routing per CLAUDE.md, peer-session coordination on shared files."
+
+acceptance_criteria:
+  - {id: AC-1, description: "docs/research/RQ-003-regime-exit-incumbents/ has SEED.yaml, QUESTION.md, DATA-AUDIT.md, STATUS.yaml (notebook/answer pending with reason 'waits for GTM-226 address tier').", verification: "ls + loci research check passes"}
+  - {id: AC-2, description: "DATA-AUDIT.md lists every input (open/close dates, replacement sources, RQ-001 spells/exit causes, lot ownership, attrition benchmark) with status, and every gap maps to a ticket.", verification: "Inspection + research check ticket-id validation"}
+  - {id: AC-3, description: "DATA-AUDIT.md runs the Q8 completeness gate: recorded closure rates vs published NYC attrition benchmark(s) with citation, overall and by borough, PASS/FAIL per borough.", verification: "Table present with benchmark source and per-borough verdict"}
+  - {id: AC-4, description: "Linear parent ticket for RQ-003 exists under 'Research questions', blocked by GTM-226 and the Q8 completeness ticket.", verification: "Linear get_issue shows relations"}
+  - {id: AC-5, description: "Future notebook (next sessions) reports DiD survival at 3/5 yrs by exit cause × definition, replacement composition, tenure-proxy split, and validation (placebo exits, pre-trends).", verification: "Deferred; recorded as the build ticket's acceptance criteria"}
+
+ontology_schema:
+  name: RegimeExitIncumbents
+  description: "Restaurants that opened during a favorable spell, the area's exit event, and what happened to them afterwards."
+  fields:
+    - {name: restaurant_id, type: string, description: "POI / licence identity"}
+    - {name: open_date, type: string, description: "First observed open (DOHMH first inspection / SLA licence)"}
+    - {name: close_date, type: string, description: "Observed closure, or censored"}
+    - {name: area_id, type: string, description: "Trade area (address tier) or merged ZIP"}
+    - {name: spell, type: object, description: "RQ-001 favorable spell containing open_date: start, end, definition (A|B-tenant)"}
+    - {name: exit_cause, type: string, description: "cost | demand | supply | none (still favorable)"}
+    - {name: replacement, type: string, description: "restaurant | chain | other_use | vacant | unknown"}
+    - {name: tenure_proxy, type: string, description: "owner_occupied_likely | tenant_likely | unknown"}
+
+evaluation_principles:
+  - {name: honest_uncertainty, weight: 0.3, description: "Small samples flagged; gate failures scope the answer rather than being ignored"}
+  - {name: answers_the_buyer, weight: 0.3, description: "Directly says whether an exit is bad news for someone who opened during the good stretch"}
+  - {name: design_validity, weight: 0.25, description: "Matched cohorts, pre-trends and placebo exits checked"}
+  - {name: framework_repeatability, weight: 0.15, description: "Follows docs/research/README.md exactly"}
+
+exit_conditions:
+  - {name: session_success, description: "AC-1..AC-4 met this session", criteria: "research check + check-tickets pass; Linear parent exists"}
+  - {name: data_gate_fail, description: "Closure data fails the Q8 benchmark citywide", criteria: "Record FAIL, scope RQ-003 to passing boroughs or block it with a ticket"}
+
+metadata:
+  version: "1.0"
+  ambiguity_score: 0.18
+  interview_rounds: 3
+  project_type: brownfield
+  depends_on: ["RQ-001 (spells, exit causes)", "GTM-226 (address tier)", "Q8 closure-completeness gate"]

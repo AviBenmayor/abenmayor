@@ -1300,6 +1300,55 @@ decisions pending an owner ruling, not descriptive-tier research questions.
 - **Answered by:** GTM-211
 - **Current answer:** Raised 2026-09-21 (glossary audit, D132). `categories.py` still carries a 1–4 category tier with DNCI weights; charter A4 retired DNCI, no scorer reads the weights, yet they are rendered into CATEGORIES.md and drift-tested. Either the tier means something in the address era (then define it in §4.2) or it is dead and the drift test guards a fossil. Also open from the same audit, lower stakes: `coverage`, `ledger`, `cluster`, `vintage` and `storefront` each carry several meanings and got no canonical names beyond a "say which" note. Status: open (2026-09-21, Session 43).
 
+#### RQ-001 v0.1 follow-up questions (D142)
+
+Eight questions raised by RQ-001's post-results reviews (ANSWER.md v0.1/v0.2,
+CHECKPOINT D140/D141/GTM-230) that the owner ruled 2026-09-23 (D142) must ALL be
+tracked and sequenced, not left as loose review notes. Owner-approved sequence:
+**D71 (Q8, data-quality gate) → D70 (Q7, planner-miss review) → D66 (Q3, RQ-003
+audit) → D69/D67 (Q6/Q4, ZIP tier feasible now) → D64 (Q1, after D71) → D68/D66
+(Q5/Q3-analysis, after GTM-226).**
+
+### D64 — Anchor "favorable" to an outcome (new-restaurant 3+ year survival) instead of the composite index.
+- **Status:** deferred
+- **Answered by:** `RQ-004 (future) -- Anchor 'favorable' to new-restaurant 3+ year survival instead of the composite index`
+- **Current answer:** Deferred as RQ-004, a future RQ needing its own interview pass. RQ-001's composites rank ZIPs by a within-year percentile index (demand/supply/cost pillars), which is useful for a citywide base rate but never validated against the outcome a buyer actually cares about — whether a new restaurant opening into that regime survives 3+ years. Blocked by D71 (Q8): a survival-outcome definition is only as trustworthy as the DOHMH/SLA closure data it would be built on.
+
+### D65 — Owner vs tenant: does rising cost make own-vs-lease the key decision?
+- **Status:** answered
+- **Answered by:** `Owner vs tenant: does rising cost make own-vs-lease the key decision? (recorded answer)`
+- **Current answer:** Answered 2026-09-23 (D142) within the scope RQ-001 and RQ-003 can measure it: RQ-001's B-owner vs B-tenant composites (v0.1/v0.2, GTM-225/GTM-230) split the regime-duration question by property-purchase vs lease reading — both amended composites move together under the demand-gate fix, which is not proof own-vs-lease is THE key decision but confirms the split is a real, separately-estimated construction rather than a cosmetic label (contrarian falsifier 4). RQ-003 (D66) adds an explicit tenure-proxy covariate as the more direct causal test. Link: GTM-216.
+
+### D66 — Does a regime exit hurt restaurants that opened during it, versus ones that opened later?
+- **Status:** in-progress
+- **Answered by:** `RQ-003 -- Does a regime exit hurt restaurants that opened during it, versus ones that opened later? (D142)`
+- **Current answer:** RQ-003 opened 2026-09-23 (D142) as the parent/tracking RQ for this question; interview and SEED.yaml scaffolded the same day (docs/research/RQ-003-regime-exit-incumbents/), every later stage still pending per STATUS.yaml. Blocked by GTM-226 (address-tier panel, needed to tell an incumbent from a later entrant at the same address) and by D71 (Q8, the closure-completeness gate) before any incumbent-survival claim can ship.
+
+### D67 — Early-warning signals preceding restaurant exits (licenses, permits, chains, listings).
+- **Status:** deferred
+- **Answered by:** `RQ-005 (future) -- Early-warning signals preceding restaurant exits (licenses, permits, chains, listings)`
+- **Current answer:** Deferred as RQ-005, a future RQ needing its own interview pass. Candidate leading indicators (DOHMH permit lapses, SLA non-renewal, the chains watchlist D48/GTM-192, commercial-listing churn) already sit in the warehouse; the ZIP-tier version of a lead-time test is feasible now, an address-tier version waits on GTM-226.
+
+### D68 — Why do young favorable spells churn 5–10x faster than older ones, and what sets the survival threshold?
+- **Status:** open
+- **Answered by:** `RQ-001 follow-up: why do young favorable spells churn 5-10x faster than older ones, and what sets the survival threshold?`
+- **Current answer:** Open, a genuine RQ-001 follow-up (not a new RQ). GTM-230's piecewise hazard table shows a sharp spell-age effect (e.g. composite A's 0–5y incident band at 7.14%/yr vs its prevalent band at 1.54%/yr) that was only ever a side effect of that table, never tested as its own claim. Blocked by GTM-226: a ZIP-tier answer would average across too many differently-aged incumbents to isolate a clean age effect.
+
+### D69 — Do restaurant exits come in citywide or borough-wide waves (temporal clustering)?
+- **Status:** deferred
+- **Answered by:** `RQ-006 (future) -- Do restaurant exits come in citywide or borough-wide waves (temporal clustering)?`
+- **Current answer:** Deferred as RQ-006, a future RQ needing its own interview pass. Complementary to RQ-001's three (non-Holm-significant) macro terms — this asks whether exits bunch in time regardless of which covariate explains them. ZIP-tier version feasible now with RQ-001's existing exit-date panel.
+
+### D70 — Why did the urban-planner's pre-registered expectations fail for 9 of the 14 named ZIPs?
+- **Status:** open
+- **Answered by:** `RQ-001 validation: hand review why the urban-planner's pre-registered expectations failed for 9 of 14 named ZIPs`
+- **Current answer:** Open. GTM-229 recorded the 9/14 miss rate as a validation result but never diagnosed a single case — a hand review is needed to tell a systematic blind spot (index, coverage gap) apart from idiosyncratic or genuinely surprising misses before the aggregate hit rate is trusted either way. Relates to GTM-229.
+
+### D71 — Is DOHMH/SLA closure data complete enough to trust (reproduces published NYC attrition within ±25%, citywide + per borough)?
+- **Status:** in-progress
+- **Answered by:** `RQ-003 data-quality gate: does DOHMH/SLA closure data reproduce published NYC attrition within +/-25% (citywide + per borough)?`
+- **Current answer:** Prerequisite data-quality check, running now inside RQ-003's DATA-AUDIT.md (STATUS.yaml: data_audit pending at time of ticketing). Blocks D64 (Q1) and D66 (Q3): both stand on the same DOHMH/SLA closure signal RQ-001 already uses, and neither's claim is trustworthy until this gate reports pass or fail.
+
 ---
 
 ## Dropped
