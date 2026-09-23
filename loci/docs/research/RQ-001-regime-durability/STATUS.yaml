@@ -4,5 +4,5 @@
 seed: {status: done}
 question: {status: done}
 data_audit: {status: pending, reason: "being written by another agent — do not create or edit DATA-AUDIT.md"}
-notebook: {status: pending, reason: "not started"}
-answer: {status: pending, reason: "not started"}
+notebook: {status: done}
+answer: {status: done}

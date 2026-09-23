@@ -195,3 +195,140 @@ The same spell set is read two ways by attributing a **cause** to each exit (the
 4. The grid (S9) and break-censoring (S5) move the headline by no more than 50% and 25% respectively. Otherwise the grid or the break-censored figure is the answer.
 5. The CI comes from the wider of the spatial-block and PUMA bootstraps (S7).
 6. The wording carries its scope in the same sentence: *"Among NYC ZIP units that entered the top ~⅓ of a demand/saturation/cost rank composite in 2001–2021, the median [or annual exit hazard] was X (95% CI a–b). This is relative position, at ZIP scale, with residential-value cost. It is descriptive, not a forecast."* It is called predictive only if S10 beats persistence at 5 years.
+
+## Contrarian post-results verdict (2026-09-22)
+
+**Verdict: AMEND ANSWER.** The negative half of ANSWER.md stands: no trustworthy duration, composite A measures discovery, and the rank-churn null is not rejected. The positive half overclaims. The residual claim, "a usable ranking signal with real predictive value", rests on a backtest that never tests ranking and on a criterion check that dropped its pre-registered borough conditioning. The tenant number is still offered as an "anchor" even though amendment 5 says it is withheld. Read: ANSWER.md, PREREGISTRATION.md, notebook outputs, and `regime_durability.py` (`backtest_2013`, `load_restaurant_closures`, `closure_validity_check`). No reruns.
+
+**Most likely way the remaining positive claims are wrong: the backtest "win" contains no information about the composite.** In `backtest_2013`, `pred_km = S(age+h)/S(age)` depends only on spell age at 2013. Every prevalent spell (onset 2000, 43 of A's spells) gets the same prediction. The composite's value never enters the predictor. "Beats persistence" therefore means that a KM base rate below 1 beats a forecast of exactly 1, which any base rate does. It says nothing about "which ZIPs stay favorable". A's margin is also 0.0019 Brier on n=53 with no CI. B-tenant's gain comes from the mature group; its emerging group (n=8) scores Brier 0.31/0.40, *worse* than a coin. **Confirming data:** the at-risk prediction vector has near-zero variance for A. Replace it with a logistic on the 2013 composite, compare that against a ZIP-shuffled placebo, and the gain disappears.
+
+**Second most likely: criterion validity reflects closure-*detection* coverage, not favorability.** `closure_validity_check` computes `borough_proxy` and then never uses it. The test is a raw Welch t on 2,085 autocorrelated ZIP-years. A p of 4e-16 is pseudo-replication. Both rates, 0.56% and 2.34% a year, are an order of magnitude below real restaurant attrition, so `closed_on` captures only a small detected subset. Composite-A-favorable ZIPs are poor, low-restaurant, outer-borough ZIPs (the discovery finding), and dense Manhattan/brownstone ZIPs dominate the non-favorable side. The contrast may simply be where DOHMH closures get recorded. **Confirming data:** the gap shrinks toward zero with borough FE and ZIP-clustered SEs, or after controlling for restaurant density / inspections per POI.
+
+**Rulings on the four questions:**
+- **Overclaim or underclaim?** Overclaim. Five items: the backtest-as-ranking-signal claim (above); closure validity as "strongest evidence"; B-owner stickiness as "itself the finding"; the tenant "anchor"; and the AC-9 Markov-vs-RMST inference. On AC-9: RMST truncated at 17y *cannot exceed 17*, so "29y ≈ double" is a truncation artifact, not evidence against memorylessness. A's hazard-by-age table is flat (1.3% / 2.3% / 2.0%). That is geometric, and it matches the stock-flow implied mean (58y) and the Markov figure better than the RMST does. The ANSWER has AC-9 backwards. Two smaller points: the named-ZIP "non-template subset passed" is carried by 11215 and 10128, which PREREGISTRATION §0.3 says are pinned out by construction. The 11211/10002 excuses are speculation; the pre-registered rule counts definition misses as misses.
+- **"Tenant ≈ a decade, cost ends it."** Not defensible. Amendment 5, as written, withholds the headline when the observed value falls inside the null band. B-tenant's observed 7.98 is near the centre of [7.03, 9.49]. The median "11" equals the truncation horizon, and its CI is 4–15. "Cost ends it" is worse. For A, a ≥60% cost-led share *is the discovery-falsifier signature*, not a buyer finding. For B-tenant, the exit rule routes exits through a differenced cost term by design, and cost is only a ~34% plurality even so. An accounting attribution that is structural cannot be quoted as a cause.
+- **B-owner 0 completions: artifact, and partly my own.** (i) The demand gate is a within-year percentile ≥0.50, so it passes exactly 50.0% every year (notebook). Amendment 1's intent, a favorable share "free to vary", was mechanically impossible as I wrote it. The stock is fixed at 46.0 for both B composites, so the zero-sum problem survives. (ii) The demand inputs are the smoothest series in the warehouse. Population is linearly interpolated between decennials and flat for 2021–23. Workers are back-filled. Income is interpolated in 831 unit-years. Rank churn of a linear interpolation is close to zero by construction. (iii) 46 of 56 owner spells are prevalent. RMST truncates at **1 year** because too few incident spells remain at risk. The backtest ties persistence *exactly* (0.1250 = 0.1250), meaning zero forward information. (iv) Owner-favorable = high demand and low establishments per spending power, which most plausibly selects already-affluent ZIPs, i.e. "rich ZIPs stay rich". **Confirming data:** run the rank-churn null on B-owner (it was never run). List the 46 prevalent owner ZIPs by AGI percentile, and measure the year-on-year rank autocorrelation of the demand pillar. The expected results: >0.99 autocorrelation, the null band containing "no exits", and top-half AGI throughout. Falsifier 4 (owner vs tenant differ <20%) cannot be evaluated, so the owner/tenant split is **unvalidated**, not "informative".
+- **Single most important next step:** before anything else, re-run the two surviving positive checks correctly, because they are all the ANSWER has left. (a) Criterion validity with borough FE, ZIP-clustered SEs and a DOHMH-coverage control, for A and B-tenant. (b) A ranking backtest in which the 2013 composite value is the predictor, scored against persistence and against the AR(1) rank-churn null. If both fail, v0's honest answer is "no signal yet", and the address-tier build (GTM-226) should not proceed on this composite. Tie this to GTM-230/GTM-228.
+
+**Guardrail:** D1 holds. No supply→demand predictive reading was found.
+
+**Required wording changes to ANSWER.md (before → after):**
+
+1. Before: "What v0 *can* say with more confidence: the composite score, even with its flaws, has real predictive value (it beats a naive "assume nothing changes" guess at 5 and 9 years out) and correlates with a real outcome outside its own construction (favorable ZIPs see far fewer restaurant closures)."
+   After: "v0 has no validated positive result yet. The backtest compares a spell-age base rate with 'nothing changes' and does not use the composite's value, so it says nothing about which ZIPs stay favorable. The closure contrast (0.56% vs 2.34%) is unconditioned on borough and not clustered, and it is pending a re-run."
+2. Before: "This is itself the finding: under a construction that removes cost from the exit rule (as the owner amendment requires), almost nothing in this panel ever exits favorable status within 24 years of data. Either owner-favorable ZIP status really is that sticky (plausible — property owners ride out demand/supply cycles that would price out a tenant), or the 24-year panel is simply too short to observe an owner-relevant exit. v0 cannot tell these apart."
+   After: "This is not a finding. The owner composite's inputs (interpolated population, back-filled workers, interpolated income) barely change rank by construction. The demand gate passes exactly 50% every year. 46 of 56 spells are left-truncated. RMST truncates at 1 year, and the backtest ties persistence exactly. Zero exits is what smooth inputs produce, whatever the neighborhood does. The rank-churn null was not run for this composite."
+3. Before: "This is the most usable number v0 produces, and it is the one that should anchor a tenant's expectations — **with the flag below.**"
+   After: "Per the pre-registered amendment-5 rule this figure is **withheld**: it sits inside the rank-churn null band (7.03–9.49y), so it is indistinguishable from rank persistence of noisy inputs. Do not quote it as an expectation."
+4. Before: "**Owner vs tenant**: use the **tenant** reading (RMST ≈8y, CI ≈4–10y, flagged LOW-SAMPLE and flagged as statistically indistinguishable from a rank-noise null — see Confidence) as the only quantitatively grounded expectation v0 produces."
+   After: "**Owner vs tenant**: v0 produces no quantitatively grounded expectation for either. The tenant figure is withheld (inside the null band), and the owner figure does not exist."
+   Also, before: "which is itself informative (ZIP-scale owner-favorable status appears to be very sticky relative to a lease term) but is not a duration estimate." → After: "which reflects input smoothness, not owner stickiness (see B-owner above)."
+5. Before: "roughly double composite A's RMST (~15–17y). This divergence matters: it means the simple geometric/memoryless assumption behind the Markov figure does not match the data (METHOD §4's AC-9 test), and per METHOD the KM/RMST figure — which does not assume memorylessness — governs."
+   After: "not comparable to composite A's RMST, which is truncated at 17y and cannot exceed it. A's hazard by spell age is flat (≈1–2%/yr), which is consistent with memorylessness, and the stock-flow implied mean (≈58y) is closer to the Markov figure than to the RMST. AC-9 is inconclusive, not failed."
+6. Before: "This is the one check where v0 produces a real, modest, out-of-sample win — the composite score carries *some* genuine forward information, even though its *duration estimate* (point 2 above) does not clear the noise bar. These are different claims: "which ZIPs stay favorable" has signal; "how many years, precisely" does not, yet."
+   After: "This test does not use the composite's value, because the predictor depends only on spell age. It shows that a base rate beats 'P=1'. It does not show that the composite ranks ZIPs. A's margin (0.0019) has no CI, and B-tenant's emerging spells (n=8) score worse than chance (0.31/0.40). A ranking backtest is owed."
+7. Before: "**Criterion validity (contrarian amendment 6): PASSES.**" and "**This is the strongest positive evidence in this run**" → After: "**Criterion validity (contrarian amendment 6): PROVISIONAL — not run as pre-registered** (the borough conditioning was dropped; the t-test treats 2,085 autocorrelated ZIP-years as independent; both rates are an order of magnitude below real attrition, which points to closure-detection coverage)." and "This is the result most in need of a re-run."
+8. In point 4, delete "(4 of 6 hit ...) cleared its bar" as evidence of discrimination, or append: "; two of the four (11215, 10128) are pinned out by construction per PREREGISTRATION §0.3." Delete the speculative 11211/10002 explanations, or label them "unverified".
+9. Before: "**Net**: v0 clears its backtest and criterion-validity bars ... **Treat this as a usable ranking signal with real predictive value, not yet as a calibrated duration estimate.**"
+   After: "**Net**: v0 fails its discovery falsifier (A) and its rank-churn null (A and B-tenant). Its two passes (backtest, closure validity) do not, as run, test what they are cited for. **v0 has neither a duration estimate nor a validated ranking signal.** Re-run both checks correctly before building on this composite."
+
+## Statistician post-results verdict (2026-09-22)
+
+**Verdict: AMEND ANSWER.** The headline is already withheld ("v0 cannot yet give you a trustworthy number"), and that part stands. I endorse all nine of the contrarian's post-results wording changes. Below I add the inference-specific corrections the contrarian did not make, and in two places I sharpen them. Read: ANSWER.md, my pre-results verdict (S1–S10 and the minimum conditions), notebook cells 11/13/19–21/29/32, and `regime_durability.py` (`hysteresis_spells`, `km_summary`, `spatial_block_bootstrap_median`, `rank_churn_null`, `backtest_2013`, `closure_validity_check`, `compute_pillar_percentiles`). No reruns.
+
+**Tier of claim.** Every surviving statement is **descriptive** (rank persistence of a ZIP composite). Nothing is predictive yet, because no backtest used the composite as a predictor, and nothing is causal.
+
+**(1) Minimum conditions for stating a headline: not met. Of six conditions, 2 fail, 3 fail, 4 is unverified for B-tenant, and 5 is partial.**
+- **Condition 2 fails.** The count gate is not met: completed incident exits are 6 / 0 / 20 against the ≥60-exit / ≥40-unit bar. The S6 fallback applies: the stated number becomes the **piecewise annual exit hazard, with no implied median**. The notebook computed it (cell 13), but ANSWER never leads with it. Exact Poisson 95% intervals, unclustered and so too narrow:
+  - A incident: 6/343 = **1.7%/yr (0.6–3.8)**. A prevalent: 13/837 = 1.6%/yr (0.8–2.7).
+  - B-tenant incident: 20/288 = **6.9%/yr (4.2–10.7)**. B-tenant prevalent: 9/927 = 1.0%/yr (0.4–1.8).
+  - B-owner prevalent: 5/1,007 = 0.5%/yr (0.2–1.2). B-owner incident: 0 events.
+  - B-tenant's 7× incident-vs-prevalent gap is mover-stayer heterogeneity. Pooling the two into a single hazard would be wrong.
+- **Condition 3 fails.** The rank-churn null is not rejected for A or B-tenant.
+- **Condition 4 is unverified for B-tenant.** The grid and break-censoring were reported for A only, and A already moves more than 50%.
+- **Condition 5 is partial.** The PUMA bootstrap is missing, and the spatial-block CI has a bug (see 2b).
+- **The owner ruling.** It can legitimately override **condition 2 (count gate) for display**. It did not override **condition 3 / amendment 5**, which withholds the number. "Median anyway, flagged" is honest only if the same sentence carries: LOW-SAMPLE, *inside the null band*, *equal to the truncation horizon*, and relative/ZIP/descriptive scope. As written, ANSWER shows the flags in Confidence §2–3 but calls the number an "anchor" in the body. That is not honest. See correction 1.
+
+**(2) Implementation errors, with their effect on conclusions**
+- **(a) Rank-churn null (`rank_churn_null`): sound enough. Non-rejection stands.**
+  - The truncation matches the observed value (the notebook passes `rmst_trunc`), and the null re-ranks every year. Both are correct.
+  - Deviation 1: the AR(1) is fit on the *composite*, not the three pillars.
+  - Deviation 2: it reverts to each unit's full-window mean and is seeded at the observed 2000 ranks. That builds hindsight about permanent heterogeneity into the null and makes it *harder* to reject, so it is a conservative null of "stationary heterogeneity + AR(1), no regimes".
+  - Deviation 3: per-unit φ from T=24 carries Hurwicz downward bias of about −(1+3φ)/T. That makes the null less persistent, which works *toward* rejection.
+  - Both observed values sit mid-band (14.80 in 13.07–16.41; 7.98 in 7.03–9.49). No plausible correction moves them outside, so the conclusion is robust.
+  - B-tenant caveat: its composite has a point mass at 0 for gate-failing years, which a Gaussian AR(1) mis-fits. Also report the null for B-owner, which was never run.
+- **(b) Bootstrap: a real bug that changes the reported CIs.** `spatial_block_bootstrap_median` is called without `rmst_trunc` (cell 21), so each replicate truncates at its own horizon. The reported interval therefore mixes RMST(τ) across different τ and is not a CI for the reported estimand.
+  - Proof: A's upper bound **17.21 exceeds its truncation point of 17**, which is impossible for RMST(17).
+  - Replicates with fewer than 3 exits are silently dropped (45 of 500 for A). This conditions on events and cuts the long-survival tail.
+  - Only 15 clusters feed a percentile bootstrap, which is anti-conservative.
+  - Consequence: A "6.0–17.2" and B-tenant "4.9–10.4" should not be quoted. See correction 3.
+- **(c) Delayed entry / incident dating.** No `entry=` is used. The KM is incident-only with entry age 0, which is valid for the incident estimand. Two defects remain:
+  - `incident = onset > 2000` does not implement S2's requirement of "a non-favorable year observed before onset". A unit at 0.65 in 2000 (inside the hysteresis band, state unknowable) that reaches ≥0.70 in 2001–02 is dated as a new 2001 onset. That spell is actually undatable.
+  - B-tenant's cost term is `diff(3)`, which is `fillna(0.5)` for 2000–02. The tenant composite therefore changes definition in 2003, violating S3 exactly where the incident onsets cluster (2001–03).
+  - The `exit_year == end_year` relabel never fires, because `exit_year = y−1`. It is harmless, since an exit confirmed by 2022+2023 is correctly an exit.
+- **(d) RMST truncation: A and B-tenant are not comparable.** A uses τ=17 and B-tenant uses τ=11, and an RMST is bounded by its τ.
+  - ANSWER juxtaposes 14.8 with 8.0 and relies on B-tenant's "median ≈11" at exactly τ=11. That is the last age with n_a≥10, so the median lies at the edge of support.
+  - The same bound defeats the AC-9 claim: RMST(17) cannot exceed 17, so "29y ≈ double" is uninformative. I agree with the contrarian: A's flat hazard (1.3/2.3/2.0%) is *consistent* with memorylessness.
+  - Any cross-composite comparison must use a common τ (min = 11) or compare hazards.
+- **(e) Closure test: pseudo-replication. p≈4e-16 is not a valid p-value.**
+  - The test is a Welch t on 2,085 unweighted ZIP-year rates, treated as independent. Favorable status is extremely persistent within unit, and closure rates are autocorrelated in space and time, so the effective n is closer to 150 units, or about 15 spatial blocks.
+  - The borough conditioning named in the docstring is never applied.
+  - Favorable status is contemporaneous, whereas amendment 6 specified *subsequent* closure.
+  - The test was run on A only, the composite already shown to measure discovery.
+  - The 0.56% and 2.34% rates are about 10× below real attrition, which implies differential detection. Detection coverage is a candidate confounder.
+
+**(3) Is "beats persistence" real? No.**
+- **A.** Its 53 at-risk spells include 52 prevalent spells aged 13 or more, older than any training age. For those, lifelines extrapolates S flat, so the prediction is 1, identical to persistence.
+  - The entire 0.0019 Brier gain (×53 ≈ 0.10 total squared error) comes from **one emerging spell**. That is a tie.
+- **B-tenant.** The gain is 0.028 on n=55. Its emerging group (n=8) scores worse than chance.
+  - A paired per-spell SE on n=55 with block dependence is plausibly 0.03–0.05. The minimum detectable difference required by S10 was never reported, and 0.028 is below any plausible MDE.
+- **Outcome mismatch.** The outcome was scored as point-in-time `c ≥ 0.70`, not as the hysteresis state. A spell still "in" at 0.65 counts as an exit, which mechanically penalizes P=1.
+- **Weak floor.** P=1 is the weakest floor: any constant p below 1 and above about 1 − 2e (e = exit share) beats it.
+- **Nothing ranked.** The predictor never uses the composite, so nothing about ranking was tested (contrarian, agreed).
+
+**Numbered corrections**
+
+*ANSWER.md wording (before → after):*
+
+1. Before: "Median **≈11 years**; RMST (truncated at 11y) **≈8.0 years** (spatial-block bootstrap 95% CI **4.9–10.4y**, 500 valid reps). This is the most usable number v0 produces, and it is the one that should anchor a tenant's expectations — **with the flag below.**"
+   After: "**Headline withheld (rank-churn null not rejected; count gate failed).** Shown for display under the owner ruling, and not an expectation: the annual exit hazard for incident spells is **6.9%/yr (Poisson 95% 4.2–10.7%, unclustered)**. The KM median (≈11y) sits at the truncation horizon, the last age with ≥10 spells at risk. RMST to 11y is ≈8.0y and lies inside the no-regime null band (7.0–9.5y). This is relative rank at ZIP scale with a residential-value cost term. It is descriptive, not a forecast. The bootstrap CI is being recomputed (see METHOD, statistician post-results 2b)."
+2. Before (A bullet): "Restricted mean survival time (RMST, truncated at 17y, ...): **≈14.8 years** (spatial-block bootstrap 95% CI **6.0–17.2y**, ...)"
+   After: "Annual exit hazard **1.7%/yr (0.6–3.8%) for incident spells, 1.6%/yr for spells already favorable in 2000**, flat by spell age. RMST to 17y ≈ 14.8y. The CI is withdrawn pending the fixed-horizon bootstrap. Not comparable to B-tenant's RMST, which is truncated at 11y."
+3. Everywhere a CI is quoted ("6.0–17.2y", "4.9–10.4y", "CI ≈4–10y"): replace with "CI pending (bootstrap truncation bug)". The "≈4–10y" in *Owner vs tenant* also contradicts "4.9–10.4" elsewhere.
+4. Before (Confidence §6): "a large and highly significant difference (p ≈ 4×10⁻¹⁶)"
+   After: "a large raw difference. The p-value (≈4×10⁻¹⁶) treats 2,085 autocorrelated ZIP-years as independent and is not valid. The re-test uses unit-clustered SEs, borough and year FE, and lagged favorable status."
+5. Before (B-owner): "0 completed exits" (as the only rate reported)
+   After: append "Spells already favorable in 2000 exit at 0.5%/yr (5 exits in 1,007 spell-years, 95% 0.2–1.2%). The rank-churn null was not run for this composite, so this rate cannot be read as owner stickiness."
+6. Validation-table row "Out-of-time backtest": Before: "A and B-tenant beat persistence at both horizons" → After: "Tie for A (the 0.0019 gain comes from 1 of 53 spells, and 52 are extrapolated flat, identical to P=1). B-tenant gains 0.028 with no CI or MDE, below any plausible MDE at n=55. The predictor uses spell age only, not the composite. NOT a pass."
+
+*Code fixes (`regime_durability.py` / notebook), required before the GTM-230/228 re-run:*
+
+7. **Bootstrap.**
+   - Pass `rmst_trunc=km_results[name]["rmst_trunc"]` in cell 21.
+   - Do not drop replicates with fewer than 3 exits. Keep them; RMST is defined at 0 exits.
+   - Report the count of degenerate replicates.
+   - Raise reps to 2,000.
+   - Add the PUMA (2010) bootstrap and report the wider interval.
+   - Also bootstrap the band hazards, which is the S6 headline.
+8. **Common horizon.** Report RMST(11) for A, B-tenant and B-owner side by side, and compare hazards rather than medians across composites.
+9. **Incident dating.** Set `incident` only if `c[onset−1] < exit_` (unambiguously non-favorable) is observed. Otherwise mark the spell undatable, i.e. prevalent.
+10. **Tenant composite break.** Start the tenant headline window at 2003 (the first year `diff(3)` exists), or drop `fillna(0.5)`. Re-run the grid and S5 break-censoring for B-tenant (condition 4).
+11. **Closure test.**
+   - Specification: binomial GLM of `n_closed` out of `n_open` on `favorable_{t−1}`, with year FE and borough FE, cluster-robust SEs by unit, plus a spatial-block wild bootstrap (15 blocks).
+   - Add a unit-FE variant, i.e. within-ZIP: does the same ZIP close less in its favorable years? This is the only version that survives the static detection-coverage confound.
+   - Add a coverage control: inspections per POI, or POI density.
+   - Run it for A and for B-tenant.
+   - Kill criterion: the unit-FE coefficient is not negative at p<0.05 after clustering.
+12. **Backtest.**
+   - Score the outcome as the hysteresis state at 2013+h (not exited), not as `c ≥ 0.70`.
+   - Add a composite-using predictor: a logistic on the 2013 composite value and spell age, fit only on data ≤2013. Add a constant-base-rate comparator and the ZIP-shuffled placebo.
+   - Report paired Brier differences with a unit-block bootstrap CI and the MDE.
+   - Exclude or flag prevalent spells whose age exceeds KM support; they are currently silently extrapolated to 1.
+   - Kill criterion: the logistic's paired Brier CI against the constant base rate includes 0. The result is then "no ranking signal detected at n≈55", which reads as underpowered, not as null.
+13. **Rank-churn null.**
+   - Run it for B-owner.
+   - Add the pillar-level AR(1) variant (per the original amendment) as a sensitivity check.
+   - Model B-tenant's gate as a two-part process (gate AR(1) on the demand pillar, then the gated composite).
+   - 1,000 sims.
+
+**What would change the verdict to ANSWER STANDS:** corrections 1–6 applied verbatim together with the contrarian's nine. No re-run is needed for the wording. Correction 12 is the only path to any *predictive* claim, and correction 11 (with unit FE) is the only path to criterion validity.
