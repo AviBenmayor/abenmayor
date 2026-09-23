@@ -133,6 +133,18 @@ PERSIST_YEARS = 2
 
 MIN_POP = 2000  # METHOD §1 universe rule
 
+# GTM-230 item 2: fixed base period for the demand-gate LEVEL anchor (mirrors the
+# 2000-02 fixed-anchor convention already used for the macro exposures below).
+GATE_BASE_YEARS = (HEADLINE_START_YEAR, HEADLINE_START_YEAR + 2)
+
+# GTM-230 item 3: the 3 pre-specified macro episodes (statistician S8) for the
+# leave-one-episode-out robustness check on the 3 exposure x macro terms.
+MACRO_EPISODES: dict[str, set[int]] = {
+    "2001-03": {2001, 2002, 2003},
+    "2008-10": {2008, 2009, 2010},
+    "2020-22": {2020, 2021, 2022},
+}
+
 
 def to_unit(zipcode: str) -> str:
     return KNOWN_UNIT_MERGES.get(str(zipcode), str(zipcode))
@@ -552,7 +564,46 @@ def compute_pillar_percentiles(panel: pd.DataFrame) -> pd.DataFrame:
     df["saturation_spending"] = df["estab_restaurant_total"] / df["spending_power"].clip(lower=1)
     df["supply_pillar_B"] = 1 - df.groupby("year")["saturation_spending"].transform(_pct_rank)
 
-    df["demand_gate"] = df["demand_pillar_A"] >= df.groupby("year")["demand_pillar_A"].transform("median")
+    # GTM-230 item 2: demand gate, fixed-anchor LEVEL threshold (replaces the
+    # broken `demand_pillar_A >= this year's median` gate). That gate was
+    # mechanically degenerate: demand_pillar_A is ITSELF a within-year
+    # percentile rank, so "this year's median" of a percentile rank is ~0.5 BY
+    # DEFINITION every year, independent of what demand actually does -- a
+    # fixed-share-percentile wearing a gate costume, exactly what amendment 1
+    # was written to rule out ("free to vary", METHOD amendment 1; both
+    # reviewers' post-results verdicts flagged this). The fix: gate on LEVEL,
+    # standardized against a FIXED 2000-02 base-period distribution (mirrors
+    # the fixed-anchor convention already used for the macro exposures in
+    # `fit_macro_hazard_terms`, and the fixed-anchor maturity-index pattern
+    # used elsewhere in this project: real levels compared to a fixed anchor,
+    # not a rank recomputed every year). `demand_level_z` is the mean of
+    # income/pop-density/worker-density z-scores against the 2000-02 citywide
+    # mean/sd, held constant for the whole window -- the SAME absolute-level
+    # threshold applies in 2023 as in 2000. The gate ("at or above the 2000-02
+    # citywide average demand level") is therefore free to pass more or fewer
+    # than 50% of units in any later year, as real demand rises or falls in
+    # the aggregate -- unlike the old rank-based gate, which could not move
+    # even in principle. The anchor is the panel's own first 3 years (for the
+    # production 2000-2023 headline panel this IS 2000-02, matching
+    # GATE_BASE_YEARS/METHOD's stated base period; deriving it from the data
+    # rather than hardcoding 2000-02 keeps this function correct and testable
+    # against any panel window, e.g. synthetic panels in the test suite that
+    # do not happen to include calendar years 2000-02).
+    base_start = int(df["year"].min())
+    base_end = base_start + (GATE_BASE_YEARS[1] - GATE_BASE_YEARS[0])
+    base_mask = df["year"].between(base_start, base_end)
+
+    def _fixed_anchor_z(col: str) -> pd.Series:
+        base_vals = df.loc[base_mask, col]
+        mu, sd = base_vals.mean(), base_vals.std()
+        sd = sd if (sd is not None and np.isfinite(sd) and sd > 0) else 1.0
+        return (df[col] - mu) / sd
+
+    df["z_income_fixed"] = _fixed_anchor_z("income_real")
+    df["z_pop_density_fixed"] = _fixed_anchor_z("density_pop")
+    df["z_worker_density_fixed"] = _fixed_anchor_z("density_workers")
+    df["demand_level_z"] = df[["z_income_fixed", "z_pop_density_fixed", "z_worker_density_fixed"]].mean(axis=1, skipna=True)
+    df["demand_gate"] = df["demand_level_z"] >= 0.0
 
     def _gated_rank(frame: pd.DataFrame, col: str) -> pd.Series:
         out = pd.Series(0.0, index=frame.index)
@@ -1036,6 +1087,164 @@ def rank_churn_null(panel: pd.DataFrame, composite_col: str, n_sims: int = 200, 
             pass
 
     result = dict(n_valid_sims=len(null_rmsts), n_valid_sims_median=len(null_medians))
+    if null_medians:
+        result["null_median_p2_5"] = float(np.percentile(null_medians, 2.5))
+        result["null_median_p97_5"] = float(np.percentile(null_medians, 97.5))
+        result["null_medians"] = null_medians
+    else:
+        result["null_median_p2_5"] = result["null_median_p97_5"] = np.nan
+        result["null_medians"] = []
+    if null_rmsts:
+        result["null_rmst_p2_5"] = float(np.percentile(null_rmsts, 2.5))
+        result["null_rmst_p97_5"] = float(np.percentile(null_rmsts, 97.5))
+        result["null_rmsts"] = null_rmsts
+    else:
+        result["null_rmst_p2_5"] = result["null_rmst_p97_5"] = np.nan
+        result["null_rmsts"] = []
+    return result
+
+
+def _fit_ar1_params(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Per-unit empirical AR(1) (phi, sigma), factored out of the loop inside
+    `rank_churn_null` so GTM-230 item 1's two-part tenant null can fit it
+    independently on two different series (the gate/level series and the
+    cost-rank-change series) instead of one Gaussian AR(1) fit to their
+    mixture. Identical arithmetic to `rank_churn_null`'s inline fit."""
+    phis, sigmas = [], []
+    for j in range(x.shape[1]):
+        series = x[:, j]
+        if len(series) < 3 or np.std(series) == 0:
+            phis.append(0.5)
+            sigmas.append(0.05)
+            continue
+        y_t, y_l = series[1:], series[:-1]
+        denom = np.sum((y_l - y_l.mean()) ** 2)
+        phi = np.sum((y_l - y_l.mean()) * (y_t - y_t.mean())) / denom if denom > 0 else 0.5
+        phi = np.clip(phi, -0.98, 0.98)
+        resid = y_t - (y_t.mean() + phi * (y_l - y_l.mean()))
+        phis.append(phi)
+        sigmas.append(max(resid.std(), 1e-4))
+    return np.array(phis), np.array(sigmas)
+
+
+def _simulate_ar1(x0: np.ndarray, phis: np.ndarray, sigmas: np.ndarray, means: np.ndarray,
+                   n_years: int, rng: np.random.Generator) -> np.ndarray:
+    sim = np.zeros((n_years, len(means)))
+    sim[0] = x0
+    for t in range(1, n_years):
+        innovation = rng.normal(0, sigmas)
+        sim[t] = means + phis * (sim[t - 1] - means) + innovation
+    return sim
+
+
+def rank_churn_null_tenant_two_part(panel: pd.DataFrame, n_sims: int = 200, seed: int = 7,
+                                     rmst_trunc: float = 20.0) -> dict:
+    """GTM-230 item 1 / statistician correction 13: a two-part AR(1) null for the
+    TENANT composite. `rank_churn_null` fits ONE Gaussian AR(1) directly to
+    composite_B_tenant and got 0/200 valid sims in v0.1 -- the tenant composite
+    has a point mass at 0 for demand-gate-failing unit-years (a discrete/
+    continuous MIXTURE, not a smooth series), which a single Gaussian AR(1)
+    mis-fits so badly that simulated panels almost never produce a usable
+    incident-spell sample.
+
+    Instead of fitting one AR(1) to the mixture, this fits TWO SEPARATE
+    empirical AR(1)s to the two series that combine to build the tenant
+    composite (see `compute_pillar_percentiles`):
+      (1) the gate/level series -- `composite_B_owner`, the demand-gated,
+          combined demand+supply level composite. This IS the "gate" and the
+          "level" already combined into one object, and the identical single-
+          composite AR(1) mechanism (`rank_churn_null`) produced a workable
+          168/200 valid sims when applied to this series on its own, so
+          reusing it here is not a new source of degeneracy.
+      (2) the cost-rank-change series -- `tenant_cost_component`, the 3-year
+          cost-percentile-change rank (defined only from 2003 on, matching the
+          real tenant composite's undefined-before-2003 window, statistician
+          post-results correction 10).
+    Each is simulated per-unit with THAT unit's own empirical (phi, sigma),
+    re-ranked within year (preserving the zero-sum tercile constraint), then
+    combined exactly as the real tenant composite combines its components --
+    averaged, then re-ranked -- before applying the IDENTICAL hysteresis rule
+    (`hysteresis_spells`) and its IDENTICAL strict incident-dating rule
+    (`_incident_dating`).
+
+    Documented simplification (stated, not hidden, matching this module's
+    convention): this null does not re-derive a fresh binary demand-gate on
+    every simulated year from a separately-simulated demand series -- it
+    reuses `composite_B_owner`'s own AR(1) persistence (which already has the
+    real gate's point-mass-at-zero baked into its empirical mean/variance) as
+    a single combined proxy for "gate + level". A null that instead simulated
+    the gate's underlying components independently could show more or less
+    churn than this one; which direction is not asserted here.
+    """
+    from lifelines import KaplanMeierFitter
+    from lifelines.utils import restricted_mean_survival_time
+
+    rng = np.random.default_rng(seed)
+
+    level_wide = panel.pivot(index="year", columns="unit", values="composite_B_owner").dropna(axis=1, how="any")
+    cost_wide_full = panel.pivot(index="year", columns="unit", values="tenant_cost_component")
+    cost_defined_years = cost_wide_full.dropna(how="all").index
+    if len(cost_defined_years) == 0:
+        return dict(ok=False, reason="tenant_cost_component is undefined for every year")
+    cost_wide = cost_wide_full.loc[cost_defined_years].dropna(axis=1, how="any")
+
+    common_units = level_wide.columns.intersection(cost_wide.columns)
+    if len(common_units) < 10:
+        return dict(ok=False, reason=f"only {len(common_units)} units have both series fully defined (<10)")
+
+    level_wide = level_wide.loc[:, common_units]
+    cost_wide = cost_wide.loc[:, common_units]
+    level_years = level_wide.index.to_numpy()
+    cost_years = cost_wide.index.to_numpy()
+    units = common_units.to_numpy()
+
+    lvl_x = level_wide.values
+    cost_x = cost_wide.values
+    phi_l, sig_l = _fit_ar1_params(lvl_x)
+    phi_c, sig_c = _fit_ar1_params(cost_x)
+    mean_l = lvl_x.mean(axis=0)
+    mean_c = cost_x.mean(axis=0)
+
+    start_year = int(cost_years.min())
+    end_year = int(cost_years.max())
+
+    null_medians: list[float] = []
+    null_rmsts: list[float] = []
+    n_valid_spell_sims = 0
+    for _ in range(n_sims):
+        sim_l = _simulate_ar1(lvl_x[0], phi_l, sig_l, mean_l, lvl_x.shape[0], rng)
+        sim_c = _simulate_ar1(cost_x[0], phi_c, sig_c, mean_c, cost_x.shape[0], rng)
+        rank_l = np.apply_along_axis(lambda col: pd.Series(col).rank(pct=True).to_numpy(), 1, sim_l)
+        rank_c = np.apply_along_axis(lambda col: pd.Series(col).rank(pct=True).to_numpy(), 1, sim_c)
+
+        level_df = pd.DataFrame(rank_l, index=level_years, columns=units).reindex(cost_years)
+        cost_df = pd.DataFrame(rank_c, index=cost_years, columns=units)
+        tenant_raw = (level_df + cost_df) / 2
+        tenant_sim = tenant_raw.apply(lambda row: row.rank(pct=True), axis=1)
+
+        sim_panel = tenant_sim.reset_index().rename(columns={"index": "year"}).melt(
+            id_vars="year", var_name="unit", value_name="composite_B_tenant_sim"
+        )
+        sp = hysteresis_spells(sim_panel, "composite_B_tenant_sim", start_year=start_year, end_year=end_year)
+        inc = sp[sp["incident"]] if len(sp) else sp
+        if len(inc) < 3 or (~inc["censored"]).sum() < 2:
+            continue
+        n_valid_spell_sims += 1
+        kmf = KaplanMeierFitter()
+        kmf.fit(inc["duration"], event_observed=~inc["censored"])
+        m = kmf.median_survival_time_
+        if np.isfinite(m):
+            null_medians.append(m)
+        try:
+            r = float(restricted_mean_survival_time(kmf, t=min(rmst_trunc, float(inc["duration"].max()))))
+            if np.isfinite(r):
+                null_rmsts.append(r)
+        except Exception:
+            pass
+
+    result = dict(ok=True, n_valid_sims=len(null_rmsts), n_valid_sims_median=len(null_medians),
+                  n_valid_spell_sims=n_valid_spell_sims, n_units=len(units),
+                  window=(start_year, end_year))
     if null_medians:
         result["null_median_p2_5"] = float(np.percentile(null_medians, 2.5))
         result["null_median_p97_5"] = float(np.percentile(null_medians, 97.5))
@@ -1760,18 +1969,27 @@ def fit_hazard_driver_model(panel: pd.DataFrame, spells: pd.DataFrame, composite
 
 
 def fit_macro_hazard_terms(panel: pd.DataFrame, spells: pd.DataFrame, composite_col: str,
-                            supply_df: pd.DataFrame, workers_df: pd.DataFrame, macro: pd.DataFrame) -> dict:
+                            supply_df: pd.DataFrame, workers_df: pd.DataFrame, macro: pd.DataFrame,
+                            exclude_years: set[int] | None = None) -> dict:
     """Statistician S8: three pre-specified exposure x macro pairs, year FE
     (implemented as the macro series entering directly since year FE and a
     single NYC-wide series are collinear — METHOD §5 — so this reports the
     *exposure x macro* interaction only, never a level macro main effect).
     Exposures fixed at 2000-02 and standardized. Each gamma reported only if it
-    survives Holm across the 3 tests (S9) — episode-drop robustness is left as
-    a documented gap (GTM-230, the post-results contrarian/statistician pass)."""
+    survives Holm across the 3 tests (S9).
+
+    `exclude_years`: GTM-230 item 3 / S8 episode-drop robustness -- drop all
+    hazard person-years whose year falls in this set before fitting, so the
+    corresponding `C(year)` dummies and any exit events inside the episode are
+    removed entirely (leave-one-episode-out, not a covariate). See
+    `macro_leave_one_episode_out`, which calls this once per pre-specified
+    episode plus once with `exclude_years=None` for the full-sample baseline."""
     import statsmodels.formula.api as smf
     from statsmodels.stats.multitest import multipletests
 
     py = build_hazard_person_years(panel, spells, composite_col)
+    if exclude_years:
+        py = py[~py["year"].isin(exclude_years)]
     if len(py) < 30 or py["exit"].sum() < 5:
         return dict(ok=False, reason="insufficient hazard person-years for macro terms")
 
@@ -1832,5 +2050,61 @@ def fit_macro_hazard_terms(panel: pd.DataFrame, spells: pd.DataFrame, composite_
                 note="H2 (exposure x macro, year FE) only — a level macro main effect is not "
                      "identified because year FE and any single NYC-wide series are collinear "
                      "(METHOD §5). Wording: 'units with higher E exited more in years of higher "
-                     "M, conditional on year effects' — never 'M causes exits'. Episode leave-"
-                     "one-out robustness (S8) is not run in v0; documented gap.")
+                     "M, conditional on year effects' — never 'M causes exits'. See "
+                     "`macro_leave_one_episode_out` for the S8 episode-drop robustness check.")
+
+
+def macro_leave_one_episode_out(panel: pd.DataFrame, spells: pd.DataFrame, composite_col: str,
+                                 supply_df: pd.DataFrame, workers_df: pd.DataFrame,
+                                 macro: pd.DataFrame) -> dict:
+    """GTM-230 item 3 / statistician S8: "[a gamma] keeps its sign when each
+    episode (2001-03, 2008-10, 2020-22) is dropped in turn." For each of the 3
+    pre-specified exposure x macro terms, this refits `fit_macro_hazard_terms`
+    with each episode dropped in turn (all hazard person-years in that episode
+    removed, so its `C(year)` dummies and any exits inside it drop out of the
+    fit entirely) and reports the full-sample coefficient/Holm result next to
+    each leave-one-episode-out coefficient, plus whether the term's SIGN is
+    stable across the full fit and all three drops -- the literal S8 bar. This
+    is a robustness/stability check on the 3 pre-specified tests, not a new
+    test family, so no further Holm correction is applied across the LOO
+    refits themselves."""
+    full = fit_macro_hazard_terms(panel, spells, composite_col, supply_df, workers_df, macro)
+    if not full.get("ok"):
+        return dict(ok=False, reason=f"baseline (full-sample) macro model failed: {full.get('reason')}")
+
+    base_tbl = full["macro_table"].set_index("term")
+    rows = [
+        dict(term=t, coef_full=float(base_tbl.loc[t, "coef"]),
+             p_holm_full=float(base_tbl.loc[t, "p_holm"]) if "p_holm" in base_tbl.columns else np.nan,
+             holm_significant_full=bool(base_tbl.loc[t, "holm_significant"]) if "holm_significant" in base_tbl.columns else False)
+        for t in base_tbl.index
+    ]
+
+    episode_status: dict[str, dict] = {}
+    for ep_name, years in MACRO_EPISODES.items():
+        res = fit_macro_hazard_terms(panel, spells, composite_col, supply_df, workers_df, macro,
+                                      exclude_years=years)
+        episode_status[ep_name] = dict(ok=bool(res.get("ok")), reason=res.get("reason"))
+        tbl = res["macro_table"].set_index("term") if res.get("ok") else None
+        for row in rows:
+            t = row["term"]
+            row[f"coef_drop_{ep_name}"] = float(tbl.loc[t, "coef"]) if (tbl is not None and t in tbl.index) else np.nan
+
+    def _sign_stable(row: dict) -> bool:
+        drop_cols = [f"coef_drop_{e}" for e in MACRO_EPISODES]
+        coefs = [row["coef_full"]] + [row.get(c, np.nan) for c in drop_cols]
+        if not all(np.isfinite(c) for c in coefs):
+            return False  # can't certify stability if any drop failed to fit / term dropped out
+        nonzero = [c for c in coefs if c != 0]
+        return len({np.sign(c) for c in nonzero}) <= 1
+
+    for row in rows:
+        row["sign_stable_all_drops"] = _sign_stable(row)
+
+    table = pd.DataFrame(rows)
+    return dict(ok=True, table=table, episode_status=episode_status,
+                note="S8 stability check: a term's sign must survive dropping each of "
+                     "2001-03 / 2008-10 / 2020-22 in turn (and each refit must still converge) "
+                     "to be called 'sign_stable_all_drops'. Stability is necessary, not "
+                     "sufficient -- pair with the full-sample Holm result (coef_full/p_holm_full) "
+                     "before calling a term a driver.")

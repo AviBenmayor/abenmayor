@@ -507,6 +507,173 @@ def test_to_unit_merges_known_splits():
     assert rd.to_unit("10001") == "10001"
 
 
+# --------------------------------------------------------------- demand gate is free to vary (GTM-230 item 2)
+
+
+def test_demand_gate_pass_rate_is_not_pinned_at_50_percent_every_year():
+    # Old (broken) gate: demand_pillar_A >= this year's median. Since
+    # demand_pillar_A is ITSELF a within-year percentile rank, that gate passed
+    # ~50.0% of unit-years EVERY year by construction, regardless of what
+    # demand actually did. The fixed gate (level vs. a FIXED base-period
+    # anchor) must let the pass rate move as real, level demand genuinely
+    # rises: here every unit's income/pop/worker levels grow steadily over
+    # 2000-2023, so by the end of the window most units should clear the
+    # 2000-02 anchor, not exactly half every single year.
+    rng = np.random.default_rng(11)
+    rows = []
+    for i, unit in enumerate([f"u{i}" for i in range(20)]):
+        base_income = 30_000 + i * 2_000
+        base_pop = 4_000 + i * 200
+        base_work = 1_000 + i * 100
+        for year in range(2000, 2024):
+            growth = (year - 2000) * 1500  # every unit's demand level rises over time
+            rows.append(dict(
+                unit=unit, year=year,
+                estab_restaurant_total=10, zhvi=300_000 + rng.normal(0, 1000),
+                pop=base_pop + growth / 5, workers=base_work + growth / 10,
+                income_real=base_income + growth, area_km2=2.0,
+            ))
+    panel = pd.DataFrame(rows)
+    out = rd.compute_pillar_percentiles(panel)
+    pass_rate_by_year = out.groupby("year")["demand_gate"].mean()
+    # every unit-year in the SAME year is identically ranked relative to the
+    # OLD gate's within-year median -> always ~50%. The fixed gate must clear
+    # a materially higher share of units by the end of a window where every
+    # unit's level genuinely grew.
+    assert pass_rate_by_year.loc[2023] > pass_rate_by_year.loc[2000] + 0.15
+    # and it must NOT be pinned at exactly 50% every year (the old bug's
+    # signature) -- at least one year should be materially off 50%.
+    assert (pass_rate_by_year - 0.5).abs().max() > 0.05
+
+
+def test_demand_gate_uses_fixed_anchor_not_within_year_median():
+    # A unit whose level is high relative to the FIXED 2000-02 anchor but
+    # merely "average" relative to a later year's own (higher) cross-section
+    # must still pass -- proof the threshold does not silently re-derive a
+    # within-year median (which was the bug being fixed).
+    rows = []
+    for year in range(2000, 2010):
+        # unit 'steady' never changes level; unit 'boomers' all grow sharply
+        rows.append(dict(unit="steady", year=year, estab_restaurant_total=10, zhvi=300_000,
+                          pop=8_000, workers=3_000, income_real=70_000, area_km2=2.0))
+        for j in range(5):
+            growth = (year - 2000) * 20_000
+            rows.append(dict(unit=f"boom{j}", year=year, estab_restaurant_total=10, zhvi=300_000,
+                              pop=8_000, workers=3_000, income_real=70_000 + growth, area_km2=2.0))
+    panel = pd.DataFrame(rows)
+    out = rd.compute_pillar_percentiles(panel)
+    steady = out[out["unit"] == "steady"].set_index("year")["demand_gate"]
+    # 'steady' passed (or failed) the FIXED 2000-02 anchor once, at onset --
+    # its own level never changes, so its gate outcome must be CONSTANT across
+    # all 10 years even though the boom units' cross-sectional median keeps
+    # rising around it (the old bug would have flipped 'steady' to a fail as
+    # the boom units pulled the within-year median up past it).
+    assert steady.nunique() == 1
+
+
+# --------------------------------------------------------------- two-part tenant null (GTM-230 item 1 / statistician correction 13)
+
+
+def _synthetic_full_panel(n_units=25, start=2000, end=2023, seed=9):
+    rng = np.random.default_rng(seed)
+    rows = []
+    for i in range(n_units):
+        base_income = rng.uniform(30_000, 110_000)
+        base_pop = rng.uniform(2_000, 18_000)
+        base_work = rng.uniform(500, 12_000)
+        base_zhvi = rng.uniform(150_000, 850_000)
+        for year in range(start, end + 1):
+            drift = (year - start) * rng.normal(0, 400)
+            rows.append(dict(
+                unit=f"u{i}", year=year,
+                estab_restaurant_total=max(1, rng.poisson(9)),
+                zhvi=max(50_000, base_zhvi + drift + rng.normal(0, 4_000)),
+                pop=max(500, base_pop + rng.normal(0, 150)),
+                workers=max(100, base_work + rng.normal(0, 150)),
+                income_real=max(10_000, base_income + drift * 2 + rng.normal(0, 1_500)),
+                area_km2=2.0,
+            ))
+    return pd.DataFrame(rows)
+
+
+def test_rank_churn_null_tenant_two_part_produces_valid_sims():
+    # The single-Gaussian-AR(1) null (`rank_churn_null`) mis-fit
+    # composite_B_tenant's point-mass-at-zero mixture badly enough to get
+    # 0/200 valid sims in the v0.1 run. The two-part null (separate AR(1)s on
+    # the gate/level series and the cost-rank-change series, combined the same
+    # way the real composite combines them) must not be similarly degenerate
+    # on ordinary synthetic data.
+    df = rd.compute_pillar_percentiles(_synthetic_full_panel())
+    out = rd.rank_churn_null_tenant_two_part(df, n_sims=20, seed=4, rmst_trunc=10.0)
+    assert out["ok"]
+    assert out["n_valid_sims"] > 0
+    assert out["window"][0] >= 2000 and out["window"][1] <= 2023
+    assert np.isfinite(out["null_rmst_p2_5"]) and np.isfinite(out["null_rmst_p97_5"])
+    assert out["null_rmst_p2_5"] <= out["null_rmst_p97_5"]
+
+
+def test_rank_churn_null_tenant_two_part_reports_not_ok_with_too_few_units():
+    rows = []
+    for year in range(2000, 2010):
+        for unit in ("a", "b", "c"):
+            rows.append(dict(unit=unit, year=year, estab_restaurant_total=10, zhvi=300_000,
+                              pop=8_000, workers=3_000, income_real=70_000, area_km2=2.0))
+    df = rd.compute_pillar_percentiles(pd.DataFrame(rows))
+    out = rd.rank_churn_null_tenant_two_part(df, n_sims=5, seed=1)
+    assert not out["ok"]
+    assert "reason" in out
+
+
+# --------------------------------------------------------------- macro leave-one-episode-out (GTM-230 item 3 / statistician S8)
+
+
+def test_macro_leave_one_episode_out_flags_sign_stability(monkeypatch):
+    # Stub fit_macro_hazard_terms (its real form needs the warehouse LODES
+    # parquet + FRED macro series, out of scope for offline synthetic tests)
+    # to exercise macro_leave_one_episode_out's OWN orchestration logic: it
+    # must call the full-sample fit once, then once per MACRO_EPISODES entry
+    # with exclude_years set, and correctly flag which terms keep their sign
+    # across every drop.
+    calls = []
+
+    def fake_fit(panel, spells, composite_col, supply_df, workers_df, macro, exclude_years=None):
+        calls.append(exclude_years)
+        flips = exclude_years is not None and 2020 in exclude_years
+        return dict(
+            ok=True,
+            macro_table=pd.DataFrame([
+                dict(term="e1_x_ur", coef=0.30, p_raw=0.01, p_holm=0.03, holm_significant=True),
+                dict(term="e2_x_covid", coef=(-0.4 if flips else 0.4), p_raw=0.2, p_holm=0.4, holm_significant=False),
+            ]),
+            n_person_years=500,
+            note="stub",
+        )
+
+    monkeypatch.setattr(rd, "fit_macro_hazard_terms", fake_fit)
+    out = rd.macro_leave_one_episode_out(pd.DataFrame(), pd.DataFrame(), "composite_A", None, None, None)
+    assert out["ok"]
+    # 1 full-sample call + 1 per episode
+    assert len(calls) == 1 + len(rd.MACRO_EPISODES)
+    assert calls[0] is None
+    dropped_year_sets = [c for c in calls if c is not None]
+    assert {2001, 2002, 2003} in dropped_year_sets
+    assert {2008, 2009, 2010} in dropped_year_sets
+    assert {2020, 2021, 2022} in dropped_year_sets
+
+    tbl = out["table"].set_index("term")
+    assert tbl.loc["e1_x_ur", "sign_stable_all_drops"]
+    assert not tbl.loc["e2_x_covid", "sign_stable_all_drops"]
+    assert set(out["episode_status"].keys()) == set(rd.MACRO_EPISODES.keys())
+
+
+def test_macro_leave_one_episode_out_reports_not_ok_when_full_fit_fails(monkeypatch):
+    monkeypatch.setattr(rd, "fit_macro_hazard_terms",
+                         lambda *a, **kw: dict(ok=False, reason="insufficient hazard person-years for macro terms"))
+    out = rd.macro_leave_one_episode_out(pd.DataFrame(), pd.DataFrame(), "composite_A", None, None, None)
+    assert not out["ok"]
+    assert "reason" in out
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main([__file__, "-q"]))
