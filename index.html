@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loci Growth Dashboard</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  color-scheme: light;
+  --bg:#f5f6f4; --surface:#ffffff; --surface-2:#eceeec; --border:#d7dad6;
+  --text:#0b0b0b; --text-dim:#52514e; --text-faint:#83817b;
+  --shadow: 0 1px 2px rgba(20,20,18,0.06), 0 4px 14px rgba(20,20,18,0.05);
+  --font-body:'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono:'IBM Plex Mono', ui-monospace, monospace;
+  /* categorical (dataviz skill palette.md, fixed order, slots 1-5) */
+  --c-decision:#2a78d6; --c-ticket:#eb6834; --c-question:#1baf7a; --c-source:#eda100; --c-warehouse:#e87ba4;
+  /* status (fixed, never themed) */
+  --s-good:#0ca30c; --s-warning:#fab219; --s-serious:#ec835a; --s-critical:#d03b3b;
+  --red:#d03b3b;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg:#0e0e0d; --surface:#1a1a19; --surface-2:#232322; --border:#34342f;
+    --text:#ffffff; --text-dim:#c3c2b7; --text-faint:#8f8d84;
+    --shadow: 0 1px 2px rgba(0,0,0,0.35), 0 4px 16px rgba(0,0,0,0.3);
+    --c-decision:#3987e5; --c-ticket:#d95926; --c-question:#199e70; --c-source:#c98500; --c-warehouse:#d55181;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#0e0e0d; --surface:#1a1a19; --surface-2:#232322; --border:#34342f;
+  --text:#ffffff; --text-dim:#c3c2b7; --text-faint:#8f8d84;
+  --shadow: 0 1px 2px rgba(0,0,0,0.35), 0 4px 16px rgba(0,0,0,0.3);
+  --c-decision:#3987e5; --c-ticket:#d95926; --c-question:#199e70; --c-source:#c98500; --c-warehouse:#d55181;
+}
+*{box-sizing:border-box;}
+body{background:var(--bg); color:var(--text); font-family:var(--font-body); margin:0; padding:0 16px 40px; font-size:14px; line-height:1.5;}
+.num{font-family:var(--font-mono); font-variant-numeric:tabular-nums;}
+header.top{max-width:1180px; margin:0 auto; padding:20px 0 10px; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px;}
+header.top h1{font-size:22px; margin:0; font-weight:700;}
+#refreshed{font-size:12px; color:var(--text-dim); font-family:var(--font-mono);}
+#refreshed.stale{color:var(--red); font-weight:700;}
+main{max-width:1180px; margin:0 auto;}
+.card{background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:14px 16px; box-shadow:var(--shadow); margin-bottom:18px;}
+.grid-stats{display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:8px; overflow:hidden; margin-bottom:18px;}
+.stat{background:var(--surface); padding:12px 14px;}
+.stat .v{font-family:var(--font-mono); font-size:20px; font-weight:700;}
+.stat .l{font-size:11px; color:var(--text-dim); margin-top:2px;}
+h2.sect{font-size:14px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-dim); border-bottom:1px solid var(--border); padding-bottom:6px; margin:22px 0 10px;}
+.two-col{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+@media (max-width:760px){ .two-col{grid-template-columns:1fr;} }
+svg text{font-family:var(--font-body); fill:var(--text-dim); font-size:9.5px;}
+.axis-line{stroke:var(--border); stroke-width:1;}
+.grid-line{stroke:var(--border); stroke-width:1; stroke-dasharray:2,3;}
+.legend{display:flex; flex-wrap:wrap; gap:12px; font-size:11px; color:var(--text-dim); margin-top:8px;}
+.legend .sw{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px; vertical-align:-1px;}
+.controls{display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin-bottom:12px; font-size:12.5px;}
+.controls label.chk{display:flex; align-items:center; gap:5px; background:var(--surface); border:1px solid var(--border); padding:4px 9px; border-radius:6px; cursor:pointer;}
+input[type="text"], input[type="range"]{font-family:var(--font-body); background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:5px 8px;}
+input[type="text"]{width:200px;}
+#date-slider-wrap{display:flex; align-items:center; gap:8px; flex:1; min-width:220px;}
+#date-slider{flex:1;}
+#date-label{font-family:var(--font-mono); font-size:11.5px; color:var(--text-dim); white-space:nowrap;}
+#graph-wrap{position:relative; border:1px solid var(--border); border-radius:8px; background:var(--surface); overflow:hidden;}
+#graph-svg{width:100%; height:560px; display:block; cursor:grab;}
+#tooltip{position:absolute; pointer-events:none; background:var(--surface); border:1px solid var(--border); border-radius:5px; padding:6px 9px; font-size:11.5px; box-shadow:var(--shadow); max-width:280px; display:none; z-index:5;}
+.caveats{font-size:11.5px; color:var(--text-faint);}
+.caveats li{margin-bottom:4px;}
+footer.credit{color:var(--text-faint); font-size:10.5px; text-align:center; padding:20px 0 4px;}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Loci Growth Dashboard</h1>
+  <div id="refreshed">loading…</div>
+</header>
+
+<main>
+  <div class="grid-stats" id="stat-grid"></div>
+
+  <div class="two-col">
+    <div class="card">
+      <h2 class="sect" style="margin-top:0;">Cumulative counts</h2>
+      <svg id="growth-chart" viewBox="0 0 520 260" width="100%" height="260"></svg>
+      <div class="legend" id="growth-legend"></div>
+    </div>
+    <div class="card">
+      <h2 class="sect" style="margin-top:0;">Warehouse rows (nightly snapshots)</h2>
+      <svg id="rows-chart" viewBox="0 0 520 260" width="100%" height="260"></svg>
+      <div class="legend" id="rows-legend"></div>
+    </div>
+  </div>
+
+  <h2 class="sect">Project graph</h2>
+  <div class="controls" id="type-filters"></div>
+  <div class="controls">
+    <input type="text" id="search-box" placeholder="search labels…">
+    <div id="date-slider-wrap">
+      <span id="date-label" class="num"></span>
+      <input type="range" id="date-slider" min="0" max="0" value="0">
+    </div>
+  </div>
+  <div id="graph-wrap" class="card">
+    <svg id="graph-svg"></svg>
+    <div id="tooltip"></div>
+  </div>
+  <div class="legend" id="graph-legend"></div>
+
+  <h2 class="sect">Caveats</h2>
+  <ul class="caveats" id="caveats"></ul>
+</main>
+
+<footer class="credit">Loci &middot; internal, password-protected &middot; rebuilt nightly from CHECKPOINT.md, tickets.py, QUESTIONS.md, registry.yaml and the warehouse</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+const TYPE_COLOR = {
+  decision: getVar('--c-decision'), ticket: getVar('--c-ticket'), question: getVar('--c-question'),
+  source: getVar('--c-source'), warehouse_table: getVar('--c-warehouse')
+};
+function getVar(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function fmtNum(n){ return (n===null||n===undefined) ? '—' : n.toLocaleString('en-US'); }
+function el(tag, attrs, children){
+  const e = document.createElement(tag);
+  if (attrs) for (const k in attrs){
+    if (k==='class') e.className = attrs[k]; else if (k==='html') e.innerHTML = attrs[k]; else e.setAttribute(k, attrs[k]);
+  }
+  (children||[]).forEach(c => { if (c===null||c===undefined||c==='') return; e.appendChild(c instanceof Node ? c : document.createTextNode(String(c))); });
+  return e;
+}
+// Status ring color -- fixed status palette, never the categorical hues above.
+function statusColor(status){
+  const s = (status||'').toLowerCase();
+  if (['done','answered','verified','logged'].includes(s)) return getVar('--s-good');
+  if (['dropped','excluded','canceled','wontfix'].includes(s)) return getVar('--s-critical');
+  if (['stalled','review','deferred','unclassified'].includes(s)) return getVar('--s-serious');
+  return getVar('--s-warning'); // open / planned / staging / measure / score / ledger / default
+}
+
+let DATA = null;
+
+fetch('data.json').then(r => r.json()).then(d => { DATA = d; boot(d); }).catch(err => {
+  document.getElementById('refreshed').textContent = 'failed to load data.json: ' + err;
+  document.getElementById('refreshed').classList.add('stale');
+});
+
+function boot(d){
+  renderHeader(d);
+  renderStats(d);
+  renderGrowthChart(d);
+  renderRowsChart(d);
+  renderGraph(d);
+  renderCaveats(d);
+}
+
+function renderHeader(d){
+  const r = document.getElementById('refreshed');
+  const gen = new Date(d.generated_at);
+  const ageH = (Date.now() - gen.getTime()) / 3.6e6;
+  r.textContent = 'Last refreshed ' + d.generated_at + (d.warehouse_stale ? ' (warehouse snapshot STALE — fell back to last good build)' : '');
+  if (ageH > (d.stale_after_hours || 36)) r.classList.add('stale');
+}
+
+function renderStats(d){
+  const counts = {};
+  d.nodes.forEach(n => counts[n.type] = (counts[n.type]||0)+1);
+  const stats = [
+    [fmtNum(counts.decision||0), 'Decisions'],
+    [fmtNum(counts.ticket||0), 'Tickets'],
+    [fmtNum(counts.question||0), 'Questions'],
+    [fmtNum(counts.source||0), 'Sources'],
+    [fmtNum(counts.warehouse_table||0), 'Warehouse tables'],
+    [fmtNum(d.growth.warehouse_rows_total_latest||0), 'Warehouse rows'],
+  ];
+  const grid = document.getElementById('stat-grid');
+  stats.forEach(([v,l]) => grid.appendChild(el('div',{class:'stat'},[el('div',{class:'v'},[v]), el('div',{class:'l'},[l])])));
+}
+
+/* ---------------- growth line chart (multi-series, one axis) ---------------- */
+function renderGrowthChart(d){
+  const series = [
+    ['decisions', d.growth.decisions, TYPE_COLOR.decision],
+    ['tickets', d.growth.tickets, TYPE_COLOR.ticket],
+    ['questions', d.growth.questions, TYPE_COLOR.question],
+    ['sources', d.growth.sources, TYPE_COLOR.source],
+    ['warehouse tables', d.growth.warehouse_tables, TYPE_COLOR.warehouse_table],
+  ].filter(([,pts]) => pts && pts.length);
+  const svg = d3.select('#growth-chart');
+  const W=520,H=260,M={t:12,r:12,b:28,l:38};
+  const allDates = [...new Set(series.flatMap(([,pts])=>pts.map(p=>p.date)))].sort();
+  if (!allDates.length){ return; }
+  const x = d3.scalePoint().domain(allDates).range([M.l, W-M.r]);
+  const maxY = d3.max(series.flatMap(([,pts])=>pts.map(p=>p.count))) || 1;
+  const y = d3.scaleLinear().domain([0,maxY]).nice().range([H-M.b, M.t]);
+  const yTicks = y.ticks(5);
+  svg.append('g').selectAll('line').data(yTicks).enter().append('line').attr('class','grid-line')
+    .attr('x1',M.l).attr('x2',W-M.r).attr('y1',dd=>y(dd)).attr('y2',dd=>y(dd));
+  svg.append('g').selectAll('text').data(yTicks).enter().append('text')
+    .attr('x',M.l-6).attr('y',dd=>y(dd)+3).attr('text-anchor','end').text(fmtNum);
+  const xt = allDates.filter((_,i)=> i % Math.ceil(allDates.length/6 || 1) === 0);
+  svg.append('g').selectAll('text').data(xt).enter().append('text')
+    .attr('x',dd=>x(dd)).attr('y',H-M.b+14).attr('text-anchor','middle').text(dd=>dd);
+  svg.append('line').attr('class','axis-line').attr('x1',M.l).attr('x2',M.l).attr('y1',M.t).attr('y2',H-M.b);
+  svg.append('line').attr('class','axis-line').attr('x1',M.l).attr('x2',W-M.r).attr('y1',H-M.b).attr('y2',H-M.b);
+  const legend = document.getElementById('growth-legend');
+  legend.innerHTML = '';
+  series.forEach(([name, pts, color]) => {
+    const line = d3.line().x(p=>x(p.date)).y(p=>y(p.count));
+    svg.append('path').datum(pts).attr('d', line).attr('fill','none').attr('stroke', color).attr('stroke-width', 2);
+    legend.appendChild(el('span',{},[el('span',{class:'sw',style:'background:'+color}), name]));
+  });
+}
+
+/* ---------------- warehouse rows chart ---------------- */
+function renderRowsChart(d){
+  const pts = d.growth.warehouse_rows_history || [];
+  const svg = d3.select('#rows-chart');
+  const W=520,H=260,M={t:12,r:12,b:28,l:52};
+  if (pts.length < 2){
+    svg.append('text').attr('x',W/2).attr('y',H/2).attr('text-anchor','middle')
+      .text(pts.length ? '1 snapshot so far — history grows nightly' : 'no snapshots yet');
+    return;
+  }
+  const x = d3.scalePoint().domain(pts.map(p=>p.date)).range([M.l, W-M.r]);
+  const maxY = d3.max(pts, p=>p.warehouse_rows_total) || 1;
+  const y = d3.scaleLinear().domain([0,maxY]).nice().range([H-M.b, M.t]);
+  const yTicks = y.ticks(5);
+  svg.append('g').selectAll('line').data(yTicks).enter().append('line').attr('class','grid-line')
+    .attr('x1',M.l).attr('x2',W-M.r).attr('y1',dd=>y(dd)).attr('y2',dd=>y(dd));
+  svg.append('g').selectAll('text').data(yTicks).enter().append('text')
+    .attr('x',M.l-6).attr('y',dd=>y(dd)+3).attr('text-anchor','end').text(fmtNum);
+  const line = d3.line().x(p=>x(p.date)).y(p=>y(p.warehouse_rows_total));
+  svg.append('path').datum(pts).attr('d', line).attr('fill','none').attr('stroke', TYPE_COLOR.warehouse_table).attr('stroke-width', 2);
+  svg.append('line').attr('class','axis-line').attr('x1',M.l).attr('x2',M.l).attr('y1',M.t).attr('y2',H-M.b);
+  svg.append('line').attr('class','axis-line').attr('x1',M.l).attr('x2',W-M.r).attr('y1',H-M.b).attr('y2',H-M.b);
+  const shashes = d.growth.supply_hash_changes || [];
+  document.getElementById('rows-legend').textContent = shashes.length
+    ? shashes.length + ' supply hash change(s) on record, latest ' + shashes[shashes.length-1].hash
+    : 'no supply hash changes on record';
+}
+
+/* ---------------- force graph ---------------- */
+let sim=null, nodeSel=null, linkSel=null;
+function renderGraph(d){
+  const nodes = d.nodes.map(n => Object.assign({}, n));
+  const idIndex = new Map(nodes.map(n=>[n.id,n]));
+  const links = d.edges.filter(e=>idIndex.has(e.source)&&idIndex.has(e.target)).map(e=>({source:e.source,target:e.target,type:e.type}));
+
+  const W=1100,H=560;
+  sim = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(n=>n.id).distance(24).strength(0.2))
+    .force('charge', d3.forceManyBody().strength(-14))
+    .force('center', d3.forceCenter(W/2,H/2))
+    .force('collide', d3.forceCollide(5))
+    .stop();
+  for (let i=0;i<200;i++) sim.tick();
+
+  const svg = d3.select('#graph-svg').attr('viewBox','0 0 '+W+' '+H);
+  const g = svg.append('g');
+  svg.call(d3.zoom().scaleExtent([0.15,6]).on('zoom', ev => g.attr('transform', ev.transform)));
+
+  linkSel = g.append('g').selectAll('line').data(links).enter().append('line')
+    .attr('x1',l=>l.source.x).attr('y1',l=>l.source.y).attr('x2',l=>l.target.x).attr('y2',l=>l.target.y)
+    .attr('stroke', getVar('--border')).attr('stroke-opacity',0.6).attr('stroke-width',0.7);
+
+  nodeSel = g.append('g').selectAll('circle').data(nodes).enter().append('circle')
+    .attr('cx',n=>n.x).attr('cy',n=>n.y)
+    .attr('r', n => n.type==='decision' ? 4.5 : 3.4)
+    .attr('fill', n => TYPE_COLOR[n.type] || '#999')
+    .attr('stroke', n => statusColor(n.status))
+    .attr('stroke-width', 1.6)
+    .style('cursor','pointer');
+
+  const tooltip = document.getElementById('tooltip');
+  const wrap = document.getElementById('graph-wrap');
+  nodeSel.on('mousemove', function(ev,n){
+    const rect = wrap.getBoundingClientRect();
+    tooltip.style.display='block';
+    tooltip.style.left = (ev.clientX-rect.left+12)+'px';
+    tooltip.style.top = (ev.clientY-rect.top+12)+'px';
+    tooltip.innerHTML = '<b>'+n.label+'</b><br>'+n.type+(n.status?' · '+n.status:'')+(n.date?' · '+n.date:'');
+  }).on('mouseleave', ()=> tooltip.style.display='none');
+
+  const typeWrap = document.getElementById('type-filters');
+  typeWrap.innerHTML = '';
+  Object.keys(TYPE_COLOR).forEach(t => {
+    const cb = el('input',{type:'checkbox',id:'gt-'+t}); cb.checked = true;
+    const label = el('label',{class:'chk'},[cb, el('span',{style:'display:inline-block;width:8px;height:8px;border-radius:2px;background:'+TYPE_COLOR[t]},[]), t]);
+    typeWrap.appendChild(label);
+    cb.addEventListener('change', applyFilters);
+  });
+
+  const legend = document.getElementById('graph-legend');
+  legend.innerHTML = '';
+  Object.entries(TYPE_COLOR).forEach(([t,c]) => legend.appendChild(el('span',{},[el('span',{class:'sw',style:'background:'+c}), t])));
+  [['good','--s-good'],['warning/open','--s-warning'],['serious/stalled','--s-serious'],['critical/dropped','--s-critical']].forEach(([label,varName]) => {
+    legend.appendChild(el('span',{},[el('span',{class:'sw',style:'background:none;border:2px solid '+getVar(varName)}), label+' (ring)']));
+  });
+
+  document.getElementById('search-box').addEventListener('input', applyFilters);
+
+  const dated = nodes.filter(n=>n.date).map(n=>n.date).sort();
+  const slider = document.getElementById('date-slider');
+  const dateLabel = document.getElementById('date-label');
+  if (dated.length){
+    slider.min = 0; slider.max = dated.length-1; slider.value = dated.length-1;
+    dateLabel.textContent = 'as of ' + dated[dated.length-1];
+    slider.addEventListener('input', () => {
+      dateLabel.textContent = 'as of ' + dated[+slider.value];
+      applyFilters();
+    });
+  } else {
+    dateLabel.textContent = 'no dated nodes';
+    slider.disabled = true;
+  }
+
+  function activeTypes(){
+    const active = {};
+    Object.keys(TYPE_COLOR).forEach(t => active[t] = document.getElementById('gt-'+t).checked);
+    return active;
+  }
+  function applyFilters(){
+    const active = activeTypes();
+    const q = document.getElementById('search-box').value.toLowerCase();
+    const cutoff = dated.length ? dated[+slider.value] : null;
+    function visible(n){
+      if (!active[n.type]) return false;
+      if (q && !n.label.toLowerCase().includes(q)) return false;
+      if (cutoff && n.date && n.date > cutoff) return false; // undated nodes always shown
+      return true;
+    }
+    nodeSel.attr('display', n => visible(n) ? null : 'none');
+    linkSel.attr('display', l => (visible(l.source) && visible(l.target)) ? null : 'none');
+  }
+}
+
+function renderCaveats(d){
+  const ul = document.getElementById('caveats');
+  const items = [
+    'Warehouse row counts are DuckDB\'s own row estimate (no full COUNT(*) scan on every build), not an exact count.',
+    'Historical ticket/decision/question counts before today are reconstructed from git history and may be off by a handful for reformatted revisions.',
+    'Ticket dates are a best-effort proxy: the first ISO date mentioned in the ticket\'s own text, not a tracked "opened" field.',
+    'A node with no known date (most questions and sources) is never hidden by the date slider.',
+    'This page never carries decision/ticket descriptions, operator financial figures, rents, or paid-source prices — only ids, titles, statuses and counts.',
+  ];
+  if (d.warehouse_stale) items.unshift('Warehouse could not be opened read-only this run (locked by a writer) — table/row figures are the last successful snapshot, not live.');
+  items.forEach(t => ul.appendChild(el('li',{},[t])));
+}
+</script>
+</body>
+</html>
