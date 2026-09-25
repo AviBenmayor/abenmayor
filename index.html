@@ -57,6 +57,41 @@ svg text{font-family:var(--font-body); fill:var(--text-dim); font-size:9.5px;}
 .grid-line{stroke:var(--border); stroke-width:1; stroke-dasharray:2,3;}
 .legend{display:flex; flex-wrap:wrap; gap:12px; font-size:11px; color:var(--text-dim); margin-top:8px;}
 .legend .sw{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px; vertical-align:-1px;}
+.legend .sw.untracked-sw{background:repeating-linear-gradient(135deg, var(--text-faint), var(--text-faint) 2px, var(--surface-2) 2px, var(--surface-2) 4px);}
+h3.subhead{font-size:12.5px; font-weight:600; color:var(--text-dim); margin:0 0 10px;}
+.thread-group-label{font-size:10.5px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-faint); margin:14px 0 6px; padding-top:6px; border-top:1px dashed var(--border);}
+.thread-group-label:first-child{border-top:none; margin-top:0; padding-top:0;}
+.thread-row{display:grid; grid-template-columns:180px 1fr 220px; gap:12px; align-items:center; padding:7px 0; border-bottom:1px solid var(--border);}
+.thread-row:last-child{border-bottom:none;}
+.thread-row.complete{opacity:0.72;}
+.thread-name{font-size:12.5px; font-weight:500; overflow-wrap:anywhere;}
+.thread-bar-wrap{display:flex;}
+.thread-bar{display:flex; width:100%; height:12px; border-radius:4px; overflow:hidden; background:var(--surface-2); border:1px solid var(--border);}
+.thread-bar .seg{height:100%;}
+.thread-bar .seg.done{background:var(--s-good);}
+.thread-bar .seg.in-progress{background:var(--s-serious);}
+.thread-bar .seg.open{background:var(--s-warning);}
+.thread-bar .seg.untracked{background:repeating-linear-gradient(135deg, var(--text-faint), var(--text-faint) 3px, var(--surface-2) 3px, var(--surface-2) 6px);}
+.thread-meta{display:flex; flex-direction:column; align-items:flex-end; gap:2px; font-size:10.5px; text-align:right;}
+.thread-meta .thread-left{font-family:var(--font-mono); font-size:14px; font-weight:700; color:var(--text);}
+.thread-row.complete .thread-left{color:var(--s-good);}
+.thread-meta .thread-frac{color:var(--text-dim);}
+.badge{display:inline-block; font-size:9.5px; font-weight:600; padding:1px 6px; border-radius:8px; margin-top:1px;}
+.badge.urgent{background:var(--s-critical); color:#fff;}
+.badge.canceled{background:transparent; color:var(--s-critical); border:1px solid var(--s-critical);}
+.rq-row{display:flex; align-items:center; gap:12px; padding:7px 0; border-bottom:1px solid var(--border); flex-wrap:wrap;}
+.rq-row:last-child{border-bottom:none;}
+.rq-row.answered{opacity:0.72;}
+.rq-name{font-size:12.5px; font-weight:500; min-width:170px; flex:1 1 170px;}
+.rq-pipeline{display:flex; flex-wrap:wrap; gap:4px; flex:2 1 320px;}
+.rq-stage{font-size:9.5px; padding:3px 8px; border-radius:9px; border:1px solid var(--border); color:var(--text-faint); white-space:nowrap; background:var(--surface);}
+.rq-stage.done{background:var(--s-good); border-color:var(--s-good); color:#fff;}
+.rq-stage.current{border-color:var(--s-warning); border-width:2px; color:var(--text); font-weight:600;}
+.rq-stage.answered-stage{font-style:italic;}
+@media (max-width:760px){
+  .thread-row{grid-template-columns:1fr; row-gap:6px;}
+  .thread-meta{flex-direction:row; align-items:center; text-align:left;}
+}
 .controls{display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin-bottom:12px; font-size:12.5px;}
 .controls label.chk{display:flex; align-items:center; gap:5px; background:var(--surface); border:1px solid var(--border); padding:4px 9px; border-radius:6px; cursor:pointer;}
 input[type="text"], input[type="range"]{font-family:var(--font-body); background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:5px; padding:5px 8px;}
@@ -93,6 +128,18 @@ footer.credit{color:var(--text-faint); font-size:10.5px; text-align:center; padd
       <svg id="rows-chart" viewBox="0 0 520 260" width="100%" height="260"></svg>
       <div class="legend" id="rows-legend"></div>
     </div>
+  </div>
+
+  <h2 class="sect">Threads</h2>
+  <div class="card">
+    <h3 class="subhead">Milestone progress</h3>
+    <div id="milestone-rows"></div>
+    <div class="legend" id="milestone-legend"></div>
+  </div>
+  <div class="card">
+    <h3 class="subhead">Research questions</h3>
+    <div id="rq-rows"></div>
+    <div class="legend" id="rq-legend"></div>
   </div>
 
   <h2 class="sect">Project graph</h2>
@@ -138,7 +185,11 @@ function statusColor(status){
   if (['done','answered','verified','logged'].includes(s)) return getVar('--s-good');
   if (['dropped','excluded','canceled','wontfix'].includes(s)) return getVar('--s-critical');
   if (['stalled','review','deferred','unclassified'].includes(s)) return getVar('--s-serious');
-  return getVar('--s-warning'); // open / planned / staging / measure / score / ledger / default
+  // open / planned / staging / measure / score / ledger / untracked / default. "untracked"
+  // (a ticket with no state at all -- see graph.parse_ticket_nodes) is deliberately left
+  // in this bucket for the force-graph ring: the Threads section above gives it its own
+  // hatched-grey segment where the distinction matters; this ring stays unchanged.
+  return getVar('--s-warning');
 }
 
 let DATA = null;
@@ -153,6 +204,8 @@ function boot(d){
   renderStats(d);
   renderGrowthChart(d);
   renderRowsChart(d);
+  renderMilestones(d);
+  renderResearchQuestions(d);
   renderGraph(d);
   renderCaveats(d);
 }
@@ -241,6 +294,78 @@ function renderRowsChart(d){
   document.getElementById('rows-legend').textContent = shashes.length
     ? shashes.length + ' supply hash change(s) on record, latest ' + shashes[shashes.length-1].hash
     : 'no supply hash changes on record';
+}
+
+/* ---------------- Threads: A. milestone progress ---------------- */
+function renderMilestones(d){
+  const wrap = document.getElementById('milestone-rows');
+  wrap.innerHTML = '';
+  const rows = d.milestones || [];
+  let sawComplete = false;
+  rows.forEach(r => {
+    if (r.complete && !sawComplete){
+      wrap.appendChild(el('div',{class:'thread-group-label'},['Complete']));
+      sawComplete = true;
+    }
+    const barTotal = r.done + r.in_progress + r.open + r.untracked;
+    const bar = el('div',{class:'thread-bar'});
+    [['done', r.done], ['in-progress', r.in_progress], ['open', r.open], ['untracked', r.untracked]]
+      .forEach(([cls, count]) => {
+        if (!count) return;
+        const pct = barTotal ? (count/barTotal*100) : 0;
+        bar.appendChild(el('div',{class:'seg '+cls, style:'width:'+pct+'%', title:cls+': '+count}));
+      });
+    const badges = [];
+    if (r.urgent_open > 0) badges.push(el('span',{class:'badge urgent'},[r.urgent_open+' urgent open']));
+    if (r.canceled > 0) badges.push(el('span',{class:'badge canceled'},[r.canceled+' canceled']));
+    wrap.appendChild(el('div',{class:'thread-row'+(r.complete?' complete':'')},[
+      el('div',{class:'thread-name'},[r.milestone]),
+      el('div',{class:'thread-bar-wrap'},[bar]),
+      el('div',{class:'thread-meta'},[
+        el('span',{class:'thread-left num'},[r.complete ? 'done' : fmtNum(r.remaining)+' left']),
+        el('span',{class:'thread-frac num'},[r.done+' of '+barTotal+' done']),
+        ...badges,
+      ]),
+    ]));
+  });
+  const legend = document.getElementById('milestone-legend');
+  legend.innerHTML = '';
+  [['done','--s-good'],['in progress','--s-serious'],['todo / open','--s-warning']].forEach(([label,v]) => {
+    legend.appendChild(el('span',{},[el('span',{class:'sw',style:'background:'+getVar(v)}), label]));
+  });
+  legend.appendChild(el('span',{},[el('span',{class:'sw untracked-sw'}), 'untracked (no state recorded in tickets.py)']));
+  legend.appendChild(el('span',{},[el('span',{class:'sw',style:'background:none;border:1px solid '+getVar('--s-critical')+';color:'+getVar('--s-critical')}), 'canceled / wontfix -- excluded from "left"']));
+}
+
+/* ---------------- Threads: B. research-question stage strip ---------------- */
+const RQ_STAGE_LABEL = {seed:'Seed', question:'Question', data_audit:'Data audit', notebook:'Notebook', answer:'Answer'};
+function renderResearchQuestions(d){
+  const wrap = document.getElementById('rq-rows');
+  wrap.innerHTML = '';
+  const rqs = d.research_questions || [];
+  if (!rqs.length){
+    wrap.appendChild(el('div',{class:'thread-frac'},['no research questions yet']));
+    return;
+  }
+  rqs.forEach(rq => {
+    const stages = rq.stages || Object.keys(RQ_STAGE_LABEL);
+    const answered = rq.status === 'answered';
+    const currentIdx = answered ? stages.length : stages.indexOf(rq.stage);
+    const pipeline = el('div',{class:'rq-pipeline'});
+    stages.forEach((s,i) => {
+      const done = answered || i < currentIdx;
+      const isCurrent = !answered && i === currentIdx;
+      pipeline.appendChild(el('div',{class:'rq-stage'+(done?' done':'')+(isCurrent?' current':'')},[RQ_STAGE_LABEL[s]||s]));
+    });
+    pipeline.appendChild(el('div',{class:'rq-stage answered-stage'+(answered?' done':'')},['Answered']));
+    wrap.appendChild(el('div',{class:'rq-row'+(answered?' answered':'')},[
+      el('div',{class:'rq-name'},[rq.label]),
+      pipeline,
+    ]));
+  });
+  const legend = document.getElementById('rq-legend');
+  legend.innerHTML = '';
+  legend.appendChild(el('span',{},['filled = complete; bold outline = current stage; a blocked/pending stage (per its own STATUS.yaml reason, not shown here) reads as "not yet current".']));
 }
 
 /* ---------------- force graph ---------------- */
@@ -346,6 +471,8 @@ function renderCaveats(d){
     'Ticket dates are a best-effort proxy: the first ISO date mentioned in the ticket\'s own text, not a tracked "opened" field.',
     'A node with no known date (most questions and sources) is never hidden by the date slider.',
     'This page never carries decision/ticket descriptions, operator financial figures, rents, or paid-source prices — only ids, titles, statuses and counts.',
+    '"Untracked" (Threads: Milestone progress) means the ticket has no state recorded in tickets.py at all -- not "queued," which is what "open" (Todo/Backlog) means. It is its own bar segment on purpose, not folded into open.',
+    'Research-question stages (Threads: Research questions) come from each RQ\'s STATUS.yaml, the same structured field `loci research check` gates on -- a stage only counts as reached if it is marked done AND its file exists on disk.',
   ];
   if (d.warehouse_stale) items.unshift('Warehouse could not be opened read-only this run (locked by a writer) — table/row figures are the last successful snapshot, not live.');
   items.forEach(t => ul.appendChild(el('li',{},[t])));
