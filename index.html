@@ -88,9 +88,21 @@ h3.subhead{font-size:12.5px; font-weight:600; color:var(--text-dim); margin:0 0 
 .rq-stage.done{background:var(--s-good); border-color:var(--s-good); color:#fff;}
 .rq-stage.current{border-color:var(--s-warning); border-width:2px; color:var(--text); font-weight:600;}
 .rq-stage.answered-stage{font-style:italic;}
+.clock-row{display:grid; grid-template-columns:40px 1fr 92px 96px 70px; gap:10px; align-items:center; padding:7px 0; border-bottom:1px solid var(--border);}
+.clock-row:last-child{border-bottom:none;}
+.clock-id{font-family:var(--font-mono); font-size:11px; font-weight:700; color:var(--text-dim);}
+.clock-name{font-size:12.5px; font-weight:500; overflow-wrap:anywhere;}
+.clock-date{font-family:var(--font-mono); font-size:11.5px; color:var(--text-dim); text-align:right; white-space:nowrap;}
+.clock-days{font-family:var(--font-mono); font-size:12px; font-weight:600; text-align:right; white-space:nowrap;}
+.clock-days.resolved{color:var(--s-good);}
+.clock-days.passed{color:var(--s-critical);}
+.clock-days.soon{color:var(--s-warning);}
+.clock-gate{font-size:9.5px; padding:2px 7px; border-radius:8px; border:1px solid var(--border); color:var(--text-faint); text-align:center; white-space:nowrap; justify-self:end;}
 @media (max-width:760px){
   .thread-row{grid-template-columns:1fr; row-gap:6px;}
   .thread-meta{flex-direction:row; align-items:center; text-align:left;}
+  .clock-row{grid-template-columns:1fr; row-gap:3px;}
+  .clock-date, .clock-days, .clock-gate{text-align:left; justify-self:start;}
 }
 .controls{display:flex; flex-wrap:wrap; gap:14px; align-items:center; margin-bottom:12px; font-size:12.5px;}
 .controls label.chk{display:flex; align-items:center; gap:5px; background:var(--surface); border:1px solid var(--border); padding:4px 9px; border-radius:6px; cursor:pointer;}
@@ -140,6 +152,11 @@ footer.credit{color:var(--text-faint); font-size:10.5px; text-align:center; padd
     <h3 class="subhead">Research questions</h3>
     <div id="rq-rows"></div>
     <div class="legend" id="rq-legend"></div>
+  </div>
+  <div class="card">
+    <h3 class="subhead">Charter clock</h3>
+    <div id="clock-rows"></div>
+    <div class="legend" id="clock-legend"></div>
   </div>
 
   <h2 class="sect">Project graph</h2>
@@ -206,6 +223,7 @@ function boot(d){
   renderRowsChart(d);
   renderMilestones(d);
   renderResearchQuestions(d);
+  renderCharterClock(d);
   renderGraph(d);
   renderCaveats(d);
 }
@@ -368,6 +386,34 @@ function renderResearchQuestions(d){
   legend.appendChild(el('span',{},['filled = complete; bold outline = current stage; a blocked/pending stage (per its own STATUS.yaml reason, not shown here) reads as "not yet current".']));
 }
 
+/* ---------------- Threads: C. charter clock (AC-1..AC-6) ---------------- */
+function renderCharterClock(d){
+  const wrap = document.getElementById('clock-rows');
+  wrap.innerHTML = '';
+  const rows = d.charter_clock || [];
+  if (!rows.length){
+    wrap.appendChild(el('div',{class:'thread-frac'},['no acceptance criteria on record']));
+    return;
+  }
+  rows.forEach(r => {
+    let daysCls = '', daysText;
+    if (r.state === 'resolved'){ daysCls = 'resolved'; daysText = 'resolved'; }
+    else if (r.state === 'passed'){ daysCls = 'passed'; daysText = 'passed'; }
+    else if (r.date === null){ daysCls = 'soon'; daysText = r.state || 'no date'; }
+    else { daysText = fmtNum(r.days_left) + ' d left'; if (r.days_left <= 60) daysCls = 'soon'; }
+    wrap.appendChild(el('div',{class:'clock-row'},[
+      el('div',{class:'clock-id'},[r.id]),
+      el('div',{class:'clock-name'},[r.label]),
+      el('div',{class:'clock-date num'},[r.date || '—']),
+      el('div',{class:'clock-days num'+(daysCls?' '+daysCls:'')},[daysText]),
+      el('div',{class:'clock-gate'},[r.gate]),
+    ]));
+  });
+  const legend = document.getElementById('clock-legend');
+  legend.innerHTML = '';
+  legend.appendChild(el('span',{},['"calendar" resolves automatically on the date shown, whatever the work status; "work" is a target date tied to an input landing, not automatic.']));
+}
+
 /* ---------------- force graph ---------------- */
 let sim=null, nodeSel=null, linkSel=null;
 function renderGraph(d){
@@ -473,6 +519,7 @@ function renderCaveats(d){
     'This page never carries decision/ticket descriptions, operator financial figures, rents, or paid-source prices — only ids, titles, statuses and counts.',
     '"Untracked" (Threads: Milestone progress) means the ticket has no state recorded in tickets.py at all -- not "queued," which is what "open" (Todo/Backlog) means. It is its own bar segment on purpose, not folded into open.',
     'Research-question stages (Threads: Research questions) come from each RQ\'s STATUS.yaml, the same structured field `loci research check` gates on -- a stage only counts as reached if it is marked done AND its file exists on disk.',
+    'Charter clock (Threads) carries only each acceptance criterion\'s id, heading and resolution date, sourced from docs/CONTEXT.md §7 -- never the method or evidence paragraphs underneath it.',
   ];
   if (d.warehouse_stale) items.unshift('Warehouse could not be opened read-only this run (locked by a writer) — table/row figures are the last successful snapshot, not live.');
   items.forEach(t => ul.appendChild(el('li',{},[t])));
